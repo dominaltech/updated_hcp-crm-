@@ -1,0 +1,45 @@
+[build]
+  command = "npm rebuild better-sqlite3 && npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["better-sqlite3"]
+  included_files = ["hotel_city_park.db"]
+
+# Redirect API calls to the serverless Express function
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# Dedicated screens routing directly to frontend Single Page App
+[[redirects]]
+  from = "/hospitality"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/restaurant"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/bar"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/manage"
+  to = "/index.html"
+  status = 200
+
+# Catch-all fallback for SPA routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

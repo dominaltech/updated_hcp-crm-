@@ -1,0 +1,14 @@
+node_modules/
+*.log
+hotel_city_park.db-shm
+hotel_city_park.db-wal
+.DS_Store
+Thumbs.db
+scratch/
+.env
+*.sqlite
+hotel.db
+QA/
+nnnnew/
+nnnnew.zip
+scratch_gen.mjs
