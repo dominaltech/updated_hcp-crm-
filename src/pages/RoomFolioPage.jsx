@@ -609,7 +609,15 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       docType: folioData.docType || r.doc_type || r.docType || 'Aadhaar Card',
       doc_type: folioData.docType || r.doc_type || r.docType || 'Aadhaar Card',
       checkedInBy: folioData.checkedInBy || r.checked_in_by || 'Front Desk',
-      all_group_rooms: folioData.all_group_rooms || r.all_group_rooms || []
+      all_group_rooms: folioData.all_group_rooms || r.all_group_rooms || [],
+      checkin_time: folioData.checkinTime || r.checkin_time || folioData.check_in || folioData.checkin,
+      checkinTime: folioData.checkinTime || r.checkin_time || folioData.check_in || folioData.checkin,
+      actual_checkout_time: folioData.actualCheckoutTime || r.actual_checkout_time || folioData.actual_checkout,
+      actualCheckoutTime: folioData.actualCheckoutTime || r.actual_checkout_time || folioData.actual_checkout,
+      approx_checkout_time: folioData.approxCheckoutTime || r.approx_checkout_time || folioData.approx_checkout,
+      approxCheckoutTime: folioData.approxCheckoutTime || r.approx_checkout_time || folioData.approx_checkout,
+      checkoutTime: folioData.checkoutTime || r.checkout_time,
+      checkoutDate: folioData.checkoutDate || r.checkout_date
     };
   };
 

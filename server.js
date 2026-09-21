@@ -963,7 +963,7 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
         cleanBtcCompanyId,
         cleanBtcCompanyName,
         cleanCheckedInBy,
-        `Advance payment at check-in for Room ${roomNumbers.join(', ')} (${guest_name})${advCardSurcharge > 0 ? ` (+₹${advCardSurcharge} Card fee)` : ''}${advUpiTax > 0 ? ` (+₹${advUpiTax} UPI tax)` : ''}`,
+        `paid while checkin : checkin${advCardSurcharge > 0 ? ` (+₹${advCardSurcharge} Card fee)` : ''}${advUpiTax > 0 ? ` (+₹${advUpiTax} UPI tax)` : ''}`,
         advChequePhoto,
         online_utr,
         advCardSurcharge,

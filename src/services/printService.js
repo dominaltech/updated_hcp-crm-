@@ -2351,8 +2351,39 @@ export function buildGuestPaymentSummaryHTML(data) {
   const roomType = data.room_type || data.roomType || '-';
   const rawVoucherNo = data.voucher_no || data.voucher_number || data.voucherNumber || (data.id ? `VCH-${data.id}` : '-');
   const voucherNo = cleanVoucherNumber(rawVoucherNo);
-  const checkIn = data.check_in || data.checkin || data.check_in_date ? new Date(data.check_in || data.checkin || data.check_in_date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-';
-  const checkOut = data.check_out || data.checkout || data.check_out_date ? new Date(data.check_out || data.checkout || data.check_out_date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-';
+  const formatStayDateTime = (dateVal, timeVal) => {
+    let combined = dateVal;
+    if (!combined && timeVal) combined = timeVal;
+    else if (dateVal && timeVal && typeof dateVal === 'string' && !dateVal.includes('T') && !dateVal.includes(' ') && typeof timeVal === 'string') {
+      combined = `${dateVal}T${timeVal}`;
+    }
+    if (!combined) return '-';
+    try {
+      const d = new Date(combined);
+      if (isNaN(d.getTime())) {
+        return String(combined);
+      }
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      let h = d.getHours();
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'pm' : 'am';
+      h = h % 12;
+      if (h === 0) h = 12;
+      const hStr = String(h).padStart(2, '0');
+      return `${day}/${month}/${year}, ${hStr}:${m} ${ampm}`;
+    } catch (e) {
+      return String(combined);
+    }
+  };
+
+  const rawCheckIn = data.checkin_time || data.checkinTime || data.check_in_time || data.check_in || data.checkin || data.check_in_date || data.checkInDate || data.checked_in_at || data.created_at;
+  const checkIn = formatStayDateTime(rawCheckIn, data.checkinTime);
+
+  const rawCheckOut = data.actual_checkout_time || data.actualCheckoutTime || data.checkout_time || data.checkoutTime || data.approx_checkout_time || data.approxCheckoutTime || data.check_out_time || data.check_out || data.checkout || data.check_out_date || data.checkOutDate || data.checked_out_at;
+  const checkOut = formatStayDateTime(rawCheckOut, data.checkoutTime);
+
   const mobile = data.phone || data.mobile || data.mobile_number || data.phone_number || '-';
   const cashierName = data.cashier_name || data.cashier || data.staff_name || getActiveCashierName() || 'Cashier';
   const printDate = new Date().toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
@@ -2373,7 +2404,7 @@ export function buildGuestPaymentSummaryHTML(data) {
       card_surcharge: data.card_surcharge || 0,
       upi_tax: data.upi_tax || 0,
       created_at: data.created_at || data.check_in || new Date(),
-      purpose: data.particulars || 'Room Stay Advance Payment',
+      purpose: data.particulars || 'paid while checkin : checkin',
       cashier: cashierName
     }];
   }
@@ -2382,7 +2413,7 @@ export function buildGuestPaymentSummaryHTML(data) {
   const totalSettled = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const totalInWords = amountToWordsIndian(totalSettled);
 
-  // Generate rows
+  // Generate rows with clean single-line particulars and complete table cell borders
   const rowsHtml = payments.length > 0 ? payments.map((p, idx) => {
     const pDate = p.created_at || p.payment_date || p.date ? new Date(p.created_at || p.payment_date || p.date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '-';
     
@@ -2397,33 +2428,49 @@ export function buildGuestPaymentSummaryHTML(data) {
     if (p.cheque_no) details.push(`Chq: ${p.cheque_no}${p.bank_name ? ` (${p.bank_name})` : ''}`);
     if (p.card_surcharge > 0) details.push(`+₹${p.card_surcharge} Fee`);
     if (p.upi_tax > 0) details.push(`+₹${p.upi_tax} Tax`);
-    const modeDetailStr = details.length > 0 ? `<div style="font-size: 8pt; color: #0284c7; margin-top: 2px;">${details.join(' • ')}</div>` : '';
+    const modeDetailStr = details.length > 0 ? `<div style="font-size: 7.8pt; color: #0284c7; margin-top: 2px;">${details.join(' • ')}</div>` : '';
 
-    const purposeStr = p.purpose || p.notes || p.description || p.particulars || 'Room Stay Payment';
+    let rawPurpose = p.purpose || p.notes || p.description || p.particulars || 'Room Stay Payment';
+    let purposeStr = rawPurpose;
+
+    // Single-line particulars without redundant guest name in parentheses
+    // "Advance payment at check-in for Room 101 (Md Yahya Ab Wahid Mundewadi)" -> "paid while checkin : checkin"
+    if (/advance\s+payment\s+at\s+check-?in/i.test(rawPurpose) || p.payment_type === 'advance' || /check-?in/i.test(rawPurpose)) {
+      purposeStr = 'paid while checkin : checkin';
+    } else if (/settlement|check-?out/i.test(rawPurpose) || p.payment_type === 'settlement') {
+      purposeStr = 'paid during checkout : settlement';
+    } else {
+      purposeStr = rawPurpose.replace(/\s*\([^)]*\)/g, '').trim();
+    }
+
     const pCashier = p.cashier_name || p.cashier || p.staff_name || cashierName;
     const pAmt = Number(p.amount) || 0;
 
     return `
-      <tr style="border-bottom: 1px solid #cbd5e1; background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #64748b;">${idx + 1}</td>
-        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap;">${pDate}</td>
-        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap;">
-          <span style="border: 1.5px solid #b91c1c; background: #fee2e2; padding: 2px 7px; border-radius: 4px; font-size: 9.5pt;">${escapeHtml(rcpFormatted)}</span>
+      <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #64748b; border: 1px solid #cbd5e1;">${idx + 1}</td>
+        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap; border: 1px solid #cbd5e1;">${pDate}</td>
+        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap; text-align: center; border: 1px solid #cbd5e1;">
+          <span style="border: 1.5px solid #b91c1c; background: #fee2e2; padding: 2px 7px; border-radius: 4px; font-size: 9pt;">${escapeHtml(rcpFormatted)}</span>
         </td>
-        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a;">
+        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a; border: 1px solid #cbd5e1;">
           <div>${escapeHtml(mode)}</div>
           ${modeDetailStr}
         </td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; color: #334155;">${escapeHtml(purposeStr)}</td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; color: #475569;">${escapeHtml(pCashier)}</td>
-        <td style="padding: 7px 10px; font-weight: 950; font-size: 11pt; color: #15803d; text-align: right; white-space: nowrap;">
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #334155; white-space: nowrap; border: 1px solid #cbd5e1;">
+          ${escapeHtml(purposeStr)}
+        </td>
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #475569; text-align: center; border: 1px solid #cbd5e1;">
+          ${escapeHtml(pCashier)}
+        </td>
+        <td style="padding: 7px 10px; font-weight: 950; font-size: 10.5pt; color: #15803d; text-align: right; white-space: nowrap; border: 1px solid #cbd5e1;">
           ₹ ${pAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
         </td>
       </tr>
     `;
   }).join('') : `
     <tr>
-      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750;">
+      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750; border: 1px solid #cbd5e1;">
         No payment records found for this stay.
       </td>
     </tr>
@@ -2511,30 +2558,30 @@ export function buildGuestPaymentSummaryHTML(data) {
 
           <!-- ITEMIZED PAYMENTS TABLE -->
           <div style="border: 2px solid #1e3a8a; border-radius: 6px; overflow: hidden; margin-bottom: 12px;">
-            <div style="background: #1e3a8a; color: #fff; padding: 6px 12px; font-weight: 900; font-size: 9.5pt; letter-spacing: 0.03em;">
+            <div style="background: #1e3a8a; color: #fff; padding: 7px 12px; font-weight: 900; font-size: 9.5pt; letter-spacing: 0.03em;">
               ITEMIZED PAYMENTS &amp; SETTLEMENT LOG
             </div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
               <thead>
-                <tr style="background: #e2e8f0; border-bottom: 2px solid #94a3b8; text-transform: uppercase; font-size: 8pt; color: #334155; font-weight: 900;">
-                  <th style="padding: 7px 6px; text-align: center; width: 5%;">#</th>
-                  <th style="padding: 7px 8px; text-align: left; width: 20%;">Date &amp; Time</th>
-                  <th style="padding: 7px 8px; text-align: left; width: 17%;">Receipt No</th>
-                  <th style="padding: 7px 8px; text-align: left; width: 22%;">Payment Mode &amp; Details</th>
-                  <th style="padding: 7px 8px; text-align: left; width: 16%;">Particulars</th>
-                  <th style="padding: 7px 8px; text-align: left; width: 12%;">Cashier</th>
-                  <th style="padding: 7px 10px; text-align: right; width: 18%;">Amount (₹)</th>
+                <tr style="background: #f1f5f9; text-transform: uppercase; font-size: 8pt; color: #1e293b; font-weight: 900;">
+                  <th style="padding: 8px 6px; text-align: center; width: 6%; border: 1px solid #94a3b8;">Sr. No.</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 19%; border: 1px solid #94a3b8;">Date &amp; Time</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 14%; border: 1px solid #94a3b8;">Receipt No</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 16%; border: 1px solid #94a3b8;">Payment Mode &amp; Details</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 25%; border: 1px solid #94a3b8;">Particulars</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 9%; border: 1px solid #94a3b8;">Cashier</th>
+                  <th style="padding: 8px 10px; text-align: right; width: 11%; border: 1px solid #94a3b8;">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 ${rowsHtml}
               </tbody>
               <tfoot>
-                <tr style="background: #f0fdf4; border-top: 2.5px solid #166534;">
-                  <td colspan="6" style="padding: 10px 12px; font-weight: 950; font-size: 11pt; color: #166534; text-align: right; text-transform: uppercase;">
+                <tr style="background: #f0fdf4;">
+                  <td colspan="6" style="padding: 9px 12px; font-weight: 950; font-size: 10.5pt; color: #166534; text-align: right; text-transform: uppercase; border: 1.5px solid #166534;">
                     Total Net Amount Settled &amp; Received:
                   </td>
-                  <td style="padding: 10px 10px; font-weight: 950; font-size: 13pt; color: #166534; text-align: right; white-space: nowrap;">
+                  <td style="padding: 9px 10px; font-weight: 950; font-size: 11.5pt; color: #166534; text-align: right; white-space: nowrap; border: 1.5px solid #166534;">
                     ₹ ${totalSettled.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
