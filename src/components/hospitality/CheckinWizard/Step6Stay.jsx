@@ -591,9 +591,115 @@ export default function Step6Stay({
     showToast(msg, 'success');
   };
 
-  // Option 1: Add Extra Bed & Increment Adult (Opens Extra Bed Popup with specific charges)
+  // Direct Add Extra Bed (with room's declared extra_bed_price)
+  const handleDirectAddExtraBed = (targetRoomId) => {
+    const targetRoom = allRooms.find((r) => r.id === targetRoomId) || allRooms[0];
+    if (!targetRoom) return;
+
+    const roomId = targetRoom.id;
+    const maxB = Number(targetRoom.max_extra_beds) || 1;
+    const currentForRoom = Number(draft.roomExtraBeds?.[roomId]) || 0;
+    if (currentForRoom >= maxB) {
+      showToast(`Room #${targetRoom.room_number} has reached its maximum extra bed capacity (${maxB}).`, 'warning');
+      return;
+    }
+
+    const declaredRate = getRoomExtraBedRate(targetRoom);
+    const nextForRoom = currentForRoom + 1;
+
+    const updatedRoomExtraBeds = {
+      ...(draft.roomExtraBeds || {}),
+      [roomId]: nextForRoom
+    };
+
+    const updatedRoomExtraBedRates = {
+      ...(draft.roomExtraBedRates || {}),
+      [roomId]: declaredRate
+    };
+
+    const totalExtra = allRooms.reduce((sum, r) => {
+      return sum + (Number(updatedRoomExtraBeds[r.id]) || 0);
+    }, 0);
+
+    updateDraft({
+      roomExtraBeds: updatedRoomExtraBeds,
+      roomExtraBedRates: updatedRoomExtraBedRates,
+      extraBedRate: declaredRate,
+      extraBeds: totalExtra,
+      _explicitExtraBed: true
+    });
+
+    showToast(`Extra bed added to Room #${targetRoom.room_number} (+₹${declaredRate}/nt)`, 'success');
+  };
+
+  // Option 1: Add Extra Bed & Increment Adult (Directly adds with declared charges without secondary popup)
   const handleAddExtraBedAndGuest = (targetRoomId) => {
-    handleOpenExtraBedModal(targetRoomId, 'add', capacityPrompt.pendingType);
+    const targetRoom = allRooms.find((r) => r.id === targetRoomId) || allRooms[0];
+    if (!targetRoom) return;
+
+    const roomId = targetRoom.id;
+    const maxB = Number(targetRoom.max_extra_beds) || 1;
+    const currentForRoom = Number(draft.roomExtraBeds?.[roomId]) || 0;
+    if (currentForRoom >= maxB) {
+      showToast(`Room #${targetRoom.room_number} has reached its maximum extra bed capacity (${maxB}).`, 'warning');
+      return;
+    }
+
+    const declaredRate = getRoomExtraBedRate(targetRoom);
+    const nextForRoom = currentForRoom + 1;
+
+    const updatedRoomExtraBeds = {
+      ...(draft.roomExtraBeds || {}),
+      [roomId]: nextForRoom
+    };
+
+    const updatedRoomExtraBedRates = {
+      ...(draft.roomExtraBedRates || {}),
+      [roomId]: declaredRate
+    };
+
+    const totalExtra = allRooms.reduce((sum, r) => {
+      return sum + (Number(updatedRoomExtraBeds[r.id]) || 0);
+    }, 0);
+
+    const updates = {
+      roomExtraBeds: updatedRoomExtraBeds,
+      roomExtraBedRates: updatedRoomExtraBedRates,
+      extraBedRate: declaredRate,
+      extraBeds: totalExtra,
+      _explicitExtraBed: true
+    };
+
+    // Increment pending adult (if triggered from capacity modal)
+    const pending = capacityPrompt.pendingType;
+    if (pending) {
+      const history = [...(draft.adultHistory || []), pending];
+      updates.adultHistory = history;
+      updates.lastAddedAdultType = pending;
+
+      if (pending === 'female') {
+        updates.adultsMale = maleCount;
+        updates.adultsFemale = femaleCount + 1;
+      } else {
+        updates.adultsMale = maleCount + 1;
+        updates.adultsFemale = femaleCount;
+      }
+
+      if (isOta) {
+        const nextExtra = otaExtraAdults + 1;
+        updates.extraAdults = nextExtra;
+        updates.hasExtraPersons = true;
+        if (pending === 'female') {
+          updates.otaExtraFemale = otaExtraFemale + 1;
+        } else {
+          updates.otaExtraMale = otaExtraMale + 1;
+        }
+      }
+    }
+
+    updateDraft(updates);
+    setCapacityPrompt({ isOpen: false, pendingType: null, mode: null });
+    showToast(`Extra bed added to Room #${targetRoom.room_number} (+₹${declaredRate}/nt)`, 'success');
   };
 
   // --- OTA Extra Person Increment / Decrement Handlers ---
@@ -606,8 +712,22 @@ export default function Step6Stay({
 
       // If adding this adult requires an extra bed that is NOT yet added:
       if (neededExtraBeds > currentExtraBeds) {
-        const targetRoom = allRooms.find((r) => (Number(draft.roomExtraBeds?.[r.id]) || 0) < (Number(r.max_extra_beds) || 1)) || allRooms[0];
-        handleOpenExtraBedModal(targetRoom?.id, 'add', type);
+        if (currentExtraBeds < totalMaxExtraBeds) {
+          // Open capacityPrompt (same UI!)
+          setCapacityPrompt({
+            isOpen: true,
+            pendingType: type,
+            mode: 'options',
+            targetTotal: nextTotalAdults
+          });
+        } else {
+          setCapacityPrompt({
+            isOpen: true,
+            pendingType: type,
+            mode: 'only_room',
+            targetTotal: nextTotalAdults
+          });
+        }
         return;
       }
 
@@ -635,9 +755,13 @@ export default function Step6Stay({
         _explicitExtraBed: true
       });
     } else {
-      // Room capacity is over! Directly open room picker to ask for extra room
-      setIsRoomPickerOpen(true);
-      showToast(`Room capacity (${totalMaxCapacity} guests) reached. Please select an additional room for the extra guest.`, 'info');
+      // Room capacity is over! Open capacityPrompt with only_room option
+      setCapacityPrompt({
+        isOpen: true,
+        pendingType: type,
+        mode: 'only_room',
+        targetTotal: nextTotalAdults
+      });
     }
   };
 
@@ -835,7 +959,7 @@ export default function Step6Stay({
   // "if deleting extra bed automatically in decreasing recent added member"
   const handleRoomExtraBedChange = (roomId, delta) => {
     if (delta > 0) {
-      handleOpenExtraBedModal(roomId, 'add');
+      handleDirectAddExtraBed(roomId);
       return;
     }
 
@@ -1252,7 +1376,7 @@ export default function Step6Stay({
 
                         <button
                           type="button"
-                          onClick={() => handleOpenExtraBedModal(r.id, 'add')}
+                          onClick={() => handleDirectAddExtraBed(r.id)}
                           disabled={rExtraCount >= rExtra}
                           style={{
                             width: '28px',
@@ -2265,7 +2389,7 @@ export default function Step6Stay({
 
                         <button
                           type="button"
-                          onClick={() => handleOpenExtraBedModal(r.id, 'add')}
+                          onClick={() => handleDirectAddExtraBed(r.id)}
                           disabled={rExtraCount >= rExtra}
                           style={{
                             width: '28px',
