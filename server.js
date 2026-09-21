@@ -1055,10 +1055,17 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
         g.doc_type,
         g.doc_front,
         g.doc_back,
-        g.guest_photo
+        g.guest_photo,
+        c.gst_number as btc_gst_number,
+        c.address as btc_address,
+        c.pan_number as btc_pan_number,
+        c.contact_person as btc_contact_person,
+        c.contact_phone as btc_contact_phone,
+        c.contact_email as btc_contact_email
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
       JOIN guests g ON b.guest_id = g.id
+      LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
       WHERE b.id = ?
     `).get(id);
 
@@ -1362,10 +1369,17 @@ app.get('/api/rooms/:id/folio', (req, res) => {
         g.doc_type,
         g.doc_front,
         g.doc_back,
-        g.guest_photo
+        g.guest_photo,
+        c.gst_number as btc_gst_number,
+        c.address as btc_address,
+        c.pan_number as btc_pan_number,
+        c.contact_person as btc_contact_person,
+        c.contact_phone as btc_contact_phone,
+        c.contact_email as btc_contact_email
       FROM rooms r
       JOIN bookings b ON r.current_booking_id = b.id
       JOIN guests g ON b.guest_id = g.id
+      LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
       WHERE r.id = ? AND b.status = 'active'
     `).get(id);
 
@@ -6046,10 +6060,17 @@ app.get('/api/hospitality/history', (req, res) => {
         g.dob,
         g.address,
         g.doc_front,
-        g.doc_back
+        g.doc_back,
+        c.gst_number as btc_gst_number,
+        c.address as btc_address,
+        c.pan_number as btc_pan_number,
+        c.contact_person as btc_contact_person,
+        c.contact_phone as btc_contact_phone,
+        c.contact_email as btc_contact_email
       FROM bookings b
       JOIN guests g ON b.guest_id = g.id
       JOIN rooms r ON b.room_id = r.id
+      LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
       WHERE 1=1
     `;
 
@@ -6276,13 +6297,16 @@ app.post(['/api/bookings/:id/payment-status', '/api/hospitality/history/:id/paym
     }
 
     // If marked as passed/settled, log into payments ledger
+    const finalChequeStatus = (req.body.cheque_status || 'realized').toLowerCase();
+    const realizedAt = ['realized', 'passed'].includes(finalChequeStatus) ? now : null;
+
     if (isPaid && cleanAmount > 0) {
       db.prepare(`
         INSERT INTO payments (
           receipt_no, booking_id, room_id, department, payment_type, payment_mode,
           amount, cheque_no, bank_name, cheque_status, realized_at, cashier_name, notes,
           transaction_id, cheque_photo
-        ) VALUES (?, ?, ?, 'hospitality', 'company_settlement', ?, ?, ?, ?, 'realized', ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, 'hospitality', 'company_settlement', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         receiptNo,
         booking.id,
@@ -6291,7 +6315,8 @@ app.post(['/api/bookings/:id/payment-status', '/api/hospitality/history/:id/paym
         cleanAmount,
         cheque_no || null,
         bank_name || null,
-        now,
+        finalChequeStatus,
+        realizedAt,
         cleanCashier,
         notes || `Payment passed for ${booking.btc_company_name ? 'BTC: ' + booking.btc_company_name : 'Room ' + booking.room_number} (${booking.guest_name}) [Ref: ${reference_no || transaction_id || 'N/A'}]`,
         transaction_id || null,
@@ -7221,6 +7246,68 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
       ${dateFilterPayment ? dateFilterPayment + ' AND' : 'WHERE'} payment_type = 'fnb_settlement'
     `).get(...dateParams);
 
+    // 2c. Corporate BTC Company Settlements (Only Realized or Passed)
+    const btcRealized = db.prepare(`
+      SELECT 
+        COALESCE(SUM(amount), 0) as total,
+        COALESCE(SUM(
+          CASE 
+            WHEN (COALESCE(split_cash, 0) + COALESCE(split_card, 0) + COALESCE(split_online, 0) + COALESCE(split_cheque, 0)) > 0 
+              THEN COALESCE(split_cash, 0)
+            WHEN LOWER(payment_mode) = 'cash' 
+              THEN amount 
+            ELSE 0 
+          END
+        ), 0) as cash,
+        COALESCE(SUM(
+          CASE 
+            WHEN (COALESCE(split_cash, 0) + COALESCE(split_card, 0) + COALESCE(split_online, 0) + COALESCE(split_cheque, 0)) > 0 
+              THEN COALESCE(split_card, 0)
+            WHEN LOWER(payment_mode) = 'card' 
+              THEN amount 
+            ELSE 0 
+          END
+        ), 0) as card,
+        COALESCE(SUM(
+          CASE 
+            WHEN (COALESCE(split_cash, 0) + COALESCE(split_card, 0) + COALESCE(split_online, 0) + COALESCE(split_cheque, 0)) > 0 
+              THEN COALESCE(split_online, 0)
+            WHEN LOWER(payment_mode) IN ('upi', 'online', 'bank_transfer', 'neft', 'rtgs') 
+              THEN amount 
+            ELSE 0 
+          END
+        ), 0) as upi,
+        COALESCE(SUM(
+          CASE 
+            WHEN (COALESCE(split_cash, 0) + COALESCE(split_card, 0) + COALESCE(split_online, 0) + COALESCE(split_cheque, 0)) > 0 
+              THEN CASE WHEN cheque_status IN ('realized', 'passed') THEN COALESCE(split_cheque, 0) ELSE 0 END
+            WHEN LOWER(payment_mode) = 'cheque' AND cheque_status IN ('realized', 'passed') 
+              THEN amount 
+            ELSE 0 
+          END
+        ), 0) as cheque_realized,
+        COALESCE(SUM(card_surcharge), 0) as card_surcharge,
+        COALESCE(SUM(upi_tax), 0) as upi_tax
+      FROM payments 
+      ${dateFilterPayment ? dateFilterPayment + ' AND' : 'WHERE'} payment_type = 'company_settlement' AND (cheque_status = 'realized' OR cheque_status = 'passed')
+    `).get(...dateParams);
+
+    // 2d. Dedicated Corporate BTC Cheques Audit (All Cheques from BTC Settlements & Corporate Ledger)
+    const btcChequeStats = db.prepare(`
+      SELECT 
+        COALESCE(SUM(amount), 0) as total_amount,
+        COALESCE(SUM(CASE WHEN cheque_status IN ('realized', 'passed') THEN amount ELSE 0 END), 0) as passed_amount,
+        COALESCE(SUM(CASE WHEN cheque_status = 'pending' THEN amount ELSE 0 END), 0) as pending_amount,
+        COALESCE(SUM(CASE WHEN cheque_status = 'bounced' THEN amount ELSE 0 END), 0) as bounced_amount,
+        COUNT(*) as total_count,
+        COALESCE(SUM(CASE WHEN cheque_status IN ('realized', 'passed') THEN 1 ELSE 0 END), 0) as passed_count,
+        COALESCE(SUM(CASE WHEN cheque_status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
+        COALESCE(SUM(CASE WHEN cheque_status = 'bounced' THEN 1 ELSE 0 END), 0) as bounced_count
+      FROM payments 
+      ${dateFilterPayment ? dateFilterPayment + ' AND' : 'WHERE'} (payment_type = 'company_settlement' OR booking_id IN (SELECT id FROM bookings WHERE booking_source = 'BTC' OR btc_company_id IS NOT NULL))
+      AND (LOWER(payment_mode) = 'cheque' OR cheque_no IS NOT NULL)
+    `).get(...dateParams);
+
     // 3. Restaurant POS Sales (Itemized for accurate split payment modes, subtotal base, and GST tax)
     const restOrders = db.prepare(`
       SELECT 
@@ -7304,8 +7391,8 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
       SELECT 
         COALESCE(SUM(CASE WHEN cheque_status = 'pending' THEN amount ELSE 0 END), 0) as pending_amount,
         COALESCE(SUM(CASE WHEN cheque_status = 'pending' THEN 1 ELSE 0 END), 0) as pending_count,
-        COALESCE(SUM(CASE WHEN cheque_status = 'passed' THEN amount ELSE 0 END), 0) as passed_amount,
-        COALESCE(SUM(CASE WHEN cheque_status = 'passed' THEN 1 ELSE 0 END), 0) as passed_count,
+        COALESCE(SUM(CASE WHEN cheque_status IN ('passed', 'realized') THEN amount ELSE 0 END), 0) as passed_amount,
+        COALESCE(SUM(CASE WHEN cheque_status IN ('passed', 'realized') THEN 1 ELSE 0 END), 0) as passed_count,
         COALESCE(SUM(CASE WHEN cheque_status = 'bounced' THEN amount ELSE 0 END), 0) as bounced_amount,
         COALESCE(SUM(CASE WHEN cheque_status = 'bounced' THEN 1 ELSE 0 END), 0) as bounced_count
       FROM payments 
@@ -7358,11 +7445,11 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
     `).all(...dateParams);
 
     // Aggregations - Strict and Accurate
-    const hospTotal = (advRealized.total || 0) + (billRealized.total || 0);
-    const hospCash = (advRealized.cash || 0) + (billRealized.cash || 0);
-    const hospCard = (advRealized.card || 0) + (billRealized.card || 0);
-    const hospUpi = (advRealized.upi || 0) + (billRealized.upi || 0);
-    const hospCheque = (advRealized.cheque_realized || 0) + (billRealized.cheque_realized || 0);
+    const hospTotal = (advRealized.total || 0) + (billRealized.total || 0) + (btcRealized.total || 0);
+    const hospCash = (advRealized.cash || 0) + (billRealized.cash || 0) + (btcRealized.cash || 0);
+    const hospCard = (advRealized.card || 0) + (billRealized.card || 0) + (btcRealized.card || 0);
+    const hospUpi = (advRealized.upi || 0) + (billRealized.upi || 0) + (btcRealized.upi || 0);
+    const hospCheque = (advRealized.cheque_realized || 0) + (billRealized.cheque_realized || 0) + (btcRealized.cheque_realized || 0);
 
     const totalCollectedRealized = hospTotal + (restSales.total || 0) + (barSales.total || 0);
     const totalCashInflow = hospCash + (restSales.cash || 0) + (barSales.cash || 0);
@@ -7370,8 +7457,8 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
     const totalUpiInflow = hospUpi + (restSales.upi || 0) + (barSales.upi || 0);
     const totalChequePassed = hospCheque;
 
-    const totalCardSurcharge = (advRealized.card_surcharge || 0) + (billRealized.card_surcharge || 0) + (fnbRealized.card_surcharge || 0) + (restSales.card_surcharge || 0) + (barSales.card_surcharge || 0);
-    const totalUpiTax = (advRealized.upi_tax || 0) + (billRealized.upi_tax || 0) + (fnbRealized.upi_tax || 0) + (restSales.upi_tax || 0) + (barSales.upi_tax || 0);
+    const totalCardSurcharge = (advRealized.card_surcharge || 0) + (billRealized.card_surcharge || 0) + (btcRealized.card_surcharge || 0) + (fnbRealized.card_surcharge || 0) + (restSales.card_surcharge || 0) + (barSales.card_surcharge || 0);
+    const totalUpiTax = (advRealized.upi_tax || 0) + (billRealized.upi_tax || 0) + (btcRealized.upi_tax || 0) + (fnbRealized.upi_tax || 0) + (restSales.upi_tax || 0) + (barSales.upi_tax || 0);
     const totalSurcharges = totalCardSurcharge + totalUpiTax;
 
     const totalExpenses = expStats.total_expenses || 0;
@@ -7440,6 +7527,7 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
         breakdown: {
           advances: advRealized,
           billSettlements: billRealized,
+          btcSettlements: btcRealized,
           fnbSettlements: fnbRealized,
           hospitality: {
             total: hospTotal,
@@ -7450,8 +7538,9 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
             upi: hospUpi,
             cheque: hospCheque,
             cheque_realized: hospCheque,
-            card_surcharge: (advRealized.card_surcharge || 0) + (billRealized.card_surcharge || 0),
-            upi_tax: (advRealized.upi_tax || 0) + (billRealized.upi_tax || 0)
+            btc_cheque: btcChequeStats.passed_amount || 0,
+            card_surcharge: (advRealized.card_surcharge || 0) + (billRealized.card_surcharge || 0) + (btcRealized.card_surcharge || 0),
+            upi_tax: (advRealized.upi_tax || 0) + (billRealized.upi_tax || 0) + (btcRealized.upi_tax || 0)
           },
           restaurant: restSales,
           bar: barSales
@@ -7461,6 +7550,7 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
           card: totalCardInflow,
           upi: totalUpiInflow,
           chequeRealized: totalChequePassed,
+          btcCheque: btcChequeStats.passed_amount || 0,
           cardSurcharge: totalCardSurcharge,
           card_surcharge: totalCardSurcharge,
           upiTax: totalUpiTax,
@@ -7477,7 +7567,20 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
           total: totalSurcharges
         },
         cheques: chequeStats,
-        btcCorporate: { ...btcStats, active_companies_count: activeBtcCount },
+        btcCheque: btcChequeStats,
+        btcCorporate: {
+          ...btcStats,
+          active_companies_count: activeBtcCount,
+          settled_total: btcRealized.total || 0,
+          settled_cash: btcRealized.cash || 0,
+          settled_upi: btcRealized.upi || 0,
+          settled_card: btcRealized.card || 0,
+          settled_cheque: btcRealized.cheque_realized || 0,
+          btc_cheque_total: btcChequeStats.total_amount || 0,
+          btc_cheque_passed: btcChequeStats.passed_amount || 0,
+          btc_cheque_pending: btcChequeStats.pending_amount || 0,
+          btc_cheque_count: btcChequeStats.passed_count || 0
+        },
         expenses: expStats,
         expensesList: expList,
         drawer: {
@@ -7740,6 +7843,7 @@ app.get('/api/reports/daily-closing', (req, res) => {
     // Totals calculation
     let advanceCash = 0, advanceOnline = 0, advanceCard = 0;
     let billCash = 0, billOnline = 0, billCard = 0;
+    let btcCash = 0, btcOnline = 0, btcCard = 0, btcCheque = 0;
 
     paymentsList.forEach(p => {
       const mode = (p.payment_mode || '').toLowerCase();
@@ -7751,6 +7855,11 @@ app.get('/api/reports/daily-closing', (req, res) => {
         if (mode === 'cash') billCash += (p.amount || 0);
         else if (mode === 'card') billCard += (p.amount || 0);
         else billOnline += (p.amount || 0);
+      } else if (p.payment_type === 'company_settlement') {
+        if (mode === 'cash') btcCash += (p.amount || 0);
+        else if (mode === 'card') btcCard += (p.amount || 0);
+        else if (mode === 'cheque') btcCheque += (p.amount || 0);
+        else btcOnline += (p.amount || 0);
       }
     });
 
@@ -7792,9 +7901,9 @@ app.get('/api/reports/daily-closing', (req, res) => {
       if ((e.payment_mode || '').toLowerCase() === 'cash') expenseCashTotal += (e.amount || 0);
     });
 
-    const totalInflowCash = advanceCash + billCash + restCash + barCash;
+    const totalInflowCash = advanceCash + billCash + btcCash + restCash + barCash;
     const netDrawerClosingCash = totalInflowCash - expenseCashTotal;
-    const roomRevenue = advanceCash + advanceOnline + advanceCard + billCash + billOnline + billCard;
+    const roomRevenue = advanceCash + advanceOnline + advanceCard + billCash + billOnline + billCard + btcCash + btcOnline + btcCard + btcCheque;
     const restaurantRevenue = restCash + restOnline + restCard;
     const barRevenue = barCash + barOnline + barCard;
     const totalRevenue = roomRevenue + restaurantRevenue + barRevenue;
@@ -7812,38 +7921,53 @@ app.get('/api/reports/daily-closing', (req, res) => {
       WHERE DATE(b.created_at, 'localtime') = ?
     `).get(targetDate);
 
+    const reportObj = {
+      date: targetDate,
+      totalRevenue,
+      prebookedTotal: prebookedClosingStats.total || 0,
+      prebookedCount: prebookedClosingStats.count || 0,
+      roomRevenue,
+      restaurantRevenue,
+      barRevenue,
+      totalExpenses: expenseTotal,
+      netCashInDrawer: netDrawerClosingCash,
+      onlineCollections: advanceOnline + billOnline + btcOnline + restOnline + barOnline,
+      cardCollections: advanceCard + billCard + btcCard + restCard + barCard,
+      chequeCollections: btcCheque,
+      expenseCount: expensesList.length,
+      cashiers,
+      btcSettlement: {
+        cash: btcCash,
+        online: btcOnline,
+        card: btcCard,
+        cheque: btcCheque,
+        total: btcCash + btcOnline + btcCard + btcCheque
+      },
+      summary: {
+        advanceCash,
+        advanceOnline,
+        advanceCard,
+        billCash,
+        billOnline,
+        billCard,
+        btcCash,
+        btcOnline,
+        btcCard,
+        btcCheque,
+        restCash,
+        barCash,
+        totalInflowCash,
+        expenseCashTotal,
+        netDrawerClosingCash
+      },
+      payments: paymentsList,
+      expenses: expensesList
+    };
+
     res.json({
       success: true,
-      report: {
-        date: targetDate,
-        totalRevenue,
-        prebookedTotal: prebookedClosingStats.total || 0,
-        prebookedCount: prebookedClosingStats.count || 0,
-        roomRevenue,
-        restaurantRevenue,
-        barRevenue,
-        totalExpenses: expenseTotal,
-        netCashInDrawer: netDrawerClosingCash,
-        onlineCollections: advanceOnline + billOnline + restOnline + barOnline,
-        cardCollections: advanceCard + billCard + restCard + barCard,
-        expenseCount: expensesList.length,
-        cashiers,
-        summary: {
-          advanceCash,
-          advanceOnline,
-          advanceCard,
-          billCash,
-          billOnline,
-          billCard,
-          restCash,
-          barCash,
-          totalInflowCash,
-          expenseCashTotal,
-          netDrawerClosingCash
-        },
-        payments: paymentsList,
-        expenses: expensesList
-      }
+      report: reportObj,
+      data: reportObj
     });
   } catch (err) {
     console.error('Daily closing error:', err);

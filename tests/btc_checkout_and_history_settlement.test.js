@@ -1,10 +1,22 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+
+vi.mock('html2pdf.js', () => ({
+  default: () => ({
+    set: () => ({
+      from: () => ({
+        save: vi.fn()
+      })
+    })
+  })
+}));
+
 import request from 'supertest';
 import app from '../server';
 import db from '../database';
 import { generateToken } from '../middleware/auth';
 import fs from 'fs';
 import path from 'path';
+import { buildGuestRegistrationHTML } from '../src/services/printService';
 
 describe('BTC Zero-Rupee Checkout and Hospitality History Settlement Test Suite', () => {
   let managerToken;
@@ -192,7 +204,66 @@ describe('BTC Zero-Rupee Checkout and Hospitality History Settlement Test Suite'
     expect(cssContent).toContain('@media print');
     expect(cssContent).toContain('html[data-theme="dark"]');
     expect(cssContent).toContain('body.print-sheet-active');
-    expect(cssContent).toContain('min-height: 290mm !important');
+    expect(cssContent).toContain('max-height: 272mm !important');
+    expect(cssContent).toContain('page-break-after: avoid !important');
     expect(cssContent).toContain('color-scheme: light !important');
+  });
+
+  it('6. verifies BTC check-in form removes (Credit Ledger) and verbose payment pending note to avoid page 2', () => {
+    const btcFormData = {
+      voucherNo: '260921-675',
+      checkinTime: '2026-09-21T14:59:00',
+      approxCheckout: '2026-09-22T01:00:00',
+      stayNights: 1,
+      bookingSource: 'Corporate (BTC)',
+      btcCompanyName: 'Infosys BPM Technologies',
+      btcCompanyAddress: 'Hinjewadi Phase 2, Pune',
+      btcGstNumber: '27AABCI1234F1Z5',
+      btcPanNumber: 'MMT-9876544',
+      btcApprovalRef: 'MMT-9876544',
+      btcContactPerson: 'Corporate Liaison',
+      guestName: 'Javid Rangrez',
+      mobile: '9028850715',
+      aadharNumber: '443842677809',
+      docType: 'Aadhaar Card',
+      roomNumber: '102',
+      mealPlan: 'with_breakfast',
+      adultsMale: 0,
+      adultsFemale: 1,
+      children: 0,
+      extraBeds: 0,
+      roomTariffNet: 2025,
+      discountPct: 10,
+      discountAmount: 225,
+      taxAmount: 101,
+      grandTotal: 2126,
+      totalPaid: 0,
+      balanceDue: 2126,
+      isBtcPending: true
+    };
+
+    const html = buildGuestRegistrationHTML(btcFormData, { includePhotos: false });
+
+    // 1. Must NOT contain '(Credit Ledger)' under Billing Status
+    expect(html).not.toContain('Bill to Company (Credit Ledger)');
+    expect(html).toContain('🏢 Bill to Company');
+
+    // 2. Must NOT contain verbose BTC badge in payment modes row
+    expect(html).not.toContain('PAYMENT MODES: 🏢 BILL TO COMPANY (BTC): ₹ 2,126.00');
+    expect(html).not.toContain('🏢 BILL TO COMPANY (BTC): ₹');
+
+    // 3. Must NOT contain payment pending warning or tax invoice release notice
+    expect(html).not.toContain('⏳ PAYMENT PENDING FROM COMPANY');
+    expect(html).not.toContain('(Official Tax Invoice will release after company payment is settled)');
+
+    // 4. Must fit strictly within 1 A4 page with max-height constraint and avoid page break
+    expect(html).toContain('max-height: 272mm;');
+    expect(html).toContain('page-break-after: avoid;');
+
+    // 5. Must still contain all crucial corporate and booking data
+    expect(html).toContain('Infosys BPM Technologies');
+    expect(html).toContain('27AABCI1234F1Z5');
+    expect(html).toContain('Javid Rangrez');
+    expect(html).toContain('₹ 2,126.00');
   });
 });

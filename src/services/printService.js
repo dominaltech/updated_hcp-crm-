@@ -1320,6 +1320,54 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   const btcApprovalRef = data.btcApprovalRef || data.btc_approval_ref || (data.room && (data.room.btc_approval_ref || data.room.btcApprovalRef)) || '';
   const companyName = String(data.companyName || data.company_name || (data.room && (data.room.company_name || data.room.companyName)) || '').trim();
   const gstNumber = String(data.gstNumber || data.gst_number || (data.room && (data.room.gst_number || data.room.gstNumber)) || '').trim();
+  const btcCompanyAddress = String(
+    data.btcCompanyAddress ||
+    data.btc_address ||
+    data.companyAddress ||
+    data.company_address ||
+    (data.room && (data.room.btc_address || data.room.btcCompanyAddress || data.room.company_address)) ||
+    ''
+  ).trim();
+  const btcGstNumber = String(
+    data.btcGstNumber ||
+    data.btc_gst_number ||
+    data.btcCompanyGst ||
+    gstNumber ||
+    (data.room && (data.room.btc_gst_number || data.room.gst_number || data.room.gstNumber)) ||
+    ''
+  ).trim();
+  const btcPanNumber = String(
+    data.btcPanNumber ||
+    data.btc_pan_number ||
+    data.panNumber ||
+    data.pan_number ||
+    (data.room && (data.room.btc_pan_number || data.room.pan_number)) ||
+    ''
+  ).trim();
+  const btcContactPerson = String(
+    data.btcContactPerson ||
+    data.btc_contact_person ||
+    data.contactPerson ||
+    data.contact_person ||
+    (data.room && (data.room.btc_contact_person || data.room.contact_person)) ||
+    ''
+  ).trim();
+  const btcContactPhone = String(
+    data.btcContactPhone ||
+    data.btc_contact_phone ||
+    data.contactPhone ||
+    data.contact_phone ||
+    (data.room && (data.room.btc_contact_phone || data.room.contact_phone)) ||
+    ''
+  ).trim();
+  const btcContactEmail = String(
+    data.btcContactEmail ||
+    data.btc_contact_email ||
+    data.contactEmail ||
+    data.contact_email ||
+    (data.room && (data.room.btc_contact_email || data.room.contact_email)) ||
+    ''
+  ).trim();
   const otaPlatform = data.otaPlatform || data.ota_platform || (data.room && (data.room.ota_platform || data.room.otaPlatform)) || '';
   const otaBookingId = String(
     data.otaBookingId ||
@@ -1335,7 +1383,24 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
 
   const isOccupiedStay = Boolean(data.isOccupiedStay || data.stayStatus === 'OCCUPIED' || data.status === 'occupied' || (data.room && data.room.status === 'occupied'));
   const isOta = Boolean(bookingSource === 'OTA' || data.booking_source === 'OTA' || otaPlatform);
-  const isBtc = Boolean(bookingSource.toLowerCase().includes('btc') || bookingSource.toLowerCase().includes('corporate') || btcCompanyName);
+  const isBtc = Boolean(
+    bookingSource.toLowerCase().includes('btc') ||
+    bookingSource.toLowerCase().includes('corporate') ||
+    btcCompanyName ||
+    data.btc_company_id ||
+    data.btcCompanyId ||
+    data.is_btc_pending ||
+    data.isBtcPending ||
+    data.payment_status === 'pending_from_company' ||
+    (data.room && (data.room.btc_company_id || data.room.is_btc_pending))
+  );
+  const isBtcPending = Boolean(
+    data.is_btc_pending ||
+    data.isBtcPending ||
+    data.payment_status === 'pending_from_company' ||
+    (isBtc && (data.payment_status !== 'settled' && data.payment_status !== 'paid'))
+  );
+  const effectiveBtcCompany = (btcCompanyName || companyName || 'CORPORATE CLIENT').trim();
   const isWebsite = Boolean(bookingSource.toLowerCase().includes('website') || bookingSource.toLowerCase().includes('web'));
   const isOtaPayAtHotel = isOta && (
     rateType === 'pay_at_hotel' ||
@@ -1804,24 +1869,24 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   }
 
   const page1Html = `
-    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; min-height: 280mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 10px 14px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid;">
+    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; max-height: 272mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 8px 12px; background: #fff; line-height: 1.25; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid;">
       <!-- Top-Right Voucher / Reg No & Check-in Date Box (Top & Right Overlapped with Main Border) -->
       <div style="position: absolute; top: -3.5px; right: -3.5px; z-index: 10;">
         <table style="border-collapse: collapse; border: 1.5px solid #1e3a8a; border-top: 3.5px solid #1e3a8a; border-right: 3.5px solid #1e3a8a; font-size: 8pt; background: #ffffff;">
           <tbody>
             <tr>
-              <td style="padding: 3px 8px; font-size: 7.5pt; font-weight: 850; background: #eff6ff; border-bottom: 1.5px solid #93c5fd; border-right: 1.5px solid #93c5fd; white-space: nowrap; color: #1e40af;">
+              <td style="padding: 2.5px 7px; font-size: 7.5pt; font-weight: 850; background: #eff6ff; border-bottom: 1.5px solid #93c5fd; border-right: 1.5px solid #93c5fd; white-space: nowrap; color: #1e40af;">
                 Voucher / Reg No:
               </td>
-              <td style="padding: 3px 10px; font-weight: 900; font-size: 9.5pt; color: #1e3a8a; border-bottom: 1.5px solid #93c5fd; white-space: nowrap; letter-spacing: 0.03em;">
+              <td style="padding: 2.5px 8px; font-weight: 900; font-size: 9.5pt; color: #1e3a8a; border-bottom: 1.5px solid #93c5fd; white-space: nowrap; letter-spacing: 0.03em;">
                 ${escapeHtml(voucherNo)}
               </td>
             </tr>
             <tr>
-              <td style="padding: 3px 8px; font-size: 7.5pt; font-weight: 850; background: #eff6ff; border-right: 1.5px solid #93c5fd; white-space: nowrap; color: #1e40af;">
+              <td style="padding: 2.5px 7px; font-size: 7.5pt; font-weight: 850; background: #eff6ff; border-right: 1.5px solid #93c5fd; white-space: nowrap; color: #1e40af;">
                 Check-in Date:
               </td>
-              <td style="padding: 3px 10px; font-weight: 850; font-size: 8.5pt; color: #0f172a; white-space: nowrap;">
+              <td style="padding: 2.5px 8px; font-weight: 850; font-size: 8.5pt; color: #0f172a; white-space: nowrap;">
                 ${checkinFormatted}
               </td>
             </tr>
@@ -1837,7 +1902,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
         <div>
           <!-- HEADER -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 6px; margin-bottom: 8px; padding-right: 215px; min-height: 108px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 5px; padding-right: 215px; min-height: 108px;">
             <!-- Logo + Hotel Info -->
             <div style="display: flex; align-items: center; gap: 14px;">
               <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 108px; max-height: 108px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
@@ -1860,10 +1925,10 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           </div>
 
           <!-- ACCURATE CASE BANNER -->
-          <div style="border: 1.5px solid ${caseBannerBorder}; background: ${caseBannerBg}; border-radius: 5px; padding: 5px 12px; margin-bottom: 7px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box;">
+          <div style="border: 1.5px solid ${caseBannerBorder}; background: ${caseBannerBg}; border-radius: 5px; padding: 4px 10px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box;">
             <div style="display: flex; flex-direction: column; gap: 1px;">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <span style="font-size: 9.5pt; font-weight: 950; color: ${caseBannerTextColor}; letter-spacing: 0.3px; text-transform: uppercase;">
+                <span style="font-size: 9pt; font-weight: 950; color: ${caseBannerTextColor}; letter-spacing: 0.3px; text-transform: uppercase;">
                   ${caseBannerIcon} BOOKING CASE: ${escapeHtml(caseBannerTitle)}
                 </span>
                 ${roomsList.length > 1 ? `
@@ -1883,87 +1948,153 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
             </div>
           </div>
 
-          <!-- PRIMARY GUEST DETAILS (Clean Full-Width Table on Page 1) -->
-          <div style="margin-bottom: 7px;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt; border: 2px solid #1e3a8a; background: rgba(255, 255, 255, 0.75);">
-              <tbody>
-                <tr style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
-                  <th colspan="4" style="padding: 4px 10px; font-size: 9.5pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 2px solid #1e3a8a; color: #ffffff; letter-spacing: 0.4px;">
-                    PRIMARY GUEST PERSONAL INFORMATION
-                  </th>
-                </tr>
-                <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Guest Full Name:</td>
-                  <td style="padding: 4px 8px; font-weight: 950; font-size: 11.5pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f172a;">${escapeHtml(guestName)}</td>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Mobile No:</td>
-                  <td style="padding: 4px 8px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 10.5pt; color: #0f172a;">${escapeHtml(mobile)}${altMobile ? ` / ${escapeHtml(altMobile)}` : ''}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">DOB &amp; Age:</td>
-                  <td style="padding: 4px 8px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9.5pt; color: #0f172a;">
-                    ${escapeHtml(dob || '-')}${calculatedAge ? ` (${calculatedAge})` : ''}
-                  </td>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Booking Source:</td>
-                  <td style="padding: 4px 8px; font-weight: 900; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 9.5pt; color: #0f172a;">
-                    <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 3px; font-weight: 850;">${escapeHtml(bookingSource)}</span>${btcCompanyName ? ` (${escapeHtml(btcCompanyName)})` : ''}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">ID Proof Type:</td>
-                  <td style="padding: 4px 8px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9.5pt; color: #0f172a;">${escapeHtml(docType)}</td>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">${escapeHtml(idLabel)}</td>
-                  <td style="padding: 4px 8px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 10.5pt;">
-                    ${escapeHtml(aadharNumber || '-')}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Email Address:</td>
-                  <td style="padding: 4px 8px; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-weight: 750; font-size: 9.5pt; color: #0f172a;">${escapeHtml(email)}</td>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Document Verification:</td>
-                  <td style="padding: 4px 8px; width: 28%; font-size: 10pt; color: #15803d; font-weight: 950; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.65);">
-                    ✓ ${escapeHtml(docType)}${includePhotos && scanPages.length > 0 ? ' • Copies Attached (Page 2)' : ''}
-                  </td>
-                </tr>
-                ${(companyName || gstNumber) ? `
-                  <tr>
-                    <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Company Name:</td>
-                    <td style="padding: 4px 8px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9.5pt; color: #0f172a;">${escapeHtml(companyName || '-')}</td>
-                    <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Company GSTIN:</td>
-                    <td style="padding: 4px 8px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 10pt;">${escapeHtml(gstNumber || '-')}</td>
+          <!-- PRIMARY GUEST & CORPORATE BTC DETAILS TABLE -->
+          <div style="margin-bottom: 5px;">
+            ${isBtc ? `
+              <!-- CORPORATE BILL TO COMPANY (BTC) FULL DETAILS TABLE -->
+              <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 2px solid #1e3a8a; background: rgba(255, 255, 255, 0.75);">
+                <tbody>
+                  <tr style="background: linear-gradient(135deg, #4c1d95 0%, #1e3a8a 100%);">
+                    <th colspan="4" style="padding: 3px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 2px solid #1e3a8a; color: #ffffff; letter-spacing: 0.4px;">
+                      🏢 CORPORATE BILL TO COMPANY (BTC) &amp; GUEST DETAILS
+                    </th>
                   </tr>
-                ` : ''}
-                <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 20%; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Permanent Address:</td>
-                  <td colspan="3" style="padding: 4px 8px; font-size: 9.5pt; color: #0f172a; font-weight: 750;">${escapeHtml(address)}</td>
-                </tr>
-              </tbody>
-            </table>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company Name:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; font-size: 10.5pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #4c1d95;">
+                      🏢 ${escapeHtml(effectiveBtcCompany)}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company GSTIN:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 10pt;">
+                      ${escapeHtml(btcGstNumber || '-')}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company Address:</td>
+                    <td style="padding: 3px 6px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
+                      ${escapeHtml(btcCompanyAddress || address || '-')}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company PAN / Ref:</td>
+                    <td style="padding: 3px 6px; font-weight: 900; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
+                      ${escapeHtml(btcPanNumber || btcApprovalRef || '-')}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Corporate Contact:</td>
+                    <td style="padding: 3px 6px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
+                      ${escapeHtml(btcContactPerson || 'Corporate Liaison')}${btcContactPhone ? ` (${escapeHtml(btcContactPhone)})` : ''}${btcContactEmail ? ` • ${escapeHtml(btcContactEmail)}` : ''}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Approval / PO Ref:</td>
+                    <td style="padding: 3px 6px; font-weight: 900; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 9pt; color: #6b21a8;">
+                      ${escapeHtml(btcApprovalRef || 'CORPORATE CREDIT')}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Deputed Guest Name:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; font-size: 10.5pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f172a;">
+                      👤 ${escapeHtml(guestName)}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Guest Mobile No:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 10pt; color: #0f172a;">
+                      ${escapeHtml(mobile)}${altMobile ? ` / ${escapeHtml(altMobile)}` : ''}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Guest ID (${escapeHtml(docType)}):</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 32%; border-right: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 9.5pt;">
+                      ${escapeHtml(aadharNumber || '-')}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Billing Status:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 28%; font-size: 9.5pt; color: #6b21a8; background: rgba(250, 245, 255, 0.85);">
+                      🏢 Bill to Company
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            ` : `
+              <!-- STANDARD PRIMARY GUEST PERSONAL INFORMATION TABLE -->
+              <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 2px solid #1e3a8a; background: rgba(255, 255, 255, 0.75);">
+                <tbody>
+                  <tr style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
+                    <th colspan="4" style="padding: 3px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 2px solid #1e3a8a; color: #ffffff; letter-spacing: 0.4px;">
+                      PRIMARY GUEST PERSONAL INFORMATION
+                    </th>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Guest Full Name:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; font-size: 11pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f172a;">${escapeHtml(guestName)}</td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Mobile No:</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 10pt; color: #0f172a;">${escapeHtml(mobile)}${altMobile ? ` / ${escapeHtml(altMobile)}` : ''}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">DOB &amp; Age:</td>
+                    <td style="padding: 3px 6px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
+                      ${escapeHtml(dob || '-')}${calculatedAge ? ` (${calculatedAge})` : ''}
+                    </td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Booking Source:</td>
+                    <td style="padding: 3px 6px; font-weight: 900; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
+                      <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 3px; font-weight: 850;">${escapeHtml(bookingSource)}</span>${btcCompanyName ? ` (${escapeHtml(btcCompanyName)})` : ''}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">ID Proof Type:</td>
+                    <td style="padding: 3px 6px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">${escapeHtml(docType)}</td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">${escapeHtml(idLabel)}</td>
+                    <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 10pt;">
+                      ${escapeHtml(aadharNumber || '-')}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Email Address:</td>
+                    <td style="padding: 3px 6px; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-weight: 750; font-size: 9pt; color: #0f172a;">${escapeHtml(email)}</td>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Document Verification:</td>
+                    <td style="padding: 3px 6px; width: 28%; font-size: 9.5pt; color: #15803d; font-weight: 950; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.65);">
+                      ✓ ${escapeHtml(docType)}${includePhotos && scanPages.length > 0 ? ' • Copies Attached (Page 2)' : ''}
+                    </td>
+                  </tr>
+                  ${(companyName || gstNumber) ? `
+                    <tr>
+                      <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Company Name:</td>
+                      <td style="padding: 3px 6px; font-weight: 850; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">${escapeHtml(companyName || '-')}</td>
+                      <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Company GSTIN:</td>
+                      <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 9.5pt;">${escapeHtml(gstNumber || '-')}</td>
+                    </tr>
+                  ` : ''}
+                  <tr>
+                    <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Permanent Address:</td>
+                    <td colspan="3" style="padding: 3px 6px; font-size: 9pt; color: #0f172a; font-weight: 750;">${escapeHtml(address)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            `}
           </div>
 
           <!-- STAY DETAILS (Clean table without emojis, key-value people lived in) -->
-          <div style="border: 2px solid #0f766e; margin-bottom: 7px; background: rgba(255, 255, 255, 0.75);">
-            <div style="background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); padding: 4px 10px; font-size: 9.5pt; font-weight: 950; border-bottom: 2px solid #0f766e; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
+          <div style="border: 2px solid #0f766e; margin-bottom: 5px; background: rgba(255, 255, 255, 0.75);">
+            <div style="background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); padding: 3px 10px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #0f766e; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>STAY DETAILS</span>
-              <span style="font-size: 8.5pt; font-weight: 850; background: rgba(255, 255, 255, 0.25); color: #ffffff; padding: 1px 8px; border-radius: 3px; text-transform: uppercase;">${roomsList.length} Room${roomsList.length > 1 ? 's' : ''} Allocated</span>
+              <span style="font-size: 8pt; font-weight: 900; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
+                ${roomsList.length} ROOM${roomsList.length > 1 ? 'S' : ''} ALLOCATED
+              </span>
             </div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
               <tbody>
                 <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 22%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Allocated Room(s):</td>
-                  <td style="padding: 4px 8px; font-weight: 950; font-size: 11.5pt; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f766e;">
+                  <td style="padding: 3px 6px; font-weight: bold; width: 22%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Allocated Room(s):</td>
+                  <td style="padding: 3px 6px; font-weight: 950; font-size: 11pt; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f766e;">
                     ${escapeHtml(cleanRoomsText)}
                   </td>
-                  <td style="padding: 4px 8px; font-weight: bold; width: 18%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">People Lived In:</td>
-                  <td style="padding: 4px 8px; border-bottom: 1.5px solid #94a3b8; color: #0f172a;">
-                    <div style="display: flex; flex-direction: column; gap: 3px;">
-                      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 9.5pt;">
-                        <div><span style="color: #0284c7; font-weight: 800;">Male:</span> <strong style="color: #0f172a; font-size: 10.5pt;">${male}</strong></div>
-                        <div><span style="color: #db2777; font-weight: 800;">Female:</span> <strong style="color: #0f172a; font-size: 10.5pt;">${female}</strong></div>
-                        <div><span style="color: #d97706; font-weight: 800;">Children:</span> <strong style="color: #0f172a; font-size: 10.5pt;">${children}</strong></div>
-                        <div><span style="color: #7c3aed; font-weight: 800;">Extra Bed:</span> <strong style="color: #0f172a; font-size: 10.5pt;">${extraBeds}</strong></div>
+                  <td style="padding: 3px 6px; font-weight: bold; width: 18%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">People Lived In:</td>
+                  <td style="padding: 3px 6px; border-bottom: 1.5px solid #94a3b8; color: #0f172a;">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 9pt;">
+                        <div><span style="color: #0284c7; font-weight: 800;">Male:</span> <strong style="color: #0f172a; font-size: 10pt;">${male}</strong></div>
+                        <div><span style="color: #db2777; font-weight: 800;">Female:</span> <strong style="color: #0f172a; font-size: 10pt;">${female}</strong></div>
+                        <div><span style="color: #d97706; font-weight: 800;">Children:</span> <strong style="color: #0f172a; font-size: 10pt;">${children}</strong></div>
+                        <div><span style="color: #7c3aed; font-weight: 800;">Extra Bed:</span> <strong style="color: #0f172a; font-size: 10pt;">${extraBeds}</strong></div>
                       </div>
                       ${isOta ? `
-                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 8pt; margin-top: 1px; padding-top: 2px; border-top: 1px dashed #cbd5e1;">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 7.5pt; margin-top: 1px; padding-top: 1px; border-top: 1px dashed #cbd5e1;">
                           <span style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 3px; font-weight: 800;">
                             📦 OTA Booked: ${otaBookedAdults !== null ? `${otaBookedAdults} Adult${otaBookedAdults > 1 ? 's' : ''}` : '1 Adult'}${otaBookedChildren > 0 ? `, ${otaBookedChildren} Child` : ''}${voucherIncludedBeds > 0 ? `, ${voucherIncludedBeds} Bed (₹0)` : ''}
                           </span>
@@ -1980,30 +2111,30 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Check-in Date/Time:</td>
-                  <td style="padding: 4px 8px; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9.5pt; color: #0f172a;">
+                  <td style="padding: 3px 6px; font-weight: bold; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Check-in Date/Time:</td>
+                  <td style="padding: 3px 6px; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
                     ${checkinFormatted}
                     ${isEarlyCheckin ? `
-                      <div style="font-size: 8pt; color: #b45309; font-weight: 800; margin-top: 1px;">
+                      <div style="font-size: 7.5pt; color: #b45309; font-weight: 800; margin-top: 1px;">
                         Early Check-In: <strong>${escapeHtml(earlyCheckinTime || checkinFormatted)}</strong> (Scheduled: ${escapeHtml(originalCheckinTime)}) • Free
                       </div>
                     ` : ''}
                   </td>
-                  <td style="padding: 4px 8px; font-weight: bold; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">
+                  <td style="padding: 3px 6px; font-weight: bold; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">
                     ${isOta ? 'Checkout Date/Time (Fixed):' : 'Expected Checkout:'}
                   </td>
-                  <td style="padding: 4px 8px; font-weight: 950; color: #b91c1c; border-bottom: 1.5px solid #94a3b8; font-size: 9.5pt;">
+                  <td style="padding: 3px 6px; font-weight: 950; color: #b91c1c; border-bottom: 1.5px solid #94a3b8; font-size: 9pt;">
                     ${checkoutFormatted} ${stayNights ? `(${stayNights} Night${stayNights > 1 ? 's' : ''})` : ''}
-                    ${isOta ? '<span style="font-size: 8pt; color: #0369a1; font-weight: 800; margin-left: 4px;">(Fixed &amp; Paid)</span>' : ''}
+                    ${isOta ? '<span style="font-size: 7.5pt; color: #0369a1; font-weight: 800; margin-left: 4px;">(Fixed &amp; Paid)</span>' : ''}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 4px 8px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Meal Plan / Package:</td>
-                  <td style="padding: 4px 8px; font-weight: 900; border-right: 1.5px solid #94a3b8; font-size: 9.5pt; color: #15803d;">
+                  <td style="padding: 3px 6px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Meal Plan / Package:</td>
+                  <td style="padding: 3px 6px; font-weight: 900; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #15803d;">
                     ${escapeHtml(mealPlanDisplay)}
                   </td>
-                  <td style="padding: 4px 8px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Stay &amp; Extra Beds:</td>
-                  <td style="padding: 4px 8px; font-weight: 850; font-size: 9.5pt; color: #854d0e;">
+                  <td style="padding: 3px 6px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Stay &amp; Extra Beds:</td>
+                  <td style="padding: 3px 6px; font-weight: 850; font-size: 9pt; color: #854d0e;">
                     ${escapeHtml(stayBedDetailsText)}
                   </td>
                 </tr>
@@ -2013,14 +2144,14 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
 
           <!-- Companion Summary Bar on Page 1 (Clean text, no image clutter) -->
           ${memberDocs.length > 0 && includePhotos ? `
-            <div style="border: 1.5px solid #1e3a8a; margin-bottom: 7px; background: rgba(255, 255, 255, 0.85); border-radius: 4px; overflow: hidden;">
-              <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 3px 10px; font-size: 8.5pt; font-weight: 950; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center;">
+            <div style="border: 1.5px solid #1e3a8a; margin-bottom: 5px; background: rgba(255, 255, 255, 0.85); border-radius: 4px; overflow: hidden;">
+              <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 2.5px 8px; font-size: 8pt; font-weight: 950; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center;">
                 <span>👥 REGISTERED COMPANIONS (${memberDocs.length} Members)</span>
                 <span style="font-size: 7.5pt; font-weight: 800; color: #86efac;">✓ Scanned Copies Preserved on Annexure Page 2</span>
               </div>
-              <div style="padding: 4px 10px; font-size: 8.5pt; color: #1e293b; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <div style="padding: 3px 8px; font-size: 8pt; color: #1e293b; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                 ${memberDocs.map((m, idx) => `
-                  <span style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 3px; font-weight: 750;">
+                  <span style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 1.5px 6px; border-radius: 3px; font-weight: 750;">
                     👤 <strong>${escapeHtml(m.name || `Companion #${idx + 1}`)}</strong>${m.docType ? ` (${escapeHtml(m.docType)})` : ''}${m.idNumber || m.aadharNumber ? `: ${escapeHtml(m.idNumber || m.aadharNumber)}` : ''}
                   </span>
                 `).join('')}
@@ -2029,10 +2160,10 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           ` : ''}
 
           <!-- PAYMENT SUMMARY (Table Manner with Crisp Borders & Prominent Typography) -->
-          <div style="border: 2px solid #1e3a8a; margin-bottom: 6px; background: rgba(255, 255, 255, 0.75);">
-            <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); padding: 4px 10px; font-size: 9.5pt; font-weight: 950; border-bottom: 2px solid #1e3a8a; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
+          <div style="border: 2px solid #1e3a8a; margin-bottom: 4px; background: rgba(255, 255, 255, 0.75);">
+            <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); padding: 3px 8px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #1e3a8a; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>PAYMENT SUMMARY</span>
-              <span style="font-size: 8pt; font-weight: 800; color: #86efac; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
+              <span style="font-size: 7.5pt; font-weight: 800; color: #86efac; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
                 ${isEarlyCheckin ? 'Early Check-In Surcharge: ₹0 • ' : ''}Standard 5% Hotel GST Included
               </span>
             </div>
@@ -2040,26 +2171,26 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
             <table style="width: 100%; border-collapse: collapse; text-align: center;">
               <thead>
                 <tr style="background: rgba(241, 245, 249, 0.85);">
-                  <th style="padding: 5px 4px; font-size: 8.5pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 20%;">
+                  <th style="padding: 3px 4px; font-size: 8pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 20%;">
                     ${isOta ? 'Pre-Booked via OTA' : 'Room Tariff (Net)'}
                   </th>
-                  <th style="padding: 5px 4px; font-size: 8.5pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 20%;">
+                  <th style="padding: 3px 4px; font-size: 8pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 20%;">
                     ${isOta ? 'Extra Booking @ Hotel' : `Discount ${discountPct > 0 ? `(${discountPct}%)` : ''}`}
                   </th>
-                  <th style="padding: 5px 4px; font-size: 8.5pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 16%;">
+                  <th style="padding: 3px 4px; font-size: 8pt; color: #334155; text-transform: uppercase; font-weight: 850; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; width: 16%;">
                     GST (5%)
                   </th>
-                  <th style="padding: 5px 4px; font-size: 8.5pt; color: #1e40af; text-transform: uppercase; font-weight: 950; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.85); width: 22%;">
+                  <th style="padding: 3px 4px; font-size: 8pt; color: #1e40af; text-transform: uppercase; font-weight: 950; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.85); width: 22%;">
                     ${isOta ? 'Total Booking Value' : 'Grand Total'}
                   </th>
-                  <th style="padding: 5px 4px; font-size: 8.5pt; color: #166534; text-transform: uppercase; font-weight: 950; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.85); width: 22%;">
+                  <th style="padding: 3px 4px; font-size: 8pt; color: #166534; text-transform: uppercase; font-weight: 950; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.85); width: 22%;">
                     ${isOta ? 'Amount Collected' : 'Advance Paid'}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style="padding: 6px 4px; font-size: 11pt; font-weight: 900; color: #0f172a; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
+                  <td style="padding: 4px 4px; font-size: 10.5pt; font-weight: 900; color: #0f172a; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
                     ₹ ${(isOta ? otaPrebookedAmount : tariffNet).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     ${isOta
                       ? (isOtaPrepaid
@@ -2068,19 +2199,19 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                       : ''
                     }
                   </td>
-                  <td style="padding: 6px 4px; font-size: 11pt; font-weight: 900; color: ${(!isOta && discountAmount > 0) ? '#15803d' : '#0f172a'}; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
+                  <td style="padding: 4px 4px; font-size: 10.5pt; font-weight: 900; color: ${(!isOta && discountAmount > 0) ? '#15803d' : '#0f172a'}; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
                     ₹ ${(isOta ? hotelExtrasTotal : discountAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     ${isOta ? `<div style="font-size: 7pt; color: #475569; font-weight: 750; margin-top: 1px;">${escapeHtml(hotelExtrasDesc)}</div>` : ''}
                   </td>
-                  <td style="padding: 6px 4px; font-size: 11pt; font-weight: 900; color: #0f172a; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
+                  <td style="padding: 4px 4px; font-size: 10.5pt; font-weight: 900; color: #0f172a; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
                     ₹ ${(isOtaPrepaid ? 0 : taxAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     ${isOta ? `<div style="font-size: 7pt; color: #64748b; margin-top: 1px;">${isOtaPrepaid ? '(In Voucher)' : '(Standard)'}</div>` : ''}
                   </td>
-                  <td style="padding: 6px 4px; font-size: 11.5pt; font-weight: 950; color: #1e40af; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.85);">
+                  <td style="padding: 4px 4px; font-size: 11pt; font-weight: 950; color: #1e40af; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.85);">
                     ₹ ${(isOta ? effectiveTotalBooking : grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     ${isOta ? `<div style="font-size: 7pt; color: #1e40af; margin-top: 1px; font-weight: 800;">Prebooked + Extras</div>` : ''}
                   </td>
-                  <td style="padding: 6px 4px; font-size: 11.5pt; font-weight: 950; color: #166534; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.85);">
+                  <td style="padding: 4px 4px; font-size: 11pt; font-weight: 950; color: #166534; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.85);">
                     ₹ ${(isOta ? combinedTotalCollected : totalPaid).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     ${isOta ? `
                       <div style="font-size: 7pt; color: #166534; font-weight: 850; margin-top: 1px;">
@@ -2092,55 +2223,63 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     ` : ''}
                   </td>
                 </tr>
+                ${isOta ? `
                 <tr>
-                  <td colspan="5" style="padding: 5px 10px; background: rgba(248, 250, 252, 0.9); border-top: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; text-align: left;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 8.5pt;">
-                      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                  <td colspan="5" style="padding: 3px 8px; background: rgba(248, 250, 252, 0.9); border-top: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 8pt;">
+                      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
-                          🏨 HOTEL INCIDENTALS BREAKDOWN: ${isOta ? 'CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL' : 'ROOM &amp; SERVICES'}
+                          🏨 HOTEL INCIDENTALS BREAKDOWN: CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL
                         </span>
-                        ${isOta ? `
-                          <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL]</span>'}</span>
-                          <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
-                        ` : `
-                          <span>Room Tariff: <strong>₹ ${tariffNet.toLocaleString('en-IN')}</strong></span>
-                          ${extraBedCharge > 0 ? `<span>Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong></span>` : ''}
-                          ${fnbTotal > 0 ? `<span>F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>${fnbPendingTotal > 0 ? ` (<span style="color:#b91c1c; font-weight:800;">₹ ${fnbPendingTotal.toLocaleString('en-IN')} Pending</span>)` : ' (Paid)'}</span>` : ''}
-                        `}
+                        <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL]</span>'}</span>
+                        <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
                       </div>
-                      <div style="font-size: 8.5pt; font-weight: 950; color: #0f172a;">
-                        ${isOta ? `
-                          <span style="color: #475569; font-weight: 750;">Total Settled:</span>
-                          <strong style="color: #166534;">₹ ${combinedTotalCollected.toLocaleString('en-IN')}</strong>
-                          ${isOtaPrepaid ? `<span style="font-size: 7.5pt; color: #166534; font-weight: 800;">(₹${prebookedCollected.toLocaleString('en-IN')} Prepaid + ₹${hotelDeskCollected.toLocaleString('en-IN')} Desk)</span>` : ''}
-                        ` : `
-                          <span style="color: #475569; font-weight: 750;">Total Paid / Settled:</span> <strong style="color: #166534;">₹ ${totalPaid.toLocaleString('en-IN')}</strong>
-                        `}
+                      <div style="font-size: 8pt; font-weight: 950; color: #0f172a;">
+                        <span style="color: #475569; font-weight: 750;">Total Settled:</span>
+                        <strong style="color: #166534;">₹ ${combinedTotalCollected.toLocaleString('en-IN')}</strong>
+                        ${isOtaPrepaid ? `<span style="font-size: 7.5pt; color: #166534; font-weight: 800;">(₹${prebookedCollected.toLocaleString('en-IN')} Prepaid + ₹${hotelDeskCollected.toLocaleString('en-IN')} Desk)</span>` : ''}
                       </div>
                     </div>
                   </td>
                 </tr>
+                ` : (extraBedCharge > 0 || fnbTotal > 0) ? `
                 <tr>
-                  <td colspan="5" style="padding: 6px 10px; background: rgba(241, 245, 249, 0.95); text-align: left;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      <span style="font-weight: 950; text-transform: uppercase; font-size: 8.5pt; color: #1e3a8a;">Payment Modes:</span>
-                      ${splitBadges.join(' ')}
+                  <td colspan="5" style="padding: 3px 8px; background: rgba(248, 250, 252, 0.9); border-top: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; text-align: left;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 8pt;">
+                      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
+                          🏨 HOTEL INCIDENTALS BREAKDOWN: SERVICES &amp; EXTRAS
+                        </span>
+                        ${extraBedCharge > 0 ? `<span>Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong></span>` : ''}
+                        ${fnbTotal > 0 ? `<span>F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>${fnbPendingTotal > 0 ? ` (<span style="color:#b91c1c; font-weight:800;">₹ ${fnbPendingTotal.toLocaleString('en-IN')} Pending</span>)` : ' (Paid)'}</span>` : ''}
+                      </div>
                     </div>
                   </td>
                 </tr>
+                ` : ''}
+                ${(splitBadges.length > 0 || !isBtc) ? `
+                  <tr>
+                    <td colspan="5" style="padding: 3px 8px; background: rgba(241, 245, 249, 0.95); text-align: left;">
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-weight: 950; text-transform: uppercase; font-size: 8pt; color: #1e3a8a;">Payment Modes:</span>
+                        ${splitBadges.length > 0 ? splitBadges.join(' ') : '<span style="color: #64748b; font-weight: 700; font-size: 8pt;">None recorded</span>'}
+                      </div>
+                    </td>
+                  </tr>
+                ` : ''}
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- SIGNATURES (CLEAN 36PX CLEARANCE FOR PHYSICAL SIGNING AND CASHIER RUBBER STAMP ON A4) -->
-        <div style="margin-top: auto; padding-top: 6px;">
+        <!-- SIGNATURES (CLEAN CLEARANCE FOR PHYSICAL SIGNING AND CASHIER RUBBER STAMP ON A4) -->
+        <div style="margin-top: auto; padding-top: 4px; page-break-inside: avoid; break-inside: avoid;">
           <!-- Extra Space for physical signature and cashier seal/stamp -->
           <div style="height: 36px;"></div>
 
           <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div style="text-align: center; width: 220px;">
-              <div style="border-top: 2px solid #1e3a8a; padding-top: 4px; font-size: 10.5pt; font-weight: 950; color: #1e3a8a;">
+              <div style="border-top: 2px solid #1e3a8a; padding-top: 3px; font-size: 10pt; font-weight: 950; color: #1e3a8a;">
                 Guest Signature
               </div>
             </div>
@@ -2148,10 +2287,10 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
               Printed: ${new Date().toLocaleString('en-IN')}
             </div>
             <div style="text-align: center; width: 220px;">
-              <div style="font-size: 9.5pt; font-weight: 850; color: #1e3a8a; margin-bottom: 2px;">
+              <div style="font-size: 9pt; font-weight: 850; color: #1e3a8a; margin-bottom: 2px;">
                 ${escapeHtml(cashierName)}
               </div>
-              <div style="border-top: 2px solid #1e3a8a; padding-top: 4px; font-size: 10.5pt; font-weight: 950; color: #1e40af;">
+              <div style="border-top: 2px solid #1e3a8a; padding-top: 3px; font-size: 10pt; font-weight: 950; color: #1e40af;">
                 Front Desk Cashier
               </div>
             </div>

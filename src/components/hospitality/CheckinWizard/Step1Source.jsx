@@ -373,7 +373,20 @@ export default function Step1Source({
     setBtcSearchQuery(compName);
     setBtcSuggestions([]);
     setBlockedNotice('');
-    updateDraft({ btcCompanyId: company.id, btcCompanyName: compName });
+    updateDraft({
+      btcCompanyId: company.id,
+      btcCompanyName: compName,
+      companyName: compName,
+      company_name: compName,
+      gstNumber: company.gst_number || company.gstin || '',
+      gst_number: company.gst_number || company.gstin || '',
+      btcCompanyGst: company.gst_number || company.gstin || '',
+      btcCompanyAddress: company.address || '',
+      btcCompanyPhone: company.contact_phone || company.phone || '',
+      btcCompanyEmail: company.contact_email || company.email || '',
+      btcCompanyContactPerson: company.contact_person || '',
+      btcCompanyPan: company.pan_number || company.pan || ''
+    });
   };
 
   const handleCreateBtc = async (e) => {

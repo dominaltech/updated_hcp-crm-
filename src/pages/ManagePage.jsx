@@ -242,7 +242,7 @@ export default function ManagePage({ onPrintClosingReport }) {
     if (!isManagerUnlocked && (!currentUser || (!currentUser.can_access_manager && currentUser.role !== 'manager'))) {
       return;
     }
-    if (subTab === 'analytics') loadAnalytics(analyticsFromDate, analyticsToDate);
+    if (subTab === 'analytics' || subTab === 'btc') loadAnalytics(analyticsFromDate, analyticsToDate);
     if (subTab === 'rooms') {
       loadRooms();
     }
@@ -985,16 +985,21 @@ export default function ManagePage({ onPrintClosingReport }) {
             // 1. Hospitality Breakdown
             const hospAdv = bd.advances || {};
             const hospBill = bd.billSettlements || {};
+            const hospBtc = bd.btcSettlements || {};
             const hospData = bd.hospitality || {};
-            const hospTotal = Number(hospData.total ?? ((Number(hospAdv.total) || 0) + (Number(hospBill.total) || 0)));
+            const btcChequeData = an.btcCheque || an.btcCorporate || {};
+            const hospTotal = Number(hospData.total ?? ((Number(hospAdv.total) || 0) + (Number(hospBill.total) || 0) + (Number(hospBtc.total) || 0)));
             const hospBase = Number(hospData.base ?? (hospTotal > 0 ? Math.round((hospTotal / 1.05) * 100) / 100 : 0));
             const hospGst = Number(hospData.gst ?? Math.round((hospTotal - hospBase) * 100) / 100);
-            const hospCash = Number(hospData.cash ?? ((Number(hospAdv.cash) || 0) + (Number(hospBill.cash) || 0)));
-            const hospUpi = Number(hospData.upi ?? ((Number(hospAdv.upi) || 0) + (Number(hospBill.upi) || 0)));
-            const hospCard = Number(hospData.card ?? ((Number(hospAdv.card) || 0) + (Number(hospBill.card) || 0)));
+            const hospCash = Number(hospData.cash ?? ((Number(hospAdv.cash) || 0) + (Number(hospBill.cash) || 0) + (Number(hospBtc.cash) || 0)));
+            const hospUpi = Number(hospData.upi ?? ((Number(hospAdv.upi) || 0) + (Number(hospBill.upi) || 0) + (Number(hospBtc.upi) || 0)));
+            const hospCard = Number(hospData.card ?? ((Number(hospAdv.card) || 0) + (Number(hospBill.card) || 0) + (Number(hospBtc.card) || 0)));
             const hospCheque = Number(hospData.cheque ?? hospData.cheque_realized ?? 0);
-            const hospCardSurcharge = Number(hospData.card_surcharge || (Number(hospAdv.card_surcharge) || 0) + (Number(hospBill.card_surcharge) || 0));
-            const hospUpiTax = Number(hospData.upi_tax || (Number(hospAdv.upi_tax) || 0) + (Number(hospBill.upi_tax) || 0));
+            const hospBtcCheque = Number(btcChequeData.passed_amount || btcChequeData.btc_cheque_passed || hospData.btc_cheque || 0);
+            const hospBtcChequePending = Number(btcChequeData.pending_amount || btcChequeData.btc_cheque_pending || 0);
+            const hospBtcChequeCount = Number(btcChequeData.passed_count || btcChequeData.btc_cheque_count || 0);
+            const hospCardSurcharge = Number(hospData.card_surcharge || (Number(hospAdv.card_surcharge) || 0) + (Number(hospBill.card_surcharge) || 0) + (Number(hospBtc.card_surcharge) || 0));
+            const hospUpiTax = Number(hospData.upi_tax || (Number(hospAdv.upi_tax) || 0) + (Number(hospBill.upi_tax) || 0) + (Number(hospBtc.upi_tax) || 0));
             const hospPrebookedTotal = Number(analyticsData?.prebookedTotal || stats.prebookedTotal || an.prebookedTotal || 0);
             const hospPrebookedCount = Number(analyticsData?.prebookedCount || stats.prebookedCount || an.prebookedCount || 0);
             const hospRefunds = Number(exp.refunds || 0);
@@ -1150,6 +1155,22 @@ export default function ManagePage({ onPrintClosingReport }) {
                       </div>
                     </div>
 
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #6366f1', padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#4338ca', textTransform: 'uppercase' }}>Corporate BTC Settled</div>
+                        <span style={{ fontSize: '0.70rem', background: '#e0e7ff', color: '#4338ca', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
+                          Company Inflow
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#4338ca', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospBtc.total || 0)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 700, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>💵 Cash: {formatCurrency(hospBtc.cash || 0)}</span>
+                        <span>📱 UPI: {formatCurrency(hospBtc.upi || 0)}</span>
+                      </div>
+                    </div>
+
                     <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #0284c7', padding: '16px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Pre-Booked Collections</div>
@@ -1219,14 +1240,24 @@ export default function ManagePage({ onPrintClosingReport }) {
                             Realized Inflow
                           </span>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                           <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                             <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💵 Cash Inflow</span>
                             <strong style={{ fontSize: '1.05rem', color: '#059669' }}>{formatCurrency(hospCash)}</strong>
+                            {Number(hospBtc.cash || 0) > 0 && (
+                              <span style={{ fontSize: '0.66rem', color: '#16a34a', display: 'block', marginTop: '1px' }}>
+                                (Inc. BTC ₹{Number(hospBtc.cash).toLocaleString('en-IN')})
+                              </span>
+                            )}
                           </div>
                           <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                             <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>📱 UPI / Online</span>
                             <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>{formatCurrency(hospUpi)}</strong>
+                            {Number(hospBtc.upi || 0) > 0 && (
+                              <span style={{ fontSize: '0.66rem', color: '#0284c7', display: 'block', marginTop: '1px' }}>
+                                (Inc. BTC ₹{Number(hospBtc.upi).toLocaleString('en-IN')})
+                              </span>
+                            )}
                           </div>
                           <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                             <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💳 Card POS</span>
@@ -1235,6 +1266,24 @@ export default function ManagePage({ onPrintClosingReport }) {
                           <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                             <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>🏦 Cheque Passed</span>
                             <strong style={{ fontSize: '1.05rem', color: '#d97706' }}>{formatCurrency(hospCheque)}</strong>
+                          </div>
+                          <div style={{ background: '#eff6ff', padding: '10px 12px', borderRadius: '10px', border: '1.5px solid #93c5fd' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 850, display: 'block' }}>🏛️ BTC Cheque</span>
+                              {hospBtcChequeCount > 0 && (
+                                <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: '4px', fontWeight: 800 }}>
+                                  {hospBtcChequeCount} Cleared
+                                </span>
+                              )}
+                            </div>
+                            <strong style={{ fontSize: '1.05rem', color: '#1e40af', display: 'block', marginTop: '2px' }}>
+                              {formatCurrency(hospBtcCheque)}
+                            </strong>
+                            {hospBtcChequePending > 0 && (
+                              <span style={{ fontSize: '0.66rem', color: '#b45309', fontWeight: 750, display: 'block' }}>
+                                ⏳ Pending: {formatCurrency(hospBtcChequePending)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1801,6 +1850,66 @@ export default function ManagePage({ onPrintClosingReport }) {
               <span>➕</span> Register New Company
             </button>
           </div>
+
+          {/* BTC Corporate Financial KPI Cards */}
+          {(() => {
+            const an = analyticsData?.analytics || {};
+            const bd = an.breakdown || {};
+            const hospBtc = bd.btcSettlements || {};
+            const btcChequeData = an.btcCheque || an.btcCorporate || {};
+            const btcChequePassed = Number(btcChequeData.passed_amount || btcChequeData.btc_cheque_passed || 0);
+            const btcChequePending = Number(btcChequeData.pending_amount || btcChequeData.btc_cheque_pending || 0);
+            const btcChequeCount = Number(btcChequeData.passed_count || btcChequeData.btc_cheque_count || 0);
+
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '4px' }}>
+                <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Active Corporate Accounts</div>
+                  <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
+                    {btcCompanies.length} Registered
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>Approved for Corporate Credit</div>
+                </div>
+
+                <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fca5a5', padding: '16px' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#dc2626', textTransform: 'uppercase' }}>Pending BTC Receivables</div>
+                  <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
+                    {formatCurrency(an.btcCorporate?.pending_receivable || 0)}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#991b1b', fontWeight: 700 }}>
+                    {an.btcCorporate?.pending_invoice_count || 0} Invoice(s) Awaiting Company Settlement
+                  </div>
+                </div>
+
+                <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #0284c7', padding: '16px' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Realized BTC Settlements</div>
+                  <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
+                    {formatCurrency(hospBtc.total || 0)}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 700 }}>
+                    Cash: {formatCurrency(hospBtc.cash || 0)} • UPI: {formatCurrency(hospBtc.upi || 0)}
+                  </div>
+                </div>
+
+                <div className="folio-card" style={{ background: '#eff6ff', border: '2px solid #93c5fd', padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#1e40af', textTransform: 'uppercase' }}>🏛️ BTC Cheque</div>
+                    {btcChequeCount > 0 && (
+                      <span style={{ fontSize: '0.68rem', background: '#dbeafe', color: '#1d4ed8', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
+                        {btcChequeCount} Cleared
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#1e40af', margin: '4px 0 2px' }}>
+                    {formatCurrency(btcChequePassed)}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: btcChequePending > 0 ? '#b45309' : '#15803d', fontWeight: 750 }}>
+                    {btcChequePending > 0 ? `⏳ Pending Clearance: ${formatCurrency(btcChequePending)}` : '✓ All BTC cheques cleared'}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <div
             style={{

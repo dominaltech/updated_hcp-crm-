@@ -25,6 +25,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [settleBtcUtr, setSettleBtcUtr] = useState('');
   const [settleBtcChequeNo, setSettleBtcChequeNo] = useState('');
   const [settleBtcChequeBank, setSettleBtcChequeBank] = useState('');
+  const [settleBtcChequeStatus, setSettleBtcChequeStatus] = useState('realized');
   const [settleBtcCashier, setSettleBtcCashier] = useState('');
   const [settleBtcNotes, setSettleBtcNotes] = useState('');
   const [settleBtcSubmitting, setSettleBtcSubmitting] = useState(false);
@@ -101,6 +102,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     setSettleBtcUtr('');
     setSettleBtcChequeNo('');
     setSettleBtcChequeBank('');
+    setSettleBtcChequeStatus('realized');
     setSettleBtcCashier(currentUser?.full_name || currentUser?.username || 'Accounts');
     setSettleBtcNotes(`Corporate BTC settlement for ${booking.guest_name || 'Guest'}${booking.btc_company_name ? ` (${booking.btc_company_name})` : ''}`);
   };
@@ -132,6 +134,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         reference_no: settleBtcUtr.trim() || null,
         cheque_no: settleBtcChequeNo.trim() || null,
         bank_name: settleBtcChequeBank.trim() || null,
+        cheque_status: settleBtcChequeStatus || 'realized',
         notes: settleBtcNotes.trim() || `BTC Company Settlement via ${settleBtcMode.toUpperCase()}`
       };
 
@@ -791,6 +794,70 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           💳 Settle BTC
                         </button>
                       )}
+                      {isBtcPending ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            printGuestRegistrationA4(r, { includePhotos: false });
+                          }}
+                          style={{
+                            padding: '5px 8px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: '#faf5ff',
+                            color: '#6b21a8',
+                            border: '1.5px solid #d8b4fe',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Print Check-in Form with all company details and pending amount"
+                        >
+                          📄 Form
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            printFinalBillA4(r, {
+                              grossTariff: r.total_room_charge || r.room_rate,
+                              roomCharge: r.total_room_charge || r.room_rate,
+                              roomTariffNet: r.total_room_charge,
+                              tariffTax5Pct: Math.round((r.total_room_charge || 0) * 0.05),
+                              foodTotal: r.food_total || 0,
+                              barTotal: r.bar_total || 0,
+                              hotelExtrasCharge: r.extra_bed_charge || 0,
+                              advancePaid: r.initial_paid || r.total_paid || 0,
+                              chargedDays: r.charged_days || 1,
+                              billableDays: r.charged_days || 1,
+                              discountPct: r.discount_pct || 0,
+                              discountAmount: r.discount_amount || 0
+                            }, {
+                              settleAmt: r.final_settle_amount || r.total_paid || 0,
+                              refundAmt: r.refund_amount || 0,
+                              settled_at: r.actual_checkout_time || r.checkout_time || new Date(),
+                              invoiceNo: r.invoice_no || (r.id ? `L${r.id}` : 'L1573'),
+                              checked_out_by: r.checked_out_by || 'Front Desk'
+                            });
+                          }}
+                          style={{
+                            padding: '5px 8px',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            background: '#eff6ff',
+                            color: '#1e40af',
+                            border: '1.5px solid #bfdbfe',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title="Print Official Tax Invoice"
+                        >
+                          🧾 Tax Invoice
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn-primary"
@@ -853,9 +920,41 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
 
       {/* Comprehensive Stay Detail & Payment History Modal (Points 6 & 12) */}
       {isDetailOpen && (
-        <div className="modal-overlay active" style={{ zIndex: 10050 }}>
-          <div className="modal-container" style={{ maxWidth: '820px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="modal-header" style={{ padding: '18px 24px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)' }}>
+        <div
+          className="modal-overlay active"
+          style={{
+            zIndex: 10050,
+            padding: 0,
+            margin: 0,
+            width: '100vw',
+            height: '100vh',
+            maxWidth: '100vw',
+            maxHeight: '100vh',
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.85)',
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'stretch'
+          }}
+        >
+          <div
+            className="modal-container"
+            style={{
+              width: '100vw',
+              height: '100vh',
+              maxWidth: '100vw',
+              maxHeight: '100vh',
+              borderRadius: 0,
+              margin: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: 'none',
+              border: 'none',
+              background: 'var(--bg-app, #f8fafc)'
+            }}
+          >
+            <div className="modal-header" style={{ padding: '16px 32px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '1.6rem', padding: '6px 10px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '10px' }}>📜</span>
                 <div>
@@ -879,7 +978,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               </button>
             </div>
 
-            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '1440px', margin: '0 auto' }}>
               {isDetailLoading || !detailBooking ? (
                 <div style={{ padding: '50px 20px', textAlign: 'center', color: 'var(--text-secondary, #64748b)' }}>
                   <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
@@ -1398,73 +1497,107 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               )}
             </div>
 
-            <div className="modal-footer" style={{ padding: '16px 24px', background: '#ffffff', borderTop: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="modal-footer" style={{ padding: '14px 32px', background: '#ffffff', borderTop: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
-                {detailBooking && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => printGuestRegistrationA4(detailBooking, { includePhotos: false })}
-                      style={{ fontWeight: 750, padding: '8px 14px', fontSize: '0.85rem' }}
-                      title="Print on paper (LaserJet toner saver - zero photos)"
-                    >
-                      🖨️ Print Form (No Photos)
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={async () => {
-                        showToast('Saving Complete PDF with all Scans & Photos to Computer...', 'info', 2500);
-                        const ok = await downloadGuestRegistrationPDF(detailBooking);
-                        if (ok) showToast('✓ Complete PDF with all Scans Saved to Computer!', 'green', 4000);
-                      }}
-                      style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }}
-                      title="Save complete registration PDF to computer with all scanned ID copies and photos"
-                    >
-                      💾 Save Full PDF to PC
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => printGuestPaymentSummary(detailBooking)}
-                      style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd' }}
-                      title="Print Customer Payment Statement & Summary (A4 Sheet)"
-                    >
-                      📄 Payment Summary
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => {
-                        printFinalBillA4(detailBooking, {
-                          grossTariff: detailBooking.grossTariff || detailBooking.total_room_charge || detailBooking.room_rate,
-                          roomCharge: detailBooking.total_room_charge || detailBooking.room_rate,
-                          roomTariffNet: detailBooking.grossTariff || detailBooking.total_room_charge,
-                          tariffTax5Pct: detailBooking.tax_amount || detailBooking.total_tax,
-                          foodTotal: detailBooking.food_total || 0,
-                          barTotal: detailBooking.bar_total || 0,
-                          hotelExtrasCharge: detailBooking.extra_bed_charge || 0,
-                          advancePaid: detailBooking.initial_paid || detailBooking.total_paid || 0,
-                          chargedDays: detailBooking.charged_days || 1,
-                          billableDays: detailBooking.charged_days || 1,
-                          discountPct: detailBooking.discount_pct || 0,
-                          discountAmount: detailBooking.discount_amount || 0
-                        }, {
-                          settleAmt: detailBooking.final_settle_amount || 0,
-                          refundAmt: detailBooking.refund_amount || 0,
-                          settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
-                          invoiceNo: detailBooking.invoice_no || (detailBooking.id ? `L${detailBooking.id}` : 'L1573'),
-                          checked_out_by: detailBooking.checked_out_by || 'Front Desk'
-                        });
-                      }}
-                      style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#fef2f2', color: '#991b1b', borderColor: '#fca5a5' }}
-                      title="Print Official Colorful A4 Tax Invoice with background logo"
-                    >
-                      🧾 Tax Invoice (A4)
-                    </button>
-                  </div>
-                )}
+                {detailBooking && (() => {
+                  const isDetailBtcPending = (
+                    detailBooking.payment_status === 'pending_from_company' ||
+                    detailBooking.is_btc_pending ||
+                    detailBooking.isBtcPending ||
+                    (
+                      (detailBooking.booking_source === 'BTC' || Boolean(detailBooking.btc_company_id) || Boolean(detailBooking.btc_company_name)) &&
+                      detailBooking.payment_status !== 'settled' &&
+                      detailBooking.payment_status !== 'paid'
+                    )
+                  );
+
+                  return (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="filter-chip"
+                        onClick={() => printGuestRegistrationA4(detailBooking, { includePhotos: false })}
+                        style={{
+                          fontWeight: 800,
+                          padding: '8px 14px',
+                          fontSize: '0.85rem',
+                          background: isDetailBtcPending ? '#faf5ff' : 'var(--bg-surface)',
+                          color: isDetailBtcPending ? '#6b21a8' : 'inherit',
+                          borderColor: isDetailBtcPending ? '#d8b4fe' : 'var(--border-color)'
+                        }}
+                        title="Print Check-in / Registration Form with all details and amount"
+                      >
+                        {isDetailBtcPending ? '📄 Print Check-in Form (Details & Amount)' : '🖨️ Print Form (No Photos)'}
+                      </button>
+                      <button
+                        type="button"
+                        className="filter-chip"
+                        onClick={async () => {
+                          showToast('Saving Complete PDF with all Scans & Photos to Computer...', 'info', 2500);
+                          const ok = await downloadGuestRegistrationPDF(detailBooking);
+                          if (ok) showToast('✓ Complete PDF with all Scans Saved to Computer!', 'green', 4000);
+                        }}
+                        style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }}
+                        title="Save complete registration PDF to computer with all scanned ID copies and photos"
+                      >
+                        💾 Save Full PDF to PC
+                      </button>
+                      <button
+                        type="button"
+                        className="filter-chip"
+                        onClick={() => printGuestPaymentSummary(detailBooking)}
+                        style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd' }}
+                        title="Print Customer Payment Statement & Summary (A4 Sheet)"
+                      >
+                        📄 Payment Summary
+                      </button>
+                      {isDetailBtcPending ? (
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => {
+                            showToast('⚠️ Payment is pending from company. Settle BTC payment first to release official Tax Invoice.', 'amber', 5000);
+                          }}
+                          style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#f8fafc', color: '#94a3b8', borderColor: '#cbd5e1', cursor: 'not-allowed' }}
+                          title="Tax invoice locked: Payment is pending from company. Settle BTC payment first to release Tax Invoice."
+                        >
+                          🔒 Tax Invoice (Pending Company Payment)
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => {
+                            printFinalBillA4(detailBooking, {
+                              grossTariff: detailBooking.grossTariff || detailBooking.total_room_charge || detailBooking.room_rate,
+                              roomCharge: detailBooking.total_room_charge || detailBooking.room_rate,
+                              roomTariffNet: detailBooking.grossTariff || detailBooking.total_room_charge,
+                              tariffTax5Pct: detailBooking.tax_amount || detailBooking.total_tax,
+                              foodTotal: detailBooking.food_total || 0,
+                              barTotal: detailBooking.bar_total || 0,
+                              hotelExtrasCharge: detailBooking.extra_bed_charge || 0,
+                              advancePaid: detailBooking.initial_paid || detailBooking.total_paid || 0,
+                              chargedDays: detailBooking.charged_days || 1,
+                              billableDays: detailBooking.charged_days || 1,
+                              discountPct: detailBooking.discount_pct || 0,
+                              discountAmount: detailBooking.discount_amount || 0
+                            }, {
+                              settleAmt: detailBooking.final_settle_amount || 0,
+                              refundAmt: detailBooking.refund_amount || 0,
+                              settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
+                              invoiceNo: detailBooking.invoice_no || (detailBooking.id ? `L${detailBooking.id}` : 'L1573'),
+                              checked_out_by: detailBooking.checked_out_by || 'Front Desk'
+                            });
+                          }}
+                          style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#fef2f2', color: '#991b1b', borderColor: '#fca5a5' }}
+                          title="Print Official Colorful A4 Tax Invoice with background logo"
+                        >
+                          🧾 Tax Invoice (A4)
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <button
                 type="button"
@@ -1622,6 +1755,47 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         onChange={(e) => setSettleBtcChequeBank(e.target.value)}
                         style={{ height: '38px' }}
                       />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '10px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Cheque Status
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSettleBtcChequeStatus('realized')}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: settleBtcChequeStatus === 'realized' ? '2px solid #16a34a' : '1px solid #cbd5e1',
+                          background: settleBtcChequeStatus === 'realized' ? '#f0fdf4' : '#ffffff',
+                          color: settleBtcChequeStatus === 'realized' ? '#15803d' : '#475569',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✓ Cleared / Realized (Inflow)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSettleBtcChequeStatus('pending')}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: settleBtcChequeStatus === 'pending' ? '2px solid #d97706' : '1px solid #cbd5e1',
+                          background: settleBtcChequeStatus === 'pending' ? '#fffbeb' : '#ffffff',
+                          color: settleBtcChequeStatus === 'pending' ? '#b45309' : '#475569',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ⏳ Pending Clearing
+                      </button>
                     </div>
                   </div>
                 </div>

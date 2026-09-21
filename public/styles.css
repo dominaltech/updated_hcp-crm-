@@ -12456,9 +12456,16 @@ html.dark-theme .btn-folio-tax-chip {
   #print-registration-sheet.print-active,
   #print-payment-summary-sheet,
   #print-payment-summary-sheet.print-active {
-    min-height: 290mm !important;
+    min-height: auto !important;
+    max-height: 272mm !important;
+    height: auto !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
     box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    overflow: hidden !important;
   }
 }

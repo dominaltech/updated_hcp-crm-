@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { printCashReceipt, printPettyCashVoucher, printFinalBillA4 } from '../../services/printService';
+import { printCashReceipt, printPettyCashVoucher, printFinalBillA4, printGuestRegistrationA4 } from '../../services/printService';
 
 export default function FolioSettlementModal({
   isOpen,
@@ -282,19 +282,67 @@ export default function FolioSettlementModal({
         }
 
         try {
-          // Always print the official A4 Tax Invoice upon checkout finalization
-          printFinalBillA4(room, folioData, {
-            settleAmt: isRefund ? 0 : settleAmt,
-            refundAmt: isRefund ? refundAmt : 0,
-            settled_at: new Date(),
-            cardSurcharge,
-            upiTax,
-            splitCash,
-            splitOnline,
-            splitCard,
-            splitCheque,
-            checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
-          });
+          if (isCompanyPayingLater) {
+            // User requirement: if payment is pending from company then should print checkin form with all details & amount
+            const regPrintData = {
+              ...room,
+              ...folioData,
+              voucher_number: room.voucher_number || folioData.voucherNo,
+              voucherNumber: room.voucher_number || folioData.voucherNo,
+              guestName: folioData.guestName || room.guest_name,
+              mobile: folioData.mobile || room.mobile,
+              altMobile: room.alt_mobile || room.booking_alt_mobile,
+              fatherName: room.father_name,
+              dob: room.dob,
+              address: room.address,
+              email: room.email,
+              aadharNumber: room.aadhar_number,
+              docType: room.doc_type,
+              checkinTime: folioData.checkinTime || room.checkin_time,
+              approxCheckout: folioData.actualCheckout || folioData.checkoutTime || new Date(),
+              stayNights: folioData.billableDays || folioData.stayNights || room.stay_nights || 1,
+              bookingSource: 'BTC',
+              btcCompanyName: room.btc_company_name || folioData.btcCompanyName,
+              btcCompanyAddress: room.btc_address || folioData.btcCompanyAddress,
+              btcCompanyGst: room.btc_gst_number || folioData.btcCompanyGst || room.gst_number,
+              btcCompanyPan: room.btc_pan_number || folioData.btcCompanyPan,
+              btcCompanyContactPerson: room.btc_contact_person || folioData.btcCompanyContactPerson,
+              btcCompanyPhone: room.btc_contact_phone || folioData.btcCompanyPhone,
+              btcCompanyEmail: room.btc_contact_email || folioData.btcCompanyEmail,
+              btcApprovalRef: room.btc_approval_ref || folioData.btcApprovalRef,
+              companyName: room.btc_company_name || folioData.btcCompanyName,
+              gstNumber: room.btc_gst_number || folioData.gstNumber,
+              roomTariffNet: folioData.roomChargesTotal || folioData.grandTariffNet || folioData.baseRoomCharge || 0,
+              discountAmount: folioData.discountAmt || 0,
+              discountPct: folioData.discountPct || 0,
+              taxAmount: folioData.grandGstAmount || folioData.taxAmount || 0,
+              foodTotal: folioData.foodTotal || 0,
+              barTotal: folioData.barTotal || 0,
+              extraBedCharge: folioData.extraBedsTotal || 0,
+              grandTotal: folioData.finalGrandTotal || folioData.grandTotal || 0,
+              totalPaid: folioData.advancePaid || 0,
+              balanceDue: folioData.balanceDue || 0,
+              isCompanyPayingLater: true,
+              isBtcPending: true,
+              checkedInBy: room.checked_in_by || 'Front Desk',
+              checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+            };
+            printGuestRegistrationA4(regPrintData, { includePhotos: false });
+          } else {
+            // User requirement: while checking with at the spot paid 100% bill then only should print out tax invoice
+            printFinalBillA4(room, folioData, {
+              settleAmt: isRefund ? 0 : settleAmt,
+              refundAmt: isRefund ? refundAmt : 0,
+              settled_at: new Date(),
+              cardSurcharge,
+              upiTax,
+              splitCash,
+              splitOnline,
+              splitCard,
+              splitCheque,
+              checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+            });
+          }
 
           if (isRefund && refundAmt > 0) {
             const debNo = res.data?.refundVoucherNo || res.refundVoucherNo || `DEB-${Date.now().toString().slice(-4)}`;
@@ -1014,28 +1062,84 @@ export default function FolioSettlementModal({
 
         {/* Footer */}
         <div className="modal-footer" style={{ padding: '16px 26px', borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button
-            type="button"
-            className="filter-chip"
-            onClick={() => {
-              printFinalBillA4(room, folioData, {
-                settleAmt: isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled),
-                refundAmt: isRefund ? refundAmount : 0,
-                settled_at: new Date(),
-                cardSurcharge,
-                upiTax,
-                splitCash,
-                splitOnline,
-                splitCard,
-                splitCheque,
-                checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
-              });
-            }}
-            style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: 'var(--bg-surface)', color: 'var(--apple-blue)', border: '1.5px solid var(--apple-blue)' }}
-            title="Preview or print official colorful A4 Tax Invoice with background logo"
-          >
-            🧾 Print Tax Invoice (A4)
-          </button>
+          {isCompanyPayingLater ? (
+            <button
+              type="button"
+              className="filter-chip"
+              onClick={() => {
+                const regPrintData = {
+                  ...room,
+                  ...folioData,
+                  voucher_number: room.voucher_number || folioData.voucherNo,
+                  guestName: folioData.guestName || room.guest_name,
+                  mobile: folioData.mobile || room.mobile,
+                  altMobile: room.alt_mobile || room.booking_alt_mobile,
+                  fatherName: room.father_name,
+                  dob: room.dob,
+                  address: room.address,
+                  email: room.email,
+                  aadharNumber: room.aadhar_number,
+                  docType: room.doc_type,
+                  checkinTime: folioData.checkinTime || room.checkin_time,
+                  approxCheckout: folioData.actualCheckout || folioData.checkoutTime || new Date(),
+                  stayNights: folioData.billableDays || folioData.stayNights || room.stay_nights || 1,
+                  bookingSource: 'BTC',
+                  btcCompanyName: room.btc_company_name || folioData.btcCompanyName,
+                  btcCompanyAddress: room.btc_address || folioData.btcCompanyAddress,
+                  btcCompanyGst: room.btc_gst_number || folioData.btcCompanyGst || room.gst_number,
+                  btcCompanyPan: room.btc_pan_number || folioData.btcCompanyPan,
+                  btcCompanyContactPerson: room.btc_contact_person || folioData.btcCompanyContactPerson,
+                  btcCompanyPhone: room.btc_contact_phone || folioData.btcCompanyPhone,
+                  btcCompanyEmail: room.btc_contact_email || folioData.btcCompanyEmail,
+                  btcApprovalRef: room.btc_approval_ref || folioData.btcApprovalRef,
+                  companyName: room.btc_company_name || folioData.btcCompanyName,
+                  gstNumber: room.btc_gst_number || folioData.gstNumber,
+                  roomTariffNet: folioData.roomChargesTotal || folioData.grandTariffNet || folioData.baseRoomCharge || 0,
+                  discountAmount: folioData.discountAmt || 0,
+                  discountPct: folioData.discountPct || 0,
+                  taxAmount: folioData.grandGstAmount || folioData.taxAmount || 0,
+                  foodTotal: folioData.foodTotal || 0,
+                  barTotal: folioData.barTotal || 0,
+                  extraBedCharge: folioData.extraBedsTotal || 0,
+                  grandTotal: folioData.finalGrandTotal || folioData.grandTotal || 0,
+                  totalPaid: folioData.advancePaid || 0,
+                  balanceDue: folioData.balanceDue || 0,
+                  isCompanyPayingLater: true,
+                  isBtcPending: true,
+                  checkedInBy: room.checked_in_by || 'Front Desk',
+                  checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+                };
+                printGuestRegistrationA4(regPrintData, { includePhotos: false });
+              }}
+              style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: '#faf5ff', color: '#6b21a8', border: '1.5px solid #d8b4fe' }}
+              title="Print Check-in / Registration Form with complete corporate BTC details and amount"
+            >
+              📄 Print Check-in Form (Details &amp; Amount)
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="filter-chip"
+              onClick={() => {
+                printFinalBillA4(room, folioData, {
+                  settleAmt: isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled),
+                  refundAmt: isRefund ? refundAmount : 0,
+                  settled_at: new Date(),
+                  cardSurcharge,
+                  upiTax,
+                  splitCash,
+                  splitOnline,
+                  splitCard,
+                  splitCheque,
+                  checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+                });
+              }}
+              style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: 'var(--bg-surface)', color: 'var(--apple-blue)', border: '1.5px solid var(--apple-blue)' }}
+              title="Preview or print official colorful A4 Tax Invoice with background logo"
+            >
+              🧾 Print Tax Invoice (A4)
+            </button>
+          )}
           <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" className="btn-custom-cancel" onClick={onClose} style={{ padding: '10px 22px', fontSize: '0.92rem' }}>
               Cancel
