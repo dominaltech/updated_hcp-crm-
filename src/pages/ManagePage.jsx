@@ -975,334 +975,786 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
           </div>
 
-          {/* KPI Summary Cards Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-            <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-              <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                Total Realized Revenue
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.totalRealized || analyticsData?.todayRevenue || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Cash + UPI + Card Collections</div>
-            </div>
+          {/* 3 Dedicated Departmental Sections: Hospitality, Restaurant, and Bar Lounge */}
+          {(() => {
+            const an = analyticsData?.analytics || {};
+            const stats = analyticsData?.stats || {};
+            const bd = an.breakdown || {};
+            const exp = an.expenses || {};
 
-            <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-              <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                Net Cash in Drawer
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.drawerCash || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Total Cash In - Expenses Out</div>
-            </div>
+            // 1. Hospitality Breakdown
+            const hospAdv = bd.advances || {};
+            const hospBill = bd.billSettlements || {};
+            const hospData = bd.hospitality || {};
+            const hospTotal = Number(hospData.total ?? ((Number(hospAdv.total) || 0) + (Number(hospBill.total) || 0)));
+            const hospBase = Number(hospData.base ?? (hospTotal > 0 ? Math.round((hospTotal / 1.05) * 100) / 100 : 0));
+            const hospGst = Number(hospData.gst ?? Math.round((hospTotal - hospBase) * 100) / 100);
+            const hospCash = Number(hospData.cash ?? ((Number(hospAdv.cash) || 0) + (Number(hospBill.cash) || 0)));
+            const hospUpi = Number(hospData.upi ?? ((Number(hospAdv.upi) || 0) + (Number(hospBill.upi) || 0)));
+            const hospCard = Number(hospData.card ?? ((Number(hospAdv.card) || 0) + (Number(hospBill.card) || 0)));
+            const hospCheque = Number(hospData.cheque ?? hospData.cheque_realized ?? 0);
+            const hospCardSurcharge = Number(hospData.card_surcharge || (Number(hospAdv.card_surcharge) || 0) + (Number(hospBill.card_surcharge) || 0));
+            const hospUpiTax = Number(hospData.upi_tax || (Number(hospAdv.upi_tax) || 0) + (Number(hospBill.upi_tax) || 0));
+            const hospPrebookedTotal = Number(analyticsData?.prebookedTotal || stats.prebookedTotal || an.prebookedTotal || 0);
+            const hospPrebookedCount = Number(analyticsData?.prebookedCount || stats.prebookedCount || an.prebookedCount || 0);
+            const hospRefunds = Number(exp.refunds || 0);
+            const hospMaintenance = Number(exp.maintenance || 0);
+            const hospOwnerDrawings = Number(exp.owner_drawings || 0);
+            const hospExpensesTotal = hospRefunds + hospMaintenance + hospOwnerDrawings;
+            const hospDrawerCash = hospCash - hospRefunds;
 
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Check-in Advances</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.advancesTotal || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
-                Cash: {formatCurrency(analyticsData?.advancesCash || 0)}
-              </div>
-            </div>
+            // 2. Restaurant Breakdown
+            const restData = bd.restaurant || {};
+            const restTotal = Number(restData.total ?? (analyticsData?.restaurantRevenue || 0));
+            const restBase = Number(restData.subtotal ?? (restTotal > 0 ? Math.round((restTotal / 1.05) * 100) / 100 : 0));
+            const restGst = Number(restData.tax ?? Math.round((restTotal - restBase) * 100) / 100);
+            const restCash = Number(restData.cash ?? 0);
+            const restUpi = Number(restData.upi ?? 0);
+            const restCard = Number(restData.card ?? 0);
+            const restCardSurcharge = Number(restData.card_surcharge ?? 0);
+            const restUpiTax = Number(restData.upi_tax ?? 0);
+            const restCount = Number(restData.count ?? (restTotal > 0 ? 1 : 0));
+            const restStorePantry = Number(exp.store_pantry || 0);
+            const restExpensesTotal = restStorePantry;
+            const restDrawerCash = restCash;
 
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Checkout Settlements</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.settlementsTotal || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
-                Cash: {formatCurrency(analyticsData?.settlementsCash || 0)}
-              </div>
-            </div>
+            // 3. Bar Breakdown
+            const barData = bd.bar || {};
+            const barTotal = Number(barData.total ?? (analyticsData?.barRevenue || 0));
+            const barBase = Number(barData.subtotal ?? (barTotal > 0 ? Math.round((barTotal / 1.05) * 100) / 100 : 0));
+            const barGst = Number(barData.tax ?? Math.round((barTotal - barBase) * 100) / 100);
+            const barCash = Number(barData.cash ?? 0);
+            const barUpi = Number(barData.upi ?? 0);
+            const barCard = Number(barData.card ?? 0);
+            const barCardSurcharge = Number(barData.card_surcharge ?? 0);
+            const barUpiTax = Number(barData.upi_tax ?? 0);
+            const barCount = Number(barData.count ?? (barTotal > 0 ? 1 : 0));
+            const barExpensesTotal = 0;
+            const barDrawerCash = barCash;
 
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #0284c7', padding: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Pre-Booked Collections</div>
-                <span style={{ fontSize: '0.70rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
-                  OTA Pre-Paid
-                </span>
-              </div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.prebookedTotal || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 700 }}>
-                {analyticsData?.prebookedCount || 0} Pre-Paid Stay Voucher(s)
-              </div>
-            </div>
+            // Grand Consolidated
+            const grandRealized = Number(analyticsData?.totalRealized || stats.grossRevenue || (hospTotal + restTotal + barTotal));
+            const grandDrawerCash = Number(analyticsData?.drawerCash || stats.cashInDrawer || (hospDrawerCash + restDrawerCash + barDrawerCash));
+            const grandBase = Number(analyticsData?.netToHotel || stats.netToHotel || (hospBase + restBase + barBase));
+            const grandGst = Number(analyticsData?.gstCollections || stats.gstCollections || (hospGst + restGst + barGst));
+            const grandSurcharges = Number(analyticsData?.totalSurcharges || (stats.totalCardSurcharge || 0) + (stats.totalUpiTax || 0) || (hospCardSurcharge + hospUpiTax + restCardSurcharge + restUpiTax + barCardSurcharge + barUpiTax));
 
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.netToHotel || analyticsData?.stats?.netToHotel || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
-                Base Price Only (Excl. GST &amp; Expenses)
-              </div>
-            </div>
-
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.gstCollections || analyticsData?.stats?.gstCollections || 0)}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
-                Hotel &amp; F&amp;B Standard 5% GST
-              </div>
-            </div>
-
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
-                {formatCurrency(analyticsData?.totalSurcharges || (analyticsData?.totalCardSurcharge || 0) + (analyticsData?.totalUpiTax || 0))}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-                <span>Card: {formatCurrency(analyticsData?.totalCardSurcharge || 0)}</span>
-                <span>UPI: {formatCurrency(analyticsData?.totalUpiTax || 0)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ADVANCE ANALYTICS SECTION */}
-          <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 950, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📈</span> Advance Financial Analytics &amp; Departmental Audit
-                </h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Audited financial metrics from <strong>{analyticsFromDate}</strong> to <strong>{analyticsToDate}</strong>
-                </span>
-              </div>
-            </div>
-
-            {/* 3 Analytics Cards Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-              
-              {/* Card 1: Departmental Revenue Performance */}
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1.5px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 850, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🏨</span> Departmental Revenue
-                  </h4>
-                  <span style={{ fontWeight: 900, color: '#0284c7', fontSize: '1rem' }}>
-                    {formatCurrency(analyticsData?.totalRealized || 0)}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Rooms */}
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                
+                {/* Grand Consolidated Overview Strip */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                  color: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '16px 22px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '16px',
+                  boxShadow: '0 4px 16px rgba(15, 23, 42, 0.14)'
+                }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 700, marginBottom: '4px' }}>
-                      <span style={{ color: '#475569' }}>Rooms Accommodation</span>
-                      <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.settlementsTotal || 0)}</strong>
+                    <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94a3b8', fontWeight: 800 }}>
+                      Grand Consolidated Overview (All 3 Departments)
                     </div>
-                    <div style={{ background: '#f1f5f9', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          background: '#3b82f6',
-                          height: '100%',
-                          width: `${Math.min(100, Math.round(((analyticsData?.settlementsTotal || 0) / (analyticsData?.totalRealized || 1)) * 100))}%`
-                        }}
-                      />
+                    <div style={{ fontSize: '1.75rem', fontWeight: 950, color: '#38bdf8', marginTop: '2px' }}>
+                      {formatCurrency(grandRealized)} <span style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: 600 }}>Total Realized Revenue</span>
                     </div>
                   </div>
+                  <div style={{ display: 'flex', gap: '22px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>💵 Combined Drawer Cash</div>
+                      <strong style={{ fontSize: '1.15rem', color: '#4ade80' }}>{formatCurrency(grandDrawerCash)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>🏨 Base Price (Excl. GST)</div>
+                      <strong style={{ fontSize: '1.15rem', color: '#e2e8f0' }}>{formatCurrency(grandBase)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>🏛️ Total GST Collections</div>
+                      <strong style={{ fontSize: '1.15rem', color: '#f59e0b' }}>{formatCurrency(grandGst)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>⚡ Total Fees &amp; Surcharges</div>
+                      <strong style={{ fontSize: '1.15rem', color: '#cbd5e1' }}>{formatCurrency(grandSurcharges)}</strong>
+                    </div>
+                  </div>
+                </div>
 
-                  {/* OTA Pre-Booked Packages */}
-                  {(analyticsData?.prebookedTotal || 0) > 0 && (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 700, marginBottom: '4px' }}>
-                        <span style={{ color: '#0369a1', fontWeight: 800 }}>OTA Pre-Booked Packages</span>
-                        <strong style={{ color: '#0284c7' }}>{formatCurrency(analyticsData?.prebookedTotal || 0)}</strong>
+                {/* ========================================================================= */}
+                {/* 1. SECTION 1: HOSPITALITY (HOTEL ROOMS ACCOMMODATION ONLY) */}
+                {/* ========================================================================= */}
+                <div style={{ background: '#f8fafc', border: '2px solid #bfdbfe', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  
+                  {/* Section Title Banner */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #dbeafe', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>
+                        🏨
                       </div>
-                      <div style={{ background: '#f1f5f9', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            background: '#0284c7',
-                            height: '100%',
-                            width: `${Math.min(100, Math.round(((analyticsData?.prebookedTotal || 0) / Math.max(1, (analyticsData?.totalRealized || 0) + (analyticsData?.prebookedTotal || 0))) * 100))}%`
-                          }}
-                        />
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 950, color: '#1e3a8a' }}>
+                          Hospitality Front Desk &amp; Room Folio Audit
+                        </h3>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          Room Check-in Advances, Checkout Bill Settlements, OTA Pre-Paid Vouchers &amp; Front Desk Cash Drawer
+                        </span>
                       </div>
                     </div>
-                  )}
+                    <span style={{ background: '#eff6ff', color: '#1e40af', border: '1.5px solid #93c5fd', fontWeight: 850, padding: '4px 14px', borderRadius: '8px', fontSize: '0.82rem' }}>
+                      Department: Hospitality Only
+                    </span>
+                  </div>
 
-                  {/* Restaurant */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 700, marginBottom: '4px' }}>
-                      <span style={{ color: '#475569' }}>Restaurant Dining POS</span>
-                      <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.restaurantRevenue || 0)}</strong>
+                  {/* 8 Hospitality KPI Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Total Realized Revenue
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(hospTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Advances + Checkout Settlements</div>
                     </div>
-                    <div style={{ background: '#f1f5f9', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          background: '#10b981',
-                          height: '100%',
-                          width: `${Math.min(100, Math.round(((analyticsData?.restaurantRevenue || 0) / (analyticsData?.totalRealized || 1)) * 100))}%`
-                        }}
-                      />
+
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Net Cash in Drawer
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(hospDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Hosp Cash In - Cash Outflows</div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Check-in Advances</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospAdv.total || 0)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
+                        Cash: {formatCurrency(hospAdv.cash || 0)}
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Checkout Settlements</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospBill.total || 0)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
+                        Cash: {formatCurrency(hospBill.cash || 0)}
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #0284c7', padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Pre-Booked Collections</div>
+                        <span style={{ fontSize: '0.70rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
+                          OTA Pre-Paid
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospPrebookedTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 700 }}>
+                        {hospPrebookedCount} Pre-Paid Stay Voucher(s)
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospBase)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
+                        Base Price Only (Excl. GST &amp; Expenses)
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospGst)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                        Hotel Room Standard 5% GST
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
+                        {formatCurrency(hospCardSurcharge + hospUpiTax)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Card: {formatCurrency(hospCardSurcharge)}</span>
+                        <span>UPI: {formatCurrency(hospUpiTax)}</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Bar */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 700, marginBottom: '4px' }}>
-                      <span style={{ color: '#475569' }}>Bar Lounge &amp; Liquor</span>
-                      <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.barRevenue || 0)}</strong>
-                    </div>
-                    <div style={{ background: '#f1f5f9', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          background: '#8b5cf6',
-                          height: '100%',
-                          width: `${Math.min(100, Math.round(((analyticsData?.barRevenue || 0) / (analyticsData?.totalRealized || 1)) * 100))}%`
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Payment Modes Distribution */}
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1.5px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 850, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>💳</span> Payment Modes Audit
-                  </h4>
-                  <span style={{ fontWeight: 800, color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>
-                    Realized Inflow
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
-                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💵 Cash Inflow</span>
-                    <strong style={{ fontSize: '1.05rem', color: '#059669' }}>
-                      {formatCurrency(analyticsData?.analytics?.drawer?.totalCashInflow || 0)}
-                    </strong>
-                  </div>
-
-                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>📱 UPI / Online</span>
-                    <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>
-                      {formatCurrency(analyticsData?.analytics?.paymentModes?.upi || 0)}
-                    </strong>
-                    {Number(analyticsData?.analytics?.paymentModes?.upiTax || analyticsData?.totalUpiTax || 0) > 0 && (
-                      <span style={{ display: 'block', fontSize: '0.70rem', color: '#0284c7', fontWeight: 800, marginTop: '2px' }}>
-                        + {formatCurrency(analyticsData?.analytics?.paymentModes?.upiTax || analyticsData?.totalUpiTax || 0)} 0.4% Tax Coll.
+                  {/* Advance Financial Analytics for Hospitality (3 Cards) */}
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📈</span> Advance Financial Analytics &amp; Departmental Audit
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        Hospitality Front Desk Realized Inflows, Room Outflows &amp; Surcharges ({analyticsFromDate} to {analyticsToDate})
                       </span>
-                    )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                      {/* Card 1: Hospitality Payment Modes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            💳 Payment Modes Audit
+                          </h5>
+                          <span style={{ fontWeight: 800, color: '#64748b', fontSize: '0.76rem', textTransform: 'uppercase' }}>
+                            Realized Inflow
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💵 Cash Inflow</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#059669' }}>{formatCurrency(hospCash)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>📱 UPI / Online</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>{formatCurrency(hospUpi)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💳 Card POS</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#7c3aed' }}>{formatCurrency(hospCard)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>🏦 Cheque Passed</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#d97706' }}>{formatCurrency(hospCheque)}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 2: Hospitality Expenses & Net Margin */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            📉 Expenses &amp; Net Margin
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '0.92rem' }}>
+                            - {formatCurrency(hospExpensesTotal)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Guest Refunds:</span>
+                            <strong style={{ color: '#0f172a' }}>{formatCurrency(hospRefunds)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Repairs &amp; Maintenance:</span>
+                            <strong style={{ color: '#0f172a' }}>{formatCurrency(hospMaintenance)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Owner Drawings:</span>
+                            <strong style={{ color: '#0f172a' }}>{formatCurrency(hospOwnerDrawings)}</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155' }}>Operating Net Profit:</span>
+                            <strong style={{ fontSize: '1.15rem', fontWeight: 950, color: (hospTotal - hospExpensesTotal) >= 0 ? '#15803d' : '#dc2626' }}>
+                              {formatCurrency(hospTotal - hospExpensesTotal)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Hospitality Extra Fees & Taxes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            ⚡ Extra Fees &amp; Taxes Audit
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#b45309', fontSize: '0.95rem' }}>
+                            {formatCurrency(hospCardSurcharge + hospUpiTax)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From room debit/credit swipes</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(hospCardSurcharge)}</strong>
+                          </div>
+                          <div style={{ background: '#f0f9ff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 750, display: 'block' }}>📱 UPI 0.4% Tax (&gt; ₹2,000)</span>
+                              <span style={{ fontSize: '0.68rem', color: '#0284c7' }}>Convenience tax on stay online payments</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#0284c7' }}>{formatCurrency(hospUpiTax)}</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155', fontSize: '0.78rem' }}>Total Pass-through Collections:</span>
+                            <strong style={{ fontSize: '1.05rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(hospCardSurcharge + hospUpiTax)}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ========================================================================= */}
+                {/* 2. SECTION 2: RESTAURANT (DINING & ROOM SERVICE POS ONLY) */}
+                {/* ========================================================================= */}
+                <div style={{ background: '#f8fafc', border: '2px solid #a7f3d0', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  
+                  {/* Section Title Banner */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #d1fae5', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>
+                        🍽️
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 950, color: '#047857' }}>
+                          Restaurant Dining &amp; POS Audit
+                        </h3>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          Dine-in Tables, Room Service Deliveries, Takeaway Parcels &amp; Restaurant Cash Drawer
+                        </span>
+                      </div>
+                    </div>
+                    <span style={{ background: '#ecfdf5', color: '#065f46', border: '1.5px solid #6ee7b7', fontWeight: 850, padding: '4px 14px', borderRadius: '8px', fontSize: '0.82rem' }}>
+                      Department: Restaurant Only
+                    </span>
                   </div>
 
-                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💳 Card POS</span>
-                    <strong style={{ fontSize: '1.05rem', color: '#7c3aed' }}>
-                      {formatCurrency(analyticsData?.analytics?.paymentModes?.card || 0)}
-                    </strong>
-                    {Number(analyticsData?.analytics?.paymentModes?.cardSurcharge || analyticsData?.totalCardSurcharge || 0) > 0 && (
-                      <span style={{ display: 'block', fontSize: '0.70rem', color: '#b45309', fontWeight: 800, marginTop: '2px' }}>
-                        + {formatCurrency(analyticsData?.analytics?.paymentModes?.cardSurcharge || analyticsData?.totalCardSurcharge || 0)} 2.5% Fee Coll.
+                  {/* 8 Restaurant KPI Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Total Realized Revenue
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(restTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Direct Settled Restaurant Orders</div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Net Cash in Drawer
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(restDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Rest. Cash In - Pantry Outflows</div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Inflow</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                        {formatCurrency(restCash)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                        Physical Counter Cash
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online UPI &amp; Card</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
+                        {formatCurrency(restUpi + restCard)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                        UPI: {formatCurrency(restUpi)} • Card: {formatCurrency(restCard)}
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #059669', padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Settled Orders Count</div>
+                        <span style={{ fontSize: '0.70rem', background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
+                          F&amp;B POS
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#047857', margin: '4px 0 2px' }}>
+                        {restCount} Order(s)
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
+                        Paid Food &amp; Beverage Bills
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
+                        {formatCurrency(restBase)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
+                        F&amp;B Base Price (Excl. GST)
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                        {formatCurrency(restGst)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                        Restaurant Standard 5% F&amp;B GST
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
+                        {formatCurrency(restCardSurcharge + restUpiTax)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Card: {formatCurrency(restCardSurcharge)}</span>
+                        <span>UPI: {formatCurrency(restUpiTax)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Advance Financial Analytics for Restaurant (3 Cards) */}
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#047857', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📈</span> Advance Financial Analytics &amp; Departmental Audit
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        Restaurant POS Realized Inflows, Kitchen Pantry Outflows &amp; Surcharges ({analyticsFromDate} to {analyticsToDate})
                       </span>
-                    )}
-                  </div>
-
-                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>🏦 Cheque Passed</span>
-                    <strong style={{ fontSize: '1.05rem', color: '#d97706' }}>
-                      {formatCurrency(analyticsData?.analytics?.paymentModes?.chequeRealized || 0)}
-                    </strong>
-                  </div>
-                </div>
-
-                {analyticsData?.pendingChequesAmount > 0 && (
-                  <div style={{ marginTop: '12px', padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', fontSize: '0.8rem', color: '#92400e', fontWeight: 700 }}>
-                    ⚠️ {analyticsData.pendingChequesCount} Cheque(s) pending realization: {formatCurrency(analyticsData.pendingChequesAmount)}
-                  </div>
-                )}
-              </div>
-
-              {/* Card 3: Expenses & Net Margin */}
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1.5px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 850, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>📉</span> Expenses &amp; Net Margin
-                  </h4>
-                  <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '0.95rem' }}>
-                    - {formatCurrency(analyticsData?.expensesTotal || 0)}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                    <span>Store / Kitchen Pantry:</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.analytics?.expenses?.store_pantry || 0)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                    <span>Repairs &amp; Maintenance:</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.analytics?.expenses?.maintenance || 0)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                    <span>Guest Refunds:</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.analytics?.expenses?.refunds || 0)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                    <span>Owner Drawings:</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(analyticsData?.analytics?.expenses?.owner_drawings || 0)}</strong>
-                  </div>
-
-                  <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, color: '#334155' }}>Operating Net Profit:</span>
-                    <strong style={{ fontSize: '1.2rem', fontWeight: 950, color: (analyticsData?.stats?.netProfit || 0) >= 0 ? '#15803d' : '#dc2626' }}>
-                      {formatCurrency(analyticsData?.stats?.netProfit || 0)}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 4: Surcharges & Convenience Tax Collection Audit */}
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1.5px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 850, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>⚡</span> Extra Fees &amp; Taxes Audit
-                  </h4>
-                  <span style={{ fontWeight: 900, color: '#b45309', fontSize: '1rem' }}>
-                    {formatCurrency(analyticsData?.totalSurcharges || (analyticsData?.totalCardSurcharge || 0) + (analyticsData?.totalUpiTax || 0))}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '10px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <span style={{ fontSize: '0.76rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
-                      <span style={{ fontSize: '0.70rem', color: '#b45309' }}>From debit/credit swipes across Hotel, Rest. &amp; Bar</span>
                     </div>
-                    <strong style={{ fontSize: '1.05rem', color: '#b45309' }}>
-                      {formatCurrency(analyticsData?.totalCardSurcharge || analyticsData?.analytics?.paymentModes?.cardSurcharge || 0)}
-                    </strong>
-                  </div>
 
-                  <div style={{ background: '#f0f9ff', padding: '10px 12px', borderRadius: '10px', border: '1px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <span style={{ fontSize: '0.76rem', color: '#0369a1', fontWeight: 750, display: 'block' }}>📱 UPI 0.4% Tax (&gt; ₹2,000)</span>
-                      <span style={{ fontSize: '0.70rem', color: '#0284c7' }}>Convenience tax on online payments exceeding ₹2,000</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                      {/* Card 1: Restaurant Payment Modes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            💳 Payment Modes Audit
+                          </h5>
+                          <span style={{ fontWeight: 800, color: '#64748b', fontSize: '0.76rem', textTransform: 'uppercase' }}>
+                            Realized Inflow
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💵 Cash Inflow</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#059669' }}>{formatCurrency(restCash)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>📱 UPI / Online</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>{formatCurrency(restUpi)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💳 Card POS</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#7c3aed' }}>{formatCurrency(restCard)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>🍽️ Direct Settled</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#047857' }}>{formatCurrency(restTotal)}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 2: Restaurant Expenses & Net Margin */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            📉 Expenses &amp; Net Margin
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '0.92rem' }}>
+                            - {formatCurrency(restExpensesTotal)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Store / Kitchen Pantry:</span>
+                            <strong style={{ color: '#0f172a' }}>{formatCurrency(restStorePantry)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Gas &amp; Kitchen Upkeep:</span>
+                            <strong style={{ color: '#0f172a' }}>₹0.00</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Kitchen Staff Meal Cost:</span>
+                            <strong style={{ color: '#0f172a' }}>₹0.00</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155' }}>Operating Net Profit:</span>
+                            <strong style={{ fontSize: '1.15rem', fontWeight: 950, color: (restTotal - restExpensesTotal) >= 0 ? '#15803d' : '#dc2626' }}>
+                              {formatCurrency(restTotal - restExpensesTotal)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Restaurant Extra Fees & Taxes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            ⚡ Extra Fees &amp; Taxes Audit
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#b45309', fontSize: '0.95rem' }}>
+                            {formatCurrency(restCardSurcharge + restUpiTax)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From restaurant card swipes</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(restCardSurcharge)}</strong>
+                          </div>
+                          <div style={{ background: '#f0f9ff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 750, display: 'block' }}>📱 UPI 0.4% Tax (&gt; ₹2,000)</span>
+                              <span style={{ fontSize: '0.68rem', color: '#0284c7' }}>Convenience tax on restaurant online bills</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#0284c7' }}>{formatCurrency(restUpiTax)}</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155', fontSize: '0.78rem' }}>Total Pass-through Collections:</span>
+                            <strong style={{ fontSize: '1.05rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(restCardSurcharge + restUpiTax)}</strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>
-                      {formatCurrency(analyticsData?.totalUpiTax || analyticsData?.analytics?.paymentModes?.upiTax || 0)}
-                    </strong>
-                  </div>
-
-                  <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 800, color: '#334155', fontSize: '0.82rem' }}>Total Pass-through Collections:</span>
-                    <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: '#0f172a' }}>
-                      {formatCurrency(analyticsData?.totalSurcharges || (analyticsData?.totalCardSurcharge || 0) + (analyticsData?.totalUpiTax || 0))}
-                    </strong>
                   </div>
                 </div>
-              </div>
 
-            </div>
-          </div>
+                {/* ========================================================================= */}
+                {/* 3. SECTION 3: BAR LOUNGE (BAR & LIQUOR POS ONLY) */}
+                {/* ========================================================================= */}
+                <div style={{ background: '#f8fafc', border: '2px solid #ddd6fe', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  
+                  {/* Section Title Banner */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #ede9fe', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>
+                        🍸
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 950, color: '#6d28d9' }}>
+                          Bar Lounge &amp; Liquor POS Audit
+                        </h3>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          Counter Drinks, Lounge Seating, Beverage Settlements &amp; Bar Cash Drawer
+                        </span>
+                      </div>
+                    </div>
+                    <span style={{ background: '#f5f3ff', color: '#5b21b6', border: '1.5px solid #c4b5fd', fontWeight: 850, padding: '4px 14px', borderRadius: '8px', fontSize: '0.82rem' }}>
+                      Department: Bar Lounge Only
+                    </span>
+                  </div>
+
+                  {/* 8 Bar KPI Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Total Realized Revenue
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(barTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Direct Settled Bar Orders</div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
+                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Net Cash in Drawer
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                        {formatCurrency(barDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Bar Cash In - Expenses Out</div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Inflow</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                        {formatCurrency(barCash)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                        Physical Counter &amp; Bar Cash
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online UPI &amp; Card</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#7c3aed', margin: '4px 0 2px' }}>
+                        {formatCurrency(barUpi + barCard)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                        UPI: {formatCurrency(barUpi)} • Card: {formatCurrency(barCard)}
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #7c3aed', padding: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase' }}>Settled Bills Count</div>
+                        <span style={{ fontSize: '0.70rem', background: '#f3e8ff', color: '#7e22ce', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
+                          Bar POS
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#6d28d9', margin: '4px 0 2px' }}>
+                        {barCount} Bill(s)
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#7c3aed', fontWeight: 700 }}>
+                        Paid Drink &amp; Snack Bills
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
+                        {formatCurrency(barBase)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
+                        Liquor Base Price (Excl. GST)
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                        {formatCurrency(barGst)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                        Standard 5% GST on Bar
+                      </div>
+                    </div>
+
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
+                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
+                        {formatCurrency(barCardSurcharge + barUpiTax)}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Card: {formatCurrency(barCardSurcharge)}</span>
+                        <span>UPI: {formatCurrency(barUpiTax)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Advance Financial Analytics for Bar (3 Cards) */}
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📈</span> Advance Financial Analytics &amp; Departmental Audit
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        Bar Lounge Realized Inflows, Beverage Outflows &amp; Surcharges ({analyticsFromDate} to {analyticsToDate})
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                      {/* Card 1: Bar Payment Modes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            💳 Payment Modes Audit
+                          </h5>
+                          <span style={{ fontWeight: 800, color: '#64748b', fontSize: '0.76rem', textTransform: 'uppercase' }}>
+                            Realized Inflow
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💵 Cash Inflow</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#059669' }}>{formatCurrency(barCash)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>📱 UPI / Online</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#0284c7' }}>{formatCurrency(barUpi)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>💳 Card POS</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#7c3aed' }}>{formatCurrency(barCard)}</strong>
+                          </div>
+                          <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, display: 'block' }}>🍸 Direct Settled</span>
+                            <strong style={{ fontSize: '1.05rem', color: '#6d28d9' }}>{formatCurrency(barTotal)}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 2: Bar Expenses & Net Margin */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            📉 Expenses &amp; Net Margin
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '0.92rem' }}>
+                            - {formatCurrency(barExpensesTotal)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.82rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Bar Stock / Store:</span>
+                            <strong style={{ color: '#0f172a' }}>₹0.00</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Glassware &amp; Upkeep:</span>
+                            <strong style={{ color: '#0f172a' }}>₹0.00</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Bar License / Amortization:</span>
+                            <strong style={{ color: '#0f172a' }}>₹0.00</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155' }}>Operating Net Profit:</span>
+                            <strong style={{ fontSize: '1.15rem', fontWeight: 950, color: (barTotal - barExpensesTotal) >= 0 ? '#15803d' : '#dc2626' }}>
+                              {formatCurrency(barTotal - barExpensesTotal)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Bar Extra Fees & Taxes */}
+                      <div style={{ background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <h5 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 850, color: '#1e293b' }}>
+                            ⚡ Extra Fees &amp; Taxes Audit
+                          </h5>
+                          <span style={{ fontWeight: 900, color: '#b45309', fontSize: '0.95rem' }}>
+                            {formatCurrency(barCardSurcharge + barUpiTax)}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From bar card swipes</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(barCardSurcharge)}</strong>
+                          </div>
+                          <div style={{ background: '#f0f9ff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 750, display: 'block' }}>📱 UPI 0.4% Tax (&gt; ₹2,000)</span>
+                              <span style={{ fontSize: '0.68rem', color: '#0284c7' }}>Convenience tax on bar online bills</span>
+                            </div>
+                            <strong style={{ fontSize: '1rem', color: '#0284c7' }}>{formatCurrency(barUpiTax)}</strong>
+                          </div>
+                          <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 800, color: '#334155', fontSize: '0.78rem' }}>Total Pass-through Collections:</span>
+                            <strong style={{ fontSize: '1.05rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(barCardSurcharge + barUpiTax)}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            );
+          })()}
         </div>
       )}
 

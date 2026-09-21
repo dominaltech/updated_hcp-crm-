@@ -7254,6 +7254,7 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
         restSales.cash += ordTotal;
       }
     }
+    restSales.count = restOrders.length;
 
     // 4. Bar POS Sales (Itemized for accurate split payment modes, subtotal base, and GST tax)
     const barOrders = db.prepare(`
@@ -7263,7 +7264,7 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
       ${dateFilterBar ? dateFilterBar + ' AND' : 'WHERE'} is_paid = 1 AND payment_mode != 'room_folio'
     `).all(...dateParams);
 
-    let barSales = { total: 0, subtotal: 0, tax: 0, cash: 0, card: 0, upi: 0, card_surcharge: 0, upi_tax: 0 };
+    let barSales = { total: 0, subtotal: 0, tax: 0, cash: 0, card: 0, upi: 0, card_surcharge: 0, upi_tax: 0, count: 0 };
     for (const o of barOrders) {
       const ordTotal = Number(o.total) || 0;
       const ordTax = Number(o.tax) || 0;
@@ -7292,6 +7293,7 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
         barSales.cash += ordTotal;
       }
     }
+    barSales.count = barOrders.length;
 
     // 5. Cheque Status Totals (Pending vs Realized)
     const chequeStats = db.prepare(`
