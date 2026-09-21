@@ -1899,7 +1899,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     const totalGroupBaseRate = activeGroupBookings.reduce((sum, gb) => sum + (gb.price || 1), 0);
 
     // Generate settlement receipt or refund voucher number (format: YYYYMMDD-SR, resets monthly)
-    const finalReceiptNo = getReceiptNumberWithMode(settleMode);
+    const isBtcBooking = primaryBooking.booking_source === 'BTC' || primaryBooking.btc_company_id !== null || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending);
+    const isCompanyPaysLater = isBtcBooking && (netSettle === 0 || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending));
+    const finalReceiptNo = (!isCompanyPaysLater && netSettle > 0) ? getReceiptNumberWithMode(settleMode) : null;
     const refundVoucherNo = `DEB-${getNextMonthlyVoucherNumber('DEB')}`;
 
     const isCheque = settleMode === 'cheque';
@@ -1938,10 +1940,12 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       const bRoomCharge = finalRoomCharge !== null ? (finalRoomCharge * fraction) : null;
       const bSettle = idx === 0 ? netSettle : 0;
       const bRefund = idx === 0 ? netRefund : 0;
-      const isBtcBooking = primaryBooking.booking_source === 'BTC' || primaryBooking.btc_company_id !== null || settleMode === 'btc';
-      const updatedPaymentStatus = isBtcBooking 
-        ? 'pending_from_company' 
-        : (netSettle > 0 ? 'settled' : ((primaryBooking.total_paid || 0) >= (bRoomCharge || primaryBooking.total_room_charge || 0) ? 'settled' : 'pending'));
+      const isSettlingNow = netSettle > 0 && settleMode !== 'btc';
+      const updatedPaymentStatus = isSettlingNow
+        ? 'settled'
+        : (isCompanyPaysLater 
+            ? 'pending_from_company' 
+            : ((primaryBooking.total_paid || 0) >= (bRoomCharge || primaryBooking.total_room_charge || 0) ? 'settled' : 'pending'));
 
       db.prepare(`
         UPDATE bookings 

@@ -24,6 +24,34 @@ if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
 }
 
 /**
+ * Temporarily disables dark mode on <html> and <body> during window.print()
+ * so browser print engine renders crisp, pure-white paper sheets with zero dark patches.
+ */
+function enterPrintThemeIsolation() {
+  if (typeof document === 'undefined') return () => {};
+  const prevThemeAttr = document.documentElement.getAttribute('data-theme');
+  const wasHtmlDark = document.documentElement.classList.contains('dark-theme');
+  const wasBodyDark = document.body.classList.contains('dark-theme');
+
+  document.documentElement.setAttribute('data-theme', 'light');
+  document.documentElement.classList.remove('dark-theme');
+  document.body.classList.remove('dark-theme');
+
+  let restored = false;
+  return function exitPrintThemeIsolation() {
+    if (restored) return;
+    restored = true;
+    if (prevThemeAttr) {
+      document.documentElement.setAttribute('data-theme', prevThemeAttr);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    if (wasHtmlDark) document.documentElement.classList.add('dark-theme');
+    if (wasBodyDark) document.body.classList.add('dark-theme');
+  };
+}
+
+/**
  * Dispatches 80mm thermal slip HTML to a hidden iframe for instant silent printing,
  * with popup window fallback if iframe printing is blocked.
  */
@@ -936,6 +964,8 @@ export function printAdvanceMoneyReceipt(receipt) {
     return;
   }
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   sheet.innerHTML = buildMoneyReceiptHTML(receipt);
 
   sheet.style.display = 'flex';
@@ -947,6 +977,7 @@ export function printAdvanceMoneyReceipt(receipt) {
     sheet.style.display = 'none';
     document.body.classList.remove('print-sheet-active');
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -1143,6 +1174,8 @@ export function printPettyCashVoucher(voucher) {
     </div>
   `;
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   sheet.innerHTML = `
     ${renderVoucherCard('ORIGINAL COPY')}
     <div class="two-per-a4-perforation">
@@ -1160,6 +1193,7 @@ export function printPettyCashVoucher(voucher) {
     sheet.style.display = 'none';
     document.body.classList.remove('print-sheet-active');
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -1770,7 +1804,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   }
 
   const page1Html = `
-    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 10px 14px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid;">
+    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; min-height: 280mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 10px 14px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid;">
       <!-- Top-Right Voucher / Reg No & Check-in Date Box (Top & Right Overlapped with Main Border) -->
       <div style="position: absolute; top: -3.5px; right: -3.5px; z-index: 10;">
         <table style="border-collapse: collapse; border: 1.5px solid #1e3a8a; border-top: 3.5px solid #1e3a8a; border-right: 3.5px solid #1e3a8a; font-size: 8pt; background: #ffffff;">
@@ -2224,6 +2258,8 @@ export function printGuestRegistrationA4(data, options = {}) {
     return;
   }
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   // By default, physical paper print has includePhotos: false (NO pictures on paper)
   const includePhotos = Boolean(options?.includePhotos);
   const prevTitle = document.title;
@@ -2243,6 +2279,7 @@ export function printGuestRegistrationA4(data, options = {}) {
     document.body.classList.remove('print-sheet-active');
     document.title = prevTitle;
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -2631,6 +2668,8 @@ export function printGuestPaymentSummary(data, options = {}) {
     return;
   }
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   const prevTitle = document.title;
   const guestName = (data.guest_name || data.guestName || 'Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
   const roomNo = data.room_numbers || data.room_number || data.room || '';
@@ -2648,6 +2687,7 @@ export function printGuestPaymentSummary(data, options = {}) {
     document.body.classList.remove('print-sheet-active');
     document.title = prevTitle;
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -3169,6 +3209,8 @@ export function printFinalBillA4(room, calc, settlement) {
   const roomNum = room.room_number || room.roomNumber || calc?.room_number || '';
   document.title = `Tax_Invoice_Room_${roomNum}_${guestName}`;
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   sheet.innerHTML = buildFinalBillA4HTML(room, calc, settlement);
 
   sheet.style.display = 'block';
@@ -3181,6 +3223,7 @@ export function printFinalBillA4(room, calc, settlement) {
     document.body.classList.remove('print-sheet-active');
     document.title = prevTitle;
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -3800,6 +3843,8 @@ export function printDailyClosingReport(analyticsData, options = {}) {
     return;
   }
 
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
   sheet.innerHTML = buildDailyClosingReportHTML(analyticsData, options);
 
   sheet.style.display = 'block';
@@ -3811,6 +3856,7 @@ export function printDailyClosingReport(analyticsData, options = {}) {
     sheet.style.display = 'none';
     document.body.classList.remove('print-sheet-active');
     window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 

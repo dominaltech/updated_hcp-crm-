@@ -30,6 +30,7 @@ export default function FolioSettlementModal({
   const [chequeNo, setChequeNo] = useState('');
   const [chequeBank, setChequeBank] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [btcCheckoutMode, setBtcCheckoutMode] = useState('company_later'); // 'company_later' | 'pay_now'
 
   // Return Type & Refund States
   const [returnType, setReturnType] = useState('cash'); // 'cash', 'online', 'card'
@@ -59,6 +60,7 @@ export default function FolioSettlementModal({
       setSplitOnline(0);
       setSplitCard(0);
       setSplitCheque(0);
+      setBtcCheckoutMode('company_later');
 
       const defaultReason = isEarlyCheckout
         ? `Early checkout refund: Stayed ${stayDurationStr || `${earlyStayDays}d ${earlyStayHours}h`} (Expected ${expectedNights}d)`
@@ -73,7 +75,8 @@ export default function FolioSettlementModal({
   const remainingSettle = Math.max(0, balanceDue - totalSettled);
 
   const bookingSource = String(folioData?.bookingSource || room?.booking_source || '').toUpperCase();
-  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id);
+  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
+  const isCompanyPayingLater = isBtc && btcCheckoutMode === 'company_later';
 
   // Overpayment prevention and strict single payment method enforcement (prevents split payment)
   const handleAmountChange = (field, value) => {
@@ -192,17 +195,17 @@ export default function FolioSettlementModal({
   const totalPayingWithSurcharges = totalSettled + totalSurcharges;
 
   const handleExecuteCheckout = async () => {
-    if (!isRefund && totalSettled < balanceDue) {
+    if (!isRefund && !isCompanyPayingLater && totalSettled < balanceDue) {
       showToast(`Please settle the full remaining balance of ${formatCurrency(balanceDue)}. Current split is ${formatCurrency(totalSettled)}.`, 'red');
       return;
     }
 
-    if (!isRefund && totalSettled > balanceDue) {
+    if (!isRefund && !isCompanyPayingLater && totalSettled > balanceDue) {
       showToast(`Payment amount cannot exceed remaining balance of ${formatCurrency(balanceDue)}.`, 'red');
       return;
     }
 
-    if (!isRefund && splitOnline > 0 && !onlineUtr.trim()) {
+    if (!isRefund && !isCompanyPayingLater && splitOnline > 0 && !onlineUtr.trim()) {
       showToast('Please enter the UTR / Transaction Reference ID for Online payment.', 'red');
       return;
     }
@@ -212,14 +215,14 @@ export default function FolioSettlementModal({
       return;
     }
 
-    if (splitCheque > 0 && !chequeNo.trim()) {
+    if (!isCompanyPayingLater && splitCheque > 0 && !chequeNo.trim()) {
       showToast('Please enter the Cheque Number.', 'red');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const settleAmt = isRefund ? 0 : totalSettled;
+      const settleAmt = isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled);
       const refundAmt = isRefund ? refundAmount : 0;
       const finalRecalcRoom = isEarlyCheckout
         ? (folioData.recalculatedRoomCharge || folioData.summary?.recalculatedRoomCharge || folioData.roomCharge)
@@ -234,12 +237,14 @@ export default function FolioSettlementModal({
         is_early_checkout: isEarlyCheckout,
         isRefund,
         is_refund: isRefund,
+        is_btc_pending: isCompanyPayingLater,
+        isBtcPending: isCompanyPayingLater,
         settle_amount: settleAmt,
         settleAmount: settleAmt,
         refund_amount: refundAmt,
         refundAmount: refundAmt,
-        final_payment_mode: isRefund ? returnType : 'split',
-        finalPaymentMode: isRefund ? returnType : 'split',
+        final_payment_mode: isRefund ? returnType : (isCompanyPayingLater ? 'btc' : 'split'),
+        finalPaymentMode: isRefund ? returnType : (isCompanyPayingLater ? 'btc' : 'split'),
         return_mode: returnType,
         return_type: returnType,
         refund_mode: returnType,
@@ -247,31 +252,34 @@ export default function FolioSettlementModal({
         refund_utr: returnUtr.trim(),
         refund_reason: cleanReason,
         stay_breakdown_notes: cleanReason,
-        split_cash: isRefund ? 0 : splitCash,
-        splitCash: isRefund ? 0 : splitCash,
-        split_online: isRefund ? 0 : splitOnline,
-        splitOnline: isRefund ? 0 : splitOnline,
-        split_online_utr: onlineUtr.trim(),
-        online_utr: isRefund ? returnUtr.trim() : onlineUtr.trim(),
-        utr_number: isRefund ? returnUtr.trim() : onlineUtr.trim(),
-        splitCard: isRefund ? 0 : splitCard,
-        split_card: isRefund ? 0 : splitCard,
-        card_surcharge: cardSurcharge,
-        final_card_surcharge: cardSurcharge,
-        upi_tax: upiTax,
-        final_upi_tax: upiTax,
-        split_cheque: splitCheque,
-        splitCheque: splitCheque,
-        cheque_no: chequeNo.trim(),
-        bank_name: chequeBank.trim(),
-        isRefund,
+        split_cash: isRefund || isCompanyPayingLater ? 0 : splitCash,
+        splitCash: isRefund || isCompanyPayingLater ? 0 : splitCash,
+        split_online: isRefund || isCompanyPayingLater ? 0 : splitOnline,
+        splitOnline: isRefund || isCompanyPayingLater ? 0 : splitOnline,
+        split_online_utr: isCompanyPayingLater ? '' : onlineUtr.trim(),
+        online_utr: isRefund ? returnUtr.trim() : (isCompanyPayingLater ? '' : onlineUtr.trim()),
+        utr_number: isRefund ? returnUtr.trim() : (isCompanyPayingLater ? '' : onlineUtr.trim()),
+        splitCard: isRefund || isCompanyPayingLater ? 0 : splitCard,
+        split_card: isRefund || isCompanyPayingLater ? 0 : splitCard,
+        card_surcharge: isCompanyPayingLater ? 0 : cardSurcharge,
+        final_card_surcharge: isCompanyPayingLater ? 0 : cardSurcharge,
+        upi_tax: isCompanyPayingLater ? 0 : upiTax,
+        final_upi_tax: isCompanyPayingLater ? 0 : upiTax,
+        split_cheque: isCompanyPayingLater ? 0 : splitCheque,
+        splitCheque: isCompanyPayingLater ? 0 : splitCheque,
+        cheque_no: isCompanyPayingLater ? '' : chequeNo.trim(),
+        bank_name: isCompanyPayingLater ? '' : chequeBank.trim(),
         checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk',
         checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
       };
 
       const res = await api.checkout(room.id, payload);
       if (res && res.success) {
-        showToast(`Room #${room.room_number} checked out successfully!`, 'green', 4000);
+        if (isCompanyPayingLater) {
+          showToast(`Room #${room.room_number} checked out under Bill to Company (Pending BTC)!`, 'green', 5000);
+        } else {
+          showToast(`Room #${room.room_number} checked out successfully!`, 'green', 4000);
+        }
 
         try {
           // Always print the official A4 Tax Invoice upon checkout finalization
@@ -515,271 +523,355 @@ export default function FolioSettlementModal({
           {/* Payment Method Controls */}
           {!isRefund && balanceDue > 0 && (
             <div style={{ margin: '20px 0 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                  Payment Method:
-                </label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button type="button" className="btn-quick-fill" onClick={() => quickFill('cash')}>
-                    100% Cash
-                  </button>
-                  <button type="button" className="btn-quick-fill" onClick={() => quickFill('online')}>
-                    100% UPI
-                  </button>
-                  <button type="button" className="btn-quick-fill" onClick={() => quickFill('card')}>
-                    100% Card
-                  </button>
-                </div>
-              </div>
-
-              <div className="unified-pay-grid">
-                {/* Cash */}
-                <div
-                  className={`pay-method-box ${isCashActive ? 'active' : ''}`}
-                  onClick={() => selectPaymentMethod('cash', cashInputRef)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="paybox-header">
-                    <div className="paybox-icon">💵</div>
-                    <div className="paybox-info">
-                      <div className="paybox-name">Cash</div>
-                      <div className="paybox-desc">Direct Cash</div>
-                    </div>
-                  </div>
-                  <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
-                    <span className="paybox-symbol">₹</span>
-                    <input
-                      ref={cashInputRef}
-                      type="number"
-                      className="paybox-input"
-                      min={0}
-                      max={balanceDue}
-                      value={splitCash || ''}
-                      placeholder="0"
-                      onFocus={() => selectPaymentMethod('cash', cashInputRef)}
-                      onChange={(e) => handleAmountChange('cash', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* UPI */}
-                <div
-                  className={`pay-method-box ${isOnlineActive ? 'active' : ''}`}
-                  onClick={() => selectPaymentMethod('online', onlineInputRef)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="paybox-header">
-                    <div className="paybox-icon">📱</div>
-                    <div className="paybox-info">
-                      <div className="paybox-name">UPI / Online</div>
-                      <div className="paybox-desc">GPay, PhonePe, QR</div>
-                    </div>
-                  </div>
-                  <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
-                    <span className="paybox-symbol">₹</span>
-                    <input
-                      ref={onlineInputRef}
-                      type="number"
-                      className="paybox-input"
-                      min={0}
-                      max={balanceDue}
-                      value={splitOnline || ''}
-                      placeholder="0"
-                      onFocus={() => selectPaymentMethod('online', onlineInputRef)}
-                      onChange={(e) => handleAmountChange('online', e.target.value)}
-                    />
-                  </div>
-                  {splitOnline > upiThresh && upiPct > 0 && (
-                    <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
-                      + {upiPct}% Tax: ₹{upiTax} (Pay: ₹{upiTotalPay})
-                    </div>
-                  )}
-                  {splitOnline > 0 && (splitOnline <= upiThresh || upiPct === 0) && (
-                    <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
-                      ✓ 0% Tax (UPI ≤ ₹{upiThresh.toLocaleString('en-IN')})
-                    </div>
-                  )}
-                </div>
-
-                {/* Card */}
-                <div
-                  className={`pay-method-box ${isCardActive ? 'active' : ''}`}
-                  onClick={() => selectPaymentMethod('card', cardInputRef)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="paybox-header">
-                    <div className="paybox-icon">💳</div>
-                    <div className="paybox-info">
-                      <div className="paybox-name">Card POS</div>
-                      <div className="paybox-desc">Debit / Credit POS</div>
-                    </div>
-                  </div>
-                  <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
-                    <span className="paybox-symbol">₹</span>
-                    <input
-                      ref={cardInputRef}
-                      type="number"
-                      className="paybox-input"
-                      min={0}
-                      max={balanceDue}
-                      value={splitCard || ''}
-                      placeholder="0"
-                      onFocus={() => selectPaymentMethod('card', cardInputRef)}
-                      onChange={(e) => handleAmountChange('card', e.target.value)}
-                    />
-                  </div>
-                  {splitCard > 0 && cardPct > 0 && (
-                    <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
-                      + {cardPct}% Fee: ₹{cardSurcharge} (Swipe: ₹{cardTotalSwipe})
-                    </div>
-                  )}
-                  {splitCard > 0 && cardPct === 0 && (
-                    <div style={{ fontSize: '0.70rem', color: '#16a34a', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
-                      ✓ 0% Card Surcharge
-                    </div>
-                  )}
-                </div>
-
-                {/* Cheque (ONLY FOR BTC BOOKINGS) */}
-                {isBtc && (
-                  <div
-                    className={`pay-method-box ${isChequeActive ? 'active' : ''}`}
-                    onClick={() => selectPaymentMethod('cheque', chequeInputRef)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="paybox-header">
-                      <div className="paybox-icon">📑</div>
-                      <div className="paybox-info">
-                        <div className="paybox-name">Cheque</div>
-                        <div className="paybox-desc">Corporate BTC Only</div>
-                      </div>
-                    </div>
-                    <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
-                      <span className="paybox-symbol">₹</span>
-                      <input
-                        ref={chequeInputRef}
-                        type="number"
-                        className="paybox-input"
-                        min={0}
-                        max={balanceDue}
-                        value={splitCheque || ''}
-                        placeholder="0"
-                        onFocus={() => selectPaymentMethod('cheque', chequeInputRef)}
-                        onChange={(e) => handleAmountChange('cheque', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Mandatory Online Payment UTR / Ref ID Panel */}
-              {splitOnline > 0 && (
-                <div
-                  id="checkout-online-utr-panel"
-                  style={{
-                    marginTop: '14px',
-                    padding: '14px 18px',
-                    background: 'var(--bg-surface-secondary)',
-                    border: '1.5px solid var(--apple-blue)',
-                    borderRadius: '12px',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 850, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#ef4444' }}>* (Mandatory)</span>
-                    </label>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 800, background: 'rgba(56, 189, 248, 0.16)', color: 'var(--apple-blue)', padding: '2px 8px', borderRadius: '8px' }}>
-                      Required for ₹{splitOnline.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Enter 12-digit UTR No. / Transaction Ref ID (e.g. 423589123456)"
-                    value={onlineUtr}
-                    onChange={(e) => setOnlineUtr(e.target.value)}
-                    style={{
-                      height: '42px',
-                      background: 'var(--bg-app)',
-                      fontSize: '0.95rem',
-                      fontWeight: 700,
-                      border: !onlineUtr.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)',
-                      color: 'var(--text-primary)'
-                    }}
-                    required
-                  />
-                  {!onlineUtr.trim() && (
-                    <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, marginTop: '5px' }}>
-                      ⚠️ UTR ID is mandatory to confirm online payment settlement before checkout.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Cheque Realization Panel */}
-              {splitCheque > 0 && (
-                <div
-                  id="checkout-cheque-panel"
-                  style={{
-                    marginTop: '14px',
-                    padding: '14px 18px',
-                    background: 'var(--bg-surface-secondary)',
-                    border: '1.5px solid var(--border-color)',
-                    borderRadius: '12px'
-                  }}
-                >
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                    <span>📑</span> Cheque Realization Details *
+              {/* BTC Mode Switcher (Default: Bill to Company, with Pay Now @ Spot option) */}
+              {isBtc && (
+                <div style={{ marginBottom: '18px', background: 'var(--bg-surface)', border: '1.5px solid var(--border-color)', borderRadius: '12px', padding: '14px' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+                    🏢 Bill To Company (BTC) Settlement Mode:
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
-                        Cheque Number *
-                      </label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. 000412"
-                        value={chequeNo}
-                        onChange={(e) => setChequeNo(e.target.value)}
-                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
-                        Bank Name &amp; Branch *
-                      </label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        placeholder="e.g. SBI, Solapur"
-                        value={chequeBank}
-                        onChange={(e) => setChequeBank(e.target.value)}
-                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
-                        required
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBtcCheckoutMode('company_later');
+                        setSplitCash(0);
+                        setSplitOnline(0);
+                        setSplitCard(0);
+                        setSplitCheque(0);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        border: btcCheckoutMode === 'company_later' ? '2.5px solid #2563eb' : '1.5px solid var(--border-color)',
+                        background: btcCheckoutMode === 'company_later' ? '#eff6ff' : 'var(--bg-card)',
+                        color: btcCheckoutMode === 'company_later' ? '#1d4ed8' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.5rem' }}>🏢</span>
+                      <div>
+                        <div style={{ fontWeight: 850, fontSize: '0.92rem' }}>
+                          Company Pays Later <span style={{ fontSize: '0.72rem', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', marginLeft: '4px' }}>DEFAULT</span>
+                        </div>
+                        <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Guest pays ₹0 • Billed to company</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBtcCheckoutMode('pay_now');
+                        quickFill('cash');
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        border: btcCheckoutMode === 'pay_now' ? '2.5px solid #16a34a' : '1.5px solid var(--border-color)',
+                        background: btcCheckoutMode === 'pay_now' ? '#f0fdf4' : 'var(--bg-card)',
+                        color: btcCheckoutMode === 'pay_now' ? '#15803d' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.5rem' }}>💳</span>
+                      <div>
+                        <div style={{ fontWeight: 850, fontSize: '0.92rem' }}>Pay Now @ Spot</div>
+                        <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Guest pays full balance now</div>
+                      </div>
+                    </button>
                   </div>
+
+                  {btcCheckoutMode === 'company_later' ? (
+                    <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: '#fef2f2', border: '1.5px solid #fca5a5', color: '#b91c1c', fontSize: '0.84rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>📌</span>
+                      <div>
+                        <strong>Bill to Company (BTC):</strong> ₹0 will be collected from guest at checkout. The remaining balance of <strong>{formatCurrency(balanceDue)}</strong> will show in <strong style={{ color: '#dc2626' }}>RED as Pending BTC</strong> in Hospitality History and can be settled anytime from history when company releases payment.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '12px', padding: '8px 12px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', fontSize: '0.82rem' }}>
+                      ✓ Guest will pay the balance of <strong>{formatCurrency(balanceDue)}</strong> right now. Select payment method below.
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Real-time Status */}
-              <div
-                className="balance-alert"
-                style={{
-                  marginTop: '12px',
-                  background: remainingSettle === 0 ? '#dcfce7' : '#fef2f2',
-                  color: remainingSettle === 0 ? '#166534' : '#dc2626',
-                  border: remainingSettle === 0 ? '1px solid #bbf7d0' : '1.5px solid #fca5a5',
-                  fontWeight: 850
-                }}
-              >
-                {remainingSettle === 0
-                  ? `✓ Settle Split Matches Balance: ${formatCurrency(totalSettled)}${totalSurcharges > 0 ? ` (Total Collect incl. Surcharges/Tax: ${formatCurrency(totalPayingWithSurcharges)})` : ''}`
-                  : `Remaining to allocate: ${formatCurrency(remainingSettle)}`}
-              </div>
+              {/* Only show payment method inputs if NOT company_later */}
+              {!isCompanyPayingLater && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                      Payment Method:
+                    </label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button type="button" className="btn-quick-fill" onClick={() => quickFill('cash')}>
+                        100% Cash
+                      </button>
+                      <button type="button" className="btn-quick-fill" onClick={() => quickFill('online')}>
+                        100% UPI
+                      </button>
+                      <button type="button" className="btn-quick-fill" onClick={() => quickFill('card')}>
+                        100% Card
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="unified-pay-grid">
+                    {/* Cash */}
+                    <div
+                      className={`pay-method-box ${isCashActive ? 'active' : ''}`}
+                      onClick={() => selectPaymentMethod('cash', cashInputRef)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="paybox-header">
+                        <div className="paybox-icon">💵</div>
+                        <div className="paybox-info">
+                          <div className="paybox-name">Cash</div>
+                          <div className="paybox-desc">Direct Cash</div>
+                        </div>
+                      </div>
+                      <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
+                        <span className="paybox-symbol">₹</span>
+                        <input
+                          ref={cashInputRef}
+                          type="number"
+                          className="paybox-input"
+                          min={0}
+                          max={balanceDue}
+                          value={splitCash || ''}
+                          placeholder="0"
+                          onFocus={() => selectPaymentMethod('cash', cashInputRef)}
+                          onChange={(e) => handleAmountChange('cash', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* UPI */}
+                    <div
+                      className={`pay-method-box ${isOnlineActive ? 'active' : ''}`}
+                      onClick={() => selectPaymentMethod('online', onlineInputRef)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="paybox-header">
+                        <div className="paybox-icon">📱</div>
+                        <div className="paybox-info">
+                          <div className="paybox-name">UPI / Online</div>
+                          <div className="paybox-desc">GPay, PhonePe, QR</div>
+                        </div>
+                      </div>
+                      <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
+                        <span className="paybox-symbol">₹</span>
+                        <input
+                          ref={onlineInputRef}
+                          type="number"
+                          className="paybox-input"
+                          min={0}
+                          max={balanceDue}
+                          value={splitOnline || ''}
+                          placeholder="0"
+                          onFocus={() => selectPaymentMethod('online', onlineInputRef)}
+                          onChange={(e) => handleAmountChange('online', e.target.value)}
+                        />
+                      </div>
+                      {splitOnline > upiThresh && upiPct > 0 && (
+                        <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
+                          + {upiPct}% Tax: ₹{upiTax} (Pay: ₹{upiTotalPay})
+                        </div>
+                      )}
+                      {splitOnline > 0 && (splitOnline <= upiThresh || upiPct === 0) && (
+                        <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
+                          ✓ 0% Tax (UPI ≤ ₹{upiThresh.toLocaleString('en-IN')})
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card */}
+                    <div
+                      className={`pay-method-box ${isCardActive ? 'active' : ''}`}
+                      onClick={() => selectPaymentMethod('card', cardInputRef)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="paybox-header">
+                        <div className="paybox-icon">💳</div>
+                        <div className="paybox-info">
+                          <div className="paybox-name">Card POS</div>
+                          <div className="paybox-desc">Debit / Credit POS</div>
+                        </div>
+                      </div>
+                      <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
+                        <span className="paybox-symbol">₹</span>
+                        <input
+                          ref={cardInputRef}
+                          type="number"
+                          className="paybox-input"
+                          min={0}
+                          max={balanceDue}
+                          value={splitCard || ''}
+                          placeholder="0"
+                          onFocus={() => selectPaymentMethod('card', cardInputRef)}
+                          onChange={(e) => handleAmountChange('card', e.target.value)}
+                        />
+                      </div>
+                      {splitCard > 0 && cardPct > 0 && (
+                        <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
+                          + {cardPct}% Fee: ₹{cardSurcharge} (Swipe: ₹{cardTotalSwipe})
+                        </div>
+                      )}
+                      {splitCard > 0 && cardPct === 0 && (
+                        <div style={{ fontSize: '0.70rem', color: '#16a34a', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
+                          ✓ 0% Card Surcharge
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cheque (ONLY FOR BTC BOOKINGS) */}
+                    {isBtc && (
+                      <div
+                        className={`pay-method-box ${isChequeActive ? 'active' : ''}`}
+                        onClick={() => selectPaymentMethod('cheque', chequeInputRef)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="paybox-header">
+                          <div className="paybox-icon">🏛️</div>
+                          <div className="paybox-info">
+                            <div className="paybox-name">Cheque</div>
+                            <div className="paybox-desc">Company / Bank Cheque</div>
+                          </div>
+                        </div>
+                        <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
+                          <span className="paybox-symbol">₹</span>
+                          <input
+                            ref={chequeInputRef}
+                            type="number"
+                            className="paybox-input"
+                            min={0}
+                            max={balanceDue}
+                            value={splitCheque || ''}
+                            placeholder="0"
+                            onFocus={() => selectPaymentMethod('cheque', chequeInputRef)}
+                            onChange={(e) => handleAmountChange('cheque', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mandatory Online Payment UTR / Ref ID Panel */}
+                  {splitOnline > 0 && (
+                    <div
+                      id="checkout-online-utr-panel"
+                      style={{
+                        marginTop: '14px',
+                        padding: '14px 18px',
+                        background: 'var(--bg-surface-secondary)',
+                        border: '1.5px solid var(--apple-blue)',
+                        borderRadius: '12px',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 850, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#ef4444' }}>* (Mandatory)</span>
+                        </label>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, background: 'rgba(56, 189, 248, 0.16)', color: 'var(--apple-blue)', padding: '2px 8px', borderRadius: '8px' }}>
+                          Required for ₹{splitOnline.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Enter 12-digit UTR No. / Transaction Ref ID (e.g. 423589123456)"
+                        value={onlineUtr}
+                        onChange={(e) => setOnlineUtr(e.target.value)}
+                        style={{
+                          height: '42px',
+                          background: 'var(--bg-app)',
+                          fontSize: '0.95rem',
+                          fontWeight: 700,
+                          border: !onlineUtr.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)',
+                          color: 'var(--text-primary)'
+                        }}
+                        required
+                      />
+                      {!onlineUtr.trim() && (
+                        <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, marginTop: '5px' }}>
+                          ⚠️ UTR ID is mandatory to confirm online payment settlement before checkout.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cheque Realization Panel */}
+                  {splitCheque > 0 && (
+                    <div
+                      id="checkout-cheque-panel"
+                      style={{
+                        marginTop: '14px',
+                        padding: '14px 18px',
+                        background: 'var(--bg-surface-secondary)',
+                        border: '1.5px solid var(--border-color)',
+                        borderRadius: '12px'
+                      }}
+                    >
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                        <span>📑</span> Cheque Realization Details *
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                            Cheque Number *
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. 000412"
+                            value={chequeNo}
+                            onChange={(e) => setChequeNo(e.target.value)}
+                            style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                            Bank Name &amp; Branch *
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. SBI, Solapur"
+                            value={chequeBank}
+                            onChange={(e) => setChequeBank(e.target.value)}
+                            style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Real-time Status */}
+                  <div
+                    className="balance-alert"
+                    style={{
+                      marginTop: '12px',
+                      background: remainingSettle === 0 ? '#dcfce7' : '#fef2f2',
+                      color: remainingSettle === 0 ? '#166534' : '#dc2626',
+                      border: remainingSettle === 0 ? '1px solid #bbf7d0' : '1.5px solid #fca5a5',
+                      fontWeight: 850
+                    }}
+                  >
+                    {remainingSettle === 0
+                      ? `✓ Settle Split Matches Balance: ${formatCurrency(totalSettled)}${totalSurcharges > 0 ? ` (Total Collect incl. Surcharges/Tax: ${formatCurrency(totalPayingWithSurcharges)})` : ''}`
+                      : `Remaining to allocate: ${formatCurrency(remainingSettle)}`}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -927,8 +1019,8 @@ export default function FolioSettlementModal({
             className="filter-chip"
             onClick={() => {
               printFinalBillA4(room, folioData, {
-                settleAmt: isRefund ? 0 : settleAmt,
-                refundAmt: isRefund ? refundAmt : 0,
+                settleAmt: isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled),
+                refundAmt: isRefund ? refundAmount : 0,
                 settled_at: new Date(),
                 cardSurcharge,
                 upiTax,
@@ -953,9 +1045,17 @@ export default function FolioSettlementModal({
               className="btn-scan-action"
               onClick={handleExecuteCheckout}
               disabled={isSubmitting}
-              style={{ padding: '10px 28px', fontSize: '1rem', fontWeight: 800, borderRadius: 'var(--radius-md)' }}
+              style={{
+                padding: '10px 28px',
+                fontSize: '1rem',
+                fontWeight: 800,
+                borderRadius: 'var(--radius-md)',
+                background: isCompanyPayingLater ? '#2563eb' : undefined
+              }}
             >
-              🖨️ {isSubmitting ? 'Finalizing...' : 'Finalize Checkout & Print Bill'}
+              🖨️ {isSubmitting
+                ? 'Finalizing...'
+                : (isCompanyPayingLater ? 'Checkout (Pending BTC — ₹0 Paid)' : 'Finalize Checkout & Print Bill')}
             </button>
           </div>
         </div>

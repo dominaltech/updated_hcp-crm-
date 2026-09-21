@@ -18,6 +18,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+  // Settle BTC Modal State
+  const [settleBtcTarget, setSettleBtcTarget] = useState(null);
+  const [settleBtcMode, setSettleBtcMode] = useState('upi');
+  const [settleBtcAmount, setSettleBtcAmount] = useState('');
+  const [settleBtcUtr, setSettleBtcUtr] = useState('');
+  const [settleBtcChequeNo, setSettleBtcChequeNo] = useState('');
+  const [settleBtcChequeBank, setSettleBtcChequeBank] = useState('');
+  const [settleBtcCashier, setSettleBtcCashier] = useState('');
+  const [settleBtcNotes, setSettleBtcNotes] = useState('');
+  const [settleBtcSubmitting, setSettleBtcSubmitting] = useState(false);
+
   // Image Lightbox State for Click-to-Zoom
   const [lightboxImg, setLightboxImg] = useState(null);
   const [lightboxTitle, setLightboxTitle] = useState('Document Preview');
@@ -26,7 +37,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     if (!isSilent) setIsLoading(true);
     try {
       let params = [];
-      if (dateRange !== 'all') params.push(`range=${dateRange}`);
+      if (dateRange !== 'all' && dateRange !== 'pending_btc') params.push(`range=${dateRange}`);
       if (searchQuery.trim()) params.push(`q=${encodeURIComponent(searchQuery.trim())}`);
       const paramStr = params.join('&');
       const res = await api.getStayHistory(paramStr);
@@ -46,10 +57,131 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     loadHistory();
   }, [loadHistory]);
 
-  const totalRev = records.reduce(
+  const pendingBtcCount = records.filter((r) => {
+    return (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
+      r.payment_status !== 'settled';
+  }).length;
+
+  const filteredRecords = records.filter((r) => {
+    if (dateRange === 'pending_btc') {
+      return (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
+        r.payment_status !== 'settled';
+    }
+    if (dateRange === 'today') {
+      const itemDate = new Date(r.checkout_time || r.checkin_time);
+      const today = new Date();
+      return itemDate.toDateString() === today.toDateString();
+    }
+    if (dateRange === 'week') {
+      const itemDate = new Date(r.checkout_time || r.checkin_time);
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      return itemDate >= oneWeekAgo;
+    }
+    if (dateRange === 'month') {
+      const itemDate = new Date(r.checkout_time || r.checkin_time);
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      return itemDate >= oneMonthAgo;
+    }
+    return true;
+  });
+
+  const totalRev = filteredRecords.reduce(
     (acc, r) => acc + parseFloat(r.total_room_charge || r.total_paid || 0),
     0
   );
+
+  const handleOpenSettleBtc = (booking) => {
+    if (!booking) return;
+    setSettleBtcTarget(booking);
+    setSettleBtcMode('upi');
+    const totalDue = Math.max(0, (booking.total_room_charge || 0) - (booking.total_paid || 0)) || booking.total_room_charge || 0;
+    setSettleBtcAmount(totalDue > 0 ? String(totalDue) : String(booking.total_room_charge || ''));
+    setSettleBtcUtr('');
+    setSettleBtcChequeNo('');
+    setSettleBtcChequeBank('');
+    setSettleBtcCashier(currentUser?.full_name || currentUser?.username || 'Accounts');
+    setSettleBtcNotes(`Corporate BTC settlement for ${booking.guest_name || 'Guest'}${booking.btc_company_name ? ` (${booking.btc_company_name})` : ''}`);
+  };
+
+  const handleExecuteSettleBtc = async () => {
+    if (!settleBtcTarget) return;
+    const cleanAmt = parseFloat(settleBtcAmount);
+    if (isNaN(cleanAmt) || cleanAmt <= 0) {
+      showToast('Please enter a valid settlement amount.', 'red');
+      return;
+    }
+    if ((settleBtcMode === 'upi' || settleBtcMode === 'bank_transfer') && !settleBtcUtr.trim()) {
+      showToast('Please enter the UTR / Bank Reference Number.', 'red');
+      return;
+    }
+    if (settleBtcMode === 'cheque' && !settleBtcChequeNo.trim()) {
+      showToast('Please enter the Cheque Number.', 'red');
+      return;
+    }
+
+    setSettleBtcSubmitting(true);
+    try {
+      const payload = {
+        payment_status: 'settled',
+        settlement_mode: settleBtcMode,
+        amount_paid: cleanAmt,
+        cashier_name: (settleBtcCashier || 'Front Desk / Accounts').trim(),
+        transaction_id: settleBtcUtr.trim() || null,
+        reference_no: settleBtcUtr.trim() || null,
+        cheque_no: settleBtcChequeNo.trim() || null,
+        bank_name: settleBtcChequeBank.trim() || null,
+        notes: settleBtcNotes.trim() || `BTC Company Settlement via ${settleBtcMode.toUpperCase()}`
+      };
+
+      const res = await api.updatePaymentStatus(settleBtcTarget.id, payload);
+      if (res && res.success) {
+        showToast(`✓ BTC Payment of ${formatCurrency(cleanAmt)} settled successfully! Tax invoice is released.`, 'green', 5000);
+        const settledId = settleBtcTarget.id;
+        const targetCopy = { ...settleBtcTarget, payment_status: 'settled', final_settlement_mode: settleBtcMode };
+        setSettleBtcTarget(null);
+        loadHistory(true);
+
+        // If detail modal is open, refresh detail booking
+        if (detailBooking && detailBooking.id === settledId) {
+          handleOpenDetail(settledId);
+        }
+
+        // Trigger official A4 Tax Invoice release
+        try {
+          printFinalBillA4(targetCopy, {
+            grossTariff: targetCopy.total_room_charge,
+            roomCharge: targetCopy.total_room_charge,
+            roomTariffNet: targetCopy.total_room_charge,
+            tariffTax5Pct: Math.round(targetCopy.total_room_charge * 0.05),
+            foodTotal: targetCopy.food_total || 0,
+            barTotal: targetCopy.bar_total || 0,
+            hotelExtrasCharge: targetCopy.extra_bed_charge || 0,
+            advancePaid: cleanAmt,
+            chargedDays: targetCopy.charged_days || 1,
+            billableDays: targetCopy.charged_days || 1,
+            discountPct: 0,
+            discountAmount: 0
+          }, {
+            settleAmt: cleanAmt,
+            refundAmt: 0,
+            settled_at: new Date(),
+            invoiceNo: `L${targetCopy.id}`,
+            checked_out_by: (settleBtcCashier || 'Front Desk / Accounts').trim()
+          });
+        } catch (printErr) {
+          console.warn('Error releasing Tax Invoice:', printErr);
+        }
+      } else {
+        showToast(res?.error || 'Failed to settle BTC payment.', 'red');
+      }
+    } catch (err) {
+      showToast('Error settling payment: ' + err.message, 'red');
+    } finally {
+      setSettleBtcSubmitting(false);
+    }
+  };
 
   const formatShortDT = (dt) => {
     if (!dt) return '-';
@@ -86,7 +218,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedIds(new Set(records.map((r) => r.id)));
+      setSelectedIds(new Set(filteredRecords.map((r) => r.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -223,6 +355,37 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   : 'This Month'}
               </button>
             ))}
+            <button
+              type="button"
+              className={`history-chip ${dateRange === 'pending_btc' ? 'active' : ''}`}
+              onClick={() => setDateRange('pending_btc')}
+              style={{
+                background: dateRange === 'pending_btc' ? '#dc2626' : (pendingBtcCount > 0 ? '#fef2f2' : undefined),
+                color: dateRange === 'pending_btc' ? '#ffffff' : (pendingBtcCount > 0 ? '#dc2626' : undefined),
+                borderColor: dateRange === 'pending_btc' ? '#b91c1c' : (pendingBtcCount > 0 ? '#f87171' : undefined),
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              title="Filter by Pending Bill to Company (BTC) Bookings"
+            >
+              <span>🏢 Pending BTC</span>
+              {pendingBtcCount > 0 && (
+                <span
+                  style={{
+                    background: dateRange === 'pending_btc' ? '#ffffff' : '#dc2626',
+                    color: dateRange === 'pending_btc' ? '#dc2626' : '#ffffff',
+                    padding: '1px 7px',
+                    borderRadius: '10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 900
+                  }}
+                >
+                  {pendingBtcCount}
+                </span>
+              )}
+            </button>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -303,9 +466,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         </div>
 
         <div className="history-stats-bar">
-          <span>Showing {records.length} completed stays</span>
+          <span>Showing {filteredRecords.length} completed stays</span>
           <span className="stats-sep">•</span>
           <span>Total Revenue: {formatCurrency(totalRev)}</span>
+          {pendingBtcCount > 0 && (
+            <>
+              <span className="stats-sep">•</span>
+              <span style={{ color: '#dc2626', fontWeight: 800 }}>
+                🏢 {pendingBtcCount} Pending BTC Stay{pendingBtcCount > 1 ? 's' : ''}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -317,7 +488,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               <th style={{ width: '44px', textAlign: 'center' }}>
                 <input
                   type="checkbox"
-                  checked={records.length > 0 && selectedIds.size === records.length}
+                  checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                   title="Select / Deselect All Rows"
                   style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#dc2626' }}
@@ -329,17 +500,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               <th style={{ width: '160px' }}>Check-In</th>
               <th style={{ width: '160px' }}>Check-Out</th>
               <th style={{ width: '130px' }}>Stay Duration</th>
-              <th style={{ width: '130px' }}>Amount Paid</th>
+              <th style={{ width: '150px' }}>Amount Paid</th>
               <th style={{ width: '170px' }}>Cashier Staff</th>
-              <th style={{ width: '140px', textAlign: 'center' }}>Actions</th>
+              <th style={{ width: '160px', textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {records.map((r) => {
+            {filteredRecords.map((r) => {
               const isCheckedOut = r.status === 'checked_out';
               const isSelected = selectedIds.has(r.id);
               const isBtcPending =
-                (r.booking_source === 'BTC' || r.btc_company_id !== null) &&
+                (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
                 r.payment_status !== 'settled';
               const isPending =
                 isBtcPending ||
@@ -500,8 +671,8 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     <div
                       style={{
                         fontSize: '0.95rem',
-                        fontWeight: 800,
-                        color: isPending ? '#b45309' : '#15803d'
+                        fontWeight: 850,
+                        color: isBtcPending ? '#dc2626' : (isPending ? '#b45309' : '#15803d')
                       }}
                     >
                       {formatCurrency(r.total_room_charge || r.total_paid || 0)}
@@ -528,29 +699,59 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </div>
                     )}
                     <div style={{ marginTop: '3px' }}>
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onChangePaymentStatus) onChangePaymentStatus(r);
-                        }}
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          padding: '2px 7px',
-                          borderRadius: '6px',
-                          background: isPending ? '#fffbeb' : '#dcfce7',
-                          color: isPending ? '#b45309' : '#166534',
-                          border: `1px solid ${isPending ? '#fde68a' : '#bbf7d0'}`,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                        title="Click to Change Payment Status"
-                      >
-                        {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
-                      </span>
+                      {isBtcPending ? (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSettleBtc(r);
+                          }}
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 850,
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: '#fef2f2',
+                            color: '#dc2626',
+                            border: '1.5px solid #f87171',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Click to Settle Pending BTC Payment from Company"
+                        >
+                          🏢 Pending BTC ✏️
+                        </span>
+                      ) : (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onChangePaymentStatus) onChangePaymentStatus(r);
+                          }}
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 7px',
+                            borderRadius: '6px',
+                            background: isPending ? '#fffbeb' : '#dcfce7',
+                            color: isPending ? '#b45309' : '#166534',
+                            border: `1px solid ${isPending ? '#fde68a' : '#bbf7d0'}`,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Click to Change Payment Status"
+                        >
+                          {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
+                        </span>
+                      )}
                     </div>
+                    {r.btc_company_name && (
+                      <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
+                        🏢 {r.btc_company_name}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem' }}>
@@ -565,7 +766,31 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     </div>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
+                      {isBtcPending && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSettleBtc(r);
+                          }}
+                          style={{
+                            padding: '5px 8px',
+                            fontSize: '0.74rem',
+                            fontWeight: 850,
+                            background: '#dc2626',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
+                          }}
+                          title="Accept and Settle Corporate Bill from Company"
+                        >
+                          💳 Settle BTC
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn-primary"
@@ -615,7 +840,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
           </tbody>
         </table>
 
-        {records.length === 0 && !isLoading && (
+        {filteredRecords.length === 0 && !isLoading && (
           <div className="history-empty-state">
             <div style={{ fontSize: '3rem', marginBottom: '8px' }}>📜</div>
             <h3 style={{ margin: '0 0 4px', fontWeight: 800, color: '#334155' }}>No Stay History Found</h3>
@@ -662,6 +887,43 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 </div>
               ) : (
                 <>
+                  {/* BTC Settlement Alert Banner if Pending */}
+                  {Boolean(
+                    (detailBooking.booking_source === 'BTC' || detailBooking.btc_company_id !== null || detailBooking.final_payment_mode === 'btc' || detailBooking.payment_status === 'pending_from_company') &&
+                    detailBooking.payment_status !== 'settled'
+                  ) && (
+                    <div style={{ padding: '14px 18px', background: '#fef2f2', border: '1.5px solid #f87171', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '1.6rem' }}>🏢</span>
+                        <div>
+                          <div style={{ fontWeight: 850, color: '#dc2626', fontSize: '0.95rem' }}>
+                            Payment Pending from Company: {formatCurrency(detailBooking.total_room_charge || 0)}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: '#991b1b', marginTop: '2px' }}>
+                            Company: <strong>{detailBooking.btc_company_name || 'Corporate'}</strong> {detailBooking.btc_approval_ref ? `• Approval Ref: ${detailBooking.btc_approval_ref}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSettleBtc(detailBooking)}
+                        style={{
+                          padding: '8px 18px',
+                          fontSize: '0.85rem',
+                          fontWeight: 850,
+                          background: '#dc2626',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)'
+                        }}
+                      >
+                        💳 Settle BTC Payment
+                      </button>
+                    </div>
+                  )}
+
                   {/* Guest Identity Card */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '18px', padding: '18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1px solid var(--border-color, #e2e8f0)' }}>
                     <div>
@@ -1219,6 +1481,205 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
           </div>
         </div>
       )}
+      {/* Settle BTC Payment Modal */}
+      {settleBtcTarget && (
+        <div className="modal-overlay active" style={{ zIndex: 10100 }}>
+          <div className="modal-container" style={{ maxWidth: '580px', width: '95%' }}>
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.5rem', padding: '6px 10px', background: '#fee2e2', borderRadius: '10px', color: '#dc2626' }}>🏢</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 850, color: 'var(--text-primary, #0f172a)' }}>
+                    Settle Corporate BTC Payment
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)' }}>
+                    Booking #{settleBtcTarget.id} • {settleBtcTarget.guest_name} • Room #{settleBtcTarget.room_number || (settleBtcTarget.rooms ? settleBtcTarget.rooms.join(', #') : '-')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setSettleBtcTarget(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '20px' }}>
+              {/* Target info card */}
+              <div style={{ padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>Company Name:</div>
+                  <div style={{ fontSize: '0.95rem', color: '#0f172a', fontWeight: 850 }}>
+                    {settleBtcTarget.btc_company_name || 'Corporate Ledger'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>Total Billed:</div>
+                  <div style={{ fontSize: '1.1rem', color: '#dc2626', fontWeight: 900 }}>
+                    {formatCurrency(settleBtcTarget.total_room_charge || 0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Amount to Settle */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Settlement Amount Received (₹) *
+                </label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  step="any"
+                  value={settleBtcAmount}
+                  onChange={(e) => setSettleBtcAmount(e.target.value)}
+                  style={{ height: '42px', fontSize: '1rem', fontWeight: 800, background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary, #0f172a)' }}
+                  required
+                />
+              </div>
+
+              {/* Payment Mode Selection */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Company Payment Mode *
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                  {[
+                    { id: 'upi', label: 'Online / UPI', icon: '📱' },
+                    { id: 'bank_transfer', label: 'NEFT / RTGS', icon: '🏦' },
+                    { id: 'cheque', label: 'Cheque', icon: '🏛️' },
+                    { id: 'cash', label: 'Cash', icon: '💵' }
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setSettleBtcMode(m.id)}
+                      style={{
+                        padding: '10px 6px',
+                        borderRadius: '8px',
+                        border: settleBtcMode === m.id ? '2px solid #2563eb' : '1.5px solid var(--border-color, #e2e8f0)',
+                        background: settleBtcMode === m.id ? '#eff6ff' : 'var(--bg-surface, #ffffff)',
+                        color: settleBtcMode === m.id ? '#1d4ed8' : 'var(--text-primary, #0f172a)',
+                        fontWeight: 800,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <div style={{ fontSize: '1.2rem', marginBottom: '2px' }}>{m.icon}</div>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Conditional fields based on mode */}
+              {(settleBtcMode === 'upi' || settleBtcMode === 'bank_transfer') && (
+                <div style={{ marginBottom: '14px', padding: '12px', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e40af', display: 'block', marginBottom: '5px' }}>
+                    UTR / Bank Reference No. *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Enter 12-digit UTR or Bank Transfer Ref No."
+                    value={settleBtcUtr}
+                    onChange={(e) => setSettleBtcUtr(e.target.value)}
+                    style={{ height: '38px', background: '#ffffff', color: '#0f172a', fontWeight: 750 }}
+                    required
+                  />
+                </div>
+              )}
+
+              {settleBtcMode === 'cheque' && (
+                <div style={{ marginBottom: '14px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        Cheque Number *
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. 000542"
+                        value={settleBtcChequeNo}
+                        onChange={(e) => setSettleBtcChequeNo(e.target.value)}
+                        style={{ height: '38px' }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        Bank &amp; Branch Name
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. HDFC Bank, Solapur"
+                        value={settleBtcChequeBank}
+                        onChange={(e) => setSettleBtcChequeBank(e.target.value)}
+                        style={{ height: '38px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Cashier Staff */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Received / Verified By (Cashier / Staff)
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={settleBtcCashier}
+                  onChange={(e) => setSettleBtcCashier(e.target.value)}
+                  style={{ height: '38px' }}
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Narration / Notes
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={settleBtcNotes}
+                  onChange={(e) => setSettleBtcNotes(e.target.value)}
+                  placeholder="Optional payment notes"
+                  style={{ height: '38px' }}
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border-color, #e2e8f0)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn-custom-cancel"
+                onClick={() => setSettleBtcTarget(null)}
+                style={{ padding: '8px 18px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleExecuteSettleBtc}
+                disabled={settleBtcSubmitting}
+                style={{ padding: '8px 22px', fontWeight: 850, background: '#16a34a', border: 'none' }}
+              >
+                ✓ {settleBtcSubmitting ? 'Settling...' : 'Confirm Settlement & Release Invoice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Full Size Image Lightbox with Mouse Wheel Scroll to Zoom */}
       <ImageLightbox
         isOpen={Boolean(lightboxImg)}

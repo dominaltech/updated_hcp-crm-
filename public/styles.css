@@ -12424,10 +12424,20 @@ html.dark-theme .btn-folio-tax-chip {
   border-radius: var(--radius-xl) !important;
 }
 
-/* 12. Strict Black-on-White Print Protection */
+/* 12. Strict Black-on-White Print Protection (Theme-Independent Pure White) */
 @media print {
   html,
+  html[data-theme="dark"],
+  html.dark-theme,
   body,
+  body[data-theme="dark"],
+  body.dark-theme,
+  body.print-sheet-active,
+  body.print-sheet-active.dark-theme,
+  [data-theme="dark"],
+  [data-theme="dark"] body,
+  #root,
+  #hotel-app-screen,
   #hotel-app-print,
   #hotel-app-print * {
     color-scheme: light !important;
@@ -12437,5 +12447,18 @@ html.dark-theme .btn-folio-tax-chip {
     box-shadow: none !important;
     text-shadow: none !important;
     filter: none !important;
+  }
+
+  .full-a4-registration-card,
+  .registration-page-1,
+  .printable-full-a4-sheet,
+  #print-registration-sheet,
+  #print-registration-sheet.print-active,
+  #print-payment-summary-sheet,
+  #print-payment-summary-sheet.print-active {
+    min-height: 290mm !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    box-sizing: border-box !important;
   }
 }
