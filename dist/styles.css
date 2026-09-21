@@ -3698,6 +3698,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1.5px solid var(--border-light);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+[data-theme="dark"] .folio-page-header,
+body.dark-theme .folio-page-header,
+html.dark-theme .folio-page-header {
+  background: rgba(18, 21, 28, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45) !important;
 }
 
 .btn-back-rooms {
@@ -11902,9 +11913,7 @@ body.dark-theme .checkin-step-nav-bar .step-item.step-locked .step-bubble {
 }
 
 [data-theme="dark"] #checkin-modal-overlay .modal-close-btn,
-body.dark-theme #checkin-modal-overlay .modal-close-btn,
-[data-theme="dark"] .universal-back-btn,
-body.dark-theme .universal-back-btn {
+body.dark-theme #checkin-modal-overlay .modal-close-btn {
   background: rgba(255, 255, 255, 0.08) !important;
   border-color: rgba(255, 255, 255, 0.16) !important;
   color: #f3f4f6 !important;
@@ -11915,12 +11924,6 @@ body.dark-theme #checkin-modal-overlay .modal-close-btn:hover {
   background: #dc2626 !important;
   color: #ffffff !important;
   border-color: #ef4444 !important;
-}
-
-[data-theme="dark"] .universal-back-btn:hover,
-body.dark-theme .universal-back-btn:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #ffffff !important;
 }
 
 /* Step 1: Source & Gated Document Selection */
@@ -12250,11 +12253,175 @@ body.dark-theme .stay-metric-pill {
   color: #f3f4f6 !important;
 }
 
-[data-theme="dark"] .btn-folio-visitors-action,
-body.dark-theme .btn-folio-visitors-action {
-  background: rgba(16, 185, 129, 0.16) !important;
-  color: #34d399 !important;
-  border-color: rgba(16, 185, 129, 0.35) !important;
+/* ==========================================================================
+   ROOM FOLIO PAGE HEADER & CONTROLS (HIGH CONTRAST DARK & LIGHT MODES)
+   ========================================================================== */
+.folio-page-header {
+  position: sticky;
+  top: 68px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 0 16px 0;
+  background: rgba(245, 245, 247, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1.5px solid var(--border-light, #e2e8f0);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .folio-page-header,
+body.dark-theme .folio-page-header,
+html.dark-theme .folio-page-header {
+  background: rgba(18, 21, 28, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Folio Room Heading ("Room 103") */
+.folio-room-heading,
+#folio-page-room-title {
+  font-size: 1.55rem !important;
+  font-weight: 800 !important;
+  color: var(--text-primary, #0f172a) !important;
+  margin: 0 !important;
+  letter-spacing: -0.02em !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+[data-theme="dark"] .folio-room-heading,
+body.dark-theme .folio-room-heading,
+html.dark-theme .folio-room-heading,
+[data-theme="dark"] #folio-page-room-title,
+body.dark-theme #folio-page-room-title,
+html.dark-theme #folio-page-room-title {
+  color: #f8fafc !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Group Booking Indicator Pill */
+.folio-group-badge {
+  font-size: 0.80rem;
+  font-weight: 800;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  padding: 3px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.2px;
+}
+
+[data-theme="dark"] .folio-group-badge,
+body.dark-theme .folio-group-badge,
+html.dark-theme .folio-group-badge {
+  background: rgba(37, 99, 235, 0.2) !important;
+  color: #93c5fd !important;
+  border-color: rgba(59, 130, 246, 0.45) !important;
+}
+
+/* Universal Back Button - High Contrast & Luminescence in Dark Mode */
+[data-theme="dark"] .universal-back-btn,
+body.dark-theme .universal-back-btn,
+html.dark-theme .universal-back-btn,
+[data-theme="dark"] #btn-folio-page-back,
+body.dark-theme #btn-folio-page-back {
+  background: #151d2a !important;
+  color: #38bdf8 !important;
+  border: 1.5px solid #38bdf8 !important;
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.22) !important;
+}
+
+[data-theme="dark"] .universal-back-btn svg,
+body.dark-theme .universal-back-btn svg,
+html.dark-theme .universal-back-btn svg,
+[data-theme="dark"] #btn-folio-page-back svg,
+body.dark-theme #btn-folio-page-back svg {
+  stroke: #38bdf8 !important;
+}
+
+[data-theme="dark"] .universal-back-btn:hover,
+body.dark-theme .universal-back-btn:hover,
+html.dark-theme .universal-back-btn:hover,
+[data-theme="dark"] #btn-folio-page-back:hover,
+body.dark-theme #btn-folio-page-back:hover {
+  background: #38bdf8 !important;
+  color: #0c0e12 !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.4) !important;
+}
+
+[data-theme="dark"] .universal-back-btn:hover svg,
+body.dark-theme .universal-back-btn:hover svg,
+html.dark-theme .universal-back-btn:hover svg,
+[data-theme="dark"] #btn-folio-page-back:hover svg,
+body.dark-theme #btn-folio-page-back:hover svg {
+  stroke: #0c0e12 !important;
+}
+
+/* Folio Action Chips Styling */
+.btn-folio-action-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.btn-folio-pdf-chip {
+  background: #f0fdf4 !important;
+  color: #166534 !important;
+  border: 1px solid #86efac !important;
+}
+
+[data-theme="dark"] .btn-folio-pdf-chip,
+body.dark-theme .btn-folio-pdf-chip,
+html.dark-theme .btn-folio-pdf-chip {
+  background: rgba(22, 101, 52, 0.22) !important;
+  color: #86efac !important;
+  border-color: rgba(134, 239, 172, 0.4) !important;
+}
+
+.btn-folio-summary-chip {
+  background: #eff6ff !important;
+  color: #1e40af !important;
+  border: 1px solid #93c5fd !important;
+}
+
+[data-theme="dark"] .btn-folio-summary-chip,
+body.dark-theme .btn-folio-summary-chip,
+html.dark-theme .btn-folio-summary-chip {
+  background: rgba(30, 64, 175, 0.22) !important;
+  color: #93c5fd !important;
+  border-color: rgba(147, 197, 253, 0.4) !important;
+}
+
+.btn-folio-tax-chip {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  border: 1px solid #fca5a5 !important;
+}
+
+[data-theme="dark"] .btn-folio-tax-chip,
+body.dark-theme .btn-folio-tax-chip,
+html.dark-theme .btn-folio-tax-chip {
+  background: rgba(153, 27, 27, 0.22) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(252, 165, 165, 0.4) !important;
+}
+
+.btn-folio-checkout-action {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 22px !important;
+  font-weight: 800 !important;
+  font-size: 0.95rem !important;
+  border-radius: var(--radius-xl) !important;
 }
 
 /* 12. Strict Black-on-White Print Protection */

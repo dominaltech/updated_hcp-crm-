@@ -633,11 +633,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             <span>Back</span>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <h2 id="folio-page-room-title" style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+            <h2 id="folio-page-room-title" className="folio-room-heading">
               Room {folioData.roomNumber}
             </h2>
             {isMultiGroup && (
-              <span style={{ fontSize: '0.80rem', fontWeight: 800, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: '8px', letterSpacing: '0.2px' }}>
+              <span className="folio-group-badge">
                 🔗 Group Booking ({groupRoomsList.length} Rooms: #{groupRoomsList.join(', #')})
               </span>
             )}
@@ -649,26 +649,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             type="button"
             className="btn-folio-visitors-action"
             onClick={() => onOpenVisitors && onOpenVisitors(folioData.room || folioData)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: 800,
-              fontSize: '0.88rem',
-              background: '#ecfdf5',
-              color: '#047857',
-              border: '1.5px solid #a7f3d0',
-              borderRadius: 'var(--radius-xl)',
-              padding: '8px 16px',
-              cursor: 'pointer'
-            }}
           >
             <span>👥</span> Visitors (<span>{folioData.visitorsCount || 0}</span>)
           </button>
 
           <button
             type="button"
-            className="filter-chip"
+            className="filter-chip btn-folio-action-chip"
             onClick={() => {
               const printPayload = buildFolioPrintPayload();
               if (onReprintRegForm) {
@@ -677,7 +664,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 printGuestRegistrationA4(printPayload, { includePhotos: false });
               }
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
             title="Print Official Registration Card on Paper (LaserJet Toner Saver - Zero Photos)"
           >
             🖨️ Print Form (No Photos)
@@ -685,14 +671,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
-            className="filter-chip"
+            className="filter-chip btn-folio-action-chip btn-folio-pdf-chip"
             onClick={async () => {
               const printPayload = buildFolioPrintPayload();
               showToast('Saving Complete PDF with all Scans & Photos to Computer...', 'info', 2500);
               const ok = await downloadGuestRegistrationPDF(printPayload);
               if (ok) showToast('✓ Complete PDF with all Scans Saved to Computer!', 'green', 4000);
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }}
             title="Save complete registration PDF to computer with all scanned ID copies and photos"
           >
             💾 Save Full PDF to PC
@@ -700,12 +685,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
-            className="filter-chip"
+            className="filter-chip btn-folio-action-chip btn-folio-summary-chip"
             onClick={() => {
               const printPayload = buildFolioPrintPayload();
               printGuestPaymentSummary(printPayload);
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd' }}
             title="Print Customer Payment Statement & Summary (A4 Sheet)"
           >
             📄 Payment Summary
@@ -713,7 +697,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
-            className="filter-chip"
+            className="filter-chip btn-folio-action-chip btn-folio-tax-chip"
             onClick={() => {
               const roomObj = folioData?.room || folioData;
               printFinalBillA4(roomObj, folioData, {
@@ -724,7 +708,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 checked_out_by: 'Front Desk'
               });
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#fef2f2', color: '#991b1b', borderColor: '#fca5a5' }}
             title="Print Official Colorful A4 Tax Invoice with background logo"
           >
             🧾 Tax Invoice (A4)
@@ -732,17 +715,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
-            className="btn-scan-action"
+            className="btn-scan-action btn-folio-checkout-action"
             onClick={() => setIsSettlementOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 22px',
-              fontWeight: 800,
-              fontSize: '0.95rem',
-              borderRadius: 'var(--radius-xl)'
-            }}
           >
             💳 Checkout
           </button>

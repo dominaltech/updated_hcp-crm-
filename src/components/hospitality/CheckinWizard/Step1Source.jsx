@@ -167,7 +167,8 @@ export default function Step1Source({
   const applyCheckoutUpdate = (newDate, newTime) => {
     const targetDate = newDate !== undefined ? newDate : currentCheckoutDate;
     const isOta = draft.bookingSource === 'OTA';
-    const targetTime = isOta ? '10:00' : (newTime !== undefined ? newTime : currentCheckoutTime);
+    const isOtaEarly = draft.bookingSource === 'OTA' && draft.isEarlyCheckin === true;
+    const targetTime = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTime !== undefined ? newTime : currentCheckoutTime));
     const approx = targetDate ? (targetTime ? `${targetDate}T${targetTime}` : targetDate) : '';
     const dIn = new Date(draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr);
     const dOut = targetDate ? new Date(targetDate) : null;
@@ -919,7 +920,7 @@ export default function Step1Source({
                           type="text"
                           readOnly
                           disabled
-                          value="10:00 AM"
+                          value="10:00 AM (Fixed)"
                           title="Fixed to 10:00 AM standard checkout for OTA"
                           style={{
                             height: '44px',

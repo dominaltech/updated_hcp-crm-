@@ -1064,7 +1064,8 @@ export default function Step6Stay({
 
   const handleCheckoutChange = (newDateStr, newTimeStr) => {
     const dStr = newDateStr !== undefined ? newDateStr : checkoutDateStr;
-    const tStr = isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr);
+    const isOtaEarly = isOta && draft.isEarlyCheckin === true;
+    const tStr = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr));
 
     if (!dStr && !tStr) {
       updateDraft({
@@ -1792,7 +1793,7 @@ export default function Step6Stay({
                         border: '1px solid #bae6fd'
                       }}
                     >
-                      ✓ 10:00 AM (OTA Fixed)
+                      {isOta && draft.isEarlyCheckin === true ? '✓ 10:00 AM (Fixed)' : '✓ 10:00 AM (OTA Fixed)'}
                     </span>
                   </div>
 
@@ -1817,7 +1818,7 @@ export default function Step6Stay({
                       type="text"
                       readOnly
                       disabled
-                      value="10:00 AM (Fixed for OTA)"
+                      value={isOta && draft.isEarlyCheckin === true ? '10:00 AM (Fixed)' : '10:00 AM (Fixed for OTA)'}
                       style={{
                         height: '38px',
                         fontSize: '0.82rem',
