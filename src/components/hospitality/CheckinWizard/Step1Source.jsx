@@ -166,8 +166,8 @@ export default function Step1Source({
 
   const applyCheckoutUpdate = (newDate, newTime) => {
     const targetDate = newDate !== undefined ? newDate : currentCheckoutDate;
-    const isOtaEarly = draft.bookingSource === 'OTA' && draft.isEarlyCheckin === true;
-    const targetTime = isOtaEarly ? '10:00' : (newTime !== undefined ? newTime : currentCheckoutTime);
+    const isOta = draft.bookingSource === 'OTA';
+    const targetTime = isOta ? '10:00' : (newTime !== undefined ? newTime : currentCheckoutTime);
     const approx = targetDate ? (targetTime ? `${targetDate}T${targetTime}` : targetDate) : '';
     const dIn = new Date(draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr);
     const dOut = targetDate ? new Date(targetDate) : null;
@@ -225,7 +225,7 @@ export default function Step1Source({
         isEarlyCheckin: true,
         originalCheckinTime: draft.originalCheckinTime || '12:00',
         earlyCheckinTime: currentActualTime,
-        checkoutTime: '10:00', // automatically fixed 10 am
+        checkoutTime: '10:00', // automatically fixed 10 am for OTA
         approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '',
         extensionCharge: 0
       });
@@ -234,8 +234,8 @@ export default function Step1Source({
         isEarlyCheckin: false,
         originalCheckinTime: null,
         earlyCheckinTime: null,
-        checkoutTime: draft.checkoutTime && draft.checkoutTime !== '10:00' ? draft.checkoutTime : '11:00',
-        approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T${draft.checkoutTime && draft.checkoutTime !== '10:00' ? draft.checkoutTime : '11:00'}` : '',
+        checkoutTime: '10:00', // automatically fixed 10 am for OTA
+        approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '',
         extensionCharge: 0
       });
     }
@@ -243,8 +243,6 @@ export default function Step1Source({
 
   const handleSourceSelect = (source) => {
     setBlockedNotice('');
-    const existingTime = draft.checkoutTime || '';
-    const ext = calculateExtension(existingTime, source);
     updateDraft({
       bookingSource: source,
       isPrepaid: null, // No default selection! Staff must explicitly choose Pre-Paid or Pay at Hotel
@@ -252,9 +250,9 @@ export default function Step1Source({
       isEarlyCheckin: null, // Mandatory selection for OTA: Early vs On-Time
       originalCheckinTime: '',
       earlyCheckinTime: '',
-      checkoutTime: source === 'OTA' ? (draft.checkoutTime || '10:00') : existingTime,
-      approxCheckout: existingTime ? `${currentCheckoutDate}T${existingTime}` : `${currentCheckoutDate}`,
-      extensionCharge: source === 'OTA' ? 0 : ext.charge
+      checkoutTime: source === 'OTA' ? '10:00' : '',
+      approxCheckout: source === 'OTA' ? (currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '') : `${currentCheckoutDate || ''}`,
+      extensionCharge: 0
     });
   };
 
@@ -915,14 +913,14 @@ export default function Step1Source({
                         background: !currentCheckoutDate ? '#fff5f5' : '#ffffff'
                       }}
                     />
-                    {draft.isEarlyCheckin ? (
+                    {draft.bookingSource === 'OTA' ? (
                       <div style={{ position: 'relative' }}>
                         <input
                           type="text"
                           readOnly
                           disabled
                           value="10:00 AM"
-                          title="Fixed to 10:00 AM standard checkout for Early Check-In"
+                          title="Fixed to 10:00 AM standard checkout for OTA"
                           style={{
                             height: '44px',
                             fontSize: '0.92rem',
@@ -938,7 +936,7 @@ export default function Step1Source({
                           }}
                         />
                         <span style={{ fontSize: '0.66rem', color: '#0369a1', fontWeight: 800, marginTop: '2px', display: 'block' }}>
-                          🔒 10:00 AM (Fixed)
+                          🔒 10:00 AM (Fixed for OTA)
                         </span>
                       </div>
                     ) : (

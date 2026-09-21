@@ -116,7 +116,7 @@ export default function CheckinWizardModal({
     expiryDate: '',
     address: '',
     guestPhoto: null,
-    adultsMale: 1,
+    adultsMale: 0,
     adultsFemale: 0,
     children: 0,
     hasExtraPersons: false,
@@ -166,6 +166,9 @@ export default function CheckinWizardModal({
           roomNumber: room.room_number,
           roomType: room.room_type,
           baseRate: initialTariff,
+          adultsMale: 0,
+          adultsFemale: 0,
+          children: 0,
           roomExtraBeds: { [room.id]: 0 },
           extraBeds: 0,
           hasExtraPersons: false,
@@ -299,7 +302,7 @@ export default function CheckinWizardModal({
     ? (draft.extraMealPlan === 'with_breakfast' ? (otaExtraAdults * breakfastRate * nights) : 0)
     : 0;
 
-  const totalGuests = Math.max(1, (Number(draft.adultsMale) || 1) + (Number(draft.adultsFemale) || 0));
+  const totalGuests = (Number(draft.adultsMale) || 0) + (Number(draft.adultsFemale) || 0);
   const mealTotalCharge = isOta
     ? extraBreakfastCharge
     : (draft.mealPlan === 'with_breakfast' ? totalGuests * breakfastRate * nights : 0);
@@ -389,8 +392,12 @@ export default function CheckinWizardModal({
         showToast('At least 1 adult guest is required to proceed.', 'red');
         return false;
       }
-      if (!draft.approxCheckout || !draft.checkoutDate) {
-        showToast('Expected Checkout Date & Time is mandatory. Please select checkout date.', 'red');
+      if (!draft.checkoutDate) {
+        showToast('Expected Checkout Date is mandatory. Please select checkout date.', 'red');
+        return false;
+      }
+      if (!isOta && (!draft.checkoutTime || !draft.checkoutTime.trim())) {
+        showToast('Expected Checkout Time is mandatory. Please select checkout time.', 'red');
         return false;
       }
       return true;

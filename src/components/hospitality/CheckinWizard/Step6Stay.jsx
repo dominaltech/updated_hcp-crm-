@@ -126,18 +126,18 @@ export default function Step6Stay({
     : (Number(draft.children) || 0);
   const otaBookedExtraBeds = Number(draft.otaBookedExtraBeds) || 0;
 
-  // Safe Male & Female counts (guarantees NO NaN ever)
+  // Safe Male & Female counts (guarantees NO NaN ever) - defaults to 0 for non-OTA until user inserts
   const rawMale = Number(draft.adultsMale);
   const rawFemale = Number(draft.adultsFemale);
   const femaleCount = Number.isFinite(rawFemale) ? Math.max(0, rawFemale) : 0;
   const maleCount = Number.isFinite(rawMale)
     ? Math.max(0, rawMale)
-    : (Number.isFinite(rawFemale) && rawFemale >= otaBookedAdults ? 0 : (isOta ? Math.max(0, otaBookedAdults - femaleCount) : 1));
+    : (isOta ? Math.max(0, otaBookedAdults - femaleCount) : 0);
 
   const totalSteppedAdults = maleCount + femaleCount;
   const currentAdults = isOta
     ? (otaBookedAdults + (Number(draft.extraAdults) || 0))
-    : Math.max(1, totalSteppedAdults);
+    : totalSteppedAdults;
 
   // In OTA mode, occupancy boxes strictly track hotel additions starting at 0:
   // Pre-booked counts are already locked and displayed in the voucher card above.
@@ -300,7 +300,7 @@ export default function Step6Stay({
       }
     }
 
-    if (targetCapacity >= 1 && curMale === 0 && curFemale === 0) {
+    if (targetCapacity >= 1 && curMale === 0 && curFemale === 0 && (Number(initialMale) > 0 || Number(initialFemale) > 0)) {
       curMale = 1;
     }
 
@@ -1063,9 +1063,8 @@ export default function Step6Stay({
   }
 
   const handleCheckoutChange = (newDateStr, newTimeStr) => {
-    const isOtaEarly = isOta && draft.isEarlyCheckin === true;
     const dStr = newDateStr !== undefined ? newDateStr : checkoutDateStr;
-    const tStr = isOtaEarly ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr);
+    const tStr = isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr);
 
     if (!dStr && !tStr) {
       updateDraft({
@@ -1793,7 +1792,7 @@ export default function Step6Stay({
                         border: '1px solid #bae6fd'
                       }}
                     >
-                      ✓ {formatTime12(checkoutTimeStr) || (draft.isEarlyCheckin ? '10:00 AM' : '11:00 AM')}
+                      ✓ 10:00 AM (OTA Fixed)
                     </span>
                   </div>
 
@@ -1803,7 +1802,7 @@ export default function Step6Stay({
                       className="form-input"
                       value={checkoutDateStr}
                       min={draft.checkinTime ? draft.checkinTime.split('T')[0] : ''}
-                      onChange={(e) => handleCheckoutChange(e.target.value, checkoutTimeStr)}
+                      onChange={(e) => handleCheckoutChange(e.target.value, '10:00')}
                       style={{
                         padding: '6px 8px',
                         fontSize: '0.82rem',
@@ -1814,39 +1813,25 @@ export default function Step6Stay({
                       }}
                     />
 
-                    {isOta && draft.isEarlyCheckin === true ? (
-                      <input
-                        type="text"
-                        readOnly
-                        disabled
-                        value="10:00 AM (Fixed)"
-                        style={{
-                          height: '38px',
-                          fontSize: '0.82rem',
-                          fontWeight: 800,
-                          color: '#0369a1',
-                          background: '#f0f9ff',
-                          border: '1.5px solid #0284c7',
-                          borderRadius: '8px',
-                          padding: '0 8px',
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          cursor: 'not-allowed'
-                        }}
-                      />
-                    ) : (
-                      <UnifiedTimeInput
-                        value={checkoutTimeStr || '11:00'}
-                        onChange={(val) => handleCheckoutChange(checkoutDateStr, val)}
-                        style={{
-                          height: '38px',
-                          fontSize: '0.82rem',
-                          borderRadius: '8px',
-                          border: '1.5px solid #cbd5e1',
-                          background: '#ffffff'
-                        }}
-                      />
-                    )}
+                    <input
+                      type="text"
+                      readOnly
+                      disabled
+                      value="10:00 AM (Fixed for OTA)"
+                      style={{
+                        height: '38px',
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        color: '#0369a1',
+                        background: '#f0f9ff',
+                        border: '1.5px solid #0284c7',
+                        borderRadius: '8px',
+                        padding: '0 8px',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        cursor: 'not-allowed'
+                      }}
+                    />
                   </div>
                 </div>
 
@@ -2581,11 +2566,29 @@ export default function Step6Stay({
                       style={{
                         fontSize: '0.78rem',
                         fontWeight: 800,
-                        color: currentAdults > currentAllowedAdults ? '#b91c1c' : currentAdults === currentAllowedAdults ? '#065f46' : '#15803d',
-                        background: currentAdults > currentAllowedAdults ? '#fee2e2' : currentAdults === currentAllowedAdults ? '#ecfdf5' : '#dcfce7',
+                        color: currentAdults === 0
+                          ? '#64748b'
+                          : currentAdults > currentAllowedAdults
+                          ? '#b91c1c'
+                          : currentAdults === currentAllowedAdults
+                          ? '#065f46'
+                          : '#15803d',
+                        background: currentAdults === 0
+                          ? '#f1f5f9'
+                          : currentAdults > currentAllowedAdults
+                          ? '#fee2e2'
+                          : currentAdults === currentAllowedAdults
+                          ? '#ecfdf5'
+                          : '#dcfce7',
                         padding: '3px 12px',
                         borderRadius: '14px',
-                        border: currentAdults > currentAllowedAdults ? '1px solid #fca5a5' : currentAdults === currentAllowedAdults ? '1px solid #a7f3d0' : '1px solid #bbf7d0',
+                        border: currentAdults === 0
+                          ? '1px solid #cbd5e1'
+                          : currentAdults > currentAllowedAdults
+                          ? '1px solid #fca5a5'
+                          : currentAdults === currentAllowedAdults
+                          ? '1px solid #a7f3d0'
+                          : '1px solid #bbf7d0',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                       }}
                     >
@@ -2696,8 +2699,9 @@ export default function Step6Stay({
                   </div>
                 </div>
 
-                <div style={{ position: 'relative', zIndex: 1, marginTop: '8px', textAlign: 'center', fontSize: '0.76rem', fontWeight: 750, color: currentAdults > currentAllowedAdults ? '#dc2626' : currentAdults === currentAllowedAdults ? '#15803d' : '#166534' }}>
-                  {currentAdults < currentAllowedAdults && `✓ ${currentAllowedAdults - currentAdults} adult bed spot${currentAllowedAdults - currentAdults > 1 ? 's' : ''} available`}
+                <div style={{ position: 'relative', zIndex: 1, marginTop: '8px', textAlign: 'center', fontSize: '0.76rem', fontWeight: 750, color: currentAdults === 0 ? '#b45309' : currentAdults > currentAllowedAdults ? '#dc2626' : currentAdults === currentAllowedAdults ? '#15803d' : '#166534' }}>
+                  {currentAdults === 0 && '⚠️ Please add at least 1 adult guest using + above'}
+                  {currentAdults > 0 && currentAdults < currentAllowedAdults && `✓ ${currentAllowedAdults - currentAdults} adult bed spot${currentAllowedAdults - currentAdults > 1 ? 's' : ''} available`}
                   {currentAdults === currentAllowedAdults && `✓ 100% Full Bed Capacity (${currentAdults}/${currentAllowedAdults} Beds Allocated)`}
                   {currentAdults > currentAllowedAdults && `⚠️ Exceeds capacity by +${currentAdults - currentAllowedAdults} guest${currentAdults - currentAllowedAdults > 1 ? 's' : ''}`}
                 </div>
@@ -2834,19 +2838,35 @@ export default function Step6Stay({
                     <label style={{ margin: 0, fontWeight: 800, fontSize: '0.80rem', color: '#1e293b' }}>
                       📅 Expected Checkout <span style={{ color: '#dc2626', fontWeight: 900 }}>* (Mandatory)</span>
                     </label>
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        color: checkoutTimeStr && checkoutTimeStr.split(':')[0] < 12 ? '#0369a1' : '#b45309',
-                        background: checkoutTimeStr && checkoutTimeStr.split(':')[0] < 12 ? '#e0f2fe' : '#fef3c7',
-                        padding: '1px 8px',
-                        borderRadius: '8px',
-                        border: checkoutTimeStr && checkoutTimeStr.split(':')[0] < 12 ? '1px solid #bae6fd' : '1px solid #fde68a'
-                      }}
-                    >
-                      ✓ {formatTime12(checkoutTimeStr) || '11:00 AM'}
-                    </span>
+                    {checkoutTimeStr ? (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          color: checkoutTimeStr.split(':')[0] < 12 ? '#0369a1' : '#b45309',
+                          background: checkoutTimeStr.split(':')[0] < 12 ? '#e0f2fe' : '#fef3c7',
+                          padding: '1px 8px',
+                          borderRadius: '8px',
+                          border: checkoutTimeStr.split(':')[0] < 12 ? '1px solid #bae6fd' : '1px solid #fde68a'
+                        }}
+                      >
+                        ✓ {formatTime12(checkoutTimeStr)}
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          color: '#b91c1c',
+                          background: '#fef2f2',
+                          padding: '1px 8px',
+                          borderRadius: '8px',
+                          border: '1px solid #fecaca'
+                        }}
+                      >
+                        ⚠️ Select Checkout Time
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '6px' }}>
@@ -2866,14 +2886,14 @@ export default function Step6Stay({
                       }}
                     />
                     <UnifiedTimeInput
-                      value={checkoutTimeStr || '11:00'}
+                      value={checkoutTimeStr || ''}
                       onChange={(val) => handleCheckoutChange(checkoutDateStr, val)}
                       style={{
                         height: '38px',
                         fontSize: '0.82rem',
                         borderRadius: '8px',
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff'
+                        border: !checkoutTimeStr ? '2px solid #ef4444' : '1.5px solid #cbd5e1',
+                        background: !checkoutTimeStr ? '#fff5f5' : '#ffffff'
                       }}
                     />
                   </div>
