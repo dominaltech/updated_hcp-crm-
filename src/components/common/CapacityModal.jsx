@@ -8,12 +8,12 @@ export default function CapacityModal() {
 
   return (
     <div className="modal-overlay active" style={{ zIndex: 10090, display: 'flex', opacity: 1, visibility: 'visible' }}>
-      <div className="modal-container" style={{ maxWidth: '440px', width: '90%', padding: '24px', textAlign: 'center', borderRadius: '18px', background: '#ffffff', border: '1.5px solid #fde047', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+      <div className="modal-container" style={{ maxWidth: '440px', width: '90%', padding: '24px', textAlign: 'center', borderRadius: '18px', background: 'var(--bg-surface, #ffffff)', border: '1.5px solid #eab308', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>⚠️</div>
-        <h3 style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 800, color: '#854d0e' }}>
+        <h3 style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 800, color: '#f59e0b' }}>
           Room Capacity Exceeded
         </h3>
-        <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: '#475569', lineHeight: 1.5 }}>
+        <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: 'var(--text-secondary, #475569)', lineHeight: 1.5 }}>
           {capacityModal.message || 'The guest count exceeds the maximum recommended capacity for this room.'}
         </p>
 
@@ -22,7 +22,7 @@ export default function CapacityModal() {
             <button
               type="button"
               className="btn-primary"
-              style={{ background: '#0284c7', border: 'none', padding: '10px 16px', fontWeight: 750, borderRadius: '8px' }}
+              style={{ background: 'var(--apple-blue, #0284c7)', border: 'none', padding: '10px 16px', fontWeight: 750, borderRadius: '8px' }}
               onClick={() => {
                 capacityModal.onAddRooms();
                 closeCapacityModal();
@@ -47,7 +47,7 @@ export default function CapacityModal() {
           <button
             type="button"
             className="btn-secondary"
-            style={{ padding: '8px 16px', color: '#64748b', borderColor: '#cbd5e1' }}
+            style={{ padding: '8px 16px', color: 'var(--text-secondary, #64748b)', borderColor: 'var(--border-color, #cbd5e1)' }}
             onClick={closeCapacityModal}
           >
             Cancel

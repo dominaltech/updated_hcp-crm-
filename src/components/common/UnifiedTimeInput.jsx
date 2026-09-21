@@ -143,15 +143,15 @@ export default function UnifiedTimeInput({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        background: disabled ? '#f1f5f9' : '#ffffff',
-        border: '1.5px solid #cbd5e1',
+        background: disabled ? 'var(--bg-surface-secondary, #f1f5f9)' : 'var(--bg-app, #ffffff)',
+        border: '1.5px solid var(--border-color, #cbd5e1)',
         borderRadius: '8px',
         height: '38px',
         padding: '2px 8px',
         boxSizing: 'border-box',
         fontSize: '0.90rem',
         fontWeight: 700,
-        color: '#0f172a',
+        color: 'var(--text-primary, #0f172a)',
         gap: '4px',
         position: 'relative',
         userSelect: 'none',
@@ -159,7 +159,7 @@ export default function UnifiedTimeInput({
       }}
     >
       {/* Clock icon */}
-      <span style={{ fontSize: '0.88rem', color: '#64748b' }}>🕒</span>
+      <span style={{ fontSize: '0.88rem', color: 'var(--text-secondary, #64748b)' }}>🕒</span>
 
       {/* Hour Button Trigger */}
       <button
@@ -219,11 +219,11 @@ export default function UnifiedTimeInput({
       <div
         style={{
           display: 'inline-flex',
-          background: '#f1f5f9',
+          background: 'var(--bg-surface-secondary, #f1f5f9)',
           borderRadius: '6px',
           padding: '2px',
           marginLeft: '4px',
-          border: '1px solid #e2e8f0',
+          border: '1px solid var(--border-color, #e2e8f0)',
           flexShrink: 0
         }}
       >
@@ -238,8 +238,8 @@ export default function UnifiedTimeInput({
             fontSize: '0.74rem',
             fontWeight: 850,
             cursor: disabled ? 'not-allowed' : 'pointer',
-            background: parsed.hasValue && parsed.period === 'AM' ? '#0071e3' : 'transparent',
-            color: parsed.hasValue && parsed.period === 'AM' ? '#ffffff' : '#64748b',
+            background: parsed.hasValue && parsed.period === 'AM' ? 'var(--apple-blue, #0071e3)' : 'transparent',
+            color: parsed.hasValue && parsed.period === 'AM' ? '#ffffff' : 'var(--text-secondary, #64748b)',
             transition: 'all 0.15s ease'
           }}
         >
@@ -256,8 +256,8 @@ export default function UnifiedTimeInput({
             fontSize: '0.74rem',
             fontWeight: 850,
             cursor: disabled ? 'not-allowed' : 'pointer',
-            background: parsed.hasValue && parsed.period === 'PM' ? '#0071e3' : 'transparent',
-            color: parsed.hasValue && parsed.period === 'PM' ? '#ffffff' : '#64748b',
+            background: parsed.hasValue && parsed.period === 'PM' ? 'var(--apple-blue, #0071e3)' : 'transparent',
+            color: parsed.hasValue && parsed.period === 'PM' ? '#ffffff' : 'var(--text-secondary, #64748b)',
             transition: 'all 0.15s ease'
           }}
         >
@@ -298,23 +298,23 @@ export default function UnifiedTimeInput({
             top: 'calc(100% + 6px)',
             left: '0',
             zIndex: 10050,
-            background: '#ffffff',
-            border: '1.5px solid #cbd5e1',
+            background: 'var(--bg-surface, #ffffff)',
+            border: '1.5px solid var(--border-color, #cbd5e1)',
             borderRadius: '12px',
-            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.16)',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.35)',
             padding: '10px',
             minWidth: '220px',
             animation: 'fadeIn 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 850, color: 'var(--apple-blue, #0369a1)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Select Hour (1 - 12)
             </span>
             <button
               type="button"
               onClick={() => setOpenMenu(null)}
-              style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}
+              style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer', padding: '0 2px' }}
             >
               ✕
             </button>
@@ -332,24 +332,24 @@ export default function UnifiedTimeInput({
                     fontSize: '0.88rem',
                     fontWeight: 850,
                     borderRadius: '8px',
-                    border: isSelected ? '1.5px solid #0071e3' : '1px solid #e2e8f0',
-                    background: isSelected ? '#0071e3' : '#f8fafc',
-                    color: isSelected ? '#ffffff' : '#1e293b',
+                    border: isSelected ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-color, #e2e8f0)',
+                    background: isSelected ? 'var(--apple-blue)' : 'var(--bg-surface-secondary, #f8fafc)',
+                    color: isSelected ? '#ffffff' : 'var(--text-primary, #1e293b)',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease'
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = '#e0f2fe';
-                      e.currentTarget.style.borderColor = '#7dd3fc';
-                      e.currentTarget.style.color = '#0369a1';
+                      e.currentTarget.style.background = 'rgba(56, 189, 248, 0.15)';
+                      e.currentTarget.style.borderColor = 'var(--apple-blue)';
+                      e.currentTarget.style.color = 'var(--apple-blue)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = '#f8fafc';
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                      e.currentTarget.style.color = '#1e293b';
+                      e.currentTarget.style.background = 'var(--bg-surface-secondary, #f8fafc)';
+                      e.currentTarget.style.borderColor = 'var(--border-color, #e2e8f0)';
+                      e.currentTarget.style.color = 'var(--text-primary, #1e293b)';
                     }
                   }}
                 >
@@ -370,23 +370,23 @@ export default function UnifiedTimeInput({
             top: 'calc(100% + 6px)',
             left: '30px',
             zIndex: 10050,
-            background: '#ffffff',
-            border: '1.5px solid #cbd5e1',
+            background: 'var(--bg-surface, #ffffff)',
+            border: '1.5px solid var(--border-color, #cbd5e1)',
             borderRadius: '12px',
-            boxShadow: '0 12px 30px rgba(15, 23, 42, 0.16)',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.35)',
             padding: '10px',
             minWidth: '220px',
             animation: 'fadeIn 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid #f1f5f9' }}>
-            <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 850, color: 'var(--apple-blue, #0369a1)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Select Minute (:00 - :55)
             </span>
             <button
               type="button"
               onClick={() => setOpenMenu(null)}
-              style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}
+              style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer', padding: '0 2px' }}
             >
               ✕
             </button>
@@ -404,24 +404,24 @@ export default function UnifiedTimeInput({
                     fontSize: '0.88rem',
                     fontWeight: 850,
                     borderRadius: '8px',
-                    border: isSelected ? '1.5px solid #0071e3' : '1px solid #e2e8f0',
-                    background: isSelected ? '#0071e3' : '#f8fafc',
-                    color: isSelected ? '#ffffff' : '#1e293b',
+                    border: isSelected ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-color, #e2e8f0)',
+                    background: isSelected ? 'var(--apple-blue)' : 'var(--bg-surface-secondary, #f8fafc)',
+                    color: isSelected ? '#ffffff' : 'var(--text-primary, #1e293b)',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease'
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = '#e0f2fe';
-                      e.currentTarget.style.borderColor = '#7dd3fc';
-                      e.currentTarget.style.color = '#0369a1';
+                      e.currentTarget.style.background = 'rgba(56, 189, 248, 0.15)';
+                      e.currentTarget.style.borderColor = 'var(--apple-blue)';
+                      e.currentTarget.style.color = 'var(--apple-blue)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = '#f8fafc';
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                      e.currentTarget.style.color = '#1e293b';
+                      e.currentTarget.style.background = 'var(--bg-surface-secondary, #f8fafc)';
+                      e.currentTarget.style.borderColor = 'var(--border-color, #e2e8f0)';
+                      e.currentTarget.style.color = 'var(--text-primary, #1e293b)';
                     }
                   }}
                 >

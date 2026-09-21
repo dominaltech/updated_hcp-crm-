@@ -10,6 +10,7 @@
   --bg-app: #f5f5f7;
   --bg-surface: #ffffff;
   --bg-surface-secondary: #fbfbfd;
+  --bg-tertiary: #f8fafc;
   --bg-glass: rgba(255, 255, 255, 0.82);
   --bg-dark-glass: rgba(18, 18, 20, 0.85);
 
@@ -72,6 +73,7 @@ body.dark-theme {
   --bg-app: #0c0e12;
   --bg-surface: #171a21;
   --bg-surface-secondary: #21252e;
+  --bg-tertiary: #1e232d;
   --bg-glass: rgba(23, 26, 33, 0.88);
   --bg-dark-glass: rgba(12, 14, 18, 0.94);
 
@@ -1344,18 +1346,22 @@ body.modal-open {
   transform: translateY(-50%) !important;
 }
 
+.wizard-side-custom-arrow {
+  color: #64748b;
+}
+
 .custom-arrow-icon {
-  width: 72px;
-  height: 62px;
+  width: 54px;
+  height: 48px;
   display: block;
   pointer-events: none;
-  filter: drop-shadow(0 4px 14px rgba(199, 163, 184, 0.55));
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s ease;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.18));
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s ease, color 0.22s ease;
 }
 
 .wizard-side-custom-arrow:hover .custom-arrow-icon {
-  filter: drop-shadow(0 12px 28px rgba(199, 163, 184, 0.88)) brightness(1.12);
-  transform: scale(1.05);
+  filter: drop-shadow(0 6px 18px rgba(0, 113, 227, 0.45)) brightness(1.15);
+  transform: scale(1.08);
 }
 
 .wizard-side-custom-arrow:active .custom-arrow-icon {
@@ -1363,7 +1369,27 @@ body.modal-open {
 }
 
 .wizard-side-custom-arrow:hover .custom-arrow-icon path {
-  fill: #ba90a8;
+  fill: var(--apple-blue);
+}
+
+[data-theme="dark"] .wizard-side-custom-arrow,
+body.dark-theme .wizard-side-custom-arrow {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+[data-theme="dark"] .custom-arrow-icon,
+body.dark-theme .custom-arrow-icon {
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.7));
+}
+
+[data-theme="dark"] .wizard-side-custom-arrow:hover .custom-arrow-icon,
+body.dark-theme .wizard-side-custom-arrow:hover .custom-arrow-icon {
+  filter: drop-shadow(0 6px 20px rgba(56, 189, 248, 0.55));
+}
+
+[data-theme="dark"] .wizard-side-custom-arrow:hover .custom-arrow-icon path,
+body.dark-theme .wizard-side-custom-arrow:hover .custom-arrow-icon path {
+  fill: var(--apple-blue);
 }
 
 /* --------------------------------------------------------------------------
@@ -11312,6 +11338,35 @@ body.dark-theme .modal-container {
   box-shadow: var(--shadow-modal) !important;
 }
 
+[data-theme="dark"] .modal-header,
+body.dark-theme .modal-header {
+  background: #1a1e27 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .modal-header h2,
+[data-theme="dark"] .modal-header h3,
+[data-theme="dark"] .modal-header h4,
+body.dark-theme .modal-header h2,
+body.dark-theme .modal-header h3,
+body.dark-theme .modal-header h4 {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .modal-body,
+body.dark-theme .modal-body {
+  background: #171a21 !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .modal-footer,
+body.dark-theme .modal-footer {
+  background: #1a1e27 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+}
+
 [data-theme="dark"] .custom-confirm-card,
 body.dark-theme .custom-confirm-card {
   background: #181b22 !important;
@@ -11379,10 +11434,10 @@ body.dark-theme .themed-select-trigger {
 }
 
 /* 9. General Form Inputs, Selects & Textareas */
-[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]),
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not(.paybox-input):not(.stepper-val),
 [data-theme="dark"] select,
 [data-theme="dark"] textarea,
-body.dark-theme input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]),
+body.dark-theme input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not(.paybox-input):not(.stepper-val),
 body.dark-theme select,
 body.dark-theme textarea {
   background-color: #121419 !important;
@@ -11803,6 +11858,403 @@ body.dark-theme .context-menu-item {
 body.dark-theme .context-menu-item:hover {
   background: #242a36 !important;
   color: #ffffff !important;
+}
+
+/* ==========================================================================
+   13. COMPREHENSIVE DARK THEME SUITE: CHECK-IN WIZARD, POPUPS & INTERFACES
+   ========================================================================== */
+
+/* Fullscreen Check-In Modal Container & Headers */
+[data-theme="dark"] #checkin-modal-overlay .checkin-fullscreen-modal,
+body.dark-theme #checkin-modal-overlay .checkin-fullscreen-modal {
+  background: #0c0e12 !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] #checkin-modal-overlay .modal-header,
+body.dark-theme #checkin-modal-overlay .modal-header {
+  background: #171a21 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] #checkin-modal-overlay .modal-header h3,
+body.dark-theme #checkin-modal-overlay .modal-header h3 {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .checkin-step-nav-bar,
+body.dark-theme .checkin-step-nav-bar {
+  background: #12151c !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .checkin-step-nav-bar .step-bubble,
+body.dark-theme .checkin-step-nav-bar .step-bubble {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+[data-theme="dark"] .checkin-step-nav-bar .step-item.step-locked .step-bubble,
+body.dark-theme .checkin-step-nav-bar .step-item.step-locked .step-bubble {
+  background: #1c202a !important;
+  color: #64748b !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] #checkin-modal-overlay .modal-close-btn,
+body.dark-theme #checkin-modal-overlay .modal-close-btn,
+[data-theme="dark"] .universal-back-btn,
+body.dark-theme .universal-back-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] #checkin-modal-overlay .modal-close-btn:hover,
+body.dark-theme #checkin-modal-overlay .modal-close-btn:hover {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+}
+
+[data-theme="dark"] .universal-back-btn:hover,
+body.dark-theme .universal-back-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+/* Step 1: Source & Gated Document Selection */
+[data-theme="dark"] .booking-source-section,
+body.dark-theme .booking-source-section {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .booking-source-section > div:first-child,
+body.dark-theme .booking-source-section > div:first-child {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .modern-channel-card,
+body.dark-theme .modern-channel-card {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-theme="dark"] .modern-channel-card .channel-card-title,
+body.dark-theme .modern-channel-card .channel-card-title {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .modern-channel-card .channel-icon-wrap,
+body.dark-theme .modern-channel-card .channel-icon-wrap {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .modern-channel-card.active,
+body.dark-theme .modern-channel-card.active {
+  background: #172742 !important;
+  border-color: var(--apple-blue) !important;
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.22) !important;
+}
+
+[data-theme="dark"] .doc-option-card,
+body.dark-theme .doc-option-card {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-theme="dark"] .doc-option-card h4,
+body.dark-theme .doc-option-card h4 {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .doc-option-card p,
+body.dark-theme .doc-option-card p {
+  color: #9ca3af !important;
+}
+
+[data-theme="dark"] .doc-option-card:hover,
+body.dark-theme .doc-option-card:hover {
+  border-color: var(--apple-blue) !important;
+  background: #1e2430 !important;
+}
+
+[data-theme="dark"] .doc-option-card.selected,
+body.dark-theme .doc-option-card.selected {
+  border-color: var(--apple-blue) !important;
+  background: rgba(56, 189, 248, 0.16) !important;
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.25) !important;
+}
+
+[data-theme="dark"] .channel-gated-section.locked .doc-option-card,
+body.dark-theme .channel-gated-section.locked .doc-option-card {
+  background: #181b22 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  opacity: 0.65;
+}
+
+[data-theme="dark"] .channel-gated-section.locked .doc-option-card h4,
+body.dark-theme .channel-gated-section.locked .doc-option-card h4 {
+  color: #64748b !important;
+}
+
+[data-theme="dark"] #checkin-step-1 h3,
+body.dark-theme #checkin-step-1 h3 {
+  color: #f3f4f6 !important;
+}
+
+/* Step 2 & 3: Scan Screen */
+[data-theme="dark"] .scan-card,
+body.dark-theme .scan-card,
+[data-theme="dark"] .scan-options-box,
+body.dark-theme .scan-options-box {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+}
+
+/* Step 3.5: AI Verification Screen */
+[data-theme="dark"] .std-parsing-card,
+body.dark-theme .std-parsing-card {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65) !important;
+}
+
+[data-theme="dark"] .std-parsing-title,
+body.dark-theme .std-parsing-title {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .std-parsing-subtitle,
+body.dark-theme .std-parsing-subtitle {
+  color: #9ca3af !important;
+}
+
+[data-theme="dark"] .std-thumb-box,
+body.dark-theme .std-thumb-box {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-theme="dark"] .std-thumb-tag,
+body.dark-theme .std-thumb-tag {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .std-scan-center-icon,
+body.dark-theme .std-scan-center-icon {
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: #38bdf8 !important;
+}
+
+/* Step 6: Stay, Room Allocation & Steppers */
+[data-theme="dark"] .simple-form-card,
+body.dark-theme .simple-form-card {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45) !important;
+}
+
+[data-theme="dark"] .simple-form-card h4,
+body.dark-theme .simple-form-card h4 {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .guest-card,
+body.dark-theme .guest-card {
+  background: #1a1e27 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .guest-card-title,
+body.dark-theme .guest-card-title {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .stepper-box,
+body.dark-theme .stepper-box {
+  background: #121419 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+[data-theme="dark"] .stepper-btn,
+body.dark-theme .stepper-btn {
+  background: #1e232d !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .stepper-btn:hover,
+body.dark-theme .stepper-btn:hover {
+  background: #28303f !important;
+  color: var(--apple-blue) !important;
+}
+
+[data-theme="dark"] .stepper-val,
+body.dark-theme .stepper-val {
+  color: #f3f4f6 !important;
+}
+
+/* Meal Plan Cards */
+[data-theme="dark"] .meal-plan-card,
+body.dark-theme .meal-plan-card {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .meal-plan-card.active,
+body.dark-theme .meal-plan-card.active {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: var(--apple-blue) !important;
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.2) !important;
+}
+
+[data-theme="dark"] .meal-plan-card > div:nth-child(2),
+body.dark-theme .meal-plan-card > div:nth-child(2) {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .meal-plan-card > div:nth-child(3),
+body.dark-theme .meal-plan-card > div:nth-child(3) {
+  color: #9ca3af !important;
+}
+
+/* Step 7: Payment Screen */
+[data-theme="dark"] .payment-step-container,
+body.dark-theme .payment-step-container {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .pay-method-box,
+body.dark-theme .pay-method-box {
+  background: #171a21 !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .pay-method-box.active,
+body.dark-theme .pay-method-box.active {
+  background: #1a2538 !important;
+  border-color: var(--apple-blue) !important;
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.22) !important;
+}
+
+[data-theme="dark"] .paybox-name,
+body.dark-theme .paybox-name {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .paybox-desc,
+body.dark-theme .paybox-desc {
+  color: #9ca3af !important;
+}
+
+[data-theme="dark"] .paybox-input-group,
+body.dark-theme .paybox-input-group {
+  background: #121419 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+[data-theme="dark"] .pay-method-box.active .paybox-input-group,
+body.dark-theme .pay-method-box.active .paybox-input-group {
+  border-color: var(--apple-blue) !important;
+}
+
+[data-theme="dark"] .paybox-symbol,
+body.dark-theme .paybox-symbol {
+  color: var(--apple-blue) !important;
+}
+
+[data-theme="dark"] .paybox-input,
+body.dark-theme .paybox-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .paybox-input::placeholder,
+body.dark-theme .paybox-input::placeholder {
+  color: #6b7280 !important;
+}
+
+[data-theme="dark"] .btn-quick-fill,
+body.dark-theme .btn-quick-fill {
+  background: #1e2430 !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .btn-quick-fill:hover,
+body.dark-theme .btn-quick-fill:hover {
+  background: var(--apple-blue) !important;
+  color: #ffffff !important;
+}
+
+/* AI Verification Checklist Dark Mode */
+[data-theme="dark"] .std-checklist-box,
+body.dark-theme .std-checklist-box {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+[data-theme="dark"] .std-check-item,
+body.dark-theme .std-check-item {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .std-check-item.active,
+body.dark-theme .std-check-item.active {
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .std-progress-track,
+body.dark-theme .std-progress-track {
+  background: #1e232d !important;
+}
+
+[data-theme="dark"] .std-progress-info,
+body.dark-theme .std-progress-info {
+  color: #94a3b8 !important;
+}
+
+/* Room Folio Page: Companions, Badges, Metrics & Actions */
+[data-theme="dark"] .room-companion-box,
+body.dark-theme .room-companion-box {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .folio-doc-thumb-box,
+body.dark-theme .folio-doc-thumb-box {
+  background: #12141a !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+[data-theme="dark"] .stay-metric-pill,
+body.dark-theme .stay-metric-pill {
+  background: #1e232d !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f3f4f6 !important;
+}
+
+[data-theme="dark"] .btn-folio-visitors-action,
+body.dark-theme .btn-folio-visitors-action {
+  background: rgba(16, 185, 129, 0.16) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
 }
 
 /* 12. Strict Black-on-White Print Protection */

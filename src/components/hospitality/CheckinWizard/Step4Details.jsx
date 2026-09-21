@@ -399,9 +399,9 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
         <div
           className={`step4-form-card ${hasAlert ? 'form-alert-red' : ''}`}
           style={{
-            background: hasAlert ? 'linear-gradient(180deg, #fff5f5 0%, #ffffff 90px)' : '#ffffff',
+            background: hasAlert ? 'linear-gradient(180deg, rgba(239, 68, 68, 0.12) 0%, var(--bg-surface, #ffffff) 90px)' : 'var(--bg-surface, #ffffff)',
             borderRadius: '16px',
-            border: hasAlert ? '2.5px solid #ef4444' : '1.5px solid #e2e8f0',
+            border: hasAlert ? '2.5px solid #ef4444' : '1.5px solid var(--border-color, #e2e8f0)',
             padding: '12px 18px',
             boxShadow: hasAlert
               ? '0 0 0 4px rgba(239, 68, 68, 0.16), 0 8px 26px rgba(239, 68, 68, 0.22)'

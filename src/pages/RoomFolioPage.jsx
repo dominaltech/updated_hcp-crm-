@@ -851,7 +851,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {folioData.memberDocuments.map((m, idx) => (
-                  <div key={idx} style={{ padding: '8px 10px', background: 'var(--bg-tertiary, #f8fafc)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                  <div key={idx} className="room-companion-box" style={{ padding: '8px 10px', background: 'var(--bg-surface-secondary, #1e232d)', borderRadius: '8px', border: '1px solid var(--border-color, #e2e8f0)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
                         <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{m.name || `Member ${idx + 1}`}</strong>
@@ -861,7 +861,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           {m.aadharNumber && <span>ID: <strong>{m.aadharNumber}</strong></span>}
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                      <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--apple-blue)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, border: '1px solid rgba(56, 189, 248, 0.3)' }}>
                         {m.docType || 'ID Proof'}
                       </span>
                     </div>
@@ -1474,10 +1474,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   className="folio-card"
                   style={{
                     margin: 0,
-                    background: '#ffffff',
+                    background: 'var(--bg-surface, #ffffff)',
                     borderRadius: '16px',
-                    border: '1.5px solid #cbd5e1',
-                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                    border: '1.5px solid var(--border-color, #cbd5e1)',
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)',
                     padding: '20px 24px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -1485,19 +1485,19 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   }}
                 >
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1.5px solid #f1f5f9', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1.5px solid var(--border-color, #f1f5f9)', paddingBottom: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '1.35rem' }}>🏨</span>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 850, color: '#0f172a' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 850, color: 'var(--text-primary, #0f172a)' }}>
                             Entire Bill of Hospitality
                           </h4>
-                          <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                          <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary, #64748b)' }}>
                             Room Stay &amp; Accommodation Charges
                           </span>
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 800, padding: '3px 8px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 800, padding: '3px 8px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--apple-blue)', borderRadius: '6px' }}>
                         Room #{folioData.roomNumber}{isMultiGroup ? ` (+${groupRoomsList.length - 1} linked)` : ''}
                       </span>
                     </div>
@@ -1506,11 +1506,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       {isOtaBooking ? (
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                            <span style={{ color: '#64748b' }}>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>
                               OTA Voucher Package ({folioData.otaPlatform || 'OTA'} - {groupRoomsList.length > 1 ? `${groupRoomsList.length} Rooms` : '1 Room'}, {stayNights} Night{stayNights > 1 ? 's' : ''}):
                             </span>
                             <div style={{ textAlign: 'right' }}>
-                              <strong style={{ color: '#0f172a' }}>{formatCurrency(Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0))}</strong>
+                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0))}</strong>
                               {isOtaPrepaidStay ? (
                                 <span style={{ display: 'block', fontSize: '0.72rem', color: '#166534', fontWeight: 800 }}>
                                   ✓ Pre-Paid by OTA (Voucher Covered)
@@ -1525,10 +1525,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
                           {hotelChargedBeds > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: '#64748b' }}>
+                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>
                                 Hotel Extra Bed ({hotelChargedBeds} Bed{hotelChargedBeds > 1 ? 's' : ''} @ ₹500):
                               </span>
-                              <strong style={{ color: '#0f172a' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
+                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
                             </div>
                           )}
 
@@ -1541,51 +1541,51 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
                           {isOtaPrepaidStay && advancePaidVal > hotelExtrasCharge && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: '#64748b' }}>Hotel Stay Incidentals &amp; Extras:</span>
-                              <strong style={{ color: '#0f172a' }}>+ {formatCurrency(advancePaidVal - hotelExtrasCharge)}</strong>
+                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>Hotel Stay Incidentals &amp; Extras:</span>
+                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(advancePaidVal - hotelExtrasCharge)}</strong>
                             </div>
                           )}
                         </>
                       ) : (
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                            <span style={{ color: '#64748b' }}>Base Room Tariff ({stayNights} Night{stayNights > 1 ? 's' : ''}):</span>
-                            <strong style={{ color: '#0f172a' }}>{formatCurrency((folioData.room?.price || folioData.room?.room_rate || 0) * stayNights)}</strong>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Base Room Tariff ({stayNights} Night{stayNights > 1 ? 's' : ''}):</span>
+                            <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency((folioData.room?.price || folioData.room?.room_rate || 0) * stayNights)}</strong>
                           </div>
 
                           {folioData.extraBeds > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: '#64748b' }}>Extra Bed ({folioData.extraBeds} Bed{folioData.extraBeds > 1 ? 's' : ''}):</span>
-                              <strong style={{ color: '#0f172a' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
+                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>Extra Bed ({folioData.extraBeds} Bed{folioData.extraBeds > 1 ? 's' : ''}):</span>
+                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
                             </div>
                           )}
                         </>
                       )}
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Meal Plan:</span>
-                        <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Meal Plan:</span>
+                        <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
                           {folioData.mealPlan === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>{isOtaPrepaidStay ? 'Hotel Extras Subtotal:' : (isOtaPayAtHotel ? 'Package + Extras Subtotal:' : 'Stay Tariff Subtotal:')}</span>
-                        <strong style={{ color: '#0f172a' }}>{formatCurrency(stayPreTax)}</strong>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>{isOtaPrepaidStay ? 'Hotel Extras Subtotal:' : (isOtaPayAtHotel ? 'Package + Extras Subtotal:' : 'Stay Tariff Subtotal:')}</span>
+                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(stayPreTax)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Discount ({folioData.discountPct || 0}%):</span>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Discount ({folioData.discountPct || 0}%):</span>
                         <strong style={{ color: '#dc2626' }}>- {formatCurrency(folioData.discountAmount || 0)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Stay GST (5%):</span>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Stay GST (5%):</span>
                         <strong style={{ color: '#d97706' }}>{isOtaPrepaidStay ? '₹0 (In Voucher)' : (isOtaPayAtHotel ? '₹0 (In OTA Rate)' : `+ ${formatCurrency(stayGst)}`)}</strong>
                       </div>
 
                       {folioData.isEarlyCheckout && (
-                        <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '0.8rem', color: '#166534' }}>
+                        <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid #86efac', borderRadius: '8px', fontSize: '0.8rem', color: '#166534' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <strong>⚡ Early Checkout Active</strong>
                             <span style={{ fontWeight: 800 }}>{folioData.stayDurationStr || `${folioData.earlyStayDays}d ${folioData.earlyStayHours}h`} (Exp: {folioData.expectedNights}d)</span>
@@ -1603,20 +1603,20 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     style={{
                       marginTop: '16px',
                       padding: '12px 14px',
-                      background: '#f8fafc',
+                      background: 'var(--bg-surface-secondary, #f8fafc)',
                       borderRadius: '10px',
-                      border: '1px solid #e2e8f0'
+                      border: '1px solid var(--border-color, #e2e8f0)'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#334155' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #334155)' }}>
                         {isOtaPrepaidStay ? 'Hotel Extras Bill (Payable @ Hotel):' : (isOtaPayAtHotel ? 'Total Payable @ Hotel (OTA Package + Extras):' : 'Total Hospitality Bill:')}
                       </span>
-                      <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0284c7' }}>
+                      <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--apple-blue, #0284c7)' }}>
                         {formatCurrency(stayNetTotal)}
                       </strong>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
                       <span>Advance Paid at Check-in: {formatCurrency(advancePaidVal)}</span>
                       <span style={{ fontWeight: 700, color: stayDueAmount > 0 ? '#b91c1c' : '#15803d' }}>
                         Stay Due: {formatCurrency(stayDueAmount)}
@@ -1629,17 +1629,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         style={{
                           marginTop: '10px',
                           paddingTop: '10px',
-                          borderTop: '1.5px dashed #cbd5e1',
+                          borderTop: '1.5px dashed var(--border-color, #cbd5e1)',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '4px'
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: '#334155' }}>
+                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary, #334155)' }}>
                             Entire Booking Value:
                           </span>
-                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: '#0f172a' }}>
+                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)' }}>
                             {formatCurrency(entireBookingVal)}
                           </strong>
                         </div>
@@ -1662,25 +1662,25 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         style={{
                           marginTop: '10px',
                           paddingTop: '10px',
-                          borderTop: '1.5px dashed #cbd5e1',
+                          borderTop: '1.5px dashed var(--border-color, #cbd5e1)',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '4px'
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: '#334155' }}>
+                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary, #334155)' }}>
                             Entire Stay Bill (Payable @ Hotel):
                           </span>
-                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: '#0f172a' }}>
+                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)' }}>
                             {formatCurrency(stayNetTotal)}
                           </strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--apple-blue, #0369a1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <span>🏨</span> Advance Collected at Desk:
                           </span>
-                          <strong style={{ fontSize: '1.18rem', fontWeight: 950, color: '#0369a1' }}>
+                          <strong style={{ fontSize: '1.18rem', fontWeight: 950, color: 'var(--apple-blue, #0369a1)' }}>
                             {formatCurrency(advancePaidVal)}
                           </strong>
                         </div>
@@ -1699,10 +1699,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   className="folio-card"
                   style={{
                     margin: 0,
-                    background: '#ffffff',
+                    background: 'var(--bg-surface, #ffffff)',
                     borderRadius: '16px',
-                    border: '1.5px solid #cbd5e1',
-                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                    border: '1.5px solid var(--border-color, #cbd5e1)',
+                    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)',
                     padding: '20px 24px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -1710,50 +1710,50 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   }}
                 >
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1.5px solid #f1f5f9', paddingBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1.5px solid var(--border-color, #f1f5f9)', paddingBottom: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '1.35rem' }}>🍽️</span>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 850, color: '#0f172a' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 850, color: 'var(--text-primary, #0f172a)' }}>
                             Restaurant &amp; Bar Orders Bill
                           </h4>
-                          <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                          <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary, #64748b)' }}>
                             F&amp;B Orders Summary &amp; Tax Breakdown
                           </span>
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 800, padding: '3px 8px', background: '#fef3c7', color: '#92400e', borderRadius: '6px' }}>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 800, padding: '3px 8px', background: 'rgba(217, 119, 6, 0.15)', color: '#d97706', borderRadius: '6px' }}>
                         {allFnbOrders.length} Order{allFnbOrders.length === 1 ? '' : 's'}
                       </span>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Food (Restaurant):</span>
-                        <strong style={{ color: '#0f172a' }}>{formatCurrency(fnbFoodGross)}</strong>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Food (Restaurant):</span>
+                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbFoodGross)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Bar (Lounge):</span>
-                        <strong style={{ color: '#0f172a' }}>{formatCurrency(fnbBarGross)}</strong>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Bar (Lounge):</span>
+                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbBarGross)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>F&amp;B Orders Subtotal:</span>
-                        <strong style={{ color: '#0f172a' }}>{formatCurrency(fnbTaxable)}</strong>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>F&amp;B Orders Subtotal:</span>
+                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbTaxable)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>F&amp;B Tax (5% GST):</span>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>F&amp;B Tax (5% GST):</span>
                         <strong style={{ color: '#d97706' }}>+ {formatCurrency(fnbGst)}</strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: '#64748b' }}>Total F&amp;B Orders:</span>
-                        <strong style={{ color: '#0f172a' }}>{formatCurrency(fnbTotal)}</strong>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Total F&amp;B Orders:</span>
+                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbTotal)}</strong>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', paddingTop: '4px', borderTop: '1px dashed var(--border-color, #e2e8f0)' }}>
                         <span style={{ color: '#16a34a', fontWeight: 750 }}>Paid at POS:</span>
                         <strong style={{ color: '#16a34a' }}>{formatCurrency(fnbPaidTotal)}</strong>
                       </div>

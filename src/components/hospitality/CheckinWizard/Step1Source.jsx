@@ -417,11 +417,11 @@ export default function Step1Source({
         className={`booking-source-section ${shakeAttention ? 'shake-attention' : ''}`}
         style={{
           marginBottom: '20px',
-          background: '#f8fafc',
-          border: shakeAttention ? '2px solid #ef4444' : '1.5px solid #e2e8f0',
+          background: 'var(--bg-surface, #ffffff)',
+          border: shakeAttention ? '2px solid #ef4444' : '1.5px solid var(--border-color, #e2e8f0)',
           borderRadius: '16px',
           padding: '18px 20px',
-          boxShadow: shakeAttention ? '0 0 20px rgba(239, 68, 68, 0.25)' : '0 2px 10px rgba(15, 23, 42, 0.03)',
+          boxShadow: shakeAttention ? '0 0 20px rgba(239, 68, 68, 0.25)' : '0 2px 10px rgba(0, 0, 0, 0.03)',
           transition: 'border-color 0.25s ease, box-shadow 0.25s ease'
         }}
       >
@@ -429,7 +429,7 @@ export default function Step1Source({
           style={{
             fontSize: '0.82rem',
             fontWeight: 800,
-            color: '#334155',
+            color: 'var(--text-primary, #334155)',
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
             marginBottom: '14px',
@@ -1987,7 +1987,7 @@ export default function Step1Source({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
               2. Document Type
             </h3>
             {!isChannelSelected ? (
@@ -1995,8 +1995,8 @@ export default function Step1Source({
                 style={{
                   fontSize: '0.72rem',
                   fontWeight: 750,
-                  color: '#64748b',
-                  background: '#e2e8f0',
+                  color: 'var(--text-secondary)',
+                  background: 'var(--bg-surface-secondary)',
                   padding: '3px 10px',
                   borderRadius: '12px',
                   display: 'inline-flex',

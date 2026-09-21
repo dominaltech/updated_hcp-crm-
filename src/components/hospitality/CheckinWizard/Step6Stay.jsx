@@ -2225,16 +2225,17 @@ export default function Step6Stay({
             {/* ALLOCATED ROOMS CARDS */}
             <div
               style={{
-                background: '#ffffff',
-                border: '1.5px solid #e2e8f0',
+                background: 'var(--bg-surface-secondary, #f8fafc)',
+                border: '1.5px solid var(--border-color, #e2e8f0)',
                 borderRadius: '16px',
                 padding: '12px 16px',
                 marginBottom: '16px',
-                boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                 display: 'flex',
                 flexWrap: 'wrap',
-                gap: '12px',
-                alignItems: 'center'
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px'
               }}
             >
               {allRooms.map((r, idx) => {
@@ -2246,16 +2247,17 @@ export default function Step6Stay({
                 return (
                   <div
                     key={r.id}
+                    className="allocated-room-card"
                     style={{
-                      background: isPrimary ? 'linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)' : '#ffffff',
-                      border: isPrimary ? '2px solid #a855f7' : '1.5px solid #cbd5e1',
+                      background: 'var(--bg-surface, #ffffff)',
+                      border: isPrimary ? '2px solid var(--apple-purple, #a855f7)' : '1.5px solid var(--border-color, #cbd5e1)',
                       borderRadius: '14px',
                       padding: '12px 18px',
                       display: 'inline-flex',
                       alignItems: 'center',
                       flexWrap: 'wrap',
                       gap: '14px',
-                      boxShadow: isPrimary ? '0 4px 16px rgba(168, 85, 247, 0.12)' : '0 2px 8px rgba(0,0,0,0.03)'
+                      boxShadow: isPrimary ? '0 4px 16px rgba(168, 85, 247, 0.15)' : '0 2px 8px rgba(0,0,0,0.03)'
                     }}
                   >
                     {/* Room Badge: Room #{r.room_number} */}
@@ -2264,10 +2266,10 @@ export default function Step6Stay({
                         🔑
                       </span>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '1.14rem', fontWeight: 900, color: isPrimary ? '#581c87' : '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+                        <span style={{ fontSize: '1.14rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.15 }}>
                           Room {r.room_number}
                         </span>
-                        <span style={{ fontSize: '0.72rem', color: isPrimary ? '#7e22ce' : '#64748b', fontWeight: 700 }}>
+                        <span style={{ fontSize: '0.72rem', color: isPrimary ? 'var(--apple-purple, #a855f7)' : 'var(--text-secondary)', fontWeight: 700 }}>
                           {isPrimary ? 'Primary Booking' : 'Additional Room'}
                         </span>
                       </div>
@@ -2278,11 +2280,11 @@ export default function Step6Stay({
                       style={{
                         fontSize: '0.8rem',
                         fontWeight: 800,
-                        color: isPrimary ? '#6b21a8' : '#334155',
-                        background: isPrimary ? '#f3e8ff' : '#f1f5f9',
+                        color: isPrimary ? 'var(--apple-purple, #a855f7)' : 'var(--text-secondary)',
+                        background: isPrimary ? 'rgba(168, 85, 247, 0.12)' : 'var(--bg-surface-secondary)',
                         padding: '4px 12px',
                         borderRadius: '20px',
-                        border: isPrimary ? '1px solid #d8b4fe' : '1px solid #cbd5e1'
+                        border: isPrimary ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid var(--border-color)'
                       }}
                     >
                       {r.room_type || 'Deluxe Suite'}
@@ -2291,13 +2293,13 @@ export default function Step6Stay({
                     {/* Capacity Pill */}
                     <div
                       style={{
-                        background: '#f0f9ff',
+                        background: 'rgba(56, 189, 248, 0.12)',
                         padding: '5px 12px',
                         borderRadius: '10px',
                         fontSize: '0.8rem',
                         fontWeight: 800,
-                        color: '#0369a1',
-                        border: '1.5px solid #bae6fd',
+                        color: 'var(--apple-blue)',
+                        border: '1.5px solid rgba(56, 189, 248, 0.28)',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '5px'
@@ -2310,10 +2312,10 @@ export default function Step6Stay({
 
                     {/* Tariff */}
                     <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px' }}>
-                      <span style={{ fontSize: '1.08rem', fontWeight: 900, color: '#15803d', letterSpacing: '-0.01em' }}>
+                      <span style={{ fontSize: '1.08rem', fontWeight: 900, color: 'var(--apple-green, #15803d)', letterSpacing: '-0.01em' }}>
                         ₹{Number(r.price).toLocaleString('en-IN')}
                       </span>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>/nt</span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700 }}>/nt</span>
                     </div>
 
                     {/* Modern Extra Bed Stepper */}
@@ -2323,15 +2325,15 @@ export default function Step6Stay({
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '8px',
-                          background: rExtraCount > 0 ? '#f5f3ff' : '#f8fafc',
-                          border: rExtraCount > 0 ? '1.5px solid #8b5cf6' : '1.5px solid #cbd5e1',
+                          background: rExtraCount > 0 ? 'rgba(168, 85, 247, 0.12)' : 'var(--bg-surface-secondary)',
+                          border: rExtraCount > 0 ? '1.5px solid var(--apple-purple, #8b5cf6)' : '1.5px solid var(--border-color)',
                           borderRadius: '12px',
                           padding: '5px 12px',
                           boxShadow: rExtraCount > 0 ? '0 2px 10px rgba(139, 92, 246, 0.18)' : 'none',
                           transition: 'all 0.2s ease'
                         }}
                       >
-                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: rExtraCount > 0 ? '#6b21a8' : '#334155' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: rExtraCount > 0 ? 'var(--apple-purple, #a855f7)' : 'var(--text-secondary)' }}>
                           🛏️ Extra Bed:
                         </span>
 
@@ -2343,15 +2345,15 @@ export default function Step6Stay({
                             width: '28px',
                             height: '28px',
                             borderRadius: '8px',
-                            border: '1px solid #cbd5e1',
-                            background: '#ffffff',
+                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-surface)',
                             cursor: rExtraCount > 0 ? 'pointer' : 'not-allowed',
                             fontWeight: 900,
                             fontSize: '1.1rem',
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: rExtraCount > 0 ? '#0f172a' : '#cbd5e1',
+                            color: rExtraCount > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)',
                             opacity: rExtraCount > 0 ? 1 : 0.45,
                             transition: 'all 0.15s ease',
                             boxShadow: rExtraCount > 0 ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
@@ -2366,7 +2368,7 @@ export default function Step6Stay({
                             textAlign: 'center',
                             fontSize: '1rem',
                             fontWeight: 900,
-                            color: rExtraCount > 0 ? '#6b21a8' : '#0f172a'
+                            color: rExtraCount > 0 ? 'var(--apple-purple, #a855f7)' : 'var(--text-primary)'
                           }}
                         >
                           {rExtraCount}
@@ -2374,23 +2376,24 @@ export default function Step6Stay({
 
                         <button
                           type="button"
-                          onClick={() => handleDirectAddExtraBed(r.id)}
+                          onClick={() => handleRoomExtraBedChange(r.id, 1)}
                           disabled={rExtraCount >= rExtra}
                           style={{
                             width: '28px',
                             height: '28px',
                             borderRadius: '8px',
-                            border: 'none',
-                            background: rExtraCount < rExtra ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' : '#e2e8f0',
+                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-surface)',
                             cursor: rExtraCount < rExtra ? 'pointer' : 'not-allowed',
                             fontWeight: 900,
                             fontSize: '1.1rem',
                             display: 'inline-flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: rExtraCount < rExtra ? '#ffffff' : '#94a3b8',
-                            boxShadow: rExtraCount < rExtra ? '0 2px 8px rgba(139, 92, 246, 0.35)' : 'none',
-                            transition: 'all 0.15s ease'
+                            color: rExtraCount < rExtra ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                            opacity: rExtraCount < rExtra ? 1 : 0.45,
+                            transition: 'all 0.15s ease',
+                            boxShadow: rExtraCount < rExtra ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
                           }}
                         >
                           +
@@ -2514,14 +2517,14 @@ export default function Step6Stay({
                     ? '2px solid #16a34a'
                     : adultFillPct > 0
                     ? '1.5px solid #86efac'
-                    : '1.5px solid #e2e8f0',
+                    : '1.5px solid var(--border-color, #e2e8f0)',
                   borderRadius: '18px',
                   padding: '16px 18px',
                   background: currentAdults > currentAllowedAdults
-                    ? '#fef2f2'
+                    ? 'rgba(239, 68, 68, 0.12)'
                     : adultFillPct > 0
-                    ? '#fafffd'
-                    : '#ffffff',
+                    ? 'rgba(34, 197, 94, 0.08)'
+                    : 'var(--bg-surface, #ffffff)',
                   transition: 'all 0.3s ease',
                   boxShadow: adultFillPct >= 100
                     ? '0 4px 18px rgba(22, 163, 74, 0.16)'
@@ -2558,8 +2561,8 @@ export default function Step6Stay({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '1.2rem' }}>👥</span>
-                      <span style={{ fontWeight: 900, fontSize: '0.96rem', color: '#0f172a' }}>Adults</span>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>(Male &amp; Female)</span>
+                      <span style={{ fontWeight: 900, fontSize: '0.96rem', color: 'var(--text-primary)' }}>Adults</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700 }}>(Male &amp; Female)</span>
                     </div>
 
                     <span
@@ -2567,23 +2570,23 @@ export default function Step6Stay({
                         fontSize: '0.78rem',
                         fontWeight: 800,
                         color: currentAdults === 0
-                          ? '#64748b'
+                          ? 'var(--text-secondary)'
                           : currentAdults > currentAllowedAdults
                           ? '#b91c1c'
                           : currentAdults === currentAllowedAdults
                           ? '#065f46'
                           : '#15803d',
                         background: currentAdults === 0
-                          ? '#f1f5f9'
+                          ? 'var(--bg-surface-secondary)'
                           : currentAdults > currentAllowedAdults
-                          ? '#fee2e2'
+                          ? 'rgba(239, 68, 68, 0.15)'
                           : currentAdults === currentAllowedAdults
-                          ? '#ecfdf5'
-                          : '#dcfce7',
+                          ? 'rgba(34, 197, 94, 0.15)'
+                          : 'rgba(34, 197, 94, 0.12)',
                         padding: '3px 12px',
                         borderRadius: '14px',
                         border: currentAdults === 0
-                          ? '1px solid #cbd5e1'
+                          ? '1px solid var(--border-color)'
                           : currentAdults > currentAllowedAdults
                           ? '1px solid #fca5a5'
                           : currentAdults === currentAllowedAdults
@@ -2607,8 +2610,8 @@ export default function Step6Stay({
                         width: '42px',
                         height: '42px',
                         borderRadius: '50%',
-                        background: '#eff6ff',
-                        border: '1.5px solid #bfdbfe',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        border: '1.5px solid rgba(59, 130, 246, 0.3)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -2617,10 +2620,10 @@ export default function Step6Stay({
                     >
                       <img src="/man.png" className="guest-img-avatar" alt="Adult Male" style={{ width: '30px', height: '30px' }} />
                     </div>
-                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', marginBottom: '8px' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--text-primary)', marginBottom: '8px' }}>
                       Adults (Male)
                     </div>
-                    <div className="stepper-box" style={{ background: '#ffffff', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                    <div className="stepper-box" style={{ background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)' }}>
                       <button
                         type="button"
                         className="stepper-btn"
@@ -2630,7 +2633,7 @@ export default function Step6Stay({
                       >
                         −
                       </button>
-                      <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: '#0f172a' }}>
+                      <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: 'var(--text-primary)' }}>
                         {maleCount}
                       </span>
                       <button
@@ -2645,11 +2648,11 @@ export default function Step6Stay({
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ width: '1px', height: '28px', background: '#cbd5e1' }} />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#94a3b8', background: '#f1f5f9', width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1' }}>
+                    <div style={{ width: '1px', height: '28px', background: 'var(--border-color, #cbd5e1)' }} />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--text-secondary)', background: 'var(--bg-surface-secondary)', width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)' }}>
                       &amp;
                     </span>
-                    <div style={{ width: '1px', height: '28px', background: '#cbd5e1' }} />
+                    <div style={{ width: '1px', height: '28px', background: 'var(--border-color, #cbd5e1)' }} />
                   </div>
 
                   {/* Adults (Female) */}
@@ -2661,8 +2664,8 @@ export default function Step6Stay({
                         width: '42px',
                         height: '42px',
                         borderRadius: '50%',
-                        background: '#fdf2f8',
-                        border: '1.5px solid #fbcfe8',
+                        background: 'rgba(236, 72, 153, 0.12)',
+                        border: '1.5px solid rgba(236, 72, 153, 0.3)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -2671,10 +2674,10 @@ export default function Step6Stay({
                     >
                       <img src="/woman.png" className="guest-img-avatar" alt="Adult Female" style={{ width: '30px', height: '30px' }} />
                     </div>
-                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', marginBottom: '8px' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--text-primary)', marginBottom: '8px' }}>
                       Adults (Female)
                     </div>
-                    <div className="stepper-box" style={{ background: '#ffffff', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                    <div className="stepper-box" style={{ background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)' }}>
                       <button
                         type="button"
                         className="stepper-btn"
@@ -2684,7 +2687,7 @@ export default function Step6Stay({
                       >
                         −
                       </button>
-                      <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: '#0f172a' }}>
+                      <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: 'var(--text-primary)' }}>
                         {femaleCount}
                       </span>
                       <button
@@ -2719,7 +2722,7 @@ export default function Step6Stay({
                     ? '2px solid #16a34a'
                     : childrenFillPct > 0
                     ? '1.5px solid #86efac'
-                    : '1.5px solid #e2e8f0',
+                    : '1.5px solid var(--border-color, #e2e8f0)',
                   borderRadius: '18px',
                   padding: '16px 14px',
                   display: 'flex',
@@ -2728,10 +2731,10 @@ export default function Step6Stay({
                   justifyContent: 'space-between',
                   textAlign: 'center',
                   background: childrenCount > maxChildren
-                    ? '#fef2f2'
+                    ? 'rgba(239, 68, 68, 0.12)'
                     : childrenFillPct > 0
-                    ? '#fafffd'
-                    : '#ffffff',
+                    ? 'rgba(34, 197, 94, 0.08)'
+                    : 'var(--bg-surface, #ffffff)',
                   transition: 'all 0.3s ease',
                   boxShadow: childrenFillPct >= 100
                     ? '0 4px 18px rgba(22, 163, 74, 0.16)'
@@ -2763,18 +2766,18 @@ export default function Step6Stay({
 
                 <div style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '8px' }}>
-                    <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#0f172a' }}>
+                    <span style={{ fontWeight: 900, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
                       Children (&lt;6)
                     </span>
                     <span
                       style={{
                         fontSize: '0.74rem',
                         fontWeight: 800,
-                        color: childrenCount > 0 ? '#15803d' : '#64748b',
-                        background: childrenCount > 0 ? '#dcfce7' : '#f1f5f9',
+                        color: childrenCount > 0 ? '#15803d' : 'var(--text-secondary)',
+                        background: childrenCount > 0 ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface-secondary)',
                         padding: '2px 9px',
                         borderRadius: '12px',
-                        border: childrenCount > 0 ? '1px solid #bbf7d0' : '1px solid #e2e8f0'
+                        border: childrenCount > 0 ? '1px solid #bbf7d0' : '1px solid var(--border-color)'
                       }}
                     >
                       Manage: {childrenCount} / {maxChildren}
@@ -2788,8 +2791,8 @@ export default function Step6Stay({
                       width: '42px',
                       height: '42px',
                       borderRadius: '50%',
-                      background: '#fefce8',
-                      border: '1.5px solid #fef08a',
+                      background: 'rgba(234, 179, 8, 0.12)',
+                      border: '1.5px solid rgba(234, 179, 8, 0.3)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -2799,7 +2802,7 @@ export default function Step6Stay({
                     <img src="/children.png" className="guest-img-avatar" alt="Children" style={{ width: '30px', height: '30px' }} />
                   </div>
 
-                  <div className="stepper-box" style={{ background: '#ffffff', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                  <div className="stepper-box" style={{ background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)' }}>
                     <button
                       type="button"
                       className="stepper-btn"
@@ -2809,7 +2812,7 @@ export default function Step6Stay({
                     >
                       −
                     </button>
-                    <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: '#0f172a' }}>
+                    <span className="stepper-val" style={{ fontWeight: 900, fontSize: '1.28rem', minWidth: '36px', textAlign: 'center', color: 'var(--text-primary)' }}>
                       {draft.children ?? 0}
                     </span>
                     <button
@@ -2823,7 +2826,7 @@ export default function Step6Stay({
                     </button>
                   </div>
 
-                  <div style={{ marginTop: '8px', fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                  <div style={{ marginTop: '8px', fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
                     {childrenCount === 0 ? 'Complimentary (<6 yrs)' : `✓ ${childrenCount} child stay free (<6 yrs)`}
                   </div>
                 </div>
@@ -2881,8 +2884,9 @@ export default function Step6Stay({
                         fontSize: '0.82rem',
                         fontWeight: 600,
                         borderRadius: '8px',
-                        border: !checkoutDateStr ? '2px solid #ef4444' : '1.5px solid #cbd5e1',
-                        background: !checkoutDateStr ? '#fff5f5' : '#ffffff'
+                        border: !checkoutDateStr ? '2px solid #ef4444' : '1.5px solid var(--border-color, #cbd5e1)',
+                        background: !checkoutDateStr ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-app, #ffffff)',
+                        color: 'var(--text-primary)'
                       }}
                     />
                     <UnifiedTimeInput
@@ -2892,8 +2896,8 @@ export default function Step6Stay({
                         height: '38px',
                         fontSize: '0.82rem',
                         borderRadius: '8px',
-                        border: !checkoutTimeStr ? '2px solid #ef4444' : '1.5px solid #cbd5e1',
-                        background: !checkoutTimeStr ? '#fff5f5' : '#ffffff'
+                        border: !checkoutTimeStr ? '2px solid #ef4444' : '1.5px solid var(--border-color, #cbd5e1)',
+                        background: !checkoutTimeStr ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-app, #ffffff)'
                       }}
                     />
                   </div>
@@ -2901,7 +2905,7 @@ export default function Step6Stay({
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <label style={{ margin: 0, fontWeight: 800, fontSize: '0.80rem', color: '#1e293b' }}>
+                    <label style={{ margin: 0, fontWeight: 800, fontSize: '0.80rem', color: 'var(--text-primary)' }}>
                       🕒 Check-In Time
                     </label>
                   </div>
@@ -2922,25 +2926,25 @@ export default function Step6Stay({
                           })}`
                         : 'Now'
                     }
-                    style={{ background: '#f8fafc', color: '#334155', fontWeight: 600, padding: '7px 10px', fontSize: '0.84rem', borderRadius: '8px' }}
+                    style={{ background: 'var(--bg-app, #f8fafc)', color: 'var(--text-primary)', fontWeight: 600, padding: '7px 10px', fontSize: '0.84rem', borderRadius: '8px', border: '1.5px solid var(--border-color, #cbd5e1)' }}
                   />
 
                   <div
                     style={{
                       marginTop: '8px',
                       padding: '6px 10px',
-                      background: '#f8fafc',
+                      background: 'var(--bg-surface-secondary, #f8fafc)',
                       borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border-color, #e2e8f0)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       fontSize: '0.72rem',
-                      color: '#475569'
+                      color: 'var(--text-secondary)'
                     }}
                   >
                     <span>Duration:</span>
-                    <strong style={{ color: '#0071e3' }}>
+                    <strong style={{ color: 'var(--apple-blue)' }}>
                       {nights} {nights === 1 ? 'Night' : 'Nights'} Stay
                     </strong>
                   </div>
@@ -2964,7 +2968,7 @@ export default function Step6Stay({
                   min={0}
                   value={basePrice}
                   onChange={(e) => updateDraft({ baseRate: Number(e.target.value) })}
-                  style={{ background: '#f8fafc', fontWeight: 700, color: 'var(--text-primary)' }}
+                  style={{ background: 'var(--bg-app, #f8fafc)', fontWeight: 700, color: 'var(--text-primary)', border: '1.5px solid var(--border-color, #cbd5e1)' }}
                 />
               </div>
               <div className="form-group">
@@ -2979,7 +2983,7 @@ export default function Step6Stay({
                     const val = Math.min(Number(e.target.value) || 0, room.max_discount_pct || 15);
                     updateDraft({ discountPct: val });
                   }}
-                  style={{ fontWeight: 700 }}
+                  style={{ background: 'var(--bg-app, #ffffff)', fontWeight: 700, color: 'var(--text-primary)', border: '1.5px solid var(--border-color, #cbd5e1)' }}
                 />
               </div>
             </div>
@@ -2992,28 +2996,28 @@ export default function Step6Stay({
         className="room-members-doc-card"
         style={{
           marginTop: '16px',
-          background: '#ffffff',
-          border: '1.5px solid #e2e8f0',
+          background: 'var(--bg-surface, #ffffff)',
+          border: '1.5px solid var(--border-color, #e2e8f0)',
           borderRadius: '16px',
           padding: '16px 20px',
-          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)'
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#eff6ff', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--apple-blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
               👥
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                   Companion ID Documents
                 </h4>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--apple-blue)', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
                   {(draft.memberDocuments || []).length} Attached
                 </span>
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>
+              <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
                 Scan and attach ID documents for room companions (preserved with booking &amp; PDF)
               </p>
             </div>
@@ -3202,7 +3206,7 @@ export default function Step6Stay({
               style={{
                 fontSize: '0.92rem',
                 fontWeight: 900,
-                color: '#0f172a',
+                color: 'var(--text-primary)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px'
@@ -3214,11 +3218,11 @@ export default function Step6Stay({
               style={{
                 fontSize: '0.76rem',
                 fontWeight: 800,
-                background: '#eff6ff',
-                color: '#1e40af',
+                background: 'rgba(56, 189, 248, 0.15)',
+                color: 'var(--apple-blue)',
                 padding: '4px 12px',
                 borderRadius: '20px',
-                border: '1px solid #bfdbfe'
+                border: '1px solid rgba(56, 189, 248, 0.3)'
               }}
             >
               {draft.mealPlan === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
@@ -3234,8 +3238,8 @@ export default function Step6Stay({
               className={`meal-plan-card ${draft.mealPlan !== 'with_breakfast' ? 'active' : ''}`}
               onClick={() => updateDraft({ mealPlan: 'without_breakfast' })}
               style={{
-                border: draft.mealPlan !== 'with_breakfast' ? '2px solid #0071e3' : '1.5px solid #e2e8f0',
-                background: draft.mealPlan !== 'with_breakfast' ? '#eff6ff' : '#ffffff',
+                border: draft.mealPlan !== 'with_breakfast' ? '2px solid var(--apple-blue)' : '1.5px solid var(--border-color, #e2e8f0)',
+                background: 'var(--bg-surface, #ffffff)',
                 borderRadius: '12px',
                 padding: '14px 16px',
                 cursor: 'pointer'
@@ -3245,15 +3249,15 @@ export default function Step6Stay({
                 <span style={{ fontSize: '1.1rem' }}>
                   🥣
                 </span>
-                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16a34a', background: 'rgba(34, 197, 94, 0.15)', padding: '2px 8px', borderRadius: '12px', border: '1px solid #86efac' }}>
                   Included
                 </span>
               </div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px' }}>Without Breakfast</div>
-              <div style={{ fontSize: '0.76rem', color: '#64748b', lineHeight: 1.3 }}>
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '3px' }}>Without Breakfast</div>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
                 Standard room stay only. Meals charged separately.
               </div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0071e3', marginTop: '10px' }}>₹0 / guest</div>
+              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--apple-blue)', marginTop: '10px' }}>₹0 / guest</div>
             </div>
 
             {/* With Breakfast */}
@@ -3261,8 +3265,8 @@ export default function Step6Stay({
               className={`meal-plan-card ${draft.mealPlan === 'with_breakfast' ? 'active' : ''}`}
               onClick={() => updateDraft({ mealPlan: 'with_breakfast' })}
               style={{
-                border: draft.mealPlan === 'with_breakfast' ? '2px solid #d97706' : '1.5px solid #e2e8f0',
-                background: draft.mealPlan === 'with_breakfast' ? '#fffbeb' : '#ffffff',
+                border: draft.mealPlan === 'with_breakfast' ? '2px solid #d97706' : '1.5px solid var(--border-color, #e2e8f0)',
+                background: 'var(--bg-surface, #ffffff)',
                 borderRadius: '12px',
                 padding: '14px 16px',
                 cursor: 'pointer'
@@ -3272,12 +3276,12 @@ export default function Step6Stay({
                 <span style={{ fontSize: '1.1rem' }}>
                   🍳
                 </span>
-                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#d97706', background: 'rgba(217, 119, 6, 0.15)', padding: '2px 8px', borderRadius: '12px', border: '1px solid #fde68a' }}>
                   Breakfast Included
                 </span>
               </div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: '3px' }}>With Breakfast</div>
-              <div style={{ fontSize: '0.76rem', color: '#64748b', lineHeight: 1.3 }}>
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '3px' }}>With Breakfast</div>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
                 Delicious buffet breakfast included every morning.
               </div>
               <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#d97706', marginTop: '10px' }}>

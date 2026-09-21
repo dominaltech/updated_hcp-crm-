@@ -143,7 +143,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
         gradient: 'linear-gradient(135deg, #b45309 0%, #ea580c 100%)',
         accentColor: '#d97706',
         cardBorderActive: '#f59e0b',
-        cardBgActive: '#fffbeb'
+        cardBgActive: 'rgba(217, 119, 6, 0.14)'
       };
     }
     if (targetRole === 'bar') {
@@ -154,7 +154,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
         gradient: 'linear-gradient(135deg, #6b21a8 0%, #9333ea 100%)',
         accentColor: '#7c3aed',
         cardBorderActive: '#a855f7',
-        cardBgActive: '#faf5ff'
+        cardBgActive: 'rgba(147, 51, 234, 0.14)'
       };
     }
     if (targetRole === 'manager') {
@@ -163,9 +163,9 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
         title: '⚙️ Manager Authorization',
         icon: '⚙️',
         gradient: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
-        accentColor: '#334155',
-        cardBorderActive: '#64748b',
-        cardBgActive: '#f8fafc'
+        accentColor: '#475569',
+        cardBorderActive: '#94a3b8',
+        cardBgActive: 'rgba(148, 163, 184, 0.16)'
       };
     }
     return {
@@ -175,7 +175,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
       gradient: 'linear-gradient(135deg, #0369a1 0%, #0284c7 100%)',
       accentColor: '#0284c7',
       cardBorderActive: '#38bdf8',
-      cardBgActive: '#f0f9ff'
+      cardBgActive: 'rgba(2, 132, 199, 0.14)'
     };
   };
 
@@ -226,8 +226,8 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
           borderRadius: '28px',
           overflow: 'hidden',
           boxShadow: mandatory ? '0 35px 100px rgba(0,0,0,0.75)' : '0 25px 65px rgba(0,0,0,0.35)',
-          border: mandatory ? '3px solid #3b82f6' : '1.5px solid #e2e8f0',
-          background: '#ffffff',
+          border: mandatory ? '3px solid #3b82f6' : '1.5px solid var(--border-color, #e2e8f0)',
+          background: 'var(--bg-surface, #ffffff)',
           display: 'flex',
           flexDirection: 'column'
         }}
@@ -330,7 +330,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
         <div
           style={{
             padding: '30px 36px',
-            background: '#ffffff',
+            background: 'var(--bg-surface, #ffffff)',
             display: 'flex',
             gap: '32px',
             flex: 1,
@@ -345,14 +345,14 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                 style={{
                   fontSize: '0.88rem',
                   fontWeight: 900,
-                  color: '#1e293b',
+                  color: 'var(--text-primary, #1e293b)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em'
                 }}
               >
                 1. Select Your Staff Name:
               </label>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', padding: '4px 12px', borderRadius: '12px' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary, #64748b)', background: 'var(--bg-surface-secondary, #f1f5f9)', padding: '4px 12px', borderRadius: '12px' }}>
                 {sectionStaff.length} active account{sectionStaff.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -362,17 +362,17 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                 style={{
                   padding: '40px 24px',
                   textAlign: 'center',
-                  background: '#f8fafc',
+                  background: 'var(--bg-surface-secondary, #f8fafc)',
                   borderRadius: '18px',
-                  border: '2px dashed #cbd5e1',
-                  color: '#64748b',
+                  border: '2px dashed var(--border-color, #cbd5e1)',
+                  color: 'var(--text-secondary, #64748b)',
                   fontSize: '0.96rem',
                   margin: 'auto 0'
                 }}
               >
                 <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>👤</span>
-                <strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>No staff accounts found for {sectionBranding.name}.</strong>
-                <div style={{ fontSize: '0.88rem', marginTop: '8px', color: '#94a3b8' }}>
+                <strong style={{ fontSize: '1.1rem', color: 'var(--text-primary, #0f172a)' }}>No staff accounts found for {sectionBranding.name}.</strong>
+                <div style={{ fontSize: '0.88rem', marginTop: '8px', color: 'var(--text-secondary, #94a3b8)' }}>
                   Please add staff members in the {sectionBranding.name} Manager Panel.
                 </div>
               </div>
@@ -411,8 +411,8 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                         borderRadius: '16px',
                         border: isSelected
                           ? `2.5px solid ${sectionBranding.cardBorderActive}`
-                          : '1.5px solid #e2e8f0',
-                        background: isSelected ? sectionBranding.cardBgActive : '#ffffff',
+                          : '1.5px solid var(--border-color, #e2e8f0)',
+                        background: isSelected ? sectionBranding.cardBgActive : 'var(--bg-surface, #ffffff)',
                         boxShadow: isSelected
                           ? '0 6px 20px rgba(0,0,0,0.1)'
                           : '0 2px 6px rgba(0,0,0,0.03)',
@@ -427,8 +427,8 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                           width: '50px',
                           height: '50px',
                           borderRadius: '14px',
-                          background: isSelected ? sectionBranding.accentColor : '#f1f5f9',
-                          color: isSelected ? '#ffffff' : '#334155',
+                          background: isSelected ? sectionBranding.accentColor : 'var(--bg-surface-secondary, #f1f5f9)',
+                          color: isSelected ? '#ffffff' : 'var(--text-primary, #334155)',
                           fontWeight: 950,
                           fontSize: '1.15rem',
                           display: 'flex',
@@ -446,7 +446,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                           style={{
                             fontWeight: 900,
                             fontSize: '1.02rem',
-                            color: isSelected ? '#0f172a' : '#1e293b',
+                            color: 'var(--text-primary, #0f172a)',
                             lineHeight: 1.3,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -458,8 +458,8 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                         <div
                           style={{
                             fontSize: '0.80rem',
-                            color: isSelected ? sectionBranding.accentColor : '#64748b',
-                            fontWeight: 800,
+                            color: isSelected ? sectionBranding.accentColor : 'var(--text-secondary, #64748b)',
+                            fontWeight: 850,
                             marginTop: '3px'
                           }}
                         >
@@ -478,7 +478,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
             style={{
               flex: 0.95,
               minWidth: '320px',
-              borderLeft: '1.5px solid #e2e8f0',
+              borderLeft: '1.5px solid var(--border-color, #e2e8f0)',
               paddingLeft: '32px',
               display: 'flex',
               flexDirection: 'column',
@@ -489,7 +489,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
               style={{
                 fontSize: '0.88rem',
                 fontWeight: 900,
-                color: '#1e293b',
+                color: 'var(--text-primary, #1e293b)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
                 marginBottom: '14px',
@@ -532,10 +532,10 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                   {selectedInitials}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '0.80rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: '0.80rem', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase' }}>
                     Active Selection
                   </div>
-                  <div style={{ fontSize: '1.18rem', fontWeight: 950, color: '#0f172a', lineHeight: 1.25 }}>
+                  <div style={{ fontSize: '1.18rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)', lineHeight: 1.25 }}>
                     {selectedStaff.full_name}
                   </div>
                   <code style={{ fontSize: '0.82rem', fontWeight: 850, color: sectionBranding.accentColor }}>
@@ -547,17 +547,17 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
               <div
                 style={{
                   padding: '24px 20px',
-                  background: '#f8fafc',
-                  border: '1.5px dashed #cbd5e1',
+                  background: 'var(--bg-surface-secondary, #f8fafc)',
+                  border: '1.5px dashed var(--border-color, #cbd5e1)',
                   borderRadius: '16px',
                   textAlign: 'center',
                   marginBottom: '20px',
-                  color: '#64748b'
+                  color: 'var(--text-secondary, #64748b)'
                 }}
               >
                 <span style={{ fontSize: '1.8rem', display: 'block', marginBottom: '6px' }}>👈</span>
-                <strong style={{ fontSize: '0.94rem', color: '#334155' }}>Select your card on the left</strong>
-                <div style={{ fontSize: '0.80rem', marginTop: '4px', color: '#94a3b8' }}>
+                <strong style={{ fontSize: '0.94rem', color: 'var(--text-primary, #334155)' }}>Select your card on the left</strong>
+                <div style={{ fontSize: '0.80rem', marginTop: '4px', color: 'var(--text-secondary, #94a3b8)' }}>
                   Click your name to enter your password
                 </div>
               </div>
@@ -565,7 +565,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '0.86rem', fontWeight: 850, color: '#334155', marginBottom: '6px', display: 'block' }}>
+                <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-secondary, #334155)', marginBottom: '6px', display: 'block' }}>
                   Password *
                 </label>
                 <div style={{ position: 'relative' }}>
@@ -589,7 +589,9 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                       borderRadius: '14px',
                       fontSize: '1.05rem',
                       fontWeight: 700,
-                      border: '2px solid #cbd5e1'
+                      border: '2px solid var(--border-color, #cbd5e1)',
+                      background: 'var(--bg-app, #ffffff)',
+                      color: 'var(--text-primary, #0f172a)'
                     }}
                   />
                   <button
@@ -603,7 +605,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      color: '#64748b',
+                      color: 'var(--text-secondary, #64748b)',
                       fontSize: '1.3rem'
                     }}
                     title={showPassword ? 'Hide password' : 'Show password'}
@@ -617,10 +619,10 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                 <div
                   style={{
                     padding: '12px 16px',
-                    background: '#fef2f2',
-                    border: '1.5px solid #fecaca',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1.5px solid rgba(239, 68, 68, 0.3)',
                     borderRadius: '12px',
-                    color: '#dc2626',
+                    color: '#ef4444',
                     fontSize: '0.88rem',
                     fontWeight: 800
                   }}
@@ -638,7 +640,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                   fontSize: '1.1rem',
                   fontWeight: 950,
                   borderRadius: '16px',
-                  background: selectedStaff ? sectionBranding.gradient : '#94a3b8',
+                  background: selectedStaff ? sectionBranding.gradient : 'var(--bg-surface-secondary, #94a3b8)',
                   marginTop: '4px',
                   display: 'flex',
                   alignItems: 'center',

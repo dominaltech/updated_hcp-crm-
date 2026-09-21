@@ -77,8 +77,8 @@ export default function CashierLogoutModal({ isOpen, onClose, onSwitchToLogin })
           borderRadius: '28px',
           overflow: 'hidden',
           boxShadow: '0 35px 80px rgba(0,0,0,0.4)',
-          border: '2px solid #e2e8f0',
-          background: '#ffffff',
+          border: '2px solid var(--border-color, #e2e8f0)',
+          background: 'var(--bg-surface, #ffffff)',
           textAlign: 'center',
           position: 'relative',
           padding: '46px 36px 40px',
@@ -97,9 +97,9 @@ export default function CashierLogoutModal({ isOpen, onClose, onSwitchToLogin })
             position: 'absolute',
             right: '20px',
             top: '20px',
-            background: '#f1f5f9',
+            background: 'var(--bg-surface-secondary, #f1f5f9)',
             border: 'none',
-            color: '#64748b',
+            color: 'var(--text-secondary, #64748b)',
             width: '36px',
             height: '36px',
             borderRadius: '50%',
@@ -142,7 +142,7 @@ export default function CashierLogoutModal({ isOpen, onClose, onSwitchToLogin })
           style={{
             fontSize: '2rem',
             fontWeight: 950,
-            color: '#0f172a',
+            color: 'var(--text-primary, #0f172a)',
             letterSpacing: '-0.025em',
             lineHeight: 1.25,
             marginBottom: '10px'
@@ -157,7 +157,7 @@ export default function CashierLogoutModal({ isOpen, onClose, onSwitchToLogin })
           style={{
             fontSize: '1.22rem',
             fontWeight: 850,
-            color: '#475569',
+            color: 'var(--text-secondary, #475569)',
             marginBottom: '36px',
             display: 'flex',
             alignItems: 'center',
@@ -169,11 +169,11 @@ export default function CashierLogoutModal({ isOpen, onClose, onSwitchToLogin })
             style={{
               fontSize: '1.25rem',
               fontWeight: 950,
-              color: '#0f172a',
-              background: '#f1f5f9',
+              color: 'var(--text-primary, #0f172a)',
+              background: 'var(--bg-surface-secondary, #f1f5f9)',
               padding: '4px 14px',
               borderRadius: '10px',
-              border: '1px solid #e2e8f0'
+              border: '1px solid var(--border-color, #e2e8f0)'
             }}
           >
             {targetStaff.username}

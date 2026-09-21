@@ -3072,14 +3072,14 @@ export default function ManagePage({ onPrintClosingReport }) {
               flexDirection: 'column'
             }}
           >
-            <div className="modal-header" style={{ padding: '20px 28px', background: '#ffffff', borderBottom: '2px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="modal-header" style={{ padding: '20px 28px', background: 'var(--bg-surface, #ffffff)', borderBottom: '2px solid var(--border-color, #f1f5f9)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '2rem', padding: '8px 10px', background: '#eff6ff', borderRadius: '14px', border: '1.5px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🏨</span>
+                <span style={{ fontSize: '2rem', padding: '8px 10px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '14px', border: '1.5px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🏨</span>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.42rem', fontWeight: 950, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.42rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.02em' }}>
                     {editingRoom ? `Edit Room #${editingRoom.room_number}` : 'Add New Room'}
                   </h3>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.88rem', fontWeight: 700, color: '#475569' }}>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary, #475569)' }}>
                     Configure room specifications, guest capacities, tariff, and add-on rates
                   </p>
                 </div>
@@ -3088,9 +3088,9 @@ export default function ManagePage({ onPrintClosingReport }) {
                 type="button"
                 className="modal-close-btn"
                 onClick={() => setIsRoomModalOpen(false)}
-                style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#f1f5f9', border: '1.5px solid #e2e8f0', cursor: 'pointer', fontSize: '1.4rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease' }}
+                style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--bg-surface-secondary, #f1f5f9)', border: '1.5px solid var(--border-color, #e2e8f0)', cursor: 'pointer', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary, #475569)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#475569'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-surface-secondary, #f1f5f9)'; e.currentTarget.style.color = 'var(--text-primary, #475569)'; }}
               >
                 &times;
               </button>
@@ -3111,8 +3111,8 @@ export default function ManagePage({ onPrintClosingReport }) {
               >
                 
                 {/* 1. Basic Room Info */}
-                <div style={{ background: '#f8fafc', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid #cbd5e1', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: 'var(--bg-surface-secondary, #f8fafc)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '1.05rem' }}>🏷️</span> ROOM IDENTIFICATION &amp; BASE TARIFF
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
@@ -3125,7 +3125,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         placeholder="e.g. 101"
                         value={roomForm.room_number}
                         onChange={(e) => setRoomForm({ ...roomForm, room_number: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
@@ -3137,7 +3137,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         placeholder="e.g. Deluxe AC"
                         value={roomForm.room_type}
                         onChange={(e) => setRoomForm({ ...roomForm, room_type: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 850, border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
@@ -3150,7 +3150,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.price}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.12rem', fontWeight: 950, color: '#0071e3', border: '2px solid #93c5fd', borderRadius: '10px', padding: '0 12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.12rem', fontWeight: 950, color: 'var(--apple-blue, #0071e3)', border: '2px solid var(--apple-blue)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
@@ -3166,7 +3166,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                           value={roomForm.gst_pct}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => setRoomForm({ ...roomForm, gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                          style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 30px 0 12px' }}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 30px 0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                         />
                         <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)' }}>
                           %
@@ -3183,20 +3183,20 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.max_discount_pct}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, max_discount_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 850, border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* 2. Occupancy Limits */}
-                <div style={{ background: '#f0fdf4', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid #86efac', boxSizing: 'border-box', width: '100%' }}>
+                <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid rgba(34, 197, 94, 0.3)', boxSizing: 'border-box', width: '100%' }}>
                   <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '1.05rem' }}>👥</span> CAPACITY &amp; OCCUPANCY LIMITS
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: '#14532d', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                         Max Adults 👥
                       </label>
                       <input
@@ -3208,11 +3208,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.max_adults}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, max_adults: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #86efac', borderRadius: '10px', color: '#14532d', textAlign: 'center' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: '#14532d', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                         Max Child 🧒
                       </label>
                       <input
@@ -3223,11 +3223,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.max_children}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, max_children: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #86efac', borderRadius: '10px', color: '#14532d', textAlign: 'center' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: '#14532d', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                         Max Extra Bed 🛏️
                       </label>
                       <input
@@ -3238,20 +3238,20 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.max_extra_beds}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, max_extra_beds: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #86efac', borderRadius: '10px', color: '#14532d', textAlign: 'center' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* 3. Add-on Rates */}
-                <div style={{ background: '#fdf4ff', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid #f0abfc', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#86198f', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: 'rgba(168, 85, 247, 0.08)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid rgba(168, 85, 247, 0.3)', boxSizing: 'border-box', width: '100%' }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-purple, #86198f)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '1.05rem' }}>🛏️</span> EXTRA BED &amp; BREAKFAST RATES
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: '#701a75', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                         Extra Bed Rate (₹ / Night)
                       </label>
                       <input
@@ -3265,11 +3265,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                           const val = raw === '' ? '' : Number(raw);
                           setRoomForm({ ...roomForm, extra_bed_price: val, extra_bed_rate: val });
                         }}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #f0abfc', borderRadius: '10px', padding: '0 12px', color: '#701a75' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '10px', padding: '0 12px', color: 'var(--text-primary)' }}
                       />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: '#701a75', display: 'block', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                         Breakfast Price (₹ / Guest)
                       </label>
                       <input
@@ -3279,20 +3279,20 @@ export default function ManagePage({ onPrintClosingReport }) {
                         value={roomForm.breakfast_price}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => setRoomForm({ ...roomForm, breakfast_price: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #f0abfc', borderRadius: '10px', padding: '0 12px', color: '#701a75' }}
+                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '10px', padding: '0 12px', color: 'var(--text-primary)' }}
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* 4. Stay Extension Hourly Slabs */}
-                <div style={{ padding: '16px 18px', background: '#f8fafc', borderRadius: '14px', border: '1.5px solid #cbd5e1', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ padding: '16px 18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '1.05rem' }}>⏱️</span> STAY EXTENSION HOURLY SLABS (₹)
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', color: '#0f172a', fontWeight: 850, display: 'block', marginBottom: '6px' }}>1–3 Hours Rate (₹)</label>
+                      <label style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 850, display: 'block', marginBottom: '6px' }}>1–3 Hours Rate (₹)</label>
                       <input
                         type="number"
                         min="0"

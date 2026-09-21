@@ -442,30 +442,30 @@ export default function FolioSettlementModal({
                   Stayed: {stayDurationStr || `${earlyStayDays} Days & ${earlyStayHours} Hours`} (Expected: {expectedNights} Days)
                 </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '0.85rem', color: '#14532d' }}>
-                <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Completed Stay</div>
-                  <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{earlyStayDays} Day(s)</strong> @ {formatCurrency(room.price || room.room_rate || 0)}/day
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '0.85rem' }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Completed Stay</div>
+                  <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{earlyStayDays} Day(s)</strong> @ {formatCurrency(room.price || room.room_rate || 0)}/day
                 </div>
-                <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Extra Hours ({earlyStayHours}h)</div>
-                  <strong style={{ fontSize: '1rem', color: '#0f172a' }}>+{formatCurrency(earlyExtensionCharge)}</strong>
+                <div style={{ background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Extra Hours ({earlyStayHours}h)</div>
+                  <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>+{formatCurrency(earlyExtensionCharge)}</strong>
                 </div>
-                <div style={{ background: '#ffffff', padding: '10px 14px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Recalculated Tariff</div>
-                  <strong style={{ fontSize: '1rem', color: '#15803d' }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Recalculated Tariff</div>
+                  <strong style={{ fontSize: '1rem', color: '#16a34a' }}>
                     {formatCurrency(folioData.recalculatedRoomCharge || folioData.summary?.recalculatedRoomCharge || folioData.roomCharge)}
                   </strong>
                   {(folioData.originalRoomCharge || folioData.summary?.originalRoomCharge) && (
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', textDecoration: 'line-through', marginLeft: '6px' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textDecoration: 'line-through', marginLeft: '6px' }}>
                       {formatCurrency(folioData.originalRoomCharge || folioData.summary?.originalRoomCharge)}
                     </span>
                   )}
                 </div>
                 {refundAmount > 0 && (
-                  <div style={{ background: '#fef2f2', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid #fca5a5' }}>
-                    <div style={{ fontSize: '0.74rem', color: '#b91c1c', fontWeight: 800, textTransform: 'uppercase' }}>Excess Advance to Return</div>
-                    <strong style={{ fontSize: '1.15rem', color: '#dc2626' }}>{formatCurrency(refundAmount)}</strong>
+                  <div style={{ background: 'rgba(239, 68, 68, 0.12)', padding: '10px 14px', borderRadius: '10px', border: '1.5px solid rgba(239, 68, 68, 0.4)' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#ef4444', fontWeight: 800, textTransform: 'uppercase' }}>Excess Advance to Return</div>
+                    <strong style={{ fontSize: '1.15rem', color: '#ef4444' }}>{formatCurrency(refundAmount)}</strong>
                   </div>
                 )}
               </div>
@@ -479,18 +479,18 @@ export default function FolioSettlementModal({
               style={{
                 marginTop: '22px',
                 padding: '24px 28px',
-                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                border: '1.5px solid #86efac',
+                background: 'var(--bg-surface-secondary)',
+                border: '1.5px solid rgba(34, 197, 94, 0.4)',
                 borderRadius: '16px',
-                boxShadow: '0 4px 16px rgba(22, 101, 52, 0.06)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
                 textAlign: 'center'
               }}
             >
               <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
-              <h4 style={{ margin: '0 0 6px', fontSize: '1.22rem', fontWeight: 850, color: '#166534' }}>
+              <h4 style={{ margin: '0 0 6px', fontSize: '1.22rem', fontWeight: 850, color: '#16a34a' }}>
                 Room Bill Fully Paid &amp; Settled in Advance
               </h4>
-              <p style={{ margin: '0 0 16px', fontSize: '0.90rem', color: '#15803d', fontWeight: 600, maxWidth: '580px', marginInline: 'auto' }}>
+              <p style={{ margin: '0 0 16px', fontSize: '0.90rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '580px', marginInline: 'auto' }}>
                 All room tariff, food &amp; beverage orders, and applicable taxes for Room #{room.room_number} have been 100% covered by advance payments ({formatCurrency(folioData.advancePaid || 0)}). There is no outstanding balance due.
               </p>
               <div
@@ -498,12 +498,12 @@ export default function FolioSettlementModal({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: '#ffffff',
+                  background: 'var(--bg-surface)',
                   padding: '10px 20px',
                   borderRadius: '12px',
-                  border: '1.5px solid #bbf7d0',
+                  border: '1.5px solid var(--border-color)',
                   fontSize: '0.88rem',
-                  color: '#14532d',
+                  color: 'var(--text-primary)',
                   fontWeight: 750
                 }}
               >
@@ -679,17 +679,17 @@ export default function FolioSettlementModal({
                   style={{
                     marginTop: '14px',
                     padding: '14px 18px',
-                    background: '#eff6ff',
-                    border: '1.5px solid #93c5fd',
+                    background: 'var(--bg-surface-secondary)',
+                    border: '1.5px solid var(--apple-blue)',
                     borderRadius: '12px',
-                    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.08)'
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 850, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#dc2626' }}>* (Mandatory)</span>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 850, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#ef4444' }}>* (Mandatory)</span>
                     </label>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, background: 'rgba(56, 189, 248, 0.16)', color: 'var(--apple-blue)', padding: '2px 8px', borderRadius: '8px' }}>
                       Required for ₹{splitOnline.toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -701,16 +701,16 @@ export default function FolioSettlementModal({
                     onChange={(e) => setOnlineUtr(e.target.value)}
                     style={{
                       height: '42px',
-                      background: '#ffffff',
+                      background: 'var(--bg-app)',
                       fontSize: '0.95rem',
                       fontWeight: 700,
-                      border: !onlineUtr.trim() ? '2px solid #ef4444' : '1.5px solid #3b82f6',
-                      color: '#0f172a'
+                      border: !onlineUtr.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)',
+                      color: 'var(--text-primary)'
                     }}
                     required
                   />
                   {!onlineUtr.trim() && (
-                    <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, marginTop: '5px' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, marginTop: '5px' }}>
                       ⚠️ UTR ID is mandatory to confirm online payment settlement before checkout.
                     </div>
                   )}
@@ -724,17 +724,17 @@ export default function FolioSettlementModal({
                   style={{
                     marginTop: '14px',
                     padding: '14px 18px',
-                    background: '#fffbeb',
-                    border: '1.5px solid #fde68a',
+                    background: 'var(--bg-surface-secondary)',
+                    border: '1.5px solid var(--border-color)',
                     borderRadius: '12px'
                   }}
                 >
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400e', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
                     <span>📑</span> Cheque Realization Details *
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <div>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: '#78350f', display: 'block', marginBottom: '3px' }}>
+                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
                         Cheque Number *
                       </label>
                       <input
@@ -743,12 +743,12 @@ export default function FolioSettlementModal({
                         placeholder="e.g. 000412"
                         value={chequeNo}
                         onChange={(e) => setChequeNo(e.target.value)}
-                        style={{ height: '38px', background: '#fff' }}
+                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                         required
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: '#78350f', display: 'block', marginBottom: '3px' }}>
+                      <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
                         Bank Name &amp; Branch *
                       </label>
                       <input
@@ -757,7 +757,7 @@ export default function FolioSettlementModal({
                         placeholder="e.g. SBI, Solapur"
                         value={chequeBank}
                         onChange={(e) => setChequeBank(e.target.value)}
-                        style={{ height: '38px', background: '#fff' }}
+                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                         required
                       />
                     </div>
@@ -784,17 +784,17 @@ export default function FolioSettlementModal({
           )}
 
           {isRefund && refundAmount > 0 && (
-            <div style={{ marginTop: '20px', padding: '20px 24px', background: '#ffffff', border: '2px solid #fecaca', borderRadius: '16px', boxShadow: '0 4px 16px rgba(220, 38, 38, 0.08)' }}>
+            <div style={{ marginTop: '20px', padding: '20px 24px', background: 'var(--bg-surface-secondary)', border: '2px solid rgba(239, 68, 68, 0.4)', borderRadius: '16px', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '0.95rem', fontWeight: 850, color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <label style={{ fontSize: '0.95rem', fontWeight: 850, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     <span>💸</span> Select Return Type (Refund Payment Mode) *
                   </label>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#7f1d1d' }}>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
                     Choose how the excess advance of <strong>{formatCurrency(refundAmount)}</strong> will be returned to the guest:
                   </p>
                 </div>
-                <span style={{ fontSize: '0.9rem', fontWeight: 850, padding: '4px 12px', background: '#fee2e2', color: '#991b1b', borderRadius: '10px', border: '1px solid #fca5a5' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 850, padding: '4px 12px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
                   Total to Return: {formatCurrency(refundAmount)}
                 </span>
               </div>
@@ -809,8 +809,8 @@ export default function FolioSettlementModal({
                     padding: '14px 16px',
                     borderRadius: '12px',
                     cursor: 'pointer',
-                    border: returnType === 'cash' ? '2.5px solid #16a34a' : '1.5px solid #e2e8f0',
-                    background: returnType === 'cash' ? '#f0fdf4' : '#f8fafc',
+                    border: returnType === 'cash' ? '2.5px solid #16a34a' : '1.5px solid var(--border-color)',
+                    background: returnType === 'cash' ? 'rgba(34, 197, 94, 0.12)' : 'var(--bg-surface)',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
@@ -819,8 +819,8 @@ export default function FolioSettlementModal({
                 >
                   <span style={{ fontSize: '1.8rem' }}>💵</span>
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'cash' ? '#166534' : '#334155' }}>Cash Return</div>
-                    <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Front Desk Cash Payout</div>
+                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'cash' ? '#16a34a' : 'var(--text-primary)' }}>Cash Return</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Front Desk Cash Payout</div>
                   </div>
                 </div>
 
@@ -832,8 +832,8 @@ export default function FolioSettlementModal({
                     padding: '14px 16px',
                     borderRadius: '12px',
                     cursor: 'pointer',
-                    border: returnType === 'online' ? '2.5px solid #0284c7' : '1.5px solid #e2e8f0',
-                    background: returnType === 'online' ? '#f0f9ff' : '#f8fafc',
+                    border: returnType === 'online' ? '2.5px solid var(--apple-blue)' : '1.5px solid var(--border-color)',
+                    background: returnType === 'online' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-surface)',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
@@ -842,8 +842,8 @@ export default function FolioSettlementModal({
                 >
                   <span style={{ fontSize: '1.8rem' }}>📱</span>
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'online' ? '#0369a1' : '#334155' }}>UPI / Online Return</div>
-                    <div style={{ fontSize: '0.76rem', color: '#64748b' }}>GPay, PhonePe, NEFT</div>
+                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'online' ? 'var(--apple-blue)' : 'var(--text-primary)' }}>UPI / Online Return</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>GPay, PhonePe, NEFT</div>
                   </div>
                 </div>
 
@@ -855,8 +855,8 @@ export default function FolioSettlementModal({
                     padding: '14px 16px',
                     borderRadius: '12px',
                     cursor: 'pointer',
-                    border: returnType === 'card' ? '2.5px solid #d97706' : '1.5px solid #e2e8f0',
-                    background: returnType === 'card' ? '#fffbeb' : '#f8fafc',
+                    border: returnType === 'card' ? '2.5px solid #f59e0b' : '1.5px solid var(--border-color)',
+                    background: returnType === 'card' ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg-surface)',
                     transition: 'all 0.2s ease',
                     display: 'flex',
                     alignItems: 'center',
@@ -865,16 +865,16 @@ export default function FolioSettlementModal({
                 >
                   <span style={{ fontSize: '1.8rem' }}>💳</span>
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'card' ? '#92400e' : '#334155' }}>Card POS Refund</div>
-                    <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Debit / Credit Refund</div>
+                    <div style={{ fontWeight: 850, fontSize: '0.95rem', color: returnType === 'card' ? '#f59e0b' : 'var(--text-primary)' }}>Card POS Refund</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Debit / Credit Refund</div>
                   </div>
                 </div>
               </div>
 
               {/* If Online / UPI Return: Mandatory UTR field */}
               {returnType === 'online' && (
-                <div style={{ marginTop: '14px', padding: '14px 16px', background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '12px' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e40af', display: 'block', marginBottom: '6px' }}>
+                <div style={{ marginTop: '14px', padding: '14px 16px', background: 'var(--bg-surface)', border: '1.5px solid var(--apple-blue)', borderRadius: '12px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
                     UPI / Bank Transfer UTR Reference ID * (Mandatory for Online Return)
                   </label>
                   <input
@@ -883,11 +883,11 @@ export default function FolioSettlementModal({
                     placeholder="Enter 12-digit UPI / IMPS UTR Reference No."
                     value={returnUtr}
                     onChange={(e) => setReturnUtr(e.target.value)}
-                    style={{ height: '40px', background: '#ffffff', fontWeight: 700, border: !returnUtr.trim() ? '2px solid #ef4444' : '1.5px solid #3b82f6' }}
+                    style={{ height: '40px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontWeight: 700, border: !returnUtr.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)' }}
                     required
                   />
                   {!returnUtr.trim() && (
-                    <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, marginTop: '4px' }}>
                       ⚠️ Please enter the transaction UTR number of the online refund transfer.
                     </div>
                   )}
@@ -896,7 +896,7 @@ export default function FolioSettlementModal({
 
               {/* Refund Reason / Note */}
               <div style={{ marginTop: '14px' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
                   Refund Reason / Stay Adjustment Notes:
                 </label>
                 <input
@@ -905,12 +905,12 @@ export default function FolioSettlementModal({
                   placeholder="e.g. Early checkout refund: Stayed 2 days, 3 hrs instead of 3 days"
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  style={{ height: '38px', background: '#ffffff' }}
+                  style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                 />
               </div>
 
               {/* Debit voucher info */}
-              <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fff1f2', border: '1px solid #fecaca', borderRadius: '10px', fontSize: '0.82rem', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ marginTop: '14px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', fontSize: '0.82rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '1.1rem' }}>📜</span>
                 <span>
                   An official debit voucher (<strong>DEB-xxx</strong>) will be recorded in <strong>Guest Refund A/c</strong> and displayed as a debit row in <strong>Hospitality Stay History &amp; Payments</strong>.
@@ -939,7 +939,7 @@ export default function FolioSettlementModal({
                 checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
               });
             }}
-            style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd' }}
+            style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: 'var(--bg-surface)', color: 'var(--apple-blue)', border: '1.5px solid var(--apple-blue)' }}
             title="Preview or print official colorful A4 Tax Invoice with background logo"
           >
             🧾 Print Tax Invoice (A4)

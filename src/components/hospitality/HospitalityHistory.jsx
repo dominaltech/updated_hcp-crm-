@@ -630,14 +630,14 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
       {isDetailOpen && (
         <div className="modal-overlay active" style={{ zIndex: 10050 }}>
           <div className="modal-container" style={{ maxWidth: '820px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-            <div className="modal-header" style={{ padding: '18px 24px', borderBottom: '1.5px solid #e2e8f0', background: '#ffffff' }}>
+            <div className="modal-header" style={{ padding: '18px 24px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '1.6rem', padding: '6px 10px', background: '#eff6ff', borderRadius: '10px' }}>📜</span>
+                <span style={{ fontSize: '1.6rem', padding: '6px 10px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '10px' }}>📜</span>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
                     Stay Details &amp; Payment History — {detailBooking ? `Booking #${detailBooking.id}` : 'Loading...'}
                   </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #64748b)' }}>
                     Archived stay folio, housekeeping cleaner records, and cash receipts
                   </p>
                 </div>
@@ -656,23 +656,23 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
 
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
               {isDetailLoading || !detailBooking ? (
-                <div style={{ padding: '50px 20px', textAlign: 'center', color: '#64748b' }}>
+                <div style={{ padding: '50px 20px', textAlign: 'center', color: 'var(--text-secondary, #64748b)' }}>
                   <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
                   <div>Loading stay &amp; payment records...</div>
                 </div>
               ) : (
                 <>
                   {/* Guest Identity Card */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '18px', padding: '18px', background: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '18px', padding: '18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1px solid var(--border-color, #e2e8f0)' }}>
                     <div>
                       {detailBooking.guest_photo ? (
                         <img
                           src={detailBooking.guest_photo}
                           alt={detailBooking.guest_name}
-                          style={{ width: '80px', height: '80px', borderRadius: '12px', objectFit: 'cover', border: '2px solid #cbd5e1' }}
+                          style={{ width: '80px', height: '80px', borderRadius: '12px', objectFit: 'cover', border: '2px solid var(--border-color, #cbd5e1)' }}
                         />
                       ) : (
-                        <div style={{ width: '80px', height: '80px', borderRadius: '12px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem' }}>
+                        <div style={{ width: '80px', height: '80px', borderRadius: '12px', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.2rem' }}>
                           👤
                         </div>
                       )}
@@ -680,7 +680,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <h4 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 850, color: '#0f172a' }}>
+                          <h4 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 850, color: 'var(--text-primary, #0f172a)' }}>
                             {detailBooking.guest_name}
                           </h4>
                           <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '4px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>

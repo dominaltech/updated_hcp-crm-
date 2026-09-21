@@ -136,9 +136,9 @@ export default function Step7Payment({
               padding: '10px 16px',
               borderRadius: '10px',
               marginBottom: '14px',
-              background: isAdvanceSufficient ? '#f0fdf4' : '#fffbeb',
-              border: `1.5px solid ${isAdvanceSufficient ? '#86efac' : '#fde68a'}`,
-              color: isAdvanceSufficient ? '#15803d' : '#92400e',
+              background: isAdvanceSufficient ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+              border: `1.5px solid ${isAdvanceSufficient ? 'rgba(34, 197, 94, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+              color: isAdvanceSufficient ? '#16a34a' : '#d97706',
               fontSize: '0.84rem',
               fontWeight: 750
             }}
@@ -152,11 +152,11 @@ export default function Step7Payment({
             </div>
             <div style={{ whiteSpace: 'nowrap' }}>
               {isAdvanceSufficient ? (
-                <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
+                <span style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#16a34a', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
                   ✓ Policy Satisfied
                 </span>
               ) : (
-                <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
+                <span style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#dc2626', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
                   Needs ₹{(minRequiredAdvance - totalPaid).toLocaleString('en-IN')} more
                 </span>
               )}
@@ -179,7 +179,6 @@ export default function Step7Payment({
                     updateDraft({ splitCash: minRequiredAdvance, splitOnline: 0, splitCard: 0, splitCheque: 0 });
                     setSelectedMethod('splitCash');
                   }}
-                  style={{ background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe', fontWeight: 800 }}
                   title={`Pay minimum required advance (${minAdvancePct}%) in Cash`}
                 >
                   {minAdvancePct}% Min (Cash)
@@ -191,7 +190,6 @@ export default function Step7Payment({
                     updateDraft({ splitCash: 0, splitOnline: minRequiredAdvance, splitCard: 0, splitCheque: 0 });
                     setSelectedMethod('splitOnline');
                   }}
-                  style={{ background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe', fontWeight: 800 }}
                   title={`Pay minimum required advance (${minAdvancePct}%) via UPI`}
                 >
                   {minAdvancePct}% Min (UPI)
@@ -401,19 +399,19 @@ export default function Step7Payment({
           <div
             id="checkin-online-utr-panel"
             style={{
-              background: '#eff6ff',
-              border: '1.5px solid #93c5fd',
+              background: 'var(--bg-surface-secondary)',
+              border: '1.5px solid var(--apple-blue)',
               borderRadius: '12px',
               padding: '14px 18px',
               marginBottom: '16px',
-              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.08)'
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 850, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#dc2626' }}>* (Mandatory)</span>
+              <label style={{ fontSize: '0.85rem', fontWeight: 850, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#ef4444' }}>* (Mandatory)</span>
               </label>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, background: 'rgba(56, 189, 248, 0.16)', color: 'var(--apple-blue)', padding: '2px 8px', borderRadius: '8px' }}>
                 Required for ₹{splitOnline.toLocaleString('en-IN')}
               </span>
             </div>
@@ -425,16 +423,16 @@ export default function Step7Payment({
               onChange={(e) => updateDraft({ onlineUtr: e.target.value, utrNumber: e.target.value })}
               style={{
                 height: '42px',
-                background: '#ffffff',
+                background: 'var(--bg-app)',
                 fontSize: '0.95rem',
                 fontWeight: 700,
-                border: !(draft.onlineUtr || draft.utrNumber)?.trim() ? '2px solid #ef4444' : '1.5px solid #3b82f6',
-                color: '#0f172a'
+                border: !(draft.onlineUtr || draft.utrNumber)?.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)',
+                color: 'var(--text-primary)'
               }}
               required
             />
             {!(draft.onlineUtr || draft.utrNumber)?.trim() && (
-              <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, marginTop: '5px' }}>
+              <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, marginTop: '5px' }}>
                 ⚠️ UTR ID is mandatory to confirm online payment collection before check-in.
               </div>
             )}
@@ -446,8 +444,8 @@ export default function Step7Payment({
           <div
             id="checkin-cheque-details-panel"
             style={{
-              background: '#fffbeb',
-              border: '1.5px solid #fde68a',
+              background: 'var(--bg-surface-secondary)',
+              border: '1.5px solid var(--border-color)',
               borderRadius: '12px',
               padding: '14px 16px',
               marginTop: '14px',
@@ -455,17 +453,17 @@ export default function Step7Payment({
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>📑</span> Cheque Realization Details *
               </div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 750, background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 750, background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
                 ⏳ Subject to Realization
               </span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#78350f', marginBottom: '4px', display: 'block' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                   Cheque Number *
                 </label>
                 <input
@@ -474,11 +472,11 @@ export default function Step7Payment({
                   placeholder="e.g. 000412"
                   value={draft.chequeNo || ''}
                   onChange={(e) => updateDraft({ chequeNo: e.target.value })}
-                  style={{ height: '38px', background: '#ffffff' }}
+                  style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#78350f', marginBottom: '4px', display: 'block' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                   Bank Name &amp; Branch *
                 </label>
                 <input
@@ -487,11 +485,11 @@ export default function Step7Payment({
                   placeholder="e.g. HDFC Bank, Solapur"
                   value={draft.chequeBank || ''}
                   onChange={(e) => updateDraft({ chequeBank: e.target.value })}
-                  style={{ height: '38px', background: '#ffffff' }}
+                  style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#78350f', marginBottom: '4px', display: 'block' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                   Cheque Date *
                 </label>
                 <input
@@ -499,14 +497,14 @@ export default function Step7Payment({
                   className="form-input"
                   value={draft.chequeDate || ''}
                   onChange={(e) => updateDraft({ chequeDate: e.target.value })}
-                  style={{ height: '38px', background: '#ffffff' }}
+                  style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
                 />
               </div>
             </div>
 
             {/* Cheque Scan Upload */}
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #fde68a' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#78350f', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
                 📎 Cheque Scan / Photo Copy
               </label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '6px' }}>
@@ -528,7 +526,7 @@ export default function Step7Payment({
               </div>
 
               {draft.chequeScan && (
-                <div style={{ marginTop: '8px', textAlign: 'center', background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1.5px dashed #fde68a' }}>
+                <div style={{ marginTop: '8px', textAlign: 'center', background: 'var(--bg-surface)', padding: '10px', borderRadius: '8px', border: '1.5px dashed var(--border-color)' }}>
                   <img
                     src={draft.chequeScan}
                     alt="Cheque Scan"
@@ -547,7 +545,7 @@ export default function Step7Payment({
                       type="button"
                       className="filter-chip"
                       onClick={() => updateDraft({ chequeScan: null })}
-                      style={{ fontSize: '0.72rem', padding: '4px 10px', color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                      style={{ fontSize: '0.72rem', padding: '4px 10px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)' }}
                     >
                       🗑️ Remove
                     </button>
@@ -569,7 +567,7 @@ export default function Step7Payment({
                 {formatCurrency(totalDue)}
               </strong>
             </div>
-            <div style={{ width: '1px', height: '24px', background: '#cbd5e1' }} />
+            <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
                 Advance Paid:{' '}
@@ -580,16 +578,16 @@ export default function Step7Payment({
             </div>
             {totalExtraFees > 0 && (
               <>
-                <div style={{ width: '1px', height: '24px', background: '#cbd5e1' }} />
+                <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
                 <div>
-                  <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 800, textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#f59e0b', fontWeight: 800, textTransform: 'uppercase' }}>
                     Extra Fees:{' '}
                   </span>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 850, color: '#92400e' }}>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 850, color: '#d97706' }}>
                     {cardSurcharge > 0 && `+₹${cardSurcharge} (Card ${cardPct}%) `}
                     {upiTax > 0 && `+₹${upiTax} (UPI ${upiPct}%)`}
                   </span>
-                  <span style={{ marginLeft: '6px', fontSize: '0.92rem', fontWeight: 900, color: '#1e3a8a' }}>
+                  <span style={{ marginLeft: '6px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--apple-blue)' }}>
                     (Collect: {formatCurrency(totalCollectFromGuest)})
                   </span>
                 </div>
@@ -599,9 +597,9 @@ export default function Step7Payment({
           <div
             className="balance-alert"
             style={{
-              background: balanceDue === 0 ? '#dcfce7' : '#fef2f2',
-              color: balanceDue === 0 ? '#166534' : '#dc2626',
-              border: `1.5px solid ${balanceDue === 0 ? '#bbf7d0' : '#fca5a5'}`,
+              background: balanceDue === 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+              color: balanceDue === 0 ? '#16a34a' : '#ef4444',
+              border: `1.5px solid ${balanceDue === 0 ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
               fontSize: '0.96rem',
               fontWeight: 900,
               padding: '8px 18px',

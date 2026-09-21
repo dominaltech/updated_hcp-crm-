@@ -254,8 +254,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           className="modal-header"
           style={{
             padding: '16px 36px',
-            background: '#ffffff',
-            borderBottom: '1.5px solid #e2e8f0',
+            background: 'var(--bg-surface-secondary)',
+            borderBottom: '1px solid var(--border-color)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -276,12 +276,12 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               <span>Back</span>
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '2rem', padding: '8px', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>💳</span>
+              <span style={{ fontSize: '2rem', padding: '8px', background: 'rgba(56, 189, 248, 0.16)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>💳</span>
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.55rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                <h2 style={{ margin: 0, fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
                   Settle Bill — {session.table.name || `Table ${session.table.table_number}`}
                 </h2>
-                <p style={{ margin: '3px 0 0', fontSize: '0.90rem', fontWeight: 700, color: '#64748b' }}>
+                <p style={{ margin: '3px 0 0', fontSize: '0.90rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
                   Token #{session.table.token_number || 1} • {department === 'bar' ? 'Bar Lounge' : 'Dining'} Order Settlement &amp; Thermal Bill Slip
                 </p>
               </div>
@@ -313,29 +313,29 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           {/* Summary Hero Card */}
           <div
             style={{
-              background: '#ffffff',
+              background: 'var(--bg-surface)',
               padding: '24px 32px',
               borderRadius: '18px',
-              border: '1.5px solid #e2e8f0',
-              boxShadow: '0 4px 18px rgba(15, 23, 42, 0.05)'
+              border: '1.5px solid var(--border-color)',
+              boxShadow: '0 4px 18px rgba(0, 0, 0, 0.05)'
             }}
           >
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'center' }}>
-              <div style={{ padding: '14px 18px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div style={{ padding: '14px 18px', background: 'var(--bg-surface-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {department === 'bar' ? 'Drink Subtotal' : 'Food Subtotal'}
                 </span>
-                <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0f172a', marginTop: '4px' }}>{formatCurrency(session.subtotal)}</div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '4px' }}>{formatCurrency(session.subtotal)}</div>
               </div>
 
-              <div style={{ padding: '14px 18px', background: '#fffbeb', borderRadius: '12px', border: '1px solid #fde68a' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>GST (5%)</span>
+              <div style={{ padding: '14px 18px', background: 'rgba(245, 158, 11, 0.12)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>GST (5%)</span>
                 <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#d97706', marginTop: '4px' }}>+ {formatCurrency(session.gst)}</div>
               </div>
 
-              <div style={{ padding: '14px 22px', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', borderRadius: '12px', border: '2px solid #3b82f6' }}>
-                <span style={{ fontSize: '0.88rem', fontWeight: 900, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Grand Total Due</span>
-                <div style={{ fontSize: '2.2rem', fontWeight: 950, color: '#1d4ed8', marginTop: '2px' }}>{formatCurrency(session.grandTotal)}</div>
+              <div style={{ padding: '14px 22px', background: 'rgba(56, 189, 248, 0.14)', borderRadius: '12px', border: '2px solid var(--apple-blue)' }}>
+                <span style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Grand Total Due</span>
+                <div style={{ fontSize: '2.2rem', fontWeight: 950, color: 'var(--apple-blue)', marginTop: '2px' }}>{formatCurrency(session.grandTotal)}</div>
               </div>
             </div>
           </div>
@@ -343,11 +343,11 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           {/* Customer Category Selector: Walk-in Diner vs In-House Hotel Guest */}
           <div
             style={{
-              background: '#ffffff',
+              background: 'var(--bg-surface)',
               padding: '16px 24px',
               borderRadius: '18px',
-              border: '1.5px solid #e2e8f0',
-              boxShadow: '0 4px 18px rgba(15, 23, 42, 0.04)',
+              border: '1.5px solid var(--border-color)',
+              boxShadow: '0 4px 18px rgba(0, 0, 0, 0.04)',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -356,7 +356,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             }}
           >
             <div>
-              <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span>👤</span> Customer Category:
               </div>
               <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
@@ -385,8 +385,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: !isStayingGuest ? '#ffffff' : 'transparent',
-                  color: !isStayingGuest ? '#0f172a' : '#64748b',
+                  background: !isStayingGuest ? 'var(--bg-surface, #ffffff)' : 'transparent',
+                  color: !isStayingGuest ? 'var(--text-primary, #0f172a)' : 'var(--text-secondary, #64748b)',
                   boxShadow: !isStayingGuest ? '0 2px 8px rgba(0, 0, 0, 0.10)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
@@ -415,8 +415,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  background: isStayingGuest ? '#0071e3' : 'transparent',
-                  color: isStayingGuest ? '#ffffff' : '#64748b',
+                  background: isStayingGuest ? 'var(--apple-blue, #0071e3)' : 'transparent',
+                  color: isStayingGuest ? '#ffffff' : 'var(--text-secondary, #64748b)',
                   boxShadow: isStayingGuest ? '0 2px 8px rgba(0, 113, 227, 0.25)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
@@ -431,67 +431,52 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           {isStayingGuest && (
             <div
               style={{
-                background: '#ffffff',
+                background: 'var(--bg-surface, #ffffff)',
                 padding: '22px 28px',
                 borderRadius: '18px',
-                border: '1.5px solid #e2e8f0',
+                border: '1.5px solid var(--border-color, #e2e8f0)',
                 boxShadow: '0 4px 18px rgba(15, 23, 42, 0.04)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary, #0f172a)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>🏨</span> Link / Attribute to Occupied Room:
                   </label>
-                  <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', fontWeight: 600 }}>
                     Select the in-house guest room for this dining bill
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <select
-                    className="form-select"
                     value={selectedRoomId}
                     onChange={(e) => setSelectedRoomId(e.target.value)}
-                    style={{ height: '42px', minWidth: '260px', fontWeight: 800, fontSize: '0.95rem', borderRadius: '10px', borderColor: '#cbd5e1' }}
+                    style={{
+                      height: '42px',
+                      padding: '0 14px',
+                      borderRadius: '10px',
+                      border: '2px solid var(--apple-blue, #0071e3)',
+                      background: 'var(--bg-app, #ffffff)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.96rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
                   >
-                    <option value="" disabled>-- Select Occupied Room --</option>
                     {occupiedRooms.map((r) => (
                       <option key={r.id} value={r.id}>
-                        Room #{r.room_number} — {r.guest_name || 'Guest'}
+                        Room #{r.room_number} • {r.guest_name || 'In-House Guest'} ({r.room_type || 'Room'})
                       </option>
                     ))}
                   </select>
-                  {selectedRoom && (
-                    <span style={{ padding: '6px 14px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 850, borderRadius: '8px', fontSize: '0.88rem', border: '1px solid #bfdbfe' }}>
-                      🔑 Room #{selectedRoom.room_number}
-                    </span>
-                  )}
                 </div>
               </div>
 
-              {/* Mandatory Radio Selection: For room mates vs For visitor (Neither selected by default) */}
-              <div
-                style={{
-                  marginTop: '16px',
-                  padding: '14px 18px',
-                  background: '#f8fafc',
-                  borderRadius: '12px',
-                  border: roomServiceFor ? '1.5px solid #3b82f6' : '1.5px dashed #f59e0b',
-                  boxShadow: roomServiceFor ? '0 2px 8px rgba(59, 130, 246, 0.12)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <label style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>👥</span> Order Attribution (Mandatory - Select One):
-                  </label>
-                  {!roomServiceFor && (
-                    <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#b45309', background: '#fef3c7', padding: '3px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                      ⚠️ Required (Choose One)
-                    </span>
-                  )}
-                </div>
-
+              {/* Sub-Option: Room Mates vs Visitor (NEW) */}
+              <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
+                  Room Service Consumption:
+                </label>
                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                   {/* Option 1: For room mates */}
                   <label
@@ -504,11 +489,11 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       cursor: 'pointer',
                       fontSize: '0.94rem',
                       fontWeight: roomServiceFor === 'room_mates' ? 950 : 700,
-                      color: roomServiceFor === 'room_mates' ? '#1e40af' : '#334155',
-                      background: roomServiceFor === 'room_mates' ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' : '#ffffff',
+                      color: roomServiceFor === 'room_mates' ? 'var(--apple-blue, #1e40af)' : 'var(--text-primary, #334155)',
+                      background: roomServiceFor === 'room_mates' ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-surface, #ffffff)',
                       padding: '12px 18px',
                       borderRadius: '12px',
-                      border: roomServiceFor === 'room_mates' ? '2.5px solid #2563eb' : '1.5px solid #cbd5e1',
+                      border: roomServiceFor === 'room_mates' ? '2.5px solid var(--apple-blue, #2563eb)' : '1.5px solid var(--border-color, #cbd5e1)',
                       boxShadow: roomServiceFor === 'room_mates' ? '0 4px 12px rgba(37, 99, 235, 0.20)' : 'none',
                       transition: 'all 0.15s ease'
                     }}
@@ -535,11 +520,11 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       cursor: 'pointer',
                       fontSize: '0.94rem',
                       fontWeight: roomServiceFor === 'visitor' ? 950 : 700,
-                      color: roomServiceFor === 'visitor' ? '#1e40af' : '#334155',
-                      background: roomServiceFor === 'visitor' ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)' : '#ffffff',
+                      color: roomServiceFor === 'visitor' ? 'var(--apple-blue, #1e40af)' : 'var(--text-primary, #334155)',
+                      background: roomServiceFor === 'visitor' ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-surface, #ffffff)',
                       padding: '12px 18px',
                       borderRadius: '12px',
-                      border: roomServiceFor === 'visitor' ? '2.5px solid #2563eb' : '1.5px solid #cbd5e1',
+                      border: roomServiceFor === 'visitor' ? '2.5px solid var(--apple-blue, #2563eb)' : '1.5px solid var(--border-color, #cbd5e1)',
                       boxShadow: roomServiceFor === 'visitor' ? '0 4px 12px rgba(37, 99, 235, 0.20)' : 'none',
                       transition: 'all 0.15s ease'
                     }}
@@ -558,8 +543,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               </div>
 
               {/* Room Folio Settle Option: PENDING vs PAID NOW */}
-              <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '12px' }}>
+              <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '12px' }}>
                   Bill Settlement Option:
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
@@ -570,9 +555,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     style={{
                       padding: '16px 20px',
                       borderRadius: '14px',
-                      border: roomBillStatus === 'pending' ? '2.5px solid #d97706' : '1.5px solid #cbd5e1',
-                      background: roomBillStatus === 'pending' ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)' : '#ffffff',
-                      color: roomBillStatus === 'pending' ? '#92400e' : '#475569',
+                      border: roomBillStatus === 'pending' ? '2.5px solid #d97706' : '1.5px solid var(--border-color, #cbd5e1)',
+                      background: roomBillStatus === 'pending' ? 'rgba(217, 119, 6, 0.15)' : 'var(--bg-surface, #ffffff)',
+                      color: roomBillStatus === 'pending' ? '#d97706' : 'var(--text-secondary, #475569)',
                       fontWeight: 900,
                       cursor: 'pointer',
                       textAlign: 'left',
@@ -598,9 +583,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     style={{
                       padding: '16px 20px',
                       borderRadius: '14px',
-                      border: roomBillStatus === 'paid' ? '2.5px solid #16a34a' : '1.5px solid #cbd5e1',
-                      background: roomBillStatus === 'paid' ? 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)' : '#ffffff',
-                      color: roomBillStatus === 'paid' ? '#166534' : '#475569',
+                      border: roomBillStatus === 'paid' ? '2.5px solid #16a34a' : '1.5px solid var(--border-color, #cbd5e1)',
+                      background: roomBillStatus === 'paid' ? 'rgba(22, 163, 74, 0.15)' : 'var(--bg-surface, #ffffff)',
+                      color: roomBillStatus === 'paid' ? '#16a34a' : 'var(--text-secondary, #475569)',
                       fontWeight: 950,
                       cursor: 'pointer',
                       textAlign: 'left',
@@ -638,9 +623,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                 <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#92400e' }}>
                   Bill Added to Room Folio (Pending at Checkout)
                 </h4>
-                <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#78350f', fontWeight: 600 }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: 'var(--text-secondary, #78350f)', fontWeight: 600 }}>
                   This order of <strong>{formatCurrency(grandTotal)}</strong> will be linked to <strong>Room #{selectedRoom?.room_number || '-'}</strong>.
-                  It will display as <span style={{ color: '#b91c1c', fontWeight: 800 }}>PENDING</span> in the Room Folio and be settled during check-out.
+                  It will display as <span style={{ color: '#ef4444', fontWeight: 800 }}>PENDING</span> in the Room Folio and be settled during check-out.
                 </p>
               </div>
             </div>
@@ -650,39 +635,39 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           {(!isStayingGuest || roomBillStatus === 'paid') && (
             <div
               style={{
-                background: '#ffffff',
+                background: 'var(--bg-surface)',
                 padding: '24px 30px',
                 borderRadius: '18px',
-                border: '1.5px solid #e2e8f0',
-                boxShadow: '0 4px 18px rgba(15, 23, 42, 0.05)',
+                border: '1.5px solid var(--border-color)',
+                boxShadow: '0 4px 18px rgba(0, 0, 0, 0.05)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '18px'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <label style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+                <label style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
                   Select Payment Method:
                 </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
                     onClick={() => handleQuickFill('cash')}
-                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
+                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
                   >
                     100% Cash
                   </button>
                   <button
                     type="button"
                     onClick={() => handleQuickFill('online')}
-                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
+                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
                   >
                     100% UPI
                   </button>
                   <button
                     type="button"
                     onClick={() => handleQuickFill('card')}
-                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
+                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
                   >
                     100% Card
                   </button>
@@ -696,8 +681,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   style={{
                     padding: '18px 20px',
                     borderRadius: '14px',
-                    border: splitCash > 0 ? '2.5px solid #16a34a' : '1.5px solid #cbd5e1',
-                    background: splitCash > 0 ? '#f0fdf4' : '#ffffff',
+                    border: splitCash > 0 ? '2.5px solid #16a34a' : '1.5px solid var(--border-color)',
+                    background: splitCash > 0 ? 'rgba(34, 197, 94, 0.12)' : 'var(--bg-surface-secondary)',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
@@ -706,17 +691,17 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitCash > 0 ? '#166534' : '#0f172a', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitCash > 0 ? '#16a34a' : 'var(--text-primary)', marginBottom: '4px' }}>
                       💵 Cash Payment
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 650 }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 650 }}>
                       Accept physical currency at counter
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Cash Amount</span>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Amount</span>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
-                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b' }}>₹</span>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
@@ -732,8 +717,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                           fontSize: '1.15rem',
                           fontWeight: 900,
                           borderRadius: '8px',
-                          border: splitCash > 0 ? '2px solid #16a34a' : '1.5px solid #cbd5e1',
-                          background: '#ffffff',
+                          border: splitCash > 0 ? '2px solid #16a34a' : '1.5px solid var(--border-color)',
+                          background: 'var(--bg-app)',
+                          color: 'var(--text-primary)',
                           boxSizing: 'border-box'
                         }}
                       />
@@ -746,8 +732,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   style={{
                     padding: '18px 20px',
                     borderRadius: '14px',
-                    border: splitOnline > 0 ? '2.5px solid #0284c7' : '1.5px solid #cbd5e1',
-                    background: splitOnline > 0 ? '#f0f9ff' : '#ffffff',
+                    border: splitOnline > 0 ? '2.5px solid var(--apple-blue)' : '1.5px solid var(--border-color)',
+                    background: splitOnline > 0 ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-surface-secondary)',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
@@ -756,17 +742,17 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitOnline > 0 ? '#0369a1' : '#0f172a', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitOnline > 0 ? 'var(--apple-blue)' : 'var(--text-primary)', marginBottom: '4px' }}>
                       📱 Online / UPI QR
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 650 }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 650 }}>
                       Instant UPI QR or NetBanking transfer
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Online Amount</span>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online Amount</span>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
-                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b' }}>₹</span>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
@@ -782,14 +768,15 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                           fontSize: '1.15rem',
                           fontWeight: 900,
                           borderRadius: '8px',
-                          border: splitOnline > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
-                          background: '#ffffff',
+                          border: splitOnline > 0 ? '2px solid var(--apple-blue)' : '1.5px solid var(--border-color)',
+                          background: 'var(--bg-app)',
+                          color: 'var(--text-primary)',
                           boxSizing: 'border-box'
                         }}
                       />
                     </div>
                     {splitOnline > upiThresh && upiPct > 0 && (
-                      <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--apple-blue)', fontWeight: 750, marginTop: '4px', textAlign: 'right' }}>
                         + {upiPct}% UPI Tax: ₹{upiTax} (Pay: ₹{upiTotalPay})
                       </div>
                     )}
@@ -806,8 +793,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   style={{
                     padding: '18px 20px',
                     borderRadius: '14px',
-                    border: splitCard > 0 ? '2.5px solid #7c3aed' : '1.5px solid #cbd5e1',
-                    background: splitCard > 0 ? '#faf5ff' : '#ffffff',
+                    border: splitCard > 0 ? '2.5px solid #a855f7' : '1.5px solid var(--border-color)',
+                    background: splitCard > 0 ? 'rgba(168, 85, 247, 0.12)' : 'var(--bg-surface-secondary)',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
@@ -816,17 +803,17 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitCard > 0 ? '#6d28d9' : '#0f172a', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: splitCard > 0 ? '#a855f7' : 'var(--text-primary)', marginBottom: '4px' }}>
                       💳 Card POS Swipe
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 650 }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 650 }}>
                       Debit / Credit card EDC machine swipe
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>Card Base Amount</span>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Card Base Amount</span>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
-                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b' }}>₹</span>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
@@ -842,8 +829,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                           fontSize: '1.15rem',
                           fontWeight: 900,
                           borderRadius: '8px',
-                          border: splitCard > 0 ? '2px solid #7c3aed' : '1.5px solid #cbd5e1',
-                          background: '#ffffff',
+                          border: splitCard > 0 ? '2px solid #a855f7' : '1.5px solid var(--border-color)',
+                          background: 'var(--bg-app)',
+                          color: 'var(--text-primary)',
                           boxSizing: 'border-box'
                         }}
                       />
@@ -928,14 +916,14 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       height: '42px',
                       fontSize: '0.95rem',
                       fontWeight: 700,
-                      background: '#ffffff',
-                      border: !utrNumber.trim() ? '2px solid #ef4444' : '1.5px solid #3b82f6',
-                      color: '#0f172a'
+                      background: 'var(--bg-app)',
+                      border: !utrNumber.trim() ? '2px solid #ef4444' : '1.5px solid var(--apple-blue)',
+                      color: 'var(--text-primary)'
                     }}
                     required
                   />
                   {!utrNumber.trim() && (
-                    <div style={{ fontSize: '0.76rem', color: '#dc2626', fontWeight: 700, marginTop: '5px' }}>
+                    <div style={{ fontSize: '0.76rem', color: '#ef4444', fontWeight: 700, marginTop: '5px' }}>
                       ⚠️ UTR ID is mandatory to confirm online / QR payment settlement.
                     </div>
                   )}
@@ -947,8 +935,8 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                 style={{
                   padding: '12px 18px',
                   borderRadius: '12px',
-                  background: isAllocationValid ? '#f0fdf4' : '#fff1f2',
-                  border: isAllocationValid ? '1.5px solid #86efac' : '1.5px solid #fca5a5',
+                  background: isAllocationValid ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                  border: isAllocationValid ? '1.5px solid rgba(34, 197, 94, 0.35)' : '1.5px solid rgba(239, 68, 68, 0.35)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -956,25 +944,25 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                 }}
               >
                 <div>
-                  <span style={{ fontWeight: 800, color: '#475569' }}>Total Allocated: </span>
-                  <strong style={{ fontSize: '1.1rem', color: isAllocationValid ? '#15803d' : '#b91c1c' }}>
+                  <span style={{ fontWeight: 800, color: 'var(--text-secondary)' }}>Total Allocated: </span>
+                  <strong style={{ fontSize: '1.1rem', color: isAllocationValid ? '#16a34a' : '#ef4444' }}>
                     {formatCurrency(totalAllocated)}
                   </strong>
-                  <span style={{ color: '#64748b', fontSize: '0.85rem', marginLeft: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginLeft: '6px' }}>
                     of {formatCurrency(grandTotal)}
                   </span>
                 </div>
                 <div>
                   {isAllocationValid ? (
-                    <span style={{ color: '#15803d', fontWeight: 850, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ color: '#16a34a', fontWeight: 850, display: 'flex', alignItems: 'center', gap: '4px' }}>
                       ✅ Exact Bill Amount Allocated {totalSurcharges > 0 ? `(+ ${formatCurrency(totalSurcharges)} Surcharges/Tax)` : ''}
                     </span>
                   ) : remainingAlloc > 0 ? (
-                    <span style={{ color: '#b91c1c', fontWeight: 850 }}>
+                    <span style={{ color: '#ef4444', fontWeight: 850 }}>
                       ⚠️ Remaining to allocate: {formatCurrency(remainingAlloc)}
                     </span>
                   ) : (
-                    <span style={{ color: '#b91c1c', fontWeight: 850 }}>
+                    <span style={{ color: '#ef4444', fontWeight: 850 }}>
                       ⚠️ Overallocated by: {formatCurrency(-remainingAlloc)}
                     </span>
                   )}
@@ -992,14 +980,14 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: '#ffffff',
-            borderTop: '1.5px solid #e2e8f0',
+            background: 'var(--bg-surface-secondary)',
+            borderTop: '1px solid var(--border-color)',
             flexShrink: 0
           }}
         >
-          <div style={{ fontSize: '0.92rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.92rem', color: 'var(--text-secondary)' }}>
             {!isStayingGuest ? (
-              <span>Billing mode: <strong style={{ color: '#0f172a' }}>🍽️ Walk-in Diner (Direct Payment)</strong></span>
+              <span>Billing mode: <strong style={{ color: 'var(--text-primary)' }}>🍽️ Walk-in Diner (Direct Payment)</strong></span>
             ) : roomBillStatus === 'pending' ? (
               <span>Billing mode: <strong style={{ color: '#d97706' }}>🏨 Room Folio (Pending at Checkout)</strong></span>
             ) : (

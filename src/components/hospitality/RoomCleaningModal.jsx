@@ -80,7 +80,8 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
         style={{
           maxWidth: '460px',
           width: '90%',
-          background: '#ffffff',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)',
           borderRadius: '20px',
           boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
           overflow: 'visible', // allow dropdown menu to overflow gracefully if needed
@@ -103,10 +104,10 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '1.6rem' }}>🧹</span>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#ffffff' }}>
                 Mark Room Clean &amp; Ready
               </h3>
-              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
+              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', opacity: 0.9, color: '#ffffff' }}>
                 Room #{room.room_number || room.roomNumber} ({room.room_type || room.roomType || 'Room'})
               </p>
             </div>
@@ -139,10 +140,10 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
               style={{
                 marginBottom: '16px',
                 padding: '10px 14px',
-                background: '#fef2f2',
-                border: '1.5px solid #fca5a5',
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1.5px solid rgba(239, 68, 68, 0.4)',
                 borderRadius: '10px',
-                color: '#b91c1c',
+                color: '#ef4444',
                 fontSize: '0.85rem',
                 fontWeight: 700
               }}
@@ -157,7 +158,7 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
                 display: 'block',
                 fontSize: '0.88rem',
                 fontWeight: 800,
-                color: '#334155',
+                color: 'var(--text-secondary)',
                 marginBottom: '8px'
               }}
             >
@@ -195,7 +196,7 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
                 fontSize: '0.9rem',
                 fontWeight: 750,
                 borderRadius: '10px',
-                border: '1.5px solid #cbd5e1',
+                border: '1.5px solid var(--border-color)',
                 cursor: 'pointer'
               }}
             >

@@ -362,7 +362,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
           </div>
 
           {/* Tab Switcher */}
-          <div style={{ display: 'flex', gap: '12px', padding: '16px 40px 0', background: '#ffffff', borderBottom: '1.5px solid #e2e8f0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '12px', padding: '16px 40px 0', background: 'var(--bg-surface-secondary)', borderBottom: '1.5px solid var(--border-color)', flexShrink: 0 }}>
             <button
               type="button"
               className={`visitor-tab-btn ${activeTab === 'add' ? 'active' : ''}`}
@@ -391,8 +391,8 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
               <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '36px', alignItems: 'flex-start' }}>
                 
                 {/* Left: Visitor Photo Capture Box */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', background: '#ffffff', border: '2px dashed #cbd5e1', borderRadius: '18px', padding: '24px', boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)' }}>
-                  <div style={{ width: '180px', height: '180px', borderRadius: '20px', overflow: 'hidden', border: '3.5px solid #059669', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px', position: 'relative' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', background: 'var(--bg-surface)', border: '2px dashed var(--border-color)', borderRadius: '18px', padding: '24px', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)' }}>
+                  <div style={{ width: '180px', height: '180px', borderRadius: '20px', overflow: 'hidden', border: '3.5px solid #059669', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', background: 'var(--bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px', position: 'relative' }}>
                     {photoPreview ? (
                       <img
                         src={photoPreview}
@@ -538,9 +538,9 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                   </div>
 
                   {/* Visitor Breakfast Option */}
-                  <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: '12px', border: '1.5px solid #e2e8f0', marginTop: '4px' }}>
+                  <div style={{ padding: '14px 16px', background: 'var(--bg-surface-secondary)', borderRadius: '12px', border: '1.5px solid var(--border-color)', marginTop: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                      <label style={{ fontSize: '0.88rem', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <label style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
                           checked={hasBreakfast}
@@ -552,7 +552,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
 
                       {hasBreakfast && (
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 750, color: '#64748b' }}>Status:</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)' }}>Status:</span>
                           <button
                             type="button"
                             onClick={() => setBreakfastStatus('paid')}
@@ -561,10 +561,10 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                               borderRadius: '8px',
                               fontSize: '0.8rem',
                               fontWeight: 800,
-                              border: breakfastStatus === 'paid' ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                              border: breakfastStatus === 'paid' ? '1.5px solid #16a34a' : '1px solid var(--border-color)',
                               cursor: 'pointer',
-                              background: breakfastStatus === 'paid' ? '#16a34a' : '#ffffff',
-                              color: breakfastStatus === 'paid' ? '#ffffff' : '#475569'
+                              background: breakfastStatus === 'paid' ? '#16a34a' : 'var(--bg-surface)',
+                              color: breakfastStatus === 'paid' ? '#ffffff' : 'var(--text-secondary)'
                             }}
                           >
                             ✓ Paid
@@ -577,10 +577,10 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                               borderRadius: '8px',
                               fontSize: '0.8rem',
                               fontWeight: 800,
-                              border: breakfastStatus === 'pending' ? '1.5px solid #d97706' : '1px solid #cbd5e1',
+                              border: breakfastStatus === 'pending' ? '1.5px solid #d97706' : '1px solid var(--border-color)',
                               cursor: 'pointer',
-                              background: breakfastStatus === 'pending' ? '#d97706' : '#ffffff',
-                              color: breakfastStatus === 'pending' ? '#ffffff' : '#475569'
+                              background: breakfastStatus === 'pending' ? '#d97706' : 'var(--bg-surface)',
+                              color: breakfastStatus === 'pending' ? '#ffffff' : 'var(--text-secondary)'
                             }}
                           >
                             ⏳ Pending
@@ -595,9 +595,9 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
               /* VIEW 2: VISITORS HISTORY LIST */
               <div>
                 {visitors.length === 0 && !loadingVisitors && (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
                     <span style={{ fontSize: '3rem' }}>👥</span>
-                    <h4 style={{ margin: '8px 0 4px', fontSize: '1.1rem', color: '#1e293b' }}>No Visitors Logged Yet</h4>
+                    <h4 style={{ margin: '8px 0 4px', fontSize: '1.1rem', color: 'var(--text-primary)' }}>No Visitors Logged Yet</h4>
                     <p style={{ margin: 0, fontSize: '0.85rem' }}>Click "Log New Visitor" above to register someone visiting this room.</p>
                   </div>
                 )}
@@ -719,7 +719,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
 
           {/* Modal Footer */}
           {activeTab === 'add' && (
-            <div className="modal-footer" style={{ padding: '20px 48px', background: '#ffffff', borderTop: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '16px', flexShrink: 0 }}>
+            <div className="modal-footer" style={{ padding: '20px 48px', background: 'var(--bg-surface, #ffffff)', borderTop: '1.5px solid var(--border-color, #e2e8f0)', display: 'flex', justifyContent: 'flex-end', gap: '16px', flexShrink: 0 }}>
               <button
                 type="button"
                 className="btn-secondary"

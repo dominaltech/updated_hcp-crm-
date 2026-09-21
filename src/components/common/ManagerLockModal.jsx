@@ -125,11 +125,12 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
       }}
     >
       <div
+        className="modal-container"
         style={{
-          background: '#ffffff',
+          background: 'var(--bg-surface, #ffffff)',
           borderRadius: '18px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 20px 45px rgba(0, 0, 0, 0.16)',
+          border: '1px solid var(--border-color, #e2e8f0)',
+          boxShadow: '0 20px 45px rgba(0, 0, 0, 0.28)',
           width: '100%',
           maxWidth: '380px',
           padding: '22px 24px',
@@ -150,7 +151,7 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
               margin: 0,
               fontSize: '1.15rem',
               fontWeight: 800,
-              color: '#0f172a'
+              color: 'var(--text-primary, #0f172a)'
             }}
           >
             Manager Panel
@@ -159,9 +160,9 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
             type="button"
             onClick={onClose}
             style={{
-              background: '#f1f5f9',
+              background: 'var(--bg-surface-secondary, #f1f5f9)',
               border: 'none',
-              color: '#64748b',
+              color: 'var(--text-secondary, #64748b)',
               borderRadius: '50%',
               width: '30px',
               height: '30px',
@@ -185,10 +186,11 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
               style={{
                 padding: '8px 12px',
                 borderRadius: '8px',
-                background: '#fee2e2',
-                color: '#b91c1c',
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
                 fontSize: '0.82rem',
-                fontWeight: 600
+                fontWeight: 600,
+                border: '1px solid rgba(239, 68, 68, 0.25)'
               }}
             >
               {errorMsg}
@@ -202,7 +204,7 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                 display: 'block',
                 fontSize: '0.82rem',
                 fontWeight: 700,
-                color: '#475569',
+                color: 'var(--text-secondary, #475569)',
                 marginBottom: '6px'
               }}
             >
@@ -222,11 +224,11 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                 height: '42px',
                 padding: '0 12px',
                 borderRadius: '10px',
-                border: '1.5px solid #e2e8f0',
-                background: '#f8fafc',
+                border: '1.5px solid var(--border-color, #e2e8f0)',
+                background: 'var(--bg-app, #f8fafc)',
                 fontSize: '0.92rem',
                 fontWeight: 600,
-                color: '#0f172a',
+                color: 'var(--text-primary, #0f172a)',
                 outline: 'none',
                 boxSizing: 'border-box',
                 cursor: 'pointer'
@@ -247,7 +249,7 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                 display: 'block',
                 fontSize: '0.82rem',
                 fontWeight: 700,
-                color: '#475569',
+                color: 'var(--text-secondary, #475569)',
                 marginBottom: '6px'
               }}
             >
@@ -278,11 +280,11 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                   height: '42px',
                   padding: '0 38px 0 12px',
                   borderRadius: '10px',
-                  border: errorMsg ? '1.5px solid #ef4444' : '1.5px solid #e2e8f0',
-                  background: '#f8fafc',
+                  border: errorMsg ? '1.5px solid #ef4444' : '1.5px solid var(--border-color, #e2e8f0)',
+                  background: 'var(--bg-app, #f8fafc)',
                   fontSize: '0.95rem',
                   fontWeight: 600,
-                  color: '#0f172a',
+                  color: 'var(--text-primary, #0f172a)',
                   outline: 'none',
                   boxSizing: 'border-box'
                 }}
@@ -299,7 +301,7 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '1rem',
-                  color: '#64748b',
+                  color: 'var(--text-secondary, #64748b)',
                   padding: '4px',
                   lineHeight: 1
                 }}
@@ -320,9 +322,9 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
                 flex: 1,
                 height: '42px',
                 borderRadius: '10px',
-                border: '1px solid #e2e8f0',
-                background: '#f1f5f9',
-                color: '#475569',
+                border: '1px solid var(--border-color, #e2e8f0)',
+                background: 'var(--bg-surface-secondary, #f1f5f9)',
+                color: 'var(--text-primary, #475569)',
                 fontSize: '0.9rem',
                 fontWeight: 700,
                 cursor: 'pointer'

@@ -606,15 +606,15 @@ export default function ExpensesPage({ onPrintVoucher }) {
       {/* Add Modal (Adapts between Expense and Refund) */}
       {isModalOpen && (
         <div className="modal-overlay active" style={{ zIndex: 10050, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-container" style={{ maxWidth: '560px', width: '95%', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #cbd5e1', background: '#ffffff' }}>
-            <div className="modal-header" style={{ padding: '16px 22px', borderBottom: '1.5px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="modal-container" style={{ maxWidth: '560px', width: '95%', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+            <div className="modal-header" style={{ padding: '16px 22px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '1.5rem' }}>{formCategory === 'refund' ? '↩️' : '💸'}</span>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                     {formCategory === 'refund' ? 'Record Guest Refund' : 'Record Operational Expense'}
                   </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                     {formCategory === 'refund'
                       ? 'Prints official Receipt (Receipt 1, 2-on-A4)'
                       : 'Prints Petty Cash Voucher (Receipt 2, 2-on-A4)'}
@@ -630,7 +630,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
               <div className="modal-body" style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '72vh', overflowY: 'auto' }}>
                 {formCategory !== 'refund' ? (
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>Category *</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Category *</label>
                     <select
                       className="form-select"
                       value={formCategory}
@@ -644,13 +644,13 @@ export default function ExpensesPage({ onPrintVoucher }) {
                     </select>
                   </div>
                 ) : (
-                  <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', fontSize: '0.85rem', color: '#92400e', fontWeight: 700 }}>
+                  <div style={{ padding: '10px 14px', background: 'rgba(245, 158, 11, 0.12)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)', fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>
                     ↩️ Guest Refund Entry: This will be credited to guest accounts and printed on Receipt Format 1.
                   </div>
                 )}
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                     {formCategory === 'refund' ? 'Guest / Customer Name *' : 'Paid To / Vendor / Person Name *'}
                   </label>
                   <input
@@ -666,7 +666,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
                   <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>Amount (₹) *</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Amount (₹) *</label>
                     <input
                       type="number"
                       step="any"
@@ -676,18 +676,18 @@ export default function ExpensesPage({ onPrintVoucher }) {
                       value={formAmount}
                       onChange={(e) => setFormAmount(e.target.value)}
                       required
-                      style={{ height: '40px', fontWeight: 800, color: '#dc2626', fontSize: '1.05rem', width: '100%', boxSizing: 'border-box' }}
+                      style={{ height: '40px', fontWeight: 800, color: '#ef4444', fontSize: '1.05rem', width: '100%', boxSizing: 'border-box' }}
                     />
                   </div>
 
                   <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e3a8a', marginBottom: '4px', display: 'block' }}>Payment Mode *</label>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px', display: 'block' }}>Payment Mode *</label>
                     <select
                       className="form-select"
                       value={formMode}
                       onChange={(e) => setFormMode(e.target.value)}
                       required
-                      style={{ height: '40px', fontWeight: 750, borderColor: '#3b82f6', width: '100%', boxSizing: 'border-box' }}
+                      style={{ height: '40px', fontWeight: 750, width: '100%', boxSizing: 'border-box' }}
                     >
                       <option value="cash">💵 Cash</option>
                       <option value="cheque">🏦 Cheque</option>
@@ -698,9 +698,9 @@ export default function ExpensesPage({ onPrintVoucher }) {
                 </div>
 
                 {formMode === 'cheque' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#fffbeb', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #f59e0b', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-surface-secondary)', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid var(--border-color)', boxSizing: 'border-box' }}>
                     <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: '#92400e', marginBottom: '4px', display: 'block' }}>Cheque Number * (Mandatory)</label>
+                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Cheque Number * (Mandatory)</label>
                       <input
                         type="text"
                         className="form-input"
@@ -708,11 +708,11 @@ export default function ExpensesPage({ onPrintVoucher }) {
                         value={formChequeNo}
                         onChange={(e) => setFormChequeNo(e.target.value)}
                         required
-                        style={{ height: '38px', background: '#fff', borderColor: '#f59e0b', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
+                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
                       />
                     </div>
                     <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: '#92400e', marginBottom: '4px', display: 'block' }}>Bank Name * (Mandatory)</label>
+                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Bank Name * (Mandatory)</label>
                       <input
                         type="text"
                         className="form-input"
@@ -720,16 +720,16 @@ export default function ExpensesPage({ onPrintVoucher }) {
                         value={formBankName}
                         onChange={(e) => setFormBankName(e.target.value)}
                         required
-                        style={{ height: '38px', background: '#fff', borderColor: '#f59e0b', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
+                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
                       />
                     </div>
                   </div>
                 )}
 
                 {(formMode === 'online' || formMode === 'upi') && (
-                  <div style={{ background: '#f0fdf4', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid #86efac', boxSizing: 'border-box' }}>
+                  <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px 14px', borderRadius: '10px', border: '1.5px solid var(--border-color)', boxSizing: 'border-box' }}>
                     <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
-                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: '#166534', marginBottom: '4px', display: 'block' }}>Online / UPI UTR Reference Number *</label>
+                      <label style={{ fontSize: '0.76rem', fontWeight: 850, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Online / UPI UTR Reference Number *</label>
                       <input
                         type="text"
                         className="form-input"
@@ -737,14 +737,14 @@ export default function ExpensesPage({ onPrintVoucher }) {
                         value={formUtr}
                         onChange={(e) => setFormUtr(e.target.value)}
                         required
-                        style={{ height: '38px', background: '#fff', borderColor: '#22c55e', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
+                        style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
                       />
                     </div>
                   </div>
                 )}
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>Debit A/c</label>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>Debit A/c</label>
                   <input
                     type="text"
                     className="form-input"
@@ -756,7 +756,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                     {formCategory === 'refund' ? 'Refund Reason / Description' : 'Purpose / Description'}
                   </label>
                   <textarea
@@ -770,7 +770,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155' }}>Bill / Bill Memo Photo (Optional)</label>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)' }}>Bill / Bill Memo Photo (Optional)</label>
                   <input
                     type="file"
                     accept="image/*"
@@ -783,12 +783,12 @@ export default function ExpensesPage({ onPrintVoucher }) {
                       <img
                         src={formReceiptImg}
                         alt="Receipt Preview"
-                        style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                       />
                       <button
                         type="button"
                         onClick={() => setFormReceiptImg(null)}
-                        style={{ fontSize: '0.72rem', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}
+                        style={{ fontSize: '0.72rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         Remove Image
                       </button>
@@ -797,7 +797,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
                 </div>
               </div>
 
-              <div className="modal-footer" style={{ padding: '14px 24px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <div className="modal-footer" style={{ padding: '14px 24px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>

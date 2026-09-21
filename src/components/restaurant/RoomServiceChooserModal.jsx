@@ -71,13 +71,13 @@ export default function RoomServiceChooserModal({
       onClick={onClose}
     >
       <div
-        className="modal-card"
+        className="modal-card modal-container"
         style={{
           width: '100vw',
           height: '100vh',
           maxWidth: '100vw',
           maxHeight: '100vh',
-          background: '#f8fafc',
+          background: 'var(--bg-app, #f8fafc)',
           display: 'flex',
           flexDirection: 'column',
           padding: '20px 36px',
@@ -98,7 +98,7 @@ export default function RoomServiceChooserModal({
             alignItems: 'center',
             marginBottom: '16px',
             paddingBottom: '16px',
-            borderBottom: '1.5px solid #e2e8f0',
+            borderBottom: '1.5px solid var(--border-color, #e2e8f0)',
             flexShrink: 0,
             gap: '16px',
             flexWrap: 'wrap'
@@ -110,8 +110,8 @@ export default function RoomServiceChooserModal({
                 width: '48px',
                 height: '48px',
                 borderRadius: '14px',
-                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                border: '1.5px solid #bfdbfe',
+                background: 'var(--bg-surface-secondary, #eff6ff)',
+                border: '1.5px solid var(--border-color, #bfdbfe)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -123,24 +123,24 @@ export default function RoomServiceChooserModal({
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                <h3 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.02em' }}>
                   Room Service • Select Occupied Room
                 </h3>
                 <span
                   style={{
-                    background: '#e0f2fe',
-                    color: '#0369a1',
+                    background: 'rgba(2, 132, 199, 0.15)',
+                    color: 'var(--apple-blue, #0369a1)',
                     fontSize: '0.78rem',
                     fontWeight: 800,
                     padding: '3px 10px',
                     borderRadius: '20px',
-                    border: '1px solid #bae6fd'
+                    border: '1px solid rgba(2, 132, 199, 0.3)'
                   }}
                 >
                   {occupiedRooms.length} Occupied Rooms
                 </span>
               </div>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.88rem', color: '#64748b' }}>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.88rem', color: 'var(--text-secondary, #64748b)' }}>
                 Select an occupied guest room to start or resume food &amp; beverage service order.
               </p>
             </div>
@@ -149,7 +149,7 @@ export default function RoomServiceChooserModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Quick Search Bar */}
             <div style={{ position: 'relative', width: '280px' }}>
-              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.95rem' }}>
+              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
                 🔍
               </span>
               <input
@@ -161,10 +161,11 @@ export default function RoomServiceChooserModal({
                   width: '100%',
                   padding: '9px 12px 9px 36px',
                   borderRadius: '12px',
-                  border: '1.5px solid #cbd5e1',
+                  border: '1.5px solid var(--border-color, #cbd5e1)',
                   fontSize: '0.88rem',
                   outline: 'none',
-                  background: '#f8fafc',
+                  background: 'var(--bg-surface, #f8fafc)',
+                  color: 'var(--text-primary)',
                   fontWeight: 650
                 }}
               />
@@ -179,7 +180,7 @@ export default function RoomServiceChooserModal({
                     transform: 'translateY(-50%)',
                     background: 'none',
                     border: 'none',
-                    color: '#94a3b8',
+                    color: 'var(--text-secondary, #94a3b8)',
                     cursor: 'pointer',
                     fontSize: '0.9rem'
                   }}
@@ -193,8 +194,8 @@ export default function RoomServiceChooserModal({
               type="button"
               onClick={onClose}
               style={{
-                background: '#ffffff',
-                border: '1.5px solid #cbd5e1',
+                background: 'var(--bg-surface, #ffffff)',
+                border: '1.5px solid var(--border-color, #cbd5e1)',
                 borderRadius: '12px',
                 padding: '8px 16px',
                 cursor: 'pointer',
@@ -203,7 +204,7 @@ export default function RoomServiceChooserModal({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                color: '#334155',
+                color: 'var(--text-primary, #334155)',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                 transition: 'all 0.15s ease'
               }}
@@ -218,18 +219,18 @@ export default function RoomServiceChooserModal({
         {/* Spacious Rooms Grid */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '4px 6px 16px 2px' }}>
           {occupiedRooms.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '64px 20px', background: '#f8fafc', borderRadius: '18px', border: '2px dashed #cbd5e1', marginTop: '20px' }}>
+            <div style={{ textAlign: 'center', padding: '64px 20px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '18px', border: '2px dashed var(--border-color, #cbd5e1)', marginTop: '20px' }}>
               <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🏨</div>
-              <h4 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem', fontWeight: 800 }}>No Occupied Rooms Available</h4>
-              <p style={{ color: '#64748b', fontSize: '0.92rem', marginTop: '8px', maxWidth: '440px', marginInline: 'auto' }}>
+              <h4 style={{ margin: 0, color: 'var(--text-primary, #0f172a)', fontSize: '1.2rem', fontWeight: 800 }}>No Occupied Rooms Available</h4>
+              <p style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.92rem', marginTop: '8px', maxWidth: '440px', marginInline: 'auto' }}>
                 There are currently no guests checked into the hotel. Check in guests from the Front Desk / Hospitality tab first.
               </p>
             </div>
           ) : filteredRooms.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 20px', background: '#f8fafc', borderRadius: '18px', border: '2px dashed #cbd5e1' }}>
+            <div style={{ textAlign: 'center', padding: '48px 20px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '18px', border: '2px dashed var(--border-color, #cbd5e1)' }}>
               <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>🔍</div>
-              <h4 style={{ margin: 0, color: '#0f172a', fontSize: '1.1rem', fontWeight: 800 }}>No rooms match "{searchQuery}"</h4>
-              <p style={{ color: '#64748b', fontSize: '0.88rem', marginTop: '6px' }}>
+              <h4 style={{ margin: 0, color: 'var(--text-primary, #0f172a)', fontSize: '1.1rem', fontWeight: 800 }}>No rooms match "{searchQuery}"</h4>
+              <p style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.88rem', marginTop: '6px' }}>
                 Try searching by a different room number or guest name.
               </p>
             </div>
@@ -252,8 +253,8 @@ export default function RoomServiceChooserModal({
                     className="room-card status-occupied"
                     style={{
                       cursor: 'pointer',
-                      border: activeOrder ? '2.5px solid #0071e3' : '2px solid #e2e8f0',
-                      background: activeOrder ? 'linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%)' : '#ffffff',
+                      border: activeOrder ? '2.5px solid var(--apple-blue, #0071e3)' : '2px solid var(--border-color, #e2e8f0)',
+                      background: activeOrder ? 'var(--bg-surface-secondary, #f0f7ff)' : 'var(--bg-surface, #ffffff)',
                       borderRadius: '16px',
                       padding: '18px 20px',
                       display: 'flex',
@@ -275,10 +276,10 @@ export default function RoomServiceChooserModal({
                     {/* Top Row: Room Number + Status Badges */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                        <span style={{ fontSize: '2.2rem', fontWeight: 950, lineHeight: 1, color: '#0f172a', letterSpacing: '-0.03em' }}>
+                        <span style={{ fontSize: '2.2rem', fontWeight: 950, lineHeight: 1, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.03em' }}>
                           {room.room_number}
                         </span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary, #64748b)' }}>
                           {room.room_type || 'Room'}
                         </span>
                       </div>
@@ -304,13 +305,13 @@ export default function RoomServiceChooserModal({
                       ) : (
                         <div
                           style={{
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
+                            background: 'rgba(2, 132, 199, 0.15)',
+                            color: 'var(--apple-blue, #1d4ed8)',
                             fontSize: '0.72rem',
                             fontWeight: 800,
                             padding: '3px 9px',
                             borderRadius: '20px',
-                            border: '1px solid #bfdbfe'
+                            border: '1px solid rgba(2, 132, 199, 0.3)'
                           }}
                         >
                           OCCUPIED
@@ -325,7 +326,7 @@ export default function RoomServiceChooserModal({
                           style={{
                             fontSize: '0.92rem',
                             fontWeight: 800,
-                            color: '#1e293b',
+                            color: 'var(--text-primary, #1e293b)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px',
@@ -335,11 +336,11 @@ export default function RoomServiceChooserModal({
                           }}
                           title={room.guest_name}
                         >
-                          <span style={{ color: '#0071e3', fontSize: '0.95rem' }}>👤</span>
+                          <span style={{ color: 'var(--apple-blue, #0071e3)', fontSize: '0.95rem' }}>👤</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{room.guest_name}</span>
                         </div>
                       ) : (
-                        <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', fontStyle: 'italic' }}>
                           👤 Guest In-House
                         </div>
                       )}
@@ -349,7 +350,7 @@ export default function RoomServiceChooserModal({
                           style={{
                             fontSize: '0.80rem',
                             fontWeight: 700,
-                            color: '#475569',
+                            color: 'var(--text-secondary, #475569)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '6px'
@@ -366,18 +367,18 @@ export default function RoomServiceChooserModal({
                       style={{
                         marginTop: 'auto',
                         paddingTop: '8px',
-                        borderTop: '1px dashed #e2e8f0',
+                        borderTop: '1px dashed var(--border-color, #e2e8f0)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center'
                       }}
                     >
                       {activeOrder && activeOrder.cart_total > 0 ? (
-                        <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0071e3' }}>
+                        <div style={{ fontSize: '0.92rem', fontWeight: 900, color: 'var(--apple-blue, #0071e3)' }}>
                           Running Bill: ₹{activeOrder.cart_total.toLocaleString('en-IN')}
                         </div>
                       ) : (
-                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 650 }}>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)', fontWeight: 650 }}>
                           No food order yet
                         </span>
                       )}
@@ -386,7 +387,7 @@ export default function RoomServiceChooserModal({
                         style={{
                           fontSize: '0.82rem',
                           fontWeight: 850,
-                          color: '#0071e3',
+                          color: 'var(--apple-blue, #0071e3)',
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px'

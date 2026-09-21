@@ -232,15 +232,15 @@ export default function BillEditModal({
       onClick={onClose}
     >
       <div
-        className="modal-card"
+        className="modal-card modal-container"
         style={{
           maxWidth: '920px',
           width: '95%',
           maxHeight: '88vh',
-          background: '#ffffff',
+          background: 'var(--bg-surface, #ffffff)',
           borderRadius: '20px',
           boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
-          border: '1px solid #e2e8f0',
+          border: '1px solid var(--border-color, #e2e8f0)',
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
@@ -252,29 +252,29 @@ export default function BillEditModal({
         <div
           style={{
             padding: '18px 24px',
-            borderBottom: '1.5px solid #f1f5f9',
+            borderBottom: '1.5px solid var(--border-color, #f1f5f9)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'
+            background: 'var(--bg-surface-secondary, #f8fafc)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '1.8rem', padding: '6px 10px', background: '#fef3c7', borderRadius: '12px', border: '1px solid #fde68a' }}>
+            <span style={{ fontSize: '1.8rem', padding: '6px 10px', background: 'rgba(245, 158, 11, 0.15)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
               ✏️
             </span>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
                   Edit &amp; Resettle Bill #{bill.order_number || bill.id}
                 </h3>
                 {bill.resettle_count > 0 && (
-                  <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <span style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800 }}>
                     EDITED (v{(bill.resettle_count || 1) + 1})
                   </span>
                 )}
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)' }}>
                 {bill.table_name || `Table ${bill.table_number}`} • Token #{bill.token_number || 1} • Settled at {formatDateTime(bill.created_at || bill.settled_at)}
               </p>
             </div>
@@ -284,8 +284,8 @@ export default function BillEditModal({
             type="button"
             onClick={onClose}
             style={{
-              background: '#f1f5f9',
-              border: 'none',
+              background: 'var(--bg-surface, #f1f5f9)',
+              border: '1px solid var(--border-color, transparent)',
               borderRadius: '50%',
               width: '32px',
               height: '32px',
@@ -294,7 +294,7 @@ export default function BillEditModal({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#475569'
+              color: 'var(--text-secondary, #475569)'
             }}
           >
             &times;
@@ -305,9 +305,9 @@ export default function BillEditModal({
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
           
           {/* 1. Add Items Search Bar */}
-          <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '14px', border: '1.5px dashed #cbd5e1' }}>
+          <div style={{ background: 'var(--bg-surface-secondary, #f8fafc)', padding: '12px 16px', borderRadius: '14px', border: '1.5px dashed var(--border-color, #cbd5e1)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>➕ Add Dish / Item from Menu:</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>➕ Add Dish / Item from Menu:</span>
             </div>
             <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
               <input
@@ -322,7 +322,7 @@ export default function BillEditModal({
                 <button
                   type="button"
                   onClick={() => setSearchMenuQuery('')}
-                  style={{ position: 'absolute', right: '10px', top: '9px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                  style={{ position: 'absolute', right: '10px', top: '9px', background: 'none', border: 'none', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer' }}
                 >
                   ✕
                 </button>
@@ -338,9 +338,9 @@ export default function BillEditModal({
                     type="button"
                     onClick={() => handleAddItemFromMenu(dish)}
                     style={{
-                      background: '#ffffff',
-                      border: '1px solid #bfdbfe',
-                      color: '#0071e3',
+                      background: 'var(--bg-surface, #ffffff)',
+                      border: '1px solid var(--border-color, #bfdbfe)',
+                      color: 'var(--apple-blue, #0071e3)',
                       borderRadius: '8px',
                       padding: '4px 10px',
                       fontSize: '0.78rem',
@@ -352,11 +352,11 @@ export default function BillEditModal({
                     }}
                   >
                     <span>+ {dish.name}</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(dish.price)}</strong>
+                    <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(dish.price)}</strong>
                   </button>
                 ))}
                 {filteredCatalog.length === 0 && (
-                  <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>No items found matching search.</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94a3b8)' }}>No items found matching search.</span>
                 )}
               </div>
             )}
@@ -365,18 +365,18 @@ export default function BillEditModal({
           {/* 2. Items Table with +/- and Remove */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+              <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
                 Bill Items ({items.length})
               </h4>
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)' }}>
                 Adjust quantities or remove items below
               </span>
             </div>
 
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+            <div style={{ border: '1px solid var(--border-color, #e2e8f0)', borderRadius: '12px', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', textAlign: 'left' }}>
+                  <tr style={{ background: 'var(--bg-surface-secondary, #f8fafc)', borderBottom: '1px solid var(--border-color, #e2e8f0)', color: 'var(--text-secondary, #64748b)', textAlign: 'left' }}>
                     <th style={{ padding: '8px 12px', fontWeight: 800 }}>Item</th>
                     <th style={{ padding: '8px 12px', fontWeight: 800 }}>Rate</th>
                     <th style={{ padding: '8px 12px', fontWeight: 800, textAlign: 'center', width: '110px' }}>Quantity</th>
@@ -388,12 +388,12 @@ export default function BillEditModal({
                   {items.map((it, idx) => {
                     const itemTotal = (Number(it.price) || 0) * (Number(it.qty) || 1);
                     return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 750, color: '#0f172a' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-color, #f1f5f9)' }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 750, color: 'var(--text-primary, #0f172a)' }}>
                           <span style={{ marginRight: '6px' }}>{it.is_veg ? '🟢' : '🔴'}</span>
                           {it.name}
                         </td>
-                        <td style={{ padding: '8px 12px', color: '#64748b' }}>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary, #64748b)' }}>
                           {formatCurrency(it.price)}
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -405,8 +405,9 @@ export default function BillEditModal({
                                 width: '22px',
                                 height: '22px',
                                 borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                background: '#ffffff',
+                                border: '1px solid var(--border-color, #cbd5e1)',
+                                background: 'var(--bg-surface, #ffffff)',
+                                color: 'var(--text-primary)',
                                 cursor: 'pointer',
                                 fontWeight: 800,
                                 fontSize: '0.85rem'
@@ -414,7 +415,7 @@ export default function BillEditModal({
                             >
                               -
                             </button>
-                            <span style={{ fontWeight: 800, minWidth: '22px', textAlign: 'center' }}>
+                            <span style={{ fontWeight: 800, minWidth: '22px', textAlign: 'center', color: 'var(--text-primary)' }}>
                               {it.qty}
                             </span>
                             <button
@@ -424,8 +425,9 @@ export default function BillEditModal({
                                 width: '22px',
                                 height: '22px',
                                 borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                background: '#ffffff',
+                                border: '1px solid var(--border-color, #cbd5e1)',
+                                background: 'var(--bg-surface, #ffffff)',
+                                color: 'var(--text-primary)',
                                 cursor: 'pointer',
                                 fontWeight: 800,
                                 fontSize: '0.85rem'
@@ -435,7 +437,7 @@ export default function BillEditModal({
                             </button>
                           </div>
                         </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
                           {formatCurrency(itemTotal)}
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
@@ -460,7 +462,7 @@ export default function BillEditModal({
                   })}
                   {items.length === 0 && (
                     <tr>
-                      <td colSpan="5" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+                      <td colSpan="5" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary, #94a3b8)' }}>
                         No items in this bill. Use the search bar above to add items.
                       </td>
                     </tr>
@@ -476,14 +478,14 @@ export default function BillEditModal({
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
               gap: '16px',
-              background: '#f8fafc',
+              background: 'var(--bg-surface-secondary, #f8fafc)',
               padding: '16px',
               borderRadius: '14px',
-              border: '1px solid #e2e8f0'
+              border: '1px solid var(--border-color, #e2e8f0)'
             }}
           >
             <div>
-              <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: 'var(--text-secondary, #475569)', marginBottom: '4px' }}>
                 Payment Mode
               </label>
               <select
@@ -498,7 +500,7 @@ export default function BillEditModal({
                 <option value="room_folio">🏨 Charge to Room Folio</option>
               </select>
 
-              <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginTop: '10px', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: 'var(--text-secondary, #475569)', marginTop: '10px', marginBottom: '4px' }}>
                 Edit Reason / Audit Note <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
@@ -512,13 +514,13 @@ export default function BillEditModal({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '6px', fontSize: '0.86rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary, #64748b)' }}>
                 <span>Subtotal:</span>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(subtotal)}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(subtotal)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary, #64748b)' }}>
                 <span>GST (5%):</span>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(gst)}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(gst)}</span>
               </div>
               <div
                 style={{
@@ -526,12 +528,12 @@ export default function BillEditModal({
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   paddingTop: '6px',
-                  borderTop: '1.5px solid #cbd5e1',
+                  borderTop: '1.5px solid var(--border-color, #cbd5e1)',
                   marginTop: '4px'
                 }}
               >
-                <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem' }}>New Total:</span>
-                <span style={{ fontWeight: 900, color: '#0071e3', fontSize: '1.2rem' }}>{formatCurrency(grandTotal)}</span>
+                <span style={{ fontWeight: 800, color: 'var(--text-primary, #0f172a)', fontSize: '1rem' }}>New Total:</span>
+                <span style={{ fontWeight: 900, color: 'var(--apple-blue, #0071e3)', fontSize: '1.2rem' }}>{formatCurrency(grandTotal)}</span>
               </div>
 
               {cardFee > 0 && (
@@ -552,7 +554,7 @@ export default function BillEditModal({
                 </div>
               )}
               {(cardFee > 0 || upiFee > 0) && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f172a', fontWeight: 800, fontSize: '0.88rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-primary, #0f172a)', fontWeight: 800, fontSize: '0.88rem' }}>
                   <span>Total Payable:</span>
                   <span style={{ color: cardFee > 0 ? '#b45309' : '#0284c7' }}>{formatCurrency(finalPayable)}</span>
                 </div>
@@ -566,8 +568,8 @@ export default function BillEditModal({
                       fontWeight: 800,
                       padding: '2px 8px',
                       borderRadius: '6px',
-                      background: totalDiff > 0 ? '#dcfce7' : '#fee2e2',
-                      color: totalDiff > 0 ? '#166534' : '#991b1b'
+                      background: totalDiff > 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                      color: totalDiff > 0 ? '#16a34a' : '#ef4444'
                     }}
                   >
                     Original: {formatCurrency(originalTotal)} • Diff: {totalDiff > 0 ? `+${formatCurrency(totalDiff)}` : `-${formatCurrency(Math.abs(totalDiff))}`}
@@ -578,14 +580,14 @@ export default function BillEditModal({
           </div>
 
           {/* 4. Audit Trail & Edit Logs Section */}
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-            <h5 style={{ margin: '0 0 8px 0', fontSize: '0.86rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ borderTop: '1px solid var(--border-color, #e2e8f0)', paddingTop: '12px' }}>
+            <h5 style={{ margin: '0 0 8px 0', fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>📜</span>
               <span>Bill Audit Trail &amp; Edit History</span>
             </h5>
 
             {auditLogs.length === 0 ? (
-              <div style={{ fontSize: '0.80rem', color: '#94a3b8', fontStyle: 'italic', padding: '4px 0' }}>
+              <div style={{ fontSize: '0.80rem', color: 'var(--text-secondary, #94a3b8)', fontStyle: 'italic', padding: '4px 0' }}>
                 No prior resettle edits recorded for this bill.
               </div>
             ) : (
@@ -594,18 +596,18 @@ export default function BillEditModal({
                   <div
                     key={log.id}
                     style={{
-                      background: '#f8fafc',
-                      borderLeft: '3px solid #0071e3',
+                      background: 'var(--bg-surface-secondary, #f8fafc)',
+                      borderLeft: '3px solid var(--apple-blue, #0071e3)',
                       padding: '6px 10px',
                       borderRadius: '4px',
                       fontSize: '0.78rem'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '0.72rem', marginBottom: '2px' }}>
-                      <span style={{ fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>{log.action}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary, #64748b)', fontSize: '0.72rem', marginBottom: '2px' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary, #0f172a)', textTransform: 'uppercase' }}>{log.action}</span>
                       <span>{formatDateTime(log.created_at)} • by {log.staff_user || 'Staff'}</span>
                     </div>
-                    <div style={{ color: '#334155' }}>
+                    <div style={{ color: 'var(--text-secondary, #334155)' }}>
                       {log.change_summary}
                     </div>
                   </div>
@@ -619,8 +621,8 @@ export default function BillEditModal({
         <div
           style={{
             padding: '14px 24px',
-            borderTop: '1.5px solid #f1f5f9',
-            background: '#ffffff',
+            borderTop: '1.5px solid var(--border-color, #f1f5f9)',
+            background: 'var(--bg-surface, #ffffff)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'
@@ -647,9 +649,9 @@ export default function BillEditModal({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                background: '#f1f5f9',
-                color: '#0f172a',
-                border: '1px solid #cbd5e1'
+                background: 'var(--bg-surface-secondary, #f1f5f9)',
+                color: 'var(--text-primary, #0f172a)',
+                border: '1px solid var(--border-color, #cbd5e1)'
               }}
             >
               <span>🖨️</span>

@@ -822,7 +822,7 @@ export default function CheckinWizardModal({
           {/* Step Indicators: Compact bar to maximize vertical space and eliminate scrolling */}
           <div
             className="checkin-step-nav-bar"
-            style={{ padding: '3px 24px 2px', background: '#ffffff', borderBottom: '1px solid var(--border-light)' }}
+            style={{ padding: '3px 24px 2px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-light)' }}
           >
             <div className="step-indicators" style={{ position: 'relative', marginBottom: '2px' }}>
               {/* Main Connecting Progress Track */}
@@ -971,7 +971,7 @@ export default function CheckinWizardModal({
               <svg viewBox="0 0 156 134" className="custom-arrow-icon" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M 156,67 L 153,64 L 150,61 L 147,58 L 144,55 L 141,52 L 138,49 L 135,46 L 132,43 L 129,40 L 126,37 L 123,34 L 120,31 L 117,28 L 114,25 L 111,22 L 108,19 L 105,16 L 103,13 L 100,10 L 97,7 L 94,4 L 91,1 L 83,0 L 75,3 L 71,6 L 67,9 L 64,12 L 61,15 L 59,18 L 57,21 L 55,24 L 53,27 L 50,30 L 48,33 L 46,36 L 44,39 L 41,42 L 38,45 L 35,48 L 32,51 L 28,54 L 24,57 L 19,60 L 12,63 L 2,66 L 0,67 L 4,68 L 13,71 L 20,74 L 25,77 L 29,80 L 33,83 L 36,86 L 39,89 L 42,92 L 44,95 L 46,98 L 49,101 L 51,104 L 53,107 L 55,110 L 57,113 L 59,116 L 62,119 L 65,122 L 68,125 L 71,128 L 77,131 L 86,134 L 89,134 L 92,131 L 95,128 L 98,125 L 101,122 L 104,119 L 107,116 L 110,113 L 113,110 L 116,107 L 119,104 L 122,101 L 125,98 L 128,95 L 131,92 L 134,89 L 137,86 L 140,83 L 143,80 L 146,77 L 149,74 L 152,71 L 155,68 Z"
-                  fill="#C7A3B8"
+                  fill="currentColor"
                 />
               </svg>
             </button>
@@ -989,7 +989,7 @@ export default function CheckinWizardModal({
               <svg viewBox="0 0 156 134" className="custom-arrow-icon" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M 0,67 L 3,64 L 6,61 L 9,58 L 12,55 L 15,52 L 18,49 L 21,46 L 24,43 L 27,40 L 30,37 L 33,34 L 36,31 L 39,28 L 42,25 L 45,22 L 48,19 L 51,16 L 53,13 L 56,10 L 59,7 L 62,4 L 65,1 L 73,0 L 81,3 L 85,6 L 89,9 L 92,12 L 95,15 L 97,18 L 99,21 L 101,24 L 103,27 L 106,30 L 108,33 L 110,36 L 112,39 L 115,42 L 118,45 L 121,48 L 124,51 L 128,54 L 132,57 L 137,60 L 144,63 L 154,66 L 156,67 L 152,68 L 143,71 L 136,74 L 131,77 L 127,80 L 123,83 L 120,86 L 117,89 L 114,92 L 112,95 L 110,98 L 107,101 L 105,104 L 103,107 L 101,110 L 99,113 L 97,116 L 94,119 L 91,122 L 88,125 L 85,128 L 79,131 L 70,134 L 67,134 L 64,131 L 61,128 L 58,125 L 55,122 L 52,119 L 49,116 L 46,113 L 43,110 L 40,107 L 37,104 L 34,101 L 31,98 L 28,95 L 25,92 L 22,89 L 19,86 L 16,83 L 13,80 L 10,77 L 7,74 L 4,71 L 1,68 Z"
-                  fill="#C7A3B8"
+                  fill="currentColor"
                 />
               </svg>
             </button>
