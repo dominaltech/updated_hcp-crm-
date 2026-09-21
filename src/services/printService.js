@@ -2448,29 +2448,29 @@ export function buildGuestPaymentSummaryHTML(data) {
 
     return `
       <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #64748b; border: 1px solid #cbd5e1;">${idx + 1}</td>
-        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap; border: 1px solid #cbd5e1;">${pDate}</td>
-        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap; text-align: center; border: 1px solid #cbd5e1;">
+        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #475569; border: 1.5px solid #94a3b8;">${idx + 1}</td>
+        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap; border: 1.5px solid #94a3b8;">${pDate}</td>
+        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap; text-align: center; border: 1.5px solid #94a3b8;">
           <span style="border: 1.5px solid #b91c1c; background: #fee2e2; padding: 2px 7px; border-radius: 4px; font-size: 9pt;">${escapeHtml(rcpFormatted)}</span>
         </td>
-        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a; border: 1px solid #cbd5e1;">
+        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a; border: 1.5px solid #94a3b8;">
           <div>${escapeHtml(mode)}</div>
           ${modeDetailStr}
         </td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #334155; white-space: nowrap; border: 1px solid #cbd5e1;">
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #334155; white-space: nowrap; border: 1.5px solid #94a3b8;">
           ${escapeHtml(purposeStr)}
         </td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #475569; text-align: center; border: 1px solid #cbd5e1;">
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #475569; text-align: center; border: 1.5px solid #94a3b8;">
           ${escapeHtml(pCashier)}
         </td>
-        <td style="padding: 7px 10px; font-weight: 950; font-size: 10.5pt; color: #15803d; text-align: right; white-space: nowrap; border: 1px solid #cbd5e1;">
+        <td style="padding: 7px 10px; font-weight: 950; font-size: 10.5pt; color: #15803d; text-align: right; white-space: nowrap; border: 1.5px solid #94a3b8;">
           ₹ ${pAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
         </td>
       </tr>
     `;
   }).join('') : `
     <tr>
-      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750; border: 1px solid #cbd5e1;">
+      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750; border: 1.5px solid #94a3b8;">
         No payment records found for this stay.
       </td>
     </tr>
@@ -2564,13 +2564,13 @@ export function buildGuestPaymentSummaryHTML(data) {
             <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
               <thead>
                 <tr style="background: #f1f5f9; text-transform: uppercase; font-size: 8pt; color: #1e293b; font-weight: 900;">
-                  <th style="padding: 8px 6px; text-align: center; width: 6%; border: 1px solid #94a3b8;">Sr. No.</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 19%; border: 1px solid #94a3b8;">Date &amp; Time</th>
-                  <th style="padding: 8px 8px; text-align: center; width: 14%; border: 1px solid #94a3b8;">Receipt No</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 16%; border: 1px solid #94a3b8;">Payment Mode &amp; Details</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 25%; border: 1px solid #94a3b8;">Particulars</th>
-                  <th style="padding: 8px 8px; text-align: center; width: 9%; border: 1px solid #94a3b8;">Cashier</th>
-                  <th style="padding: 8px 10px; text-align: right; width: 11%; border: 1px solid #94a3b8;">Amount (₹)</th>
+                  <th style="padding: 8px 6px; text-align: center; width: 6%; border: 1.5px solid #64748b; white-space: nowrap;">No.</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 20%; border: 1.5px solid #64748b; white-space: nowrap;">Date &amp; Time</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 15%; border: 1.5px solid #64748b; white-space: nowrap;">Receipt No</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 12%; border: 1.5px solid #64748b; white-space: nowrap;">Mode</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 26%; border: 1.5px solid #64748b; white-space: nowrap;">Particulars</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 9%; border: 1.5px solid #64748b; white-space: nowrap;">Cashier</th>
+                  <th style="padding: 8px 10px; text-align: right; width: 12%; border: 1.5px solid #64748b; white-space: nowrap;">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
@@ -2578,10 +2578,10 @@ export function buildGuestPaymentSummaryHTML(data) {
               </tbody>
               <tfoot>
                 <tr style="background: #f0fdf4;">
-                  <td colspan="6" style="padding: 9px 12px; font-weight: 950; font-size: 10.5pt; color: #166534; text-align: right; text-transform: uppercase; border: 1.5px solid #166534;">
+                  <td colspan="6" style="padding: 9px 12px; font-weight: 950; font-size: 10.5pt; color: #166534; text-align: right; text-transform: uppercase; border: 2px solid #166534;">
                     Total Net Amount Settled &amp; Received:
                   </td>
-                  <td style="padding: 9px 10px; font-weight: 950; font-size: 11.5pt; color: #166534; text-align: right; white-space: nowrap; border: 1.5px solid #166534;">
+                  <td style="padding: 9px 10px; font-weight: 950; font-size: 11.5pt; color: #166534; text-align: right; white-space: nowrap; border: 2px solid #166534;">
                     ₹ ${totalSettled.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -2597,12 +2597,8 @@ export function buildGuestPaymentSummaryHTML(data) {
         </div>
 
         <!-- FOOTER & SIGNATURES -->
-        <div style="padding-top: 10px; border-top: 1.5px solid #e2e8f0; margin-top: auto;">
-          <div style="font-size: 7.5pt; color: #64748b; font-style: italic; margin-bottom: 25px; text-align: center;">
-            * This is an official computer-generated statement of all payments received for the registered stay by HOTEL CITY PARK, Solapur.
-          </div>
-
-          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 0 20px;">
+        <div style="padding-top: 20px; border-top: 1.5px solid #cbd5e1; margin-top: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 20px 0;">
             <!-- Guest Signature -->
             <div style="text-align: center;">
               <div style="border-bottom: 1.5px solid #000; width: 175px; height: 35px; margin-bottom: 4px;"></div>
