@@ -2,6 +2,7 @@ node_modules/
 *.log
 hotel_city_park.db-shm
 hotel_city_park.db-wal
+hotel_city_park.db
 .DS_Store
 Thumbs.db
 scratch/

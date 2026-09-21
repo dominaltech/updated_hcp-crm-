@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 
 // JWT secret: use environment variable in production, fallback for dev
 const JWT_SECRET = process.env.JWT_SECRET || 'hcp_jwt_secret_2026_city_park_crm_' + require('os').hostname();
-const JWT_EXPIRY = '365d'; // Keep staff logged in until manual logout
+const JWT_EXPIRY = '30d'; // 30-day sessions; force re-login monthly
 const BCRYPT_ROUNDS = 10;
 
 // ---------- Password Hashing ----------
@@ -140,12 +140,21 @@ function requireAuth(req, res, next) {
       const db = require('../database');
       const liveUser = db.prepare('SELECT role, can_access_manager, status FROM staff_users WHERE id = ?').get(decoded.id);
       if (liveUser) {
+        // Block deactivated users
+        if (liveUser.status === 'inactive' || liveUser.status === 'disabled') {
+          return res.status(401).json({ 
+            success: false, 
+            error: 'Your account has been deactivated. Please contact the manager.' 
+          });
+        }
         req.user.dbRole = liveUser.role;
         if (liveUser.role === 'manager' || liveUser.can_access_manager == 1) {
           req.user.can_access_manager = true;
         }
       }
-    } catch (_) {}
+    } catch (dbErr) {
+      console.warn('[Auth] Live user status check failed:', dbErr.message);
+    }
   }
   next();
 }
@@ -234,6 +243,5 @@ module.exports = {
   requireAuth,
   requireRole,
   optionalAuth,
-  JWT_SECRET,
   BCRYPT_ROUNDS
 };

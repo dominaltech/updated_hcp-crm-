@@ -130,7 +130,7 @@ export const api = {
   deleteBtcCompany: (id) => request(`/btc-companies/${id}`, { method: 'DELETE' }),
   getOtaPlatforms: () => request('/ota-platforms'),
   addOtaPlatform: (name) => request('/ota-platforms', { method: 'POST', body: { name } }),
-  deleteOtaPlatform: (name) => request(`/ota-platforms/${encodeURIComponent(name)}`, { method: 'DELETE', body: { name } }),
+  deleteOtaPlatform: (name) => request(`/ota-platforms/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   saveOtaPlatforms: (platforms) => request('/ota-platforms', { method: 'POST', body: { platforms } }),
 
   // Staff & Auth
@@ -281,12 +281,8 @@ export const api = {
     }
   },
 
-  // Generic HTTP helpers
+  // Generic HTTP helper (underlying request function)
   request,
-  get: (endpoint, options = {}) => request(endpoint, { method: 'GET', ...options }),
-  post: (endpoint, body, options = {}) => request(endpoint, { method: 'POST', body, ...options }),
-  put: (endpoint, body, options = {}) => request(endpoint, { method: 'PUT', body, ...options }),
-  delete: (endpoint, options = {}) => request(endpoint, { method: 'DELETE', ...options }),
 
   // Auth Token Management
   setAuthToken,

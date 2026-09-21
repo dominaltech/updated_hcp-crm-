@@ -29,7 +29,7 @@ export const getFnbPaymentModeInfo = (ord) => {
   if (ord.split_details_json) {
     try {
       split = typeof ord.split_details_json === 'string' ? JSON.parse(ord.split_details_json) : ord.split_details_json;
-    } catch (e) {}
+    } catch (e) { console.warn('Failed to parse split_details_json:', e.message); }
   }
 
   const splitCash = Number(ord.split_cash ?? split?.cash ?? 0);
@@ -1093,7 +1093,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
               const dOut = new Date(folioData.approxCheckoutTime);
               const diffDays = Math.round((dOut - dIn) / (1000 * 60 * 60 * 24));
               stayNights = Math.max(1, diffDays);
-            } catch (e) {}
+            } catch (e) { console.warn('Failed to calculate stay nights:', e.message); }
           }
 
           const allRestaurantOrders = folioData.restaurantOrders || [];

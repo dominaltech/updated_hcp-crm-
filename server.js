@@ -165,6 +165,18 @@ function getSurchargeSettings() {
   }
 }
 
+// Helper: get configurable F&B GST rates from system_settings (defaults 5%)
+function getFnbGstRate(department) {
+  try {
+    const key = department === 'bar' ? 'bar_gst_pct' : 'restaurant_gst_pct';
+    const row = db.prepare("SELECT value FROM system_settings WHERE key = ?").get(key);
+    const pct = row ? parseFloat(row.value) : 5;
+    return isNaN(pct) ? 5 : Math.max(0, pct);
+  } catch (e) {
+    return 5;
+  }
+}
+
 function calculateDynamicSurcharges(cardAmount = 0, onlineAmount = 0) {
   const settings = getSurchargeSettings();
   const cardSurcharge = (cardAmount > 0 && settings.card_surcharge_pct > 0)
@@ -1146,7 +1158,9 @@ app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager'
         INSERT INTO checkout_extension_logs (booking_id, room_id, extended_by, from_time, to_time, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(id, booking.room_id, extended_by, fromTime, toTime, nowIso);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Audit] Failed to log checkout extension:', e.message);
+    }
 
     res.json({
       success: true,
@@ -1537,11 +1551,11 @@ app.get('/api/rooms/:id/folio', (req, res) => {
       ORDER BY bo.created_at ASC
     `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
 
-    // Only UNPAID / room_folio pending orders add to running room folio due
-    const pendingRestaurantOrders = restaurantOrders.filter(o => o.is_paid === 0 || o.payment_mode === 'room_folio' && o.is_paid === 0);
+    // Only UNPAID orders add to running room folio due
+    const pendingRestaurantOrders = restaurantOrders.filter(o => o.is_paid === 0);
     const foodTotal = pendingRestaurantOrders.reduce((sum, o) => sum + (o.total || 0), 0);
 
-    const pendingBarOrders = barOrders.filter(o => o.is_paid === 0 || o.payment_mode === 'room_folio' && o.is_paid === 0);
+    const pendingBarOrders = barOrders.filter(o => o.is_paid === 0);
     const barTotal = pendingBarOrders.reduce((sum, o) => sum + (o.total || 0), 0);
 
     // Fetch all payments ledger records strictly for this active booking session
@@ -1924,10 +1938,10 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     const sChequeDate = isCheque ? (cheque_date || checkoutTime.split('T')[0]) : null;
     const sChequePhoto = isCheque ? (cheque_photo || null) : null;
 
-    const settleSplitCash = parseFloat(req.body.split_cash !== undefined ? req.body.split_cash : (req.body.splitCash || 0)) || 0;
-    const settleSplitCard = parseFloat(req.body.split_card !== undefined ? req.body.split_card : (req.body.splitCard || 0)) || 0;
-    const settleSplitOnline = parseFloat(req.body.split_online !== undefined ? req.body.split_online : (req.body.splitOnline || 0)) || 0;
-    const settleSplitCheque = parseFloat(req.body.split_cheque !== undefined ? req.body.split_cheque : (req.body.splitCheque || 0)) || 0;
+    const settleSplitCash = parseFloat(b.split_cash ?? b.splitCash ?? 0) || 0;
+    const settleSplitCard = parseFloat(b.split_card ?? b.splitCard ?? 0) || 0;
+    const settleSplitOnline = parseFloat(b.split_online ?? b.splitOnline ?? 0) || 0;
+    const settleSplitCheque = parseFloat(b.split_cheque ?? b.splitCheque ?? 0) || 0;
 
     const surchargeCfg = getSurchargeSettings();
     let finalCardSurcharge = req.body.card_surcharge !== undefined ? parseFloat(req.body.card_surcharge) : (req.body.cardSurcharge !== undefined ? parseFloat(req.body.cardSurcharge) : 0);
@@ -2702,7 +2716,8 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
     if (items.length === 0) return res.status(400).json({ success: false, error: 'No items in table cart to pre-bill' });
 
     const subtotal = items.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
-    const tax = Math.round(subtotal * 0.05); // 5% GST
+    const restGstPct = getFnbGstRate('restaurant');
+    const tax = Math.round(subtotal * (restGstPct / 100));
     const grandTotal = subtotal + tax;
     const tokenNum = (!table.token_number || table.token_number === 0) ? getNextDailyToken() : table.token_number;
     const orderStartedAt = table.order_started_at || new Date().toISOString();
@@ -2802,7 +2817,8 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
       discountAmt = Math.round((subtotal * (parseFloat(discount_pct) || 0)) / 100);
     }
     const taxable = Math.max(0, subtotal - discountAmt);
-    const tax = Math.round(taxable * 0.05); // 5% GST
+    const restGstPct = getFnbGstRate('restaurant');
+    const tax = Math.round(taxable * (restGstPct / 100));
     const total = taxable + tax;
 
     const orderNumber = 'RES-' + Date.now().toString().slice(-6);
@@ -3435,7 +3451,8 @@ app.post('/api/restaurant/orders/:id/resettle', requireAuth, requireRole('manage
     const discPct = parseFloat(discount_pct) !== undefined && !isNaN(parseFloat(discount_pct)) ? parseFloat(discount_pct) : 0;
     const discountAmt = Math.round((subtotal * discPct) / 100);
     const taxable = Math.max(0, subtotal - discountAmt);
-    const tax = Math.round(taxable * 0.05); // 5% GST
+    const restGstPct = getFnbGstRate('restaurant');
+    const tax = Math.round(taxable * (restGstPct / 100));
     const newTotal = taxable + tax;
 
     // Build human-readable audit diff
@@ -3584,7 +3601,8 @@ app.post('/api/restaurant/order', requireAuth, requireRole('manager', 'restauran
 
     const subtotal = items.reduce((sum, it) => sum + (it.price * it.qty), 0);
     const discount = (subtotal * (parseFloat(discount_pct) || 0)) / 100;
-    const tax = (subtotal - discount) * 0.05; // 5% GST
+    const restGstPct = getFnbGstRate('restaurant');
+    const tax = Math.round((subtotal - discount) * (restGstPct / 100));
     const total = subtotal - discount + tax;
 
     const orderNumber = 'RES-' + Date.now().toString().slice(-6);
@@ -4156,7 +4174,8 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
     if (items.length === 0) return res.status(400).json({ success: false, error: 'No items in bar cart to pre-bill' });
 
     const subtotal = items.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
-    const tax = Math.round(subtotal * 0.05); // 5% GST
+    const barGstPct = getFnbGstRate('bar');
+    const tax = Math.round(subtotal * (barGstPct / 100));
     const grandTotal = subtotal + tax;
     const tokenNum = (!table.token_number || table.token_number === 0) ? getNextDailyToken() : table.token_number;
     const orderStartedAt = table.order_started_at || new Date().toISOString();
@@ -4255,7 +4274,8 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
       discountAmt = Math.round((subtotal * (parseFloat(discount_pct) || 0)) / 100);
     }
     const taxable = Math.max(0, subtotal - discountAmt);
-    const tax = Math.round(taxable * 0.05); // 5% GST
+    const barGstPct = getFnbGstRate('bar');
+    const tax = Math.round(taxable * (barGstPct / 100));
     const total = taxable + tax;
 
     const orderNumber = 'BAR-' + Date.now().toString().slice(-6);
@@ -4530,7 +4550,8 @@ app.post('/api/bar/orders/:id/resettle', requireAuth, requireRole('manager'), (r
     const discPct = parseFloat(discount_pct) !== undefined && !isNaN(parseFloat(discount_pct)) ? parseFloat(discount_pct) : 0;
     const discountAmt = Math.round((subtotal * discPct) / 100);
     const taxable = Math.max(0, subtotal - discountAmt);
-    const tax = Math.round(taxable * 0.05);
+    const barGstPct = getFnbGstRate('bar');
+    const tax = Math.round(taxable * (barGstPct / 100));
     const newTotal = taxable + tax;
 
     const prevMap = {};
@@ -4722,7 +4743,8 @@ app.post('/api/bar/order', requireAuth, requireRole('manager', 'bar'), (req, res
 
     const subtotal = items.reduce((sum, it) => sum + (it.price * (it.qty || 1)), 0);
     const discount = (subtotal * (parseFloat(discount_pct) || 0)) / 100;
-    const tax = Math.round((subtotal - discount) * 0.05);
+    const barGstPct = getFnbGstRate('bar');
+    const tax = Math.round((subtotal - discount) * (barGstPct / 100));
     const total = subtotal - discount + tax;
 
     const orderNumber = 'BAR-' + Date.now().toString().slice(-6);
@@ -7466,8 +7488,11 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
     const netCashInDrawer = totalCashInflow - totalCashOutflow;
     const netProfit = totalCollectedRealized - totalExpenses;
 
-    // Standard 5% GST on Hospitality room stay charges
-    const hospBase = Math.round((hospTotal / 1.05) * 100) / 100;
+    // Dynamic GST on Hospitality room stay charges (reads configurable room_gst_pct)
+    const roomGstRow = db.prepare("SELECT value FROM system_settings WHERE key = 'room_gst_pct'").get();
+    const analyticsRoomGstPct = roomGstRow ? (parseFloat(roomGstRow.value) || 5) : 5;
+    const hospGstFactor = 1 + (analyticsRoomGstPct / 100);
+    const hospBase = Math.round((hospTotal / hospGstFactor) * 100) / 100;
     const hospGst = Math.round((hospTotal - hospBase) * 100) / 100;
 
     // GST Collections across Hotel, Restaurant, and Bar

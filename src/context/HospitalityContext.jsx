@@ -52,7 +52,7 @@ export function HospitalityProvider({ children }) {
     const interval = setInterval(() => {
       loadRooms(true);
       loadStats();
-    }, 3000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [loadRooms, loadStats]);
