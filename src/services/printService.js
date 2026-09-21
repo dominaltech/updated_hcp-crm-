@@ -2435,9 +2435,9 @@ export function buildGuestPaymentSummaryHTML(data) {
 
     // Single-line particulars without redundant guest name in parentheses
     // "Advance payment at check-in for Room 101 (Md Yahya Ab Wahid Mundewadi)" -> "paid while checkin : checkin"
-    if (/advance\s+payment\s+at\s+check-?in/i.test(rawPurpose) || p.payment_type === 'advance' || /check-?in/i.test(rawPurpose)) {
+    if (/advance\s+payment\s+at\s+check-?in/i.test(rawPurpose)) {
       purposeStr = 'paid while checkin : checkin';
-    } else if (/settlement|check-?out/i.test(rawPurpose) || p.payment_type === 'settlement') {
+    } else if (/settlement\s+at\s+check-?out/i.test(rawPurpose)) {
       purposeStr = 'paid during checkout : settlement';
     } else {
       purposeStr = rawPurpose.replace(/\s*\([^)]*\)/g, '').trim();
@@ -2447,39 +2447,39 @@ export function buildGuestPaymentSummaryHTML(data) {
     const pAmt = Number(p.amount) || 0;
 
     return `
-      <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #475569; border: 1.5px solid #94a3b8;">${idx + 1}</td>
-        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap; border: 1.5px solid #94a3b8;">${pDate}</td>
-        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap; text-align: center; border: 1.5px solid #94a3b8;">
-          <span style="border: 1.5px solid #b91c1c; background: #fee2e2; padding: 2px 7px; border-radius: 4px; font-size: 9pt;">${escapeHtml(rcpFormatted)}</span>
+      <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #cbd5e1;">
+        <td style="padding: 7px 6px; font-weight: 800; text-align: center; color: #475569; border-right: 1px solid #cbd5e1;">${idx + 1}</td>
+        <td style="padding: 7px 8px; font-weight: 750; color: #0f172a; white-space: nowrap; border-right: 1px solid #cbd5e1;">${pDate}</td>
+        <td style="padding: 7px 8px; font-weight: 900; color: #b91c1c; white-space: nowrap; text-align: center; border-right: 1px solid #cbd5e1;">
+          <span style="border: 1px solid #b91c1c; background: #fee2e2; padding: 2px 7px; border-radius: 4px; font-size: 9pt;">${escapeHtml(rcpFormatted)}</span>
         </td>
-        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a; border: 1.5px solid #94a3b8;">
+        <td style="padding: 7px 8px; font-weight: 800; color: #1e3a8a; border-right: 1px solid #cbd5e1;">
           <div>${escapeHtml(mode)}</div>
           ${modeDetailStr}
         </td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #334155; white-space: nowrap; border: 1.5px solid #94a3b8;">
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #334155; white-space: nowrap; border-right: 1px solid #cbd5e1;">
           ${escapeHtml(purposeStr)}
         </td>
-        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #475569; text-align: center; border: 1.5px solid #94a3b8;">
+        <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: 700; color: #475569; text-align: center; border-right: 1px solid #cbd5e1;">
           ${escapeHtml(pCashier)}
         </td>
-        <td style="padding: 7px 10px; font-weight: 950; font-size: 10.5pt; color: #15803d; text-align: right; white-space: nowrap; border: 1.5px solid #94a3b8;">
+        <td style="padding: 7px 10px; font-weight: 950; font-size: 10.5pt; color: #15803d; text-align: right; white-space: nowrap;">
           ₹ ${pAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
         </td>
       </tr>
     `;
   }).join('') : `
     <tr>
-      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750; border: 1.5px solid #94a3b8;">
+      <td colspan="7" style="padding: 24px; text-align: center; color: #64748b; font-weight: 750;">
         No payment records found for this stay.
       </td>
     </tr>
   `;
 
   return `
-    <div class="full-a4-registration-card guest-payment-summary-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 12px 16px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; min-height: 275mm;">
+    <div class="full-a4-registration-card guest-payment-summary-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 12px 16px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; min-height: 275mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
       <!-- Watermark Crest -->
-      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.04; pointer-events: none; z-index: 0; text-align: center;">
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.04; pointer-events: none; z-index: 0; text-align: center; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
         <img src="/HCP New Logo Png_witought-name.png" alt="" style="width: 440px; height: auto;" loading="eager" decoding="sync" />
       </div>
 
@@ -2557,31 +2557,31 @@ export function buildGuestPaymentSummaryHTML(data) {
           </div>
 
           <!-- ITEMIZED PAYMENTS TABLE -->
-          <div style="border: 2px solid #1e3a8a; border-radius: 6px; overflow: hidden; margin-bottom: 12px;">
-            <div style="background: #1e3a8a; color: #fff; padding: 7px 12px; font-weight: 900; font-size: 9.5pt; letter-spacing: 0.03em;">
+          <div style="border: 1.5px solid #1e3a8a; border-radius: 6px; overflow: hidden; margin-bottom: 12px; background: #ffffff;">
+            <div style="background: #1e3a8a; color: #fff; padding: 7px 12px; font-weight: 900; font-size: 9.5pt; letter-spacing: 0.03em; border-bottom: 1px solid #1e3a8a;">
               ITEMIZED PAYMENTS &amp; SETTLEMENT LOG
             </div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt; margin: 0;">
               <thead>
-                <tr style="background: #f1f5f9; text-transform: uppercase; font-size: 8pt; color: #1e293b; font-weight: 900;">
-                  <th style="padding: 8px 6px; text-align: center; width: 6%; border: 1.5px solid #64748b; white-space: nowrap;">No.</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 20%; border: 1.5px solid #64748b; white-space: nowrap;">Date &amp; Time</th>
-                  <th style="padding: 8px 8px; text-align: center; width: 15%; border: 1.5px solid #64748b; white-space: nowrap;">Receipt No</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 12%; border: 1.5px solid #64748b; white-space: nowrap;">Mode</th>
-                  <th style="padding: 8px 8px; text-align: left; width: 26%; border: 1.5px solid #64748b; white-space: nowrap;">Particulars</th>
-                  <th style="padding: 8px 8px; text-align: center; width: 9%; border: 1.5px solid #64748b; white-space: nowrap;">Cashier</th>
-                  <th style="padding: 8px 10px; text-align: right; width: 12%; border: 1.5px solid #64748b; white-space: nowrap;">Amount (₹)</th>
+                <tr style="background: #f1f5f9; text-transform: uppercase; font-size: 8pt; color: #1e293b; font-weight: 900; border-bottom: 1.5px solid #94a3b8;">
+                  <th style="padding: 8px 6px; text-align: center; width: 6%; border-right: 1px solid #cbd5e1; white-space: nowrap;">No.</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 20%; border-right: 1px solid #cbd5e1; white-space: nowrap;">Date &amp; Time</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 15%; border-right: 1px solid #cbd5e1; white-space: nowrap;">Receipt No</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 12%; border-right: 1px solid #cbd5e1; white-space: nowrap;">Mode</th>
+                  <th style="padding: 8px 8px; text-align: left; width: 26%; border-right: 1px solid #cbd5e1; white-space: nowrap;">Particulars</th>
+                  <th style="padding: 8px 8px; text-align: center; width: 9%; border-right: 1px solid #cbd5e1; white-space: nowrap;">Cashier</th>
+                  <th style="padding: 8px 10px; text-align: right; width: 12%; white-space: nowrap;">Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 ${rowsHtml}
               </tbody>
               <tfoot>
-                <tr style="background: #f0fdf4;">
-                  <td colspan="6" style="padding: 9px 12px; font-weight: 950; font-size: 10.5pt; color: #166534; text-align: right; text-transform: uppercase; border: 2px solid #166534;">
+                <tr style="background: #f8fafc; border-top: 1.5px solid #94a3b8;">
+                  <td colspan="6" style="padding: 9px 12px; font-weight: 900; font-size: 9.5pt; color: #0f172a; text-align: right; text-transform: uppercase; border-right: 1px solid #cbd5e1;">
                     Total Net Amount Settled &amp; Received:
                   </td>
-                  <td style="padding: 9px 10px; font-weight: 950; font-size: 11.5pt; color: #166534; text-align: right; white-space: nowrap; border: 2px solid #166534;">
+                  <td style="padding: 9px 10px; font-weight: 950; font-size: 11pt; color: #15803d; text-align: right; white-space: nowrap;">
                     ₹ ${totalSettled.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>

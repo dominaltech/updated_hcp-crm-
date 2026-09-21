@@ -59,14 +59,21 @@ describe('Payment Summary Statement Print Template', () => {
     expect(html).not.toContain('Advance payment at check-in for Room 101 (Md Yahya Ab Wahid Mundewadi)');
   });
 
-  it('4. Renders a complete table grid with bold 1.5px/2px borders for all columns and removes computer disclaimer', () => {
+  it('4. Renders clean, single-line non-overlapping table borders and natural total row without disclaimer', () => {
     const html = buildGuestPaymentSummaryHTML(sampleData);
     expect(html).toContain('ITEMIZED PAYMENTS &amp; SETTLEMENT LOG');
-    expect(html).toContain('border: 1.5px solid #64748b;'); // Table header cell borders
-    expect(html).toContain('border: 1.5px solid #94a3b8;'); // Data cell borders
-    expect(html).toContain('border: 2px solid #166534;'); // Footer total borders
+    // Inner column dividers
+    expect(html).toContain('border-right: 1px solid #cbd5e1;');
+    // Header divider
+    expect(html).toContain('border-bottom: 1.5px solid #94a3b8;');
+    // Natural total row divider
+    expect(html).toContain('border-top: 1.5px solid #94a3b8;');
     expect(html).toContain('Total Net Amount Settled &amp; Received:');
+    expect(html).toContain('text-transform: uppercase;');
     expect(html).toContain('₹ 2,000.00');
+
+    // No harsh clashing borders or overlapping double lines
+    expect(html).not.toContain('border: 2px solid #166534;');
 
     // Verify disclaimer is removed
     expect(html).not.toContain('This is an official computer-generated statement');
