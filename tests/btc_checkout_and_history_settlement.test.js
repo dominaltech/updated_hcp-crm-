@@ -48,13 +48,13 @@ describe('BTC Zero-Rupee Checkout and Hospitality History Settlement Test Suite'
     `).run('Vikramaditya Shinde', '9876543210', 'vikram@tcs.test', 'Aadhar', '1234-5678-9012');
     testGuestId = guestRes.lastInsertRowid;
 
-    // Pick or create an available room
-    let room = db.prepare("SELECT * FROM rooms WHERE status = 'available' LIMIT 1").get();
+    // Pick or create a ready room
+    let room = db.prepare("SELECT * FROM rooms WHERE status = 'ready' OR status = 'available' LIMIT 1").get();
     if (!room) {
       const roomRes = db.prepare(`
         INSERT INTO rooms (room_number, room_type, price, status)
-        VALUES (?, ?, ?, ?)
-      `).run('999B', 'Deluxe Executive', 3500, 'available');
+        VALUES (?, ?, ?, 'ready')
+      `).run('999B', 'Deluxe Executive', 3500);
       testRoomId = roomRes.lastInsertRowid;
     } else {
       testRoomId = room.id;
@@ -73,8 +73,10 @@ describe('BTC Zero-Rupee Checkout and Hospitality History Settlement Test Suite'
     if (testCompanyId) {
       db.prepare("DELETE FROM btc_companies WHERE id = ?").run(testCompanyId);
     }
+    // Delete dummy test room if it was created
+    db.prepare("DELETE FROM rooms WHERE room_number = '999B'").run();
     if (testRoomId) {
-      db.prepare("UPDATE rooms SET status = 'available', current_booking_id = NULL WHERE id = ?").run(testRoomId);
+      db.prepare("UPDATE rooms SET status = 'ready', current_booking_id = NULL WHERE id = ?").run(testRoomId);
     }
   });
 
