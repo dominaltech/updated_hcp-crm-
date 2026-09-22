@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { printFullMenuA4, printThermalBillSlip, printPosThermalClosingSlip } from '../../services/printService';
+import { blockNumericKeys, sanitizeNameInput } from '../../utils/inputEnhancements';
 
 export default function PosManagerPanel({ department = 'restaurant', onMenuChanged, onTablesChanged }) {
   const {
@@ -2797,7 +2798,8 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                   required
                   placeholder="e.g. Rahul Sharma"
                   value={staffForm.full_name}
-                  onChange={(e) => setStaffForm({ ...staffForm, full_name: e.target.value })}
+                  onKeyDown={blockNumericKeys}
+                  onChange={(e) => setStaffForm({ ...staffForm, full_name: sanitizeNameInput(e.target.value) })}
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.86rem', borderRadius: '10px' }}
                 />
               </div>

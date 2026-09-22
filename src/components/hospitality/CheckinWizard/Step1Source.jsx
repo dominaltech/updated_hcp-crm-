@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../../services/api';
 import UnifiedTimeInput from '../../common/UnifiedTimeInput';
 import { useApp } from '../../../context/AppContext';
+import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
 
 const CHANNELS = [
   {
@@ -1930,18 +1931,21 @@ export default function Step1Source({
                           className="form-input"
                           placeholder="Name"
                           value={newBtcForm.contact_person}
-                          onChange={(e) => setNewBtcForm({ ...newBtcForm, contact_person: e.target.value })}
+                          onKeyDown={blockNumericKeys}
+                          onChange={(e) => setNewBtcForm({ ...newBtcForm, contact_person: sanitizeNameInput(e.target.value) })}
                           style={{ height: '38px' }}
                         />
                       </div>
                       <div>
                         <label style={{ fontSize: '0.8rem', fontWeight: 750, color: '#334155', display: 'block', marginBottom: '4px' }}>Phone</label>
                         <input
-                          type="text"
+                          type="tel"
                           className="form-input"
-                          placeholder="Mobile"
+                          placeholder="10-digit Mobile"
+                          maxLength={10}
                           value={newBtcForm.contact_phone}
-                          onChange={(e) => setNewBtcForm({ ...newBtcForm, contact_phone: e.target.value })}
+                          onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                          onChange={(e) => setNewBtcForm({ ...newBtcForm, contact_phone: sanitizePhoneInput(e.target.value, 10) })}
                           style={{ height: '38px' }}
                         />
                       </div>

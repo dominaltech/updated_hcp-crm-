@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
 import ExpensesPage from './ExpensesPage';
 import ThemedSelect from '../components/common/ThemedSelect';
+import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../utils/inputEnhancements';
 
 export default function ManagePage({ onPrintClosingReport }) {
   const {
@@ -3500,7 +3501,8 @@ export default function ManagePage({ onPrintClosingReport }) {
                     required
                     placeholder="e.g. Aamir Khan"
                     value={staffForm.full_name}
-                    onChange={(e) => setStaffForm({ ...staffForm, full_name: e.target.value })}
+                    onKeyDown={blockNumericKeys}
+                    onChange={(e) => setStaffForm({ ...staffForm, full_name: sanitizeNameInput(e.target.value) })}
                     style={{ height: '42px', fontSize: '0.92rem' }}
                   />
                 </div>
@@ -3606,7 +3608,8 @@ export default function ManagePage({ onPrintClosingReport }) {
                     required
                     placeholder="e.g. Sunita Shinde / Ramesh Kumar"
                     value={cleanerForm.name}
-                    onChange={(e) => setCleanerForm({ ...cleanerForm, name: e.target.value })}
+                    onKeyDown={blockNumericKeys}
+                    onChange={(e) => setCleanerForm({ ...cleanerForm, name: sanitizeNameInput(e.target.value) })}
                     style={{ height: '42px', fontSize: '0.94rem' }}
                   />
                   <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
@@ -3622,8 +3625,10 @@ export default function ManagePage({ onPrintClosingReport }) {
                     type="tel"
                     className="form-input"
                     placeholder="e.g. 9876543210"
+                    maxLength={10}
                     value={cleanerForm.phone}
-                    onChange={(e) => setCleanerForm({ ...cleanerForm, phone: e.target.value })}
+                    onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                    onChange={(e) => setCleanerForm({ ...cleanerForm, phone: sanitizePhoneInput(e.target.value, 10) })}
                     style={{ height: '42px', fontSize: '0.92rem' }}
                   />
                 </div>
@@ -3805,7 +3810,8 @@ export default function ManagePage({ onPrintClosingReport }) {
                       className="form-input"
                       placeholder="e.g. Rajesh Gupta (Travel Desk)"
                       value={btcForm.contact_person}
-                      onChange={(e) => setBtcForm({ ...btcForm, contact_person: e.target.value })}
+                      onKeyDown={blockNumericKeys}
+                      onChange={(e) => setBtcForm({ ...btcForm, contact_person: sanitizeNameInput(e.target.value) })}
                       style={{ height: '42px', fontSize: '0.92rem' }}
                     />
                   </div>
@@ -3818,9 +3824,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                     <input
                       type="tel"
                       className="form-input"
-                      placeholder="e.g. +91 98765 43210"
+                      placeholder="e.g. 9876543210"
+                      maxLength={10}
                       value={btcForm.phone}
-                      onChange={(e) => setBtcForm({ ...btcForm, phone: e.target.value })}
+                      onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                      onChange={(e) => setBtcForm({ ...btcForm, phone: sanitizePhoneInput(e.target.value, 10) })}
                       style={{ height: '42px', fontSize: '0.92rem' }}
                     />
                   </div>

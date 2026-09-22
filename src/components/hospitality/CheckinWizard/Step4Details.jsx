@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
 
 export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPreviewDoc }) {
   const [activeSide, setActiveSide] = useState('front');
@@ -494,7 +495,8 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                 placeholder="Guest Full Name"
                 required
                 value={draft.guestName || ''}
-                onChange={(e) => updateDraft({ guestName: e.target.value })}
+                onKeyDown={blockNumericKeys}
+                onChange={(e) => updateDraft({ guestName: sanitizeNameInput(e.target.value) })}
                 style={{ height: '36px', fontWeight: 750 }}
               />
             </div>
@@ -509,7 +511,8 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                 maxLength={10}
                 required
                 value={draft.mobile || ''}
-                onChange={(e) => updateDraft({ mobile: e.target.value.replace(/\D/g, '') })}
+                onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                onChange={(e) => updateDraft({ mobile: sanitizePhoneInput(e.target.value, 10) })}
                 style={{ height: '36px', fontWeight: 750 }}
               />
             </div>
@@ -659,9 +662,10 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                   type="tel"
                   className="form-input"
                   placeholder="Optional 2nd Mobile"
-                  maxLength={15}
+                  maxLength={10}
                   value={draft.altMobile || ''}
-                  onChange={(e) => updateDraft({ altMobile: e.target.value })}
+                  onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                  onChange={(e) => updateDraft({ altMobile: sanitizePhoneInput(e.target.value, 10) })}
                   style={{ height: '36px', fontWeight: 600 }}
                 />
               </div>
@@ -678,9 +682,10 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                   type="tel"
                   className="form-input"
                   placeholder="Optional 2nd Mobile"
-                  maxLength={15}
+                  maxLength={10}
                   value={draft.altMobile || ''}
-                  onChange={(e) => updateDraft({ altMobile: e.target.value })}
+                  onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                  onChange={(e) => updateDraft({ altMobile: sanitizePhoneInput(e.target.value, 10) })}
                   style={{ height: '36px', fontWeight: 600 }}
                 />
               </div>

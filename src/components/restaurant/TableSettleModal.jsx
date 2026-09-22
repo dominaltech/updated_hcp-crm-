@@ -23,6 +23,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const grandTotal = session ? session.grandTotal : 0;
+  const isRS = session?.table?.table_type === 'room_service' || String(session?.table?.table_number || '').startsWith('RS-');
 
   useEffect(() => {
     if (isOpen && session) {
@@ -32,13 +33,12 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
       setSplitCard(0);
       setUtrNumber('');
 
-      const isRS = session.table?.table_type === 'room_service' || String(session.table?.table_number || '').startsWith('RS-');
       const initialRoom = session.chargeToRoomId || session.table?.room_id || '';
       const initialIsStaying = Boolean(isRS || initialRoom);
 
       setIsStayingGuest(initialIsStaying);
       setRoomBillStatus(initialIsStaying ? 'pending' : 'paid');
-      setRoomServiceFor(null);
+      setRoomServiceFor(isRS ? null : 'room_mates');
 
       api.getRooms()
         .then((rooms) => {
@@ -124,7 +124,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
       }
 
       if (!roomServiceFor) {
-        showToast('Please select who this order is for: "For room mates" or "For visitor" (Mandatory).', 'red');
+        showToast(`Please select who this order is for: ${isRS ? '"For room mates" or "For visitor"' : '"For in-house guest" or "For visitor"'} (Mandatory).`, 'red');
         return;
       }
     }
@@ -448,37 +448,56 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <select
-                    value={selectedRoomId}
-                    onChange={(e) => setSelectedRoomId(e.target.value)}
-                    style={{
-                      height: '42px',
-                      padding: '0 14px',
+                  {occupiedRooms.length === 0 ? (
+                    <div style={{
+                      padding: '8px 14px',
                       borderRadius: '10px',
-                      border: '2px solid var(--apple-blue, #0071e3)',
-                      background: 'var(--bg-app, #ffffff)',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.96rem',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {occupiedRooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        Room #{r.room_number} • {r.guest_name || 'In-House Guest'} ({r.room_type || 'Room'})
-                      </option>
-                    ))}
-                  </select>
+                      background: '#fef2f2',
+                      border: '1.5px solid #f87171',
+                      color: '#b91c1c',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <span>⚠️</span> No occupied rooms currently checked in
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedRoomId}
+                      onChange={(e) => setSelectedRoomId(e.target.value)}
+                      style={{
+                        height: '42px',
+                        minWidth: '280px',
+                        padding: '0 14px',
+                        borderRadius: '10px',
+                        border: '2px solid var(--apple-blue, #0071e3)',
+                        background: 'var(--bg-app, #ffffff)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.94rem',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">-- Select In-House Guest Room --</option>
+                      {occupiedRooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Room #{r.room_number} • {r.guest_name || 'In-House Guest'} ({r.room_type || 'Room'})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
-              {/* Sub-Option: Room Mates vs Visitor (NEW) */}
+              {/* Sub-Option: Room Mates / In-House Guest vs Visitor */}
               <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
                 <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-                  Room Service Consumption:
+                  {isRS ? 'Room Service Consumption:' : 'Dining Bill Attribution:'}
                 </label>
                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                  {/* Option 1: For room mates */}
+                  {/* Option 1: For room mates / In-house guest */}
                   <label
                     style={{
                       flex: '1',
@@ -506,7 +525,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       onChange={() => setRoomServiceFor('room_mates')}
                       style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#2563eb' }}
                     />
-                    <span>👥 For room mates</span>
+                    <span>{isRS ? '👥 For room mates' : '👥 For in-house guest'}</span>
                   </label>
 
                   {/* Option 2: For visitor */}

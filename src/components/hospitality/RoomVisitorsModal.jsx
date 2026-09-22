@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { useWebcam } from '../../hooks/useWebcam';
 import ImageLightbox from '../common/ImageLightbox';
+import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../utils/inputEnhancements';
 
 export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpdated }) {
   const { showToast, showConfirm } = useApp();
@@ -461,7 +462,8 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                       className="form-input"
                       placeholder="e.g. Rahul Sharma"
                       value={visitorName}
-                      onChange={(e) => setVisitorName(e.target.value)}
+                      onKeyDown={blockNumericKeys}
+                      onChange={(e) => setVisitorName(sanitizeNameInput(e.target.value))}
                       required
                       style={{ height: '42px', fontWeight: 700 }}
                     />
@@ -478,7 +480,8 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                       maxLength={10}
                       inputMode="numeric"
                       value={visitorPhone}
-                      onChange={(e) => setVisitorPhone(e.target.value.replace(/\D/g, ''))}
+                      onKeyDown={(e) => blockNonNumericKeys(e, 10)}
+                      onChange={(e) => setVisitorPhone(sanitizePhoneInput(e.target.value, 10))}
                       required
                       style={{ height: '42px', fontWeight: 700 }}
                     />
