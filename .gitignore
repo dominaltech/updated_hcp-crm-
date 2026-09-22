@@ -14,3 +14,5 @@ nnnnew/
 nnnnew.zip
 scratch_gen.mjs
 release/runtime/
+release-electron/
+runtime/
