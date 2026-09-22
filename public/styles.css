@@ -8475,43 +8475,49 @@ body.table-pos-mode .table-session-header {
 }
 
 .btn-editor-tool {
-  background: #1e293b;
-  color: #f8fafc;
-  border: 1px solid #334155;
+  background: #ffffff;
+  color: #1e293b;
+  border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 0.78rem;
+  padding: 6px 12px;
+  font-size: 0.8rem;
   font-weight: 750;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .btn-editor-tool:hover {
-  background: #334155;
-  border-color: #38bdf8;
-  color: #38bdf8;
+  background: #ecfdf5;
+  border-color: #059669;
+  color: #047857;
 }
 
 .btn-stepper-round {
-  width: 28px !important;
-  height: 28px !important;
+  width: 30px !important;
+  height: 30px !important;
   border-radius: 50% !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 1.1rem !important;
+  font-size: 1.15rem !important;
   font-weight: 800 !important;
   padding: 0 !important;
   line-height: 1 !important;
   user-select: none;
-  border-color: #475569 !important;
+  border: 1.5px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
 }
 
 .btn-stepper-round:hover {
-  background: #0284c7 !important;
-  border-color: #38bdf8 !important;
+  background: #059669 !important;
+  border-color: #047857 !important;
   color: #ffffff !important;
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
 .btn-folio-visitors-action:hover {

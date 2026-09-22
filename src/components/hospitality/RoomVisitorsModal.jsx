@@ -745,101 +745,356 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
 
       {/* MODAL: VISITOR LIVE WEBCAM CAPTURE */}
       {isWebcamOpen && (
-        <div className="modal-overlay active" style={{ zIndex: 10085, display: 'flex', opacity: 1, visibility: 'visible' }}>
-          <div className="modal-container" style={{ maxWidth: '520px', width: '92%', textAlign: 'center', padding: '22px', background: '#0f172a', color: '#fff', borderRadius: '18px', border: '1.5px solid #334155' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc' }}>
-                🎥 Capture Visitor Live Photo
-              </h3>
-              <button type="button" className="modal-close-btn" onClick={closeWebcam} style={{ color: '#ffffff' }}>
+        <div
+          className="modal-overlay active"
+          id="modal-visitor-webcam-capture"
+          style={{
+            zIndex: 10085,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.72)',
+            backdropFilter: 'blur(5px)',
+            opacity: 1,
+            visibility: 'visible',
+            position: 'fixed',
+            inset: 0
+          }}
+        >
+          <div
+            className="modal-container"
+            style={{
+              maxWidth: '560px',
+              width: '92%',
+              background: 'var(--bg-surface, #ffffff)',
+              color: 'var(--text-primary, #0f172a)',
+              borderRadius: '20px',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexShrink: 0
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span
+                  style={{
+                    fontSize: '1.35rem',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  📸
+                </span>
+                <div style={{ textAlign: 'left' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 850, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                    Capture Visitor Live Photo
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#a7f3d0', fontWeight: 600 }}>
+                    Align face in frame and snap a clear photo
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeWebcam}
+                title="Close Camera"
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.32)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)')}
+              >
                 &times;
               </button>
             </div>
 
-            {/* Camera Toolbar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
-              {webcam.devices.length > 1 && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={webcam.cycleCamera}
-                  title={`Current: ${webcam.activeCameraLabel || 'Camera'}. Click to switch camera.`}
-                  style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 750, borderRadius: '8px', background: '#0284c7', color: '#ffffff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
-                >
-                  <span>🔄</span> Switch Camera ({webcam.devices.length})
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={webcam.toggleMirror}
-                style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 750, borderRadius: '8px', background: '#334155', color: '#f8fafc', border: '1px solid #64748b', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px 16px', background: 'var(--bg-surface, #ffffff)' }}>
+              {/* Camera Toolbar */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '14px'
+                }}
               >
-                <span>🪞</span> Mirror Camera
-              </button>
-            </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: webcam.isActive ? '#10b981' : '#94a3b8',
+                      display: 'inline-block',
+                      boxShadow: webcam.isActive ? '0 0 8px #10b981' : 'none'
+                    }}
+                  ></span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary, #64748b)' }}>
+                    {webcam.isActive ? 'Live Video Active' : 'Connecting Camera...'}
+                  </span>
+                </div>
 
-            <div style={{ width: '100%', height: '320px', borderRadius: '14px', overflow: 'hidden', background: '#020617', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #38bdf8', marginBottom: '16px' }}>
-              {webcam.isActive && webcam.activeCameraLabel && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {webcam.devices.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={webcam.cycleCamera}
+                      title={`Current: ${webcam.activeCameraLabel || 'Camera'}. Click to switch.`}
+                      style={{
+                        padding: '7px 13px',
+                        fontSize: '0.8rem',
+                        fontWeight: 750,
+                        borderRadius: '9px',
+                        background: '#ecfdf5',
+                        color: '#065f46',
+                        border: '1.5px solid #a7f3d0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#d1fae5';
+                        e.currentTarget.style.borderColor = '#059669';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#ecfdf5';
+                        e.currentTarget.style.borderColor = '#a7f3d0';
+                      }}
+                    >
+                      <span>🔄</span> Switch ({webcam.devices.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={webcam.toggleMirror}
+                    title={webcam.isMirrored ? 'Mirror active (flip horizontal)' : 'Normal orientation'}
+                    style={{
+                      padding: '7px 13px',
+                      fontSize: '0.8rem',
+                      fontWeight: 750,
+                      borderRadius: '9px',
+                      background: webcam.isMirrored ? '#f1f5f9' : '#ffffff',
+                      color: '#334155',
+                      border: '1.5px solid #cbd5e1',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#e2e8f0')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = webcam.isMirrored ? '#f1f5f9' : '#ffffff')}
+                  >
+                    <span>🪞</span> {webcam.isMirrored ? 'Mirrored' : 'Normal'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Viewfinder Bed */}
+              <div
+                style={{
+                  width: '100%',
+                  height: '320px',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  background: '#090d16',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2.5px solid #059669',
+                  boxShadow: '0 8px 24px rgba(5, 150, 105, 0.18), inset 0 0 25px rgba(0, 0, 0, 0.6)'
+                }}
+              >
+                {/* Active camera device label badge */}
+                {webcam.isActive && webcam.activeCameraLabel && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '12px',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      backdropFilter: 'blur(8px)',
+                      color: '#f8fafc',
+                      padding: '5px 12px',
+                      borderRadius: '20px',
+                      fontSize: '0.74rem',
+                      fontWeight: 750,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      zIndex: 10,
+                      border: '1px solid rgba(255, 255, 255, 0.18)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: '7px',
+                        height: '7px',
+                        borderRadius: '50%',
+                        background: '#22c55e',
+                        display: 'inline-block',
+                        boxShadow: '0 0 6px #22c55e'
+                      }}
+                    ></span>
+                    <span>📹 {webcam.activeCameraLabel.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, '')}</span>
+                  </div>
+                )}
+
+                {/* Biometric Face Guide Overlay */}
                 <div
                   style={{
                     position: 'absolute',
-                    top: '10px',
-                    left: '10px',
-                    background: 'rgba(15, 23, 42, 0.8)',
-                    backdropFilter: 'blur(8px)',
-                    color: '#f8fafc',
-                    padding: '4px 10px',
-                    borderRadius: '16px',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '180px',
+                    height: '225px',
+                    borderRadius: '50%',
+                    border: '2px dashed rgba(16, 185, 129, 0.65)',
+                    pointerEvents: 'none',
+                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.28)',
+                    zIndex: 5,
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    zIndex: 10,
-                    border: '1px solid rgba(255, 255, 255, 0.15)'
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    paddingBottom: '14px'
                   }}
                 >
                   <span
                     style={{
-                      width: '7px',
-                      height: '7px',
-                      borderRadius: '50%',
-                      background: '#22c55e',
-                      display: 'inline-block'
+                      fontSize: '0.72rem',
+                      fontWeight: 750,
+                      color: '#ecfdf5',
+                      background: 'rgba(6, 95, 70, 0.82)',
+                      backdropFilter: 'blur(4px)',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(167, 243, 208, 0.4)',
+                      letterSpacing: '0.02em'
                     }}
-                  ></span>
-                  <span>📹 {webcam.activeCameraLabel.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, '')}</span>
+                  >
+                    Align Face Here
+                  </span>
                 </div>
-              )}
-              <video
-                ref={webcam.videoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  transform: webcam.isMirrored ? 'scaleX(-1)' : 'none'
-                }}
-              />
+
+                {/* Live video feed */}
+                <video
+                  ref={webcam.videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transform: webcam.isMirrored ? 'scaleX(-1)' : 'none'
+                  }}
+                />
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '16px 24px',
+                background: 'var(--bg-surface-secondary, #f8fafc)',
+                borderTop: '1px solid var(--border-color, #e2e8f0)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '12px',
+                flexShrink: 0
+              }}
+            >
               <button
                 type="button"
-                className="btn-secondary"
                 onClick={closeWebcam}
-                style={{ background: 'transparent', color: '#94a3b8', borderColor: '#334155' }}
+                style={{
+                  padding: '11px 24px',
+                  borderRadius: '11px',
+                  fontSize: '0.92rem',
+                  fontWeight: 750,
+                  background: 'var(--bg-surface, #ffffff)',
+                  color: 'var(--text-secondary, #475569)',
+                  border: '1.5px solid var(--border-color, #cbd5e1)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f1f5f9';
+                  e.currentTarget.style.color = '#0f172a';
+                  e.currentTarget.style.borderColor = '#94a3b8';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-surface, #ffffff)';
+                  e.currentTarget.style.color = 'var(--text-secondary, #475569)';
+                  e.currentTarget.style.borderColor = 'var(--border-color, #cbd5e1)';
+                }}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn-primary"
                 onClick={snapWebcamPhoto}
-                style={{ background: '#059669', border: 'none', fontWeight: 800, padding: '10px 24px', fontSize: '0.92rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                style={{
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '11px',
+                  fontWeight: 850,
+                  padding: '11px 30px',
+                  fontSize: '0.96rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(5, 150, 105, 0.45)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(5, 150, 105, 0.35)';
+                }}
               >
                 <span>📸</span> Snap Photo Now
               </button>
@@ -850,19 +1105,96 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
 
       {/* MODAL: INTERACTIVE VISITOR PHOTO CROPPER & ANGLE STRAIGHTENER */}
       {isEditorOpen && (
-        <div className="modal-overlay active" style={{ zIndex: 10090, display: 'flex', opacity: 1, visibility: 'visible' }}>
-          <div className="modal-container" style={{ maxWidth: '720px', width: '95%', maxHeight: '94vh', display: 'flex', flexDirection: 'column', background: '#0f172a', color: '#ffffff', border: '1.5px solid #334155' }}>
-            
+        <div
+          className="modal-overlay active"
+          id="modal-visitor-photo-editor"
+          style={{
+            zIndex: 10090,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15, 23, 42, 0.72)',
+            backdropFilter: 'blur(5px)',
+            opacity: 1,
+            visibility: 'visible',
+            position: 'fixed',
+            inset: 0
+          }}
+        >
+          <div
+            className="modal-container"
+            style={{
+              maxWidth: '720px',
+              width: '95%',
+              maxHeight: '94vh',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-surface, #ffffff)',
+              color: 'var(--text-primary, #0f172a)',
+              borderRadius: '20px',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.28)',
+              overflow: 'hidden'
+            }}
+          >
             {/* Editor Header */}
-            <div className="modal-header" style={{ padding: '14px 20px', background: '#020617', borderBottom: '1px solid #1e293b', color: '#ffffff' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.3rem' }}>✂️</span>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#ffffff' }}>Adjust & Straighten Visitor Photo</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#94a3b8' }}>Adjust angle, tilt, zoom and crop face cleanly before saving.</p>
+            <div
+              style={{
+                padding: '16px 24px',
+                background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexShrink: 0
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span
+                  style={{
+                    fontSize: '1.35rem',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  ✂️
+                </span>
+                <div style={{ textAlign: 'left' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 850, color: '#ffffff', letterSpacing: '-0.01em' }}>
+                    Adjust & Straighten Visitor Photo
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#a7f3d0', fontWeight: 600 }}>
+                    Adjust angle, tilt, zoom and crop face cleanly before saving
+                  </p>
                 </div>
               </div>
-              <button type="button" className="modal-close-btn" onClick={() => setIsEditorOpen(false)} style={{ color: '#ffffff' }}>
+              <button
+                type="button"
+                onClick={() => setIsEditorOpen(false)}
+                title="Close Editor"
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s ease',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.32)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)')}
+              >
                 &times;
               </button>
             </div>
@@ -870,41 +1202,92 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
             {/* Editor Canvas Workspace */}
             <div
               className="modal-body"
-              style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#020617', flex: 1, minHeight: '320px', maxHeight: '420px', overflow: 'hidden', position: 'relative' }}
+              style={{
+                padding: '18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#090d16',
+                flex: 1,
+                minHeight: '320px',
+                maxHeight: '400px',
+                overflow: 'hidden',
+                position: 'relative'
+              }}
               onMouseMove={handleEditorMouseMove}
               onMouseUp={handleEditorMouseUp}
             >
               <div
-                style={{ position: 'relative', width: '340px', height: '340px', borderRadius: '14px', overflow: 'hidden', border: '2px solid #38bdf8', boxShadow: '0 8px 30px rgba(0,0,0,0.6)', background: '#0f172a', cursor: 'grab' }}
+                style={{
+                  position: 'relative',
+                  width: '340px',
+                  height: '340px',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  border: '2.5px solid #059669',
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.65)',
+                  background: '#0f172a',
+                  cursor: 'grab'
+                }}
                 onMouseDown={handleEditorMouseDown}
                 onWheel={handleEditorWheel}
               >
                 <canvas ref={editorCanvasRef} width={340} height={340} style={{ width: '100%', height: '100%', display: 'block' }} />
                 
                 {/* Cropping circular/square guide overlay */}
-                <div style={{ position: 'absolute', inset: 0, border: '2px dashed rgba(56, 189, 248, 0.6)', borderRadius: '14px', pointerEvents: 'none', boxShadow: 'inset 0 0 0 9999px rgba(2, 6, 23, 0.4)' }}>
-                  <div style={{ position: 'absolute', top: '8px', left: '8px', fontSize: '0.68rem', fontWeight: 700, color: '#38bdf8', background: 'rgba(15, 23, 42, 0.8)', padding: '2px 6px', borderRadius: '4px' }}>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    border: '2px dashed rgba(16, 185, 129, 0.75)',
+                    borderRadius: '16px',
+                    pointerEvents: 'none',
+                    boxShadow: 'inset 0 0 0 9999px rgba(2, 6, 23, 0.4)'
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      left: '8px',
+                      fontSize: '0.68rem',
+                      fontWeight: 750,
+                      color: '#ffffff',
+                      background: '#059669',
+                      padding: '2px 8px',
+                      borderRadius: '6px'
+                    }}
+                  >
                     Crop Frame
                   </div>
                 </div>
               </div>
 
-              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '8px' }}>
-                🖱️ Drag canvas to pan/reposition • Use sliders below to straighten & zoom
+              <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '10px' }}>
+                🖱️ Drag canvas to pan • Use sliders below to straighten & zoom
               </div>
             </div>
 
             {/* Controls Toolbar */}
-            <div style={{ padding: '16px 20px', background: '#0f172a', borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
+            <div
+              style={{
+                padding: '16px 24px',
+                background: 'var(--bg-surface-secondary, #f8fafc)',
+                borderTop: '1px solid var(--border-color, #e2e8f0)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}
+            >
               {/* Angle / Tilt Straightener Slider */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '140px' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 750, color: '#f8fafc' }}>📐 Straighten:</span>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#38bdf8', minWidth: '44px' }}>{editorAngle.toFixed(1)}°</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '140px' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #334155)' }}>📐 Straighten:</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 850, color: '#059669', minWidth: '44px' }}>{editorAngle.toFixed(1)}°</span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '360px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '380px' }}>
                   <button
                     type="button"
                     className="btn-editor-tool btn-stepper-round"
@@ -919,7 +1302,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                     max="45"
                     step="0.5"
                     value={editorAngle}
-                    style={{ flex: 1, accentColor: '#38bdf8' }}
+                    style={{ flex: 1, accentColor: '#059669' }}
                     onChange={(e) => setEditorAngle(parseFloat(e.target.value) || 0)}
                   />
                   <button
@@ -935,7 +1318,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                     className="btn-editor-tool"
                     onClick={() => setEditorAngle(0)}
                     title="Reset to 0°"
-                    style={{ marginLeft: '4px', padding: '5px 8px' }}
+                    style={{ marginLeft: '4px', padding: '5px 10px' }}
                   >
                     0°
                   </button>
@@ -943,13 +1326,13 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
               </div>
 
               {/* Zoom & Rotate / Flip */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '140px' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 750, color: '#f8fafc' }}>🔍 Zoom:</span>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#38bdf8', minWidth: '40px' }}>{editorZoom.toFixed(1)}x</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', paddingTop: '10px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '140px' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #334155)' }}>🔍 Zoom:</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 850, color: '#059669', minWidth: '40px' }}>{editorZoom.toFixed(1)}x</span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '240px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '240px' }}>
                   <button
                     type="button"
                     className="btn-editor-tool btn-stepper-round"
@@ -964,7 +1347,7 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                     max="3"
                     step="0.05"
                     value={editorZoom}
-                    style={{ flex: 1, accentColor: '#38bdf8' }}
+                    style={{ flex: 1, accentColor: '#059669' }}
                     onChange={(e) => setEditorZoom(parseFloat(e.target.value) || 1)}
                   />
                   <button
@@ -999,20 +1382,69 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
             </div>
 
             {/* Editor Footer */}
-            <div style={{ padding: '14px 20px', background: '#020617', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div
+              style={{
+                padding: '16px 24px',
+                background: 'var(--bg-surface, #ffffff)',
+                borderTop: '1px solid var(--border-color, #e2e8f0)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '12px'
+              }}
+            >
               <button
                 type="button"
-                className="btn-secondary"
                 onClick={() => setIsEditorOpen(false)}
-                style={{ background: 'transparent', color: '#94a3b8', borderColor: '#334155' }}
+                style={{
+                  padding: '11px 24px',
+                  borderRadius: '11px',
+                  fontSize: '0.92rem',
+                  fontWeight: 750,
+                  background: 'var(--bg-surface, #ffffff)',
+                  color: 'var(--text-secondary, #475569)',
+                  border: '1.5px solid var(--border-color, #cbd5e1)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f1f5f9';
+                  e.currentTarget.style.color = '#0f172a';
+                  e.currentTarget.style.borderColor = '#94a3b8';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-surface, #ffffff)';
+                  e.currentTarget.style.color = 'var(--text-secondary, #475569)';
+                  e.currentTarget.style.borderColor = 'var(--border-color, #cbd5e1)';
+                }}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn-primary"
                 onClick={applyEditorCrop}
-                style={{ background: '#059669', border: 'none', fontWeight: 800, padding: '10px 22px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                style={{
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '11px',
+                  fontWeight: 850,
+                  padding: '11px 28px',
+                  fontSize: '0.96rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(5, 150, 105, 0.45)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(5, 150, 105, 0.35)';
+                }}
               >
                 <span>✓</span> Apply & Save Crop
               </button>
