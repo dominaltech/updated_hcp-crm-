@@ -838,5 +838,23 @@ if (!defaultMinAdvance) {
   db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('min_checkin_advance_pct', '50');
 }
 
+// Performance Indexes for Instant Navigation & Sub-Millisecond History Lookups
+try {
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bookings_guest_id ON bookings(guest_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_room_id ON bookings(room_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+    CREATE INDEX IF NOT EXISTS idx_bookings_checkin_time ON bookings(checkin_time);
+    CREATE INDEX IF NOT EXISTS idx_bookings_checkout_time ON bookings(actual_checkout_time);
+    CREATE INDEX IF NOT EXISTS idx_restaurant_orders_booking_id ON restaurant_orders(booking_id);
+    CREATE INDEX IF NOT EXISTS idx_bar_orders_booking_id ON bar_orders(booking_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id);
+    CREATE INDEX IF NOT EXISTS idx_room_visitors_booking_id ON room_visitors(booking_id);
+  `);
+} catch (e) {
+  console.warn('Index creation notice:', e.message);
+}
+
 module.exports = db;
+
 

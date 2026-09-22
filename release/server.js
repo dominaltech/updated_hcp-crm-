@@ -6078,7 +6078,6 @@ app.get('/api/hospitality/history', (req, res) => {
         b.refund_reason,
         b.refund_utr,
         b.voucher_number,
-        b.member_documents_json,
         b.meal_plan,
         b.adults_male,
         b.adults_female,
@@ -6091,8 +6090,6 @@ app.get('/api/hospitality/history', (req, res) => {
         g.aadhar_number,
         g.dob,
         g.address,
-        g.doc_front,
-        g.doc_back,
         c.gst_number as btc_gst_number,
         c.address as btc_address,
         c.pan_number as btc_pan_number,
@@ -6145,13 +6142,6 @@ app.get('/api/hospitality/history', (req, res) => {
         ? Math.max(1, Math.round((new Date(row.approx_checkout_time) - new Date(row.checkin_time)) / (1000 * 60 * 60 * 24)))
         : null;
 
-      let parsedMemberDocs = [];
-      try {
-        parsedMemberDocs = row.member_documents_json ? JSON.parse(row.member_documents_json) : [];
-      } catch (e) {
-        parsedMemberDocs = [];
-      }
-
       if (!groupedMap.has(key)) {
         groupedMap.set(key, {
           id: row.booking_id,
@@ -6165,14 +6155,14 @@ app.get('/api/hospitality/history', (req, res) => {
           mobile: row.mobile,
           email: row.email,
           doc_type: row.doc_type,
-          doc_front: row.doc_front,
-          doc_back: row.doc_back,
+          doc_front: null,
+          doc_back: null,
           guest_photo: row.guest_photo,
           aadhar_number: row.aadhar_number,
           dob: row.dob,
           address: row.address,
-          member_documents: parsedMemberDocs,
-          member_documents_json: row.member_documents_json || '[]',
+          member_documents: [],
+          member_documents_json: '[]',
           voucher_number: row.voucher_number || null,
           rooms: [row.room_number],
           room_types: [row.room_type],

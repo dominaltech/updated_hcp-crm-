@@ -6,10 +6,13 @@ import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, prin
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
 
+// Module-level in-memory cache for instant 0ms navigation
+let globalHistoryCache = null;
+
 export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus }) {
   const { showToast, showConfirm, currentUser } = useApp();
-  const [records, setRecords] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [records, setRecords] = useState(() => (globalHistoryCache && Array.isArray(globalHistoryCache) ? globalHistoryCache : []));
+  const [isLoading, setIsLoading] = useState(() => !globalHistoryCache || globalHistoryCache.length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState('all');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -37,22 +40,30 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [lightboxTitle, setLightboxTitle] = useState('Document Preview');
 
   const loadHistory = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsLoading(true);
+    // Only show full-screen blocking loader if we have zero cached records and not a silent refresh
+    const hasCachedData = globalHistoryCache && globalHistoryCache.length > 0;
+    if (!isSilent && !hasCachedData) {
+      setIsLoading(true);
+    }
+
     try {
       let params = [];
       if (dateRange !== 'all' && dateRange !== 'pending_btc') params.push(`range=${dateRange}`);
       if (searchQuery.trim()) params.push(`q=${encodeURIComponent(searchQuery.trim())}`);
       const paramStr = params.join('&');
       const res = await api.getStayHistory(paramStr);
+      let list = [];
       if (res && Array.isArray(res.history)) {
-        setRecords(res.history);
+        list = res.history;
       } else if (Array.isArray(res)) {
-        setRecords(res);
+        list = res;
       }
+      setRecords(list);
+      globalHistoryCache = list;
     } catch (err) {
       if (!isSilent) showToast('Error loading history: ' + err.message, 'red');
     } finally {
-      if (!isSilent) setIsLoading(false);
+      setIsLoading(false);
     }
   }, [dateRange, searchQuery, showToast]);
 
