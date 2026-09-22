@@ -512,7 +512,7 @@ export default function FolioSettlementModal({
             gap: '8px'
           }}>
             <span>
-              💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: balanceDue > 0 ? '#b91c1c' : '#15803d' }}>{formatCurrency(balanceDue)} Remaining Due</strong>
+              💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: isRefund ? '#15803d' : (balanceDue > 0 ? '#b91c1c' : '#15803d') }}>{isRefund ? `Refund: ${formatCurrency(refundAmount)}` : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
             </span>
             {effectiveFnbTotal > 0 && (
               <span style={{ fontWeight: 750, color: '#d97706' }}>

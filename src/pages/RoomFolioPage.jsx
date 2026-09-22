@@ -1152,9 +1152,16 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           const stayTaxable = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : Math.round(stayNetTotal / 1.05);
           const stayGst = (isOtaPrepaidStay || isOtaPayAtHotel) ? 0 : (stayNetTotal - stayTaxable);
           const stayPreTax = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : (stayTaxable + Number(folioData.discountAmount || 0));
-          const stayDueAmount = isOtaPrepaidStay
-            ? Math.max(0, hotelExtrasCharge - advancePaidVal)
-            : Math.max(0, stayNetTotal - advancePaidVal);
+          const rawStayBalance = isOtaPrepaidStay
+            ? (hotelExtrasCharge - advancePaidVal)
+            : (stayNetTotal - advancePaidVal);
+          const stayDueAmount = Math.max(0, rawStayBalance);
+          const stayExcessAdvance = rawStayBalance < 0 ? Math.abs(rawStayBalance) : 0;
+
+          // Combined Folio Balance: excess advance absorbs pending F&B
+          const netFolioBalance = rawStayBalance + fnbPendingTotal;
+          const folioDueAmount = Math.max(0, netFolioBalance);
+          const folioRefundAmount = netFolioBalance < 0 ? Math.abs(netFolioBalance) : 0;
 
           return (
             <React.Fragment>
@@ -1625,15 +1632,19 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
                       <span>Advance Paid at Check-in: {formatCurrency(advancePaidVal)}</span>
-                      <span style={{ fontWeight: 700, color: stayDueAmount > 0 ? '#b91c1c' : '#15803d' }}>
+                      <span style={{ fontWeight: 750, color: stayDueAmount > 0 ? '#b91c1c' : '#15803d' }}>
                         Stay Due: {formatCurrency(stayDueAmount)}
-                        {stayDueAmount === 0 && ' (Settled)'}
+                        {stayDueAmount === 0 && (stayExcessAdvance > 0 ? ` (Excess Adv: ${formatCurrency(stayExcessAdvance)})` : ' (Settled)')}
                       </span>
                     </div>
                     {fnbPendingTotal > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#b91c1c', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed var(--border-color, #e2e8f0)', fontWeight: 800 }}>
-                        <span>Total Folio Due (Stay + F&amp;B):</span>
-                        <span>{formatCurrency(stayDueAmount + fnbPendingTotal)}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed var(--border-color, #e2e8f0)', fontWeight: 800 }}>
+                        <span>{netFolioBalance < 0 ? 'Net Folio Balance (Refund Due):' : 'Total Folio Due (Stay + F&amp;B):'}</span>
+                        <span style={{ color: netFolioBalance < 0 ? '#15803d' : '#b91c1c' }}>
+                          {netFolioBalance < 0
+                            ? `✓ Refund: ${formatCurrency(folioRefundAmount)} (F&B covered)`
+                            : formatCurrency(folioDueAmount)}
+                        </span>
                       </div>
                     )}
 
@@ -1790,14 +1801,18 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#92400e' }}>Pending Added to Room Folio:</span>
-                      <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: fnbPendingTotal > 0 ? '#b91c1c' : '#15803d' }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: netFolioBalance < 0 ? '#166534' : '#92400e' }}>Pending Added to Room Folio:</span>
+                      <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: netFolioBalance < 0 ? '#15803d' : (fnbPendingTotal > 0 ? '#b91c1c' : '#15803d') }}>
                         {formatCurrency(fnbPendingTotal)}
                       </strong>
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#92400e', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.76rem', color: netFolioBalance < 0 ? '#15803d' : '#92400e', marginTop: '4px' }}>
                       {fnbPendingTotal > 0
-                        ? `⏳ Added to room balance due (${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(stayDueAmount + fnbPendingTotal)} Total Due).`
+                        ? (netFolioBalance < 0
+                            ? `✓ Fully covered by check-in excess advance (${formatCurrency(stayExcessAdvance)} adv - ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(folioRefundAmount)} Refund Due to Guest).`
+                            : (stayExcessAdvance > 0
+                                ? `⏳ ${formatCurrency(stayExcessAdvance)} absorbed by excess advance. Remaining Folio Due: ${formatCurrency(folioDueAmount)}.`
+                                : `⏳ Added to room balance due (${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(folioDueAmount)} Total Due).`))
                         : '✓ All F&B orders settled.'}
                     </div>
                   </div>
@@ -1832,12 +1847,25 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
                   <small>{fnbPaidTotal > 0 ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}</small>
                 </div>
-                <div className="financial-tile highlight-due">
-                  <span className="tile-label">Remaining Due</span>
-                  <strong className="tile-val due" style={{ color: (stayDueAmount + fnbPendingTotal) <= 0 ? '#15803d' : '#b91c1c' }}>
-                    {formatCurrency(Math.max(0, stayDueAmount + fnbPendingTotal))}
+                <div
+                  className="financial-tile"
+                  style={netFolioBalance < 0 ? { background: 'rgba(34, 197, 94, 0.08)', border: '1.5px solid #86efac' } : { border: folioDueAmount > 0 ? '1.5px solid #fca5a5' : undefined }}
+                >
+                  <span className="tile-label" style={{ color: netFolioBalance < 0 ? '#166534' : undefined }}>
+                    {netFolioBalance < 0 ? 'Refund Due' : 'Remaining Due'}
+                  </span>
+                  <strong className="tile-val" style={{ color: netFolioBalance < 0 ? '#15803d' : (folioDueAmount <= 0 ? '#15803d' : '#b91c1c') }}>
+                    {netFolioBalance < 0 ? formatCurrency(folioRefundAmount) : formatCurrency(folioDueAmount)}
                   </strong>
-                  <small>{(stayDueAmount + fnbPendingTotal) <= 0 ? 'Fully Settled' : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')}</small>
+                  <small style={{ color: netFolioBalance < 0 ? '#15803d' : undefined }}>
+                    {netFolioBalance < 0
+                      ? `Refund to guest (${formatCurrency(fnbPendingTotal)} F&B covered by advance)`
+                      : (folioDueAmount <= 0
+                          ? 'Fully Settled'
+                          : (stayExcessAdvance > 0
+                              ? `${formatCurrency(fnbPendingTotal)} F&B - ${formatCurrency(stayExcessAdvance)} adv credit`
+                              : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')))}
+                  </small>
                 </div>
               </div>
             </React.Fragment>
