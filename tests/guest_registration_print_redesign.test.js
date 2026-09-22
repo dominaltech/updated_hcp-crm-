@@ -10,7 +10,12 @@ vi.mock('html2pdf.js', () => ({
   })
 }));
 
-import { buildGuestRegistrationHTML, getIdNumberLabel } from '../src/services/printService';
+import {
+  buildGuestRegistrationHTML,
+  getIdNumberLabel,
+  downloadGuestPaymentSummaryPDF,
+  downloadFinalBillPDF
+} from '../src/services/printService';
 
 describe('Guest Registration Print Redesign (A4 Full Sheet & Clean Typography)', () => {
   const mockRegistrationData = {
@@ -609,34 +614,38 @@ describe('Annexure Page 2 (6-Scan Aligned Grid, Leader Priority, Page 1 Clean UI
     expect(html).not.toContain('leader_front_data');
   });
 
-  it('renders Page 2 Annexure when includePhotos: true with Leader priority first', () => {
+  it('renders Page 2 Annexure when includePhotos: true with Leader Live Photo centered on top and 4 documents per sheet', () => {
     const html = buildGuestRegistrationHTML(mockWithScans, { includePhotos: true });
     expect(html).toContain('full-a4-registration-card annexure-sheet');
     expect(html).toContain('HOTEL CityPaark — Document Verification Annexure');
-    expect(html).toContain('Official Scanned Records &bull; Primary Guest / Room Leader First &bull; 6 Scans Aligned Per Sheet');
+    expect(html).toContain('Official Scanned Records &bull; Primary Guest Live Photo &bull; 4 Documents Aligned Per Sheet');
     expect(html).toContain('Voucher: 260919-881');
     expect(html).toContain('Sheet 2 of 2');
 
-    // Check order: Leader Front, Leader Back, Leader Live Photo, then Companion Front, Companion Back
+    // Leader Live Photo rendered centered at top
+    expect(html).toContain('PRIMARY GUEST / ROOM LEADER LIVE PHOTO');
+    expect(html).toContain('annexure-live-photo');
+    expect(html).toContain('leader_webcam_data');
+
+    // Check document order in 2x2 grid: Leader Front, Leader Back, Companion Front, Companion Back
+    const posLeaderPhoto = html.indexOf('PRIMARY GUEST / ROOM LEADER LIVE PHOTO');
     const posLeaderFront = html.indexOf('LEADER ID (FRONT)');
     const posLeaderBack = html.indexOf('LEADER ID (BACK)');
-    const posLeaderPhoto = html.indexOf('LEADER LIVE PHOTO');
     const posComp1Front = html.indexOf('COMPANION #1 (FRONT)');
     const posComp1Back = html.indexOf('COMPANION #1 (BACK)');
 
-    expect(posLeaderFront).toBeGreaterThan(-1);
+    expect(posLeaderPhoto).toBeGreaterThan(-1);
+    expect(posLeaderFront).toBeGreaterThan(posLeaderPhoto);
     expect(posLeaderBack).toBeGreaterThan(posLeaderFront);
-    expect(posLeaderPhoto).toBeGreaterThan(posLeaderBack);
-    expect(posComp1Front).toBeGreaterThan(posLeaderPhoto);
+    expect(posComp1Front).toBeGreaterThan(posLeaderBack);
     expect(posComp1Back).toBeGreaterThan(posComp1Front);
 
-    // 5 scans provided, so 1 blank slot generated to complete the 6-slot aligned grid
-    expect(html).toContain('Blank Slot 6 of 6');
-    expect(html).toContain('Slot 1 of 6');
-    expect(html).toContain('Slot 5 of 6');
+    // 4 documents fit perfectly in a 2x2 grid (Slot 1 to 4 of 4)
+    expect(html).toContain('Slot 1 of 4');
+    expect(html).toContain('Slot 4 of 4');
   });
 
-  it('partitions scans into multiple annexure pages when total scans exceed 6', () => {
+  it('partitions scans into multiple annexure pages when total documents exceed 4', () => {
     const mockManyScans = {
       ...mockWithScans,
       memberDocuments: [
@@ -652,15 +661,17 @@ describe('Annexure Page 2 (6-Scan Aligned Grid, Leader Priority, Page 1 Clean UI
         }
       ]
     };
-    // 3 leader scans + 4 companion scans = 7 scans total -> 2 annexure sheets
+    // 2 leader docs + 4 companion docs = 6 documents total -> Math.ceil(6/4) = 2 annexure sheets
     const html = buildGuestRegistrationHTML(mockManyScans, { includePhotos: true });
     expect(html).toContain('Sheet 2 of 3');
     expect(html).toContain('Sheet 3 of 3');
-    expect(html).toContain('Blank Slot 2 of 6'); // 7th scan is on sheet 3, slots 2-6 are blank
+    expect(html).toContain('Slot 1 of 4');
+    expect(html).toContain('Blank Slot 3 of 4'); // Sheet 3 has 2 docs, slots 3-4 are blank
+    expect(html).toContain('Blank Slot 4 of 4');
   });
 
-  it('supports up to 15 scanned copies aligned 6 per A4 paper across 3 annexure sheets (4 pages total)', () => {
-    // 3 leader scans (Front, Back, Webcam) + 12 companion scans = 15 scans total
+  it('supports up to 14 scanned copies aligned 4 per A4 paper across 4 annexure sheets (5 pages total)', () => {
+    // 2 leader docs + 12 companion docs = 14 documents total + Leader Live Photo on top of Sheet 2
     const companions12Scans = [];
     for (let c = 1; c <= 6; c++) {
       companions12Scans.push({
@@ -670,27 +681,54 @@ describe('Annexure Page 2 (6-Scan Aligned Grid, Leader Priority, Page 1 Clean UI
       });
     }
 
-    const mock15Scans = {
+    const mock14Docs = {
       ...mockWithScans,
       memberDocuments: companions12Scans
     };
 
-    const html = buildGuestRegistrationHTML(mock15Scans, { includePhotos: true });
+    const html = buildGuestRegistrationHTML(mock14Docs, { includePhotos: true });
 
-    // 15 scans -> Math.ceil(15 / 6) = 3 annexure sheets + 1 page of details = 4 pages total
-    expect(html).toContain('Sheet 2 of 4');
-    expect(html).toContain('Sheet 3 of 4');
-    expect(html).toContain('Sheet 4 of 4');
+    // 14 docs -> Math.ceil(14 / 4) = 4 annexure sheets + 1 page of details = 5 pages total
+    expect(html).toContain('Sheet 2 of 5');
+    expect(html).toContain('Sheet 3 of 5');
+    expect(html).toContain('Sheet 4 of 5');
+    expect(html).toContain('Sheet 5 of 5');
 
     // Page break divs for html2pdf.js
     expect(html).toContain('class="html2pdf__page-break"');
     const pageBreaks = html.match(/class="html2pdf__page-break"/g);
     expect(pageBreaks).not.toBeNull();
-    expect(pageBreaks.length).toBe(3); // 3 annexure sheets, 3 page breaks
+    expect(pageBreaks.length).toBe(4); // 4 annexure sheets, 4 page breaks
 
-    // Page 4 has 3 scans (15 total - 12 from previous 2 sheets), so 3 blank slots remaining
-    expect(html).toContain('Blank Slot 4 of 6');
-    expect(html).toContain('Blank Slot 5 of 6');
-    expect(html).toContain('Blank Slot 6 of 6');
+    // Page 5 has 2 docs (14 total - 12 from previous 3 sheets), so 2 blank slots remaining
+    expect(html).toContain('Blank Slot 3 of 4');
+    expect(html).toContain('Blank Slot 4 of 4');
+  });
+
+  it('maximizes A4 vertical paper height without spillover: annexure-sheet is 268mm, Sheet 2 rows are 106mm/93mm, and Sheet 3 rows are 118mm/105mm', () => {
+    const html = buildGuestRegistrationHTML(mockWithScans, { includePhotos: true });
+    expect(html).toContain('height: 268mm;');
+    expect(html).toContain('max-height: 268mm;');
+    expect(html).toContain('grid-auto-rows: 106mm');
+    expect(html).toContain('min-height: 93mm');
+    expect(html).toContain('height: 24mm'); // Streamlined leader live photo card
+  });
+
+  it('verifies browser multi-page printing with zero empty pages between sheets', () => {
+    const htmlMulti = buildGuestRegistrationHTML(mockWithScans, { includePhotos: true });
+    // Annexure sheet starts on a new page via break-before
+    expect(htmlMulti).toContain('page-break-before: always; break-before: page;');
+    // Avoids redundant break-after that creates empty blank pages
+    expect(htmlMulti).toContain('page-break-after: avoid; break-after: avoid;');
+
+    const htmlSingle = buildGuestRegistrationHTML(mockWithScans, { includePhotos: false });
+    // When includePhotos: false, Page 1 strictly avoids page-break
+    expect(htmlSingle).toContain('page-break-after: avoid; break-after: avoid;');
+  });
+
+  it('exports downloadGuestPaymentSummaryPDF and downloadFinalBillPDF functions for 4-doc simple export modal', () => {
+    expect(typeof downloadGuestPaymentSummaryPDF).toBe('function');
+    expect(typeof downloadFinalBillPDF).toBe('function');
   });
 });
+

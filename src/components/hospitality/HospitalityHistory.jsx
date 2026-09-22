@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary } from '../../services/printService';
 import ImageLightbox from '../common/ImageLightbox';
+import DocumentActionModal from './DocumentActionModal';
 
 export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus }) {
   const { showToast, showConfirm, currentUser } = useApp();
@@ -17,6 +18,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [detailBooking, setDetailBooking] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [docActionModal, setDocActionModal] = useState({ isOpen: false, type: 'info', data: null });
 
   // Settle BTC Modal State
   const [settleBtcTarget, setSettleBtcTarget] = useState(null);
@@ -799,7 +801,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            printGuestRegistrationA4(r, { includePhotos: false });
+                            setDocActionModal({ isOpen: true, type: 'checkin', data: r });
                           }}
                           style={{
                             padding: '5px 8px',
@@ -812,7 +814,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             cursor: 'pointer',
                             whiteSpace: 'nowrap'
                           }}
-                          title="Print Check-in Form with all company details and pending amount"
+                          title="Check-In Form (Save, Print, or Save & Print)"
                         >
                           📄 Form
                         </button>
@@ -821,25 +823,33 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            printFinalBillA4(r, {
-                              grossTariff: r.total_room_charge || r.room_rate,
-                              roomCharge: r.total_room_charge || r.room_rate,
-                              roomTariffNet: r.total_room_charge,
-                              tariffTax5Pct: Math.round((r.total_room_charge || 0) * 0.05),
-                              foodTotal: r.food_total || 0,
-                              barTotal: r.bar_total || 0,
-                              hotelExtrasCharge: r.extra_bed_charge || 0,
-                              advancePaid: r.initial_paid || r.total_paid || 0,
-                              chargedDays: r.charged_days || 1,
-                              billableDays: r.charged_days || 1,
-                              discountPct: r.discount_pct || 0,
-                              discountAmount: r.discount_amount || 0
-                            }, {
-                              settleAmt: r.final_settle_amount || r.total_paid || 0,
-                              refundAmt: r.refund_amount || 0,
-                              settled_at: r.actual_checkout_time || r.checkout_time || new Date(),
-                              invoiceNo: r.invoice_no || (r.id ? `L${r.id}` : 'L1573'),
-                              checked_out_by: r.checked_out_by || 'Front Desk'
+                            setDocActionModal({
+                              isOpen: true,
+                              type: 'invoice',
+                              data: {
+                                room: r,
+                                calc: {
+                                  grossTariff: r.total_room_charge || r.room_rate,
+                                  roomCharge: r.total_room_charge || r.room_rate,
+                                  roomTariffNet: r.total_room_charge,
+                                  tariffTax5Pct: Math.round((r.total_room_charge || 0) * 0.05),
+                                  foodTotal: r.food_total || 0,
+                                  barTotal: r.bar_total || 0,
+                                  hotelExtrasCharge: r.extra_bed_charge || 0,
+                                  advancePaid: r.initial_paid || r.total_paid || 0,
+                                  chargedDays: r.charged_days || 1,
+                                  billableDays: r.charged_days || 1,
+                                  discountPct: r.discount_pct || 0,
+                                  discountAmount: r.discount_amount || 0
+                                },
+                                settlement: {
+                                  settleAmt: r.final_settle_amount || r.total_paid || 0,
+                                  refundAmt: r.refund_amount || 0,
+                                  settled_at: r.actual_checkout_time || r.checkout_time || new Date(),
+                                  invoiceNo: r.invoice_no || (r.id ? `L${r.id}` : 'L1573'),
+                                  checked_out_by: r.checked_out_by || 'Front Desk'
+                                }
+                              }
                             });
                           }}
                           style={{
@@ -853,7 +863,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             cursor: 'pointer',
                             whiteSpace: 'nowrap'
                           }}
-                          title="Print Official Tax Invoice"
+                          title="Official Tax Invoice (Save, Print, or Save & Print)"
                         >
                           🧾 Tax Invoice
                         </button>
@@ -1516,7 +1526,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       <button
                         type="button"
                         className="filter-chip"
-                        onClick={() => printGuestRegistrationA4(detailBooking, { includePhotos: false })}
+                        onClick={() => {
+                          setDocActionModal({ isOpen: true, type: 'checkin', data: detailBooking });
+                        }}
                         style={{
                           fontWeight: 800,
                           padding: '8px 14px',
@@ -1525,29 +1537,29 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           color: isDetailBtcPending ? '#6b21a8' : 'inherit',
                           borderColor: isDetailBtcPending ? '#d8b4fe' : 'var(--border-color)'
                         }}
-                        title="Print Check-in / Registration Form with all details and amount"
+                        title="Official Guest Check-In Form (Print to Paper, Save PDF, or Save & Print)"
                       >
-                        {isDetailBtcPending ? '📄 Print Check-in Form (Details & Amount)' : '🖨️ Print Form (No Photos)'}
+                        {isDetailBtcPending ? '📄 Check-In Form (BTC Details)' : '📋 Check-In Form'}
                       </button>
                       <button
                         type="button"
                         className="filter-chip"
-                        onClick={async () => {
-                          showToast('Saving Complete PDF with all Scans & Photos to Computer...', 'info', 2500);
-                          const ok = await downloadGuestRegistrationPDF(detailBooking);
-                          if (ok) showToast('✓ Complete PDF with all Scans Saved to Computer!', 'green', 4000);
+                        onClick={() => {
+                          setDocActionModal({ isOpen: true, type: 'info', data: detailBooking });
                         }}
                         style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#f0fdf4', color: '#166534', borderColor: '#86efac' }}
-                        title="Save complete registration PDF to computer with all scanned ID copies and photos"
+                        title="Guest Info & Verification Vault with all Scans & Photos (Print to Paper, Save PDF, or Save & Print)"
                       >
-                        💾 Save Full PDF to PC
+                        💾 Info
                       </button>
                       <button
                         type="button"
                         className="filter-chip"
-                        onClick={() => printGuestPaymentSummary(detailBooking)}
+                        onClick={() => {
+                          setDocActionModal({ isOpen: true, type: 'summary', data: detailBooking });
+                        }}
                         style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd' }}
-                        title="Print Customer Payment Statement & Summary (A4 Sheet)"
+                        title="Customer Payment Summary Statement (Save, Print, or Save & Print)"
                       >
                         📄 Payment Summary
                       </button>
@@ -1568,31 +1580,39 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           type="button"
                           className="filter-chip"
                           onClick={() => {
-                            printFinalBillA4(detailBooking, {
-                              grossTariff: detailBooking.grossTariff || detailBooking.total_room_charge || detailBooking.room_rate,
-                              roomCharge: detailBooking.total_room_charge || detailBooking.room_rate,
-                              roomTariffNet: detailBooking.grossTariff || detailBooking.total_room_charge,
-                              tariffTax5Pct: detailBooking.tax_amount || detailBooking.total_tax,
-                              foodTotal: detailBooking.food_total || 0,
-                              barTotal: detailBooking.bar_total || 0,
-                              hotelExtrasCharge: detailBooking.extra_bed_charge || 0,
-                              advancePaid: detailBooking.initial_paid || detailBooking.total_paid || 0,
-                              chargedDays: detailBooking.charged_days || 1,
-                              billableDays: detailBooking.charged_days || 1,
-                              discountPct: detailBooking.discount_pct || 0,
-                              discountAmount: detailBooking.discount_amount || 0
-                            }, {
-                              settleAmt: detailBooking.final_settle_amount || 0,
-                              refundAmt: detailBooking.refund_amount || 0,
-                              settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
-                              invoiceNo: detailBooking.invoice_no || (detailBooking.id ? `L${detailBooking.id}` : 'L1573'),
-                              checked_out_by: detailBooking.checked_out_by || 'Front Desk'
+                            setDocActionModal({
+                              isOpen: true,
+                              type: 'invoice',
+                              data: {
+                                room: detailBooking,
+                                calc: {
+                                  grossTariff: detailBooking.grossTariff || detailBooking.total_room_charge || detailBooking.room_rate,
+                                  roomCharge: detailBooking.total_room_charge || detailBooking.room_rate,
+                                  roomTariffNet: detailBooking.grossTariff || detailBooking.total_room_charge,
+                                  tariffTax5Pct: detailBooking.tax_amount || detailBooking.total_tax,
+                                  foodTotal: detailBooking.food_total || 0,
+                                  barTotal: detailBooking.bar_total || 0,
+                                  hotelExtrasCharge: detailBooking.extra_bed_charge || 0,
+                                  advancePaid: detailBooking.initial_paid || detailBooking.total_paid || 0,
+                                  chargedDays: detailBooking.charged_days || 1,
+                                  billableDays: detailBooking.charged_days || 1,
+                                  discountPct: detailBooking.discount_pct || 0,
+                                  discountAmount: detailBooking.discount_amount || 0
+                                },
+                                settlement: {
+                                  settleAmt: detailBooking.final_settle_amount || 0,
+                                  refundAmt: detailBooking.refund_amount || 0,
+                                  settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
+                                  invoiceNo: detailBooking.invoice_no || (detailBooking.id ? `L${detailBooking.id}` : 'L1573'),
+                                  checked_out_by: detailBooking.checked_out_by || 'Front Desk'
+                                }
+                              }
                             });
                           }}
                           style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#fef2f2', color: '#991b1b', borderColor: '#fca5a5' }}
-                          title="Print Official Colorful A4 Tax Invoice with background logo"
+                          title="Official Tax Invoice (Save, Print, or Save & Print)"
                         >
-                          🧾 Tax Invoice (A4)
+                          🧾 Tax Invoice
                         </button>
                       )}
                     </div>
@@ -1860,6 +1880,13 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         title={lightboxTitle}
         imageUrl={lightboxImg}
         onClose={() => setLightboxImg(null)}
+      />
+
+      <DocumentActionModal
+        isOpen={docActionModal.isOpen}
+        onClose={() => setDocActionModal(prev => ({ ...prev, isOpen: false }))}
+        type={docActionModal.type}
+        data={docActionModal.data}
       />
     </div>
   );

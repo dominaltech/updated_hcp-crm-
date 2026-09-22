@@ -3502,6 +3502,35 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ==========================================================================
+   DOCUMENT EXPORT & ACTION MODAL (APPLE SLEEK 3-ACTION INTERACTIVE CARDS)
+   ========================================================================== */
+.doc-action-card {
+  position: relative;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.15s ease !important;
+}
+
+.doc-action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
+}
+
+.doc-action-card:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .doc-action-modal-card,
+body.dark-theme .doc-action-modal-card {
+  background: #18181b !important;
+  border-color: #27272a !important;
+}
+
+[data-theme="dark"] .doc-action-card,
+body.dark-theme .doc-action-card {
+  background: #27272a !important;
+  border-color: #3f3f46 !important;
+}
+
+/* ==========================================================================
    CUSTOM CONFIRM / PROMPT DIALOG MODAL (APPLE SLEEK CARD)
    ========================================================================== */
 .custom-confirm-overlay {
@@ -12414,6 +12443,43 @@ html.dark-theme .btn-folio-tax-chip {
   border-color: rgba(252, 165, 165, 0.4) !important;
 }
 
+.btn-folio-visitors-chip,
+.btn-folio-visitors-action {
+  background: #f5f3ff !important;
+  color: #6d28d9 !important;
+  border: 1.5px solid #c4b5fd !important;
+  padding: 6px 14px !important;
+  border-radius: var(--radius-xl, 20px) !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  transition: all var(--transition-fast, 0.2s ease) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+  line-height: 1.2 !important;
+}
+
+.btn-folio-visitors-chip:hover,
+.btn-folio-visitors-action:hover {
+  background: #ede9fe !important;
+  color: #5b21b6 !important;
+  border-color: #a78bfa !important;
+  transform: translateY(-1px) !important;
+}
+
+[data-theme="dark"] .btn-folio-visitors-chip,
+[data-theme="dark"] .btn-folio-visitors-action,
+body.dark-theme .btn-folio-visitors-chip,
+body.dark-theme .btn-folio-visitors-action,
+html.dark-theme .btn-folio-visitors-chip,
+html.dark-theme .btn-folio-visitors-action {
+  background: rgba(109, 40, 217, 0.22) !important;
+  color: #c4b5fd !important;
+  border-color: rgba(196, 181, 253, 0.4) !important;
+}
+
 .btn-folio-checkout-action {
   display: inline-flex !important;
   align-items: center !important;
@@ -12449,11 +12515,8 @@ html.dark-theme .btn-folio-tax-chip {
     filter: none !important;
   }
 
-  .full-a4-registration-card,
-  .registration-page-1,
-  .printable-full-a4-sheet,
-  #print-registration-sheet,
-  #print-registration-sheet.print-active,
+  .printable-full-a4-sheet:only-child,
+  .registration-page-1:only-child,
   #print-payment-summary-sheet,
   #print-payment-summary-sheet.print-active {
     min-height: auto !important;
@@ -12468,4 +12531,61 @@ html.dark-theme .btn-folio-tax-chip {
     break-after: avoid !important;
     overflow: hidden !important;
   }
+
+  #print-registration-sheet,
+  #print-registration-sheet.print-active {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  #print-registration-sheet.print-active .full-a4-registration-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #print-registration-sheet.print-active .annexure-sheet {
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  #print-registration-sheet.print-active .html2pdf__page-break {
+    display: none !important;
+    height: 0 !important;
+    line-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+  }
+}
+
+/* Document Export Action Modal Tiles (Simple 3 Icons with Name) */
+.doc-action-btn-tile {
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+.doc-action-btn-tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.12);
+}
+.doc-action-btn-tile:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+.doc-action-tile-save:hover:not(:disabled) {
+  border-color: #22c55e !important;
+  background: linear-gradient(145deg, #dcfce7 0%, #bbf7d0 100%) !important;
+}
+.doc-action-tile-print:hover:not(:disabled) {
+  border-color: #3b82f6 !important;
+  background: linear-gradient(145deg, #dbeafe 0%, #bfdbfe 100%) !important;
+}
+.doc-action-tile-both:hover:not(:disabled) {
+  border-color: #a855f7 !important;
+  background: linear-gradient(145deg, #f3e8ff 0%, #e9d5ff 100%) !important;
 }

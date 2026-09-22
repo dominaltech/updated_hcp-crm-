@@ -1772,16 +1772,6 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
       title: `${guestName} - ${docType} (Back)`
     });
   }
-  if (guestPhoto) {
-    scanItems.push({
-      tag: 'LEADER LIVE PHOTO',
-      personName: guestName,
-      docType: 'Webcam Photo',
-      idNumber: '',
-      image: guestPhoto,
-      title: `${guestName} - Live Photo`
-    });
-  }
 
   // Additional doc proofs if stored in doc_proofs_json
   let extraProofs = [];
@@ -1862,14 +1852,18 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     }
   });
 
-  // Chunk into groups of exactly 6 per A4 paper (1-6 scans = Page 2, 7-12 = Page 3, 13-18 = Page 4...)
+  // Chunk scanned documents into groups of exactly 4 per A4 paper (2 columns x 2 rows)
   const scanPages = [];
-  for (let i = 0; i < scanItems.length; i += 6) {
-    scanPages.push(scanItems.slice(i, i + 6));
+  for (let i = 0; i < scanItems.length; i += 4) {
+    scanPages.push(scanItems.slice(i, i + 4));
+  }
+  // Ensure at least 1 annexure sheet if Leader live photo is present with no other scans
+  if (scanPages.length === 0 && guestPhoto) {
+    scanPages.push([]);
   }
 
   const page1Html = `
-    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; max-height: 272mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 8px 12px; background: #fff; line-height: 1.25; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid;">
+    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; height: 268mm; max-height: 272mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 8px 12px; background: #fff; line-height: 1.25; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; overflow: hidden;">
       <!-- Top-Right Voucher / Reg No & Check-in Date Box (Top & Right Overlapped with Main Border) -->
       <div style="position: absolute; top: -3.5px; right: -3.5px; z-index: 10;">
         <table style="border-collapse: collapse; border: 1.5px solid #1e3a8a; border-top: 3.5px solid #1e3a8a; border-right: 3.5px solid #1e3a8a; font-size: 8pt; background: #ffffff;">
@@ -1902,7 +1896,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
         <div>
           <!-- HEADER -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 5px; padding-right: 215px; min-height: 108px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 4px; padding-right: 215px; min-height: 108px;">
             <!-- Logo + Hotel Info -->
             <div style="display: flex; align-items: center; gap: 14px;">
               <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 108px; max-height: 108px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
@@ -2300,80 +2294,113 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     </div>
   `;
 
-  // 7. Annexure Pages (Page 2+): 6 Scanned copies aligned per A4 paper, leader first, then companions
+  // 7. Annexure Pages (Page 2+): 4 Scanned copies aligned per A4 paper (2x2 grid), with Leader Live Photo centered at top of Sheet 2
   let annexurePagesHtml = '';
-  if (includePhotos && scanPages.length > 0) {
+  if (includePhotos && (scanPages.length > 0 || guestPhoto)) {
     const totalPages = 1 + scanPages.length;
     annexurePagesHtml = scanPages.map((pageScans, pageIdx) => {
       const pageNum = pageIdx + 2;
+      const hasTopLeaderPhoto = (pageIdx === 0 && Boolean(guestPhoto));
+      const rowHeight = hasTopLeaderPhoto ? '106mm' : '118mm';
+      const imgBoxHeight = hasTopLeaderPhoto ? '93mm' : '105mm';
 
-      const slotsHtml = pageScans.map((scan, slotIdx) => `
-        <div style="border: 1.5px solid #cbd5e1; border-radius: 6px; background: #f8fafc; padding: 6px; display: flex; flex-direction: column; justify-content: space-between; height: 76mm; box-sizing: border-box;">
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 4px;">
-            <span style="font-size: 8pt; font-weight: 900; color: #1e3a8a; background: #e0e7ff; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.03em;">
+      const slotsHtml = pageScans.map((scan, slotIdx) => {
+        return `
+        <div style="border: 1.5px solid #cbd5e1; border-radius: 6px; background: #f8fafc; padding: 3px 5px; display: flex; flex-direction: column; justify-content: space-between; height: ${rowHeight}; box-sizing: border-box;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 1.5px; margin-bottom: 1.5px;">
+            <span style="font-size: 7.5pt; font-weight: 900; color: #1e3a8a; background: #e0e7ff; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.03em;">
               ${escapeHtml(scan.tag)}
             </span>
-            <span style="font-size: 7.5pt; font-weight: 750; color: #64748b;">
-              Slot ${slotIdx + 1} of 6
+            <span style="font-size: 7pt; font-weight: 750; color: #64748b;">
+              Slot ${slotIdx + 1} of 4
             </span>
           </div>
-          <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 4px; overflow: hidden; padding: 2px; min-height: 52mm;">
-            <img src="${escapeHtml(scan.image)}" alt="${escapeHtml(scan.title)}" style="max-width: 100%; max-height: 52mm; width: auto; height: auto; object-fit: contain;" />
+          <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 4px; overflow: hidden; padding: 2px; min-height: ${imgBoxHeight}; max-height: ${imgBoxHeight}; height: ${imgBoxHeight};">
+            <img class="annexure-scan-img annexure-id-doc" src="${escapeHtml(scan.image)}" alt="${escapeHtml(scan.title)}" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;" />
           </div>
-          <div style="margin-top: 4px; font-size: 7.5pt; color: #1e293b; line-height: 1.2; background: #ffffff; padding: 3px 6px; border-radius: 3px; border: 1px solid #e2e8f0;">
+          <div style="margin-top: 1.5px; font-size: 7pt; color: #1e293b; line-height: 1.15; background: #ffffff; padding: 1.5px 5px; border-radius: 3px; border: 1px solid #e2e8f0;">
             <div style="font-weight: 850; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
               ${escapeHtml(scan.personName)}
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 7pt; color: #64748b; margin-top: 1px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 6.8pt; color: #64748b; margin-top: 1px;">
               <span>${escapeHtml(scan.docType || 'ID Document')}</span>
               <strong style="color: #1e40af;">${escapeHtml(scan.idNumber || '')}</strong>
             </div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
-      // Fill remaining empty slots up to 6 if page has fewer than 6 scans, keeping the 2x3 grid aligned
-      const emptySlotsCount = 6 - pageScans.length;
+      // Fill remaining empty slots up to 4 if page has fewer than 4 scans, keeping the 2x2 grid aligned
+      const emptySlotsCount = 4 - pageScans.length;
       let emptySlotsHtml = '';
       for (let s = 0; s < emptySlotsCount; s++) {
         emptySlotsHtml += `
-          <div style="border: 1.5px dashed #e2e8f0; border-radius: 6px; background: #fbfcfe; padding: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 76mm; box-sizing: border-box; color: #94a3b8;">
-            <div style="font-size: 9pt; font-weight: 700;">Blank Slot ${pageScans.length + s + 1} of 6</div>
+          <div style="border: 1.5px dashed #e2e8f0; border-radius: 6px; background: #fbfcfe; padding: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; height: ${rowHeight}; box-sizing: border-box; color: #94a3b8;">
+            <div style="font-size: 9pt; font-weight: 700;">Blank Slot ${pageScans.length + s + 1} of 4</div>
             <div style="font-size: 7.5pt; margin-top: 2px;">Preserved for additional document annexure</div>
           </div>
         `;
       }
 
       return `
-        <div class="html2pdf__page-break" style="page-break-before: always; break-before: page; height: 0; margin: 0; padding: 0;"></div>
-        <div class="full-a4-registration-card annexure-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 10px 14px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; page-break-before: always; break-before: page; page-break-inside: avoid; break-inside: avoid; margin-top: 8mm;">
+        <div class="html2pdf__page-break" style="height: 0; margin: 0; padding: 0; line-height: 0; font-size: 0; border: none;"></div>
+        <div class="full-a4-registration-card annexure-sheet" style="position: relative; width: 100%; height: 268mm; max-height: 268mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 5px 10px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-before: always; break-before: page; page-break-after: avoid; break-after: avoid; overflow: hidden;">
           <!-- Annexure Header -->
-          <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 42px; width: auto; object-fit: contain;" />
+          <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 3px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 32px; width: auto; object-fit: contain;" />
               <div>
-                <div style="font-size: 13pt; font-weight: 900; font-family: Georgia, serif; color: #1e3a8a; letter-spacing: 0.5px;">
+                <div style="font-size: 11pt; font-weight: 900; font-family: Georgia, serif; color: #1e3a8a; letter-spacing: 0.5px;">
                   HOTEL CityPaark — Document Verification Annexure
                 </div>
-                <div style="font-size: 8pt; font-weight: 750; color: #475569;">
-                  Official Scanned Records &bull; Primary Guest / Room Leader First &bull; 6 Scans Aligned Per Sheet
+                <div style="font-size: 7.5pt; font-weight: 750; color: #475569;">
+                  Official Scanned Records &bull; Primary Guest Live Photo &bull; 4 Documents Aligned Per Sheet
                 </div>
               </div>
             </div>
-            <div style="text-align: right; font-size: 8.5pt;">
+            <div style="text-align: right; font-size: 8pt;">
               <div style="font-weight: 900; color: #1e3a8a;">Voucher: ${escapeHtml(voucherNo)}</div>
-              <div style="font-weight: 700; color: #64748b; font-size: 8pt;">Sheet ${pageNum} of ${totalPages}</div>
+              <div style="font-weight: 700; color: #64748b; font-size: 7.5pt;">Sheet ${pageNum} of ${totalPages}</div>
             </div>
           </div>
 
-          <!-- 6-Grid (2 columns x 3 rows) -->
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-rows: 76mm; gap: 8px; flex: 1;">
+          ${hasTopLeaderPhoto ? `
+            <!-- LEADER LIVE WEBCAM PHOTO (CENTERED ON TOP OF ANNEXURE SHEET 2) -->
+            <div style="border: 1.5px solid #1e3a8a; border-radius: 5px; background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%, #f8fafc 100%); padding: 2px 10px; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 12px; box-sizing: border-box; height: 24mm;">
+              <div style="height: 21mm; width: 29mm; min-width: 29mm; border: 1.5px solid #1e40af; border-radius: 4px; background: #ffffff; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <img class="annexure-scan-img annexure-live-photo" src="${escapeHtml(guestPhoto)}" alt="Leader Live Photo" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;" />
+              </div>
+              <div style="display: flex; flex-direction: column; justify-content: center; gap: 1px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 7.5pt; font-weight: 950; color: #1e3a8a; background: #dbeafe; border: 1px solid #bfdbfe; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.03em;">
+                    📸 PRIMARY GUEST / ROOM LEADER LIVE PHOTO
+                  </span>
+                  <span style="font-size: 6.8pt; font-weight: 850; color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 3px;">
+                    ✓ Live Webcam Verified
+                  </span>
+                </div>
+                <div style="font-size: 9.5pt; font-weight: 950; color: #0f172a; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  ${escapeHtml(guestName)}
+                </div>
+                <div style="font-size: 7.2pt; color: #475569; font-weight: 750;">
+                  ID Proof: <strong style="color: #1e40af;">${escapeHtml(docType)}</strong>${aadharNumber ? ` &bull; Ref: <strong style="color: #0f172a;">${escapeHtml(aadharNumber)}</strong>` : ''} &bull; Room: <strong style="color: #0f766e;">${escapeHtml(cleanRoomsText)}</strong>
+                </div>
+                <div style="font-size: 6.8pt; color: #64748b;">
+                  Captured at Front Desk Check-in &bull; Official Digital Verification Vault
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- 4-Grid (2 columns x 2 rows) -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-rows: ${rowHeight}; gap: ${hasTopLeaderPhoto ? '4px' : '5px'}; flex: 1;">
             ${slotsHtml}
             ${emptySlotsHtml}
           </div>
 
           <!-- Annexure Footer -->
-          <div style="margin-top: 6px; border-top: 1px solid #cbd5e1; padding-top: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 7.5pt; color: #64748b;">
+          <div style="margin-top: 3px; border-top: 1px solid #cbd5e1; padding-top: 2px; display: flex; justify-content: space-between; align-items: center; font-size: 7pt; color: #64748b;">
             <span>Digital Document Verification Vault &bull; Registered for ${escapeHtml(guestName)} (${escapeHtml(cleanRoomsText)})</span>
             <span>Annexure Sheet ${pageNum} of ${totalPages}</span>
           </div>
@@ -2422,21 +2449,152 @@ export function printGuestRegistrationA4(data, options = {}) {
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      window.print();
-      setTimeout(cleanup, 2500);
-    }, 40);
+  const triggerPrint = () => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        window.print();
+        setTimeout(cleanup, 3000);
+      }, 80);
+    });
+  };
+
+  const imgs = Array.from(sheet.querySelectorAll('img'));
+  const decodePromises = imgs.map(img => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+    if (img.decode) return img.decode().catch(() => Promise.resolve());
+    return new Promise(res => {
+      img.onload = () => res();
+      img.onerror = () => res();
+      setTimeout(res, 500);
+    });
   });
+
+  Promise.all(decodePromises).then(() => {
+    triggerPrint();
+  }).catch(() => {
+    triggerPrint();
+  });
+}
+
+/**
+ * Auto-crops empty scanner white margins from scanned document images
+ * so that the actual document content expands to fill the slot and is clearly visible.
+ */
+export function autoCropWhiteBorders(img) {
+  try {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h || w < 80 || h < 80) return img.src;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    // A pixel is background if it's white/light-gray flatbed with low saturation
+    const isContentPixel = (r, g, b) => {
+      const maxC = Math.max(r, g, b);
+      const minC = Math.min(r, g, b);
+      const saturation = maxC - minC;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      // Content is either sufficiently dark (text/lines) or colorful (UIDAI header, emblem, photo)
+      return lum < 192 || saturation >= 24;
+    };
+
+    let minY = 0, maxY = h - 1, minX = 0, maxX = w - 1;
+
+    // Scan from top downwards (up to 45% of height)
+    topLoop: for (let y = 0; y < Math.floor(h * 0.45); y++) {
+      let contentPixels = 0;
+      for (let x = 0; x < w; x += 3) {
+        const idx = (y * w + x) * 4;
+        if (isContentPixel(data[idx], data[idx + 1], data[idx + 2])) {
+          contentPixels++;
+          if (contentPixels > (w / 3) * 0.02) {
+            minY = Math.max(0, y - 4);
+            break topLoop;
+          }
+        }
+      }
+    }
+
+    // Scan from bottom upwards (up to 45% of height)
+    bottomLoop: for (let y = h - 1; y > Math.floor(h * 0.55); y--) {
+      let contentPixels = 0;
+      for (let x = 0; x < w; x += 3) {
+        const idx = (y * w + x) * 4;
+        if (isContentPixel(data[idx], data[idx + 1], data[idx + 2])) {
+          contentPixels++;
+          if (contentPixels > (w / 3) * 0.02) {
+            maxY = Math.min(h - 1, y + 4);
+            break bottomLoop;
+          }
+        }
+      }
+    }
+
+    // Scan from left to right (up to 45% of width)
+    leftLoop: for (let x = 0; x < Math.floor(w * 0.45); x++) {
+      let contentPixels = 0;
+      for (let y = minY; y <= maxY; y += 3) {
+        const idx = (y * w + x) * 4;
+        if (isContentPixel(data[idx], data[idx + 1], data[idx + 2])) {
+          contentPixels++;
+          if (contentPixels > ((maxY - minY) / 3) * 0.02) {
+            minX = Math.max(0, x - 4);
+            break leftLoop;
+          }
+        }
+      }
+    }
+
+    // Scan from right to left (up to 45% of width)
+    rightLoop: for (let x = w - 1; x > Math.floor(w * 0.55); x--) {
+      let contentPixels = 0;
+      for (let y = minY; y <= maxY; y += 3) {
+        const idx = (y * w + x) * 4;
+        if (isContentPixel(data[idx], data[idx + 1], data[idx + 2])) {
+          contentPixels++;
+          if (contentPixels > ((maxY - minY) / 3) * 0.02) {
+            maxX = Math.min(w - 1, x + 4);
+            break rightLoop;
+          }
+        }
+      }
+    }
+
+    const cropWidth = maxX - minX;
+    const cropHeight = maxY - minY;
+
+    // Apply crop if a meaningful empty border was detected (at least 3% on any axis)
+    if (cropWidth > 50 && cropHeight > 50 && (cropWidth < w * 0.97 || cropHeight < h * 0.97)) {
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = cropWidth;
+      outCanvas.height = cropHeight;
+      const outCtx = outCanvas.getContext('2d');
+      outCtx.imageSmoothingEnabled = true;
+      outCtx.imageSmoothingQuality = 'high';
+      outCtx.drawImage(canvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+      return outCanvas.toDataURL('image/png'); // Lossless PNG for maximum text clarity
+    }
+  } catch (e) {
+    console.warn('autoCropWhiteBorders error:', e);
+  }
+  return img.src;
 }
 
 /**
  * Save / Download Complete Guest Registration PDF to Owner's Computer
  * (Includes ALL scanned copies, live photos, and complete details)
  */
-export async function downloadGuestRegistrationPDF(data) {
+export async function downloadGuestRegistrationPDF(data, options = { includePhotos: true }) {
   if (!data) return false;
 
+  const includePhotos = options?.includePhotos !== false;
   const now = new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -2445,24 +2603,26 @@ export async function downloadGuestRegistrationPDF(data) {
   const rawVoucherNo = data.voucher_number || data.voucherNumber || data.voucher_no || data.voucherNo || `${yymmdd}-001`;
   const voucherNo = cleanVoucherNumber(rawVoucherNo);
   const guestName = (data.guestName || data.guest_name || 'Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `Registration_${voucherNo}_${guestName}.pdf`;
+  const prefix = includePhotos ? 'Registration' : 'CheckIn_Form';
+  const filename = options?.filename || `${prefix}_${voucherNo}_${guestName}.pdf`;
 
-  const htmlContent = buildGuestRegistrationHTML(data, { includePhotos: true });
+  const htmlContent = buildGuestRegistrationHTML(data, { includePhotos });
 
   // Outer offscreen sandbox: placed offscreen to hide from user during generation
+  // 755px corresponds to 200mm inner printable width at 96 DPI, ensuring exact symmetrical margins
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-pdf-sandbox';
   sandbox.style.position = 'fixed';
   sandbox.style.left = '-99999px';
   sandbox.style.top = '0';
-  sandbox.style.width = '794px'; // Standard A4 width at 96 DPI
+  sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
   // Target element: has relative in-flow coordinates and full 100% opacity so deepCloneBasic preserves full opacity
   const targetEl = document.createElement('div');
   targetEl.id = 'temp-pdf-export-target';
   targetEl.style.position = 'relative';
-  targetEl.style.width = '794px';
+  targetEl.style.width = '755px';
   targetEl.style.background = '#ffffff';
   targetEl.style.color = '#000000';
   targetEl.style.boxSizing = 'border-box';
@@ -2471,15 +2631,30 @@ export async function downloadGuestRegistrationPDF(data) {
   sandbox.appendChild(targetEl);
   document.body.appendChild(sandbox);
 
-  // Pre-load and decode all images so html2canvas captures all scans crisp and complete
+  // Pre-load, decode, and auto-crop scanned images so they fill the slot and remove excess scanner margins
   try {
     const imgElements = Array.from(targetEl.querySelectorAll('img'));
     await Promise.all(imgElements.map(img => {
-      if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
       return new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-        setTimeout(resolve, 800);
+        const onReady = () => {
+          try {
+            if (img.classList.contains('annexure-id-doc')) {
+              const cropped = autoCropWhiteBorders(img);
+              if (cropped && cropped !== img.src) {
+                img.src = cropped;
+              }
+            }
+          } catch (e) {}
+          resolve();
+        };
+
+        if (img.complete && img.naturalWidth !== 0) {
+          onReady();
+        } else {
+          img.onload = onReady;
+          img.onerror = () => resolve();
+          setTimeout(resolve, 800);
+        }
       });
     }));
   } catch (_) {}
@@ -2487,17 +2662,18 @@ export async function downloadGuestRegistrationPDF(data) {
   const opt = {
     margin: [8, 5, 5, 5],
     filename: filename,
-    image: { type: 'jpeg', quality: 0.98 },
+    image: { type: 'jpeg', quality: 1.0 },
     html2canvas: {
-      scale: 2,
+      scale: 2.8,
       useCORS: true,
       logging: false,
       scrollY: 0,
-      windowWidth: 800
+      windowWidth: 755
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: {
-      mode: ['css', 'legacy']
+      mode: ['legacy'],
+      after: '.html2pdf__page-break'
     }
   };
 
@@ -2836,6 +3012,57 @@ export function printGuestPaymentSummary(data, options = {}) {
       setTimeout(cleanup, 2500);
     }, 40);
   });
+}
+
+/**
+ * Save / Download Guest Payment Summary PDF to Owner's Computer
+ */
+export async function downloadGuestPaymentSummaryPDF(data, options = {}) {
+  if (!data) return false;
+  const guestName = (data.guest_name || data.guestName || data.primaryGuest?.name || 'Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const roomNo = data.room_numbers || data.room_number || data.room || '';
+  const filename = options?.filename || `Payment_Summary_Room_${roomNo}_${guestName}.pdf`;
+  const htmlContent = buildGuestPaymentSummaryHTML(data);
+
+  const sandbox = document.createElement('div');
+  sandbox.id = 'temp-pdf-sandbox';
+  sandbox.style.position = 'fixed';
+  sandbox.style.left = '-99999px';
+  sandbox.style.top = '0';
+  sandbox.style.width = '755px';
+  sandbox.style.overflow = 'hidden';
+
+  const targetEl = document.createElement('div');
+  targetEl.style.position = 'relative';
+  targetEl.style.width = '755px';
+  targetEl.style.background = '#ffffff';
+  targetEl.style.color = '#000000';
+  targetEl.style.boxSizing = 'border-box';
+  targetEl.innerHTML = htmlContent;
+
+  sandbox.appendChild(targetEl);
+  document.body.appendChild(sandbox);
+
+  const opt = {
+    margin: [8, 5, 5, 5],
+    filename: filename,
+    image: { type: 'jpeg', quality: 1.0 },
+    html2canvas: { scale: 2.5, useCORS: true, logging: false, scrollY: 0, windowWidth: 755 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  try {
+    await html2pdf().set(opt).from(targetEl).save();
+    return true;
+  } catch (err) {
+    console.warn('html2pdf payment summary save error, falling back to print:', err);
+    printGuestPaymentSummary(data, { windowTitle: filename });
+    return false;
+  } finally {
+    if (document.body.contains(sandbox)) {
+      document.body.removeChild(sandbox);
+    }
+  }
 }
 
 /**
@@ -3387,6 +3614,70 @@ export function printFinalBillA4(room, calc, settlement) {
       }, 60);
     });
   });
+}
+
+/**
+ * Save / Download Full A4 Final Tax Invoice PDF to Owner's Computer
+ */
+export async function downloadFinalBillPDF(room, calc, settlement, options = {}) {
+  if (!room) return false;
+  const guestName = (room.guest_name || room.guestName || calc?.guestName || 'Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const roomNum = room.room_number || room.roomNumber || calc?.room_number || '';
+  const filename = options?.filename || `Tax_Invoice_Room_${roomNum}_${guestName}.pdf`;
+  const htmlContent = buildFinalBillA4HTML(room, calc, settlement);
+
+  const sandbox = document.createElement('div');
+  sandbox.id = 'temp-pdf-sandbox';
+  sandbox.style.position = 'fixed';
+  sandbox.style.left = '-99999px';
+  sandbox.style.top = '0';
+  sandbox.style.width = '755px';
+  sandbox.style.overflow = 'hidden';
+
+  const targetEl = document.createElement('div');
+  targetEl.style.position = 'relative';
+  targetEl.style.width = '755px';
+  targetEl.style.background = '#ffffff';
+  targetEl.style.color = '#000000';
+  targetEl.style.boxSizing = 'border-box';
+  targetEl.innerHTML = htmlContent;
+
+  sandbox.appendChild(targetEl);
+  document.body.appendChild(sandbox);
+
+  // Pre-load images (logo & watermark)
+  try {
+    const imgElements = Array.from(targetEl.querySelectorAll('img'));
+    await Promise.all(imgElements.map(img => {
+      if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+        setTimeout(resolve, 800);
+      });
+    }));
+  } catch (_) {}
+
+  const opt = {
+    margin: [8, 5, 5, 5],
+    filename: filename,
+    image: { type: 'jpeg', quality: 1.0 },
+    html2canvas: { scale: 2.5, useCORS: true, logging: false, scrollY: 0, windowWidth: 755 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  try {
+    await html2pdf().set(opt).from(targetEl).save();
+    return true;
+  } catch (err) {
+    console.warn('html2pdf direct tax invoice save error, falling back to print window:', err);
+    printFinalBillA4(room, calc, settlement);
+    return false;
+  } finally {
+    if (document.body.contains(sandbox)) {
+      document.body.removeChild(sandbox);
+    }
+  }
 }
 
 /**

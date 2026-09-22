@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
 import ImageLightbox from '../components/common/ImageLightbox';
 import FolioSettlementModal from '../components/hospitality/FolioSettlementModal';
+import DocumentActionModal from '../components/hospitality/DocumentActionModal';
 import { printCashReceipt, printGuestRegistrationA4, downloadGuestRegistrationPDF, printGuestPaymentSummary, printFinalBillA4 } from '../services/printService';
 export const getFnbPaymentModeInfo = (ord) => {
   if (!ord) return { label: 'Unknown', shortLabel: 'Unknown', icon: '💰', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
@@ -130,7 +131,7 @@ export const getFnbPaymentModeInfo = (ord) => {
 };
 
 export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpenVisitors, onCheckoutDone }) {
-  const { showToast, currentUser } = useApp();
+  const { showToast, showConfirm, currentUser } = useApp();
   const [folioData, setFolioData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExtendOpen, setIsExtendOpen] = useState(false);
@@ -138,6 +139,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxTitle, setLightboxTitle] = useState('Preview');
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+  const [docActionModal, setDocActionModal] = useState({ isOpen: false, type: 'info', data: null });
   const [selectedFnbOrder, setSelectedFnbOrder] = useState(null);
   const [fnbPayMode, setFnbPayMode] = useState('cash');
   const [fnbUtr, setFnbUtr] = useState('');
@@ -662,10 +664,15 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             type="button"
-            className="btn-folio-visitors-action"
+            className="filter-chip btn-folio-action-chip btn-folio-visitors-chip btn-folio-visitors-action"
             onClick={() => onOpenVisitors && onOpenVisitors(folioData.room || folioData)}
+            title="Log & Manage Room Visitors"
           >
-            <span>👥</span> Visitors (<span>{folioData.visitorsCount || 0}</span>)
+            <span>👥</span> Visitors <span className="filter-chip-count" style={{
+              marginLeft: '2px',
+              background: (folioData.visitorsCount || 0) > 0 ? '#7c3aed' : undefined,
+              color: (folioData.visitorsCount || 0) > 0 ? '#ffffff' : undefined
+            }}>{folioData.visitorsCount || 0}</span>
           </button>
 
           <button
@@ -673,29 +680,23 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             className="filter-chip btn-folio-action-chip"
             onClick={() => {
               const printPayload = buildFolioPrintPayload();
-              if (onReprintRegForm) {
-                onReprintRegForm(printPayload);
-              } else {
-                printGuestRegistrationA4(printPayload, { includePhotos: false });
-              }
+              setDocActionModal({ isOpen: true, type: 'checkin', data: printPayload });
             }}
-            title="Print Official Registration Card on Paper (LaserJet Toner Saver - Zero Photos)"
+            title="Official Guest Check-In Form (Print to Paper, Save PDF, or Save & Print)"
           >
-            🖨️ Print Form (No Photos)
+            📋 Check-In Form
           </button>
 
           <button
             type="button"
             className="filter-chip btn-folio-action-chip btn-folio-pdf-chip"
-            onClick={async () => {
+            onClick={() => {
               const printPayload = buildFolioPrintPayload();
-              showToast('Saving Complete PDF with all Scans & Photos to Computer...', 'info', 2500);
-              const ok = await downloadGuestRegistrationPDF(printPayload);
-              if (ok) showToast('✓ Complete PDF with all Scans Saved to Computer!', 'green', 4000);
+              setDocActionModal({ isOpen: true, type: 'info', data: printPayload });
             }}
-            title="Save complete registration PDF to computer with all scanned ID copies and photos"
+            title="Guest Info & Verification Vault with all Scans & Photos (Print to Paper, Save PDF, or Save & Print)"
           >
-            💾 Save Full PDF to PC
+            💾 Info
           </button>
 
           <button
@@ -703,9 +704,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             className="filter-chip btn-folio-action-chip btn-folio-summary-chip"
             onClick={() => {
               const printPayload = buildFolioPrintPayload();
-              printGuestPaymentSummary(printPayload);
+              setDocActionModal({ isOpen: true, type: 'summary', data: printPayload });
             }}
-            title="Print Customer Payment Statement & Summary (A4 Sheet)"
+            title="Customer Payment Summary Statement (Save, Print, or Save & Print)"
           >
             📄 Payment Summary
           </button>
@@ -715,17 +716,25 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             className="filter-chip btn-folio-action-chip btn-folio-tax-chip"
             onClick={() => {
               const roomObj = folioData?.room || folioData;
-              printFinalBillA4(roomObj, folioData, {
-                settleAmt: 0,
-                refundAmt: 0,
-                settled_at: new Date(),
-                invoiceNo: roomObj?.invoice_no || (folioData?.bookingId ? `L${folioData.bookingId}` : undefined),
-                checked_out_by: 'Front Desk'
+              setDocActionModal({
+                isOpen: true,
+                type: 'invoice',
+                data: {
+                  room: roomObj,
+                  calc: folioData,
+                  settlement: {
+                    settleAmt: 0,
+                    refundAmt: 0,
+                    settled_at: new Date(),
+                    invoiceNo: roomObj?.invoice_no || (folioData?.bookingId ? `L${folioData.bookingId}` : undefined),
+                    checked_out_by: 'Front Desk'
+                  }
+                }
               });
             }}
-            title="Print Official Colorful A4 Tax Invoice with background logo"
+            title="Official Tax Invoice (Save, Print, or Save & Print)"
           >
-            🧾 Tax Invoice (A4)
+            🧾 Tax Invoice
           </button>
 
           <button
@@ -2681,6 +2690,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           </div>
         );
       })()}
+
+      <DocumentActionModal
+        isOpen={docActionModal.isOpen}
+        onClose={() => setDocActionModal(prev => ({ ...prev, isOpen: false }))}
+        type={docActionModal.type}
+        data={docActionModal.data}
+        onReprintRegForm={onReprintRegForm}
+      />
     </section>
   );
 }
