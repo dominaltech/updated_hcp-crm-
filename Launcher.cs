@@ -56,7 +56,7 @@ namespace HotelCityParkLauncher
 
             // 4. Wait for server to become responsive
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write(" Starting server and initializing database");
+            Console.Write(" Starting server and initializing AppData database");
             bool isReady = false;
             for (int i = 0; i < 25; i++)
             {
@@ -113,6 +113,13 @@ namespace HotelCityParkLauncher
                     Console.WriteLine(" Opening http://localhost:3000/hospitality...");
                     OpenBrowser("http://localhost:3000/hospitality");
                 }
+                else if (key.Key == ConsoleKey.D)
+                {
+                    string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HotelCityPark");
+                    if (!Directory.Exists(appDataDir)) Directory.CreateDirectory(appDataDir);
+                    Console.WriteLine(" Opening AppData database folder: " + appDataDir);
+                    Process.Start("explorer.exe", "\"" + appDataDir + "\"");
+                }
                 else if (key.Key == ConsoleKey.R)
                 {
                     Console.WriteLine(" Restarting server...");
@@ -130,12 +137,17 @@ namespace HotelCityParkLauncher
 
         private static void PrintHeader()
         {
+            string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HotelCityPark");
             Console.ForegroundColor = ConsoleColor.DarkMagenta;
             Console.WriteLine("==================================================================");
             Console.ForegroundColor = ConsoleColor.Magenta;
             Console.WriteLine("              HOTEL CITY PARK CRM - DESKTOP EDITION               ");
             Console.ForegroundColor = ConsoleColor.DarkMagenta;
             Console.WriteLine("==================================================================");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine(" Database Location: %APPDATA%\\HotelCityPark\\hotel_city_park.db");
+            Console.WriteLine(" Full Path: " + Path.Combine(appDataDir, "hotel_city_park.db"));
             Console.ResetColor();
         }
 
@@ -147,6 +159,7 @@ namespace HotelCityParkLauncher
             Console.WriteLine("  Shortcuts:");
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("   [O]  Re-open Hospitality Screen in Browser");
+            Console.WriteLine("   [D]  Open AppData Database Folder in Explorer");
             Console.WriteLine("   [R]  Restart Server");
             Console.WriteLine("   [Q]  Quit & Stop Server");
             Console.ForegroundColor = ConsoleColor.DarkGray;
@@ -223,6 +236,7 @@ namespace HotelCityParkLauncher
                     RedirectStandardOutput = false,
                     RedirectStandardError = false
                 };
+                psi.EnvironmentVariables["USE_APPDATA"] = "1";
 
                 serverProcess = Process.Start(psi);
             }

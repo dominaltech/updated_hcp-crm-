@@ -39,6 +39,14 @@ const isServerless = !!(
   __dirname.startsWith('/var/task')
 );
 
+// In Windows Desktop / Client release environment:
+// Store persistent operational database in %APPDATA%\HotelCityPark\
+const isWindowsDesktop = !!(
+  process.platform === 'win32' &&
+  process.env.APPDATA &&
+  (process.env.USE_APPDATA === '1' || fs.existsSync(path.join(__dirname, 'HotelCityPark.exe')))
+);
+
 if (isServerless) {
   const possiblePaths = [
     path.join(__dirname, 'hotel_city_park.db'),
@@ -64,6 +72,28 @@ if (isServerless) {
   }
 
   dbPath = tmpDbPath;
+} else if (isWindowsDesktop) {
+  const appDataDir = path.join(process.env.APPDATA, 'HotelCityPark');
+  if (!fs.existsSync(appDataDir)) {
+    try {
+      fs.mkdirSync(appDataDir, { recursive: true });
+    } catch (e) {}
+  }
+  const appDataDbPath = path.join(appDataDir, 'hotel_city_park.db');
+
+  // If first time running on client computer and clean starter DB template exists, seed it
+  if (!fs.existsSync(appDataDbPath)) {
+    const templateDb = path.join(__dirname, 'hotel_city_park.db');
+    if (fs.existsSync(templateDb)) {
+      try {
+        fs.copyFileSync(templateDb, appDataDbPath);
+      } catch (err) {
+        console.warn('Could not seed starter db to AppData:', err);
+      }
+    }
+  }
+
+  dbPath = appDataDbPath;
 }
 
 const db = new Database(dbPath);
