@@ -49,6 +49,25 @@ export default function FolioSettlementModal({
   const isRefund = (folioData && (folioData.balanceDue < 0 || summaryRefund > 0)) || false;
   const refundAmount = isRefund ? (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue)) : 0;
 
+  const effectiveFoodTotal = Number(folioData?.foodTotal || 0);
+  const effectiveBarTotal = Number(folioData?.barTotal || 0);
+  const effectiveFnbTotal = effectiveFoodTotal + effectiveBarTotal;
+  const effectiveRoomTariff = Number(
+    folioData?.roomGrossTariff ||
+    folioData?.roomTaxable ||
+    folioData?.stayTaxable ||
+    (folioData?.grossTariff && effectiveFnbTotal > 0 ? Math.max(0, Number(folioData?.grossTariff || 0) - effectiveFnbTotal) : folioData?.grossTariff) ||
+    0
+  );
+  const effectiveStayTax = Number(
+    folioData?.stayTax ||
+    folioData?.totalGst ||
+    folioData?.taxAmount ||
+    folioData?.summary?.taxAmount ||
+    Math.max(0, (folioData?.roomCharge || 0) - effectiveRoomTariff)
+  );
+  const effectiveAdvancePaid = Number(folioData?.advancePaid || 0);
+
   useEffect(() => {
     if (isOpen && folioData) {
       setOnlineUtr('');
@@ -451,23 +470,23 @@ export default function FolioSettlementModal({
           <div className="folio-settlement-summary-bar">
             <div>
               <span className="sub-label">Room Tariff:</span>
-              <strong>{formatCurrency(folioData.grossTariff || 0)}</strong>
+              <strong>{formatCurrency(effectiveRoomTariff)}</strong>
             </div>
             <div>
               <span className="sub-label">Tax (5%):</span>
-              <strong>{formatCurrency(folioData.totalGst || folioData.taxAmount || folioData.summary?.taxAmount || Math.max(0, (folioData.roomCharge || 0) - (folioData.grossTariff || 0)))}</strong>
+              <strong>{formatCurrency(effectiveStayTax)}</strong>
             </div>
             <div>
               <span className="sub-label">Food:</span>
-              <strong>{formatCurrency(folioData.foodTotal || 0)}</strong>
+              <strong>{formatCurrency(effectiveFoodTotal)}</strong>
             </div>
             <div>
               <span className="sub-label">Bar:</span>
-              <strong>{formatCurrency(folioData.barTotal || 0)}</strong>
+              <strong>{formatCurrency(effectiveBarTotal)}</strong>
             </div>
             <div>
               <span className="sub-label">Advance Paid:</span>
-              <strong style={{ color: 'var(--apple-green)' }}>- {formatCurrency(folioData.advancePaid || 0)}</strong>
+              <strong style={{ color: 'var(--apple-green)' }}>- {formatCurrency(effectiveAdvancePaid)}</strong>
             </div>
             <div className="final-due-col">
               <span className="sub-label">{isRefund ? 'Refund Due:' : 'Balance Due:'}</span>
@@ -475,6 +494,31 @@ export default function FolioSettlementModal({
                 {formatCurrency(isRefund ? refundAmount : balanceDue)}
               </strong>
             </div>
+          </div>
+
+          {/* Transparent Settlement Reconciliation Note */}
+          <div style={{
+            fontSize: '0.80rem',
+            color: '#334155',
+            background: 'var(--bg-surface-secondary, #f8fafc)',
+            padding: '7px 14px',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color, #e2e8f0)',
+            marginTop: '8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}>
+            <span>
+              💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: balanceDue > 0 ? '#b91c1c' : '#15803d' }}>{formatCurrency(balanceDue)} Remaining Due</strong>
+            </span>
+            {effectiveFnbTotal > 0 && (
+              <span style={{ fontWeight: 750, color: '#d97706' }}>
+                ✓ Includes {formatCurrency(effectiveFnbTotal)} Restaurant &amp; Bar Orders
+              </span>
+            )}
           </div>
 
           {/* Early Checkout Dynamic Recalculation Breakdown */}

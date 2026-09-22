@@ -189,7 +189,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       const roomCharge = Number(summary.roomCharge ?? (r.total_room_charge || 0));
       const discountAmount = Number(summary.discountAmount ?? (r.discount_amount || 0));
       const discountPct = Number(summary.discountPct ?? (r.discount_pct || 0));
-      const grossTariff = Number(summary.grossTariff ?? (roomCharge + discountAmount + foodTotal + barTotal));
+      const roomGrossTariff = Number(summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
+      const roomTaxable = Number(summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
+      const stayTaxable = Number(summary.stayTaxable ?? roomTaxable);
+      const stayTax = Number(summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
+      const grossTariff = Number(summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount));
       const netTotalCharge = Number(summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
       const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
       const balanceDue = Number(summary.balanceDue ?? (netTotalCharge - advancePaid));
@@ -258,6 +262,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         extraBedCharge: r.extra_bed_charge !== undefined && r.extra_bed_charge !== null ? r.extra_bed_charge : (r.extraBedCharge || 0),
         roomCharge,
         grossTariff,
+        roomGrossTariff,
+        roomTaxable,
+        stayTaxable,
+        stayTax,
         discountAmount,
         discountPct,
         netTotalCharge,
@@ -266,6 +274,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         balanceDue,
         foodTotal,
         barTotal,
+        fnbTotal: foodTotal + barTotal,
         grandTotal: netTotalCharge,
         visitorsCount,
         restaurantOrders: raw.restaurantOrders || [],
@@ -1621,6 +1630,12 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         {stayDueAmount === 0 && ' (Settled)'}
                       </span>
                     </div>
+                    {fnbPendingTotal > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#b91c1c', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed var(--border-color, #e2e8f0)', fontWeight: 800 }}>
+                        <span>Total Folio Due (Stay + F&amp;B):</span>
+                        <span>{formatCurrency(stayDueAmount + fnbPendingTotal)}</span>
+                      </div>
+                    )}
 
                     {isOtaPrepaidStay && (
                       <div
@@ -1781,7 +1796,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </strong>
                     </div>
                     <div style={{ fontSize: '0.76rem', color: '#92400e', marginTop: '4px' }}>
-                      {fnbPendingTotal > 0 ? '⏳ Added to room balance due, to be collected at checkout.' : '✓ All F&B orders settled.'}
+                      {fnbPendingTotal > 0
+                        ? `⏳ Added to room balance due (${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(stayDueAmount + fnbPendingTotal)} Total Due).`
+                        : '✓ All F&B orders settled.'}
                     </div>
                   </div>
                 </div>
@@ -1790,31 +1807,37 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
               {/* 3. Financial Analytics: 5 KPI Tiles (Below the 2 Main Breakdown Cards) */}
               <div className="folio-financial-tiles-grid" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 <div className="financial-tile">
-                  <span className="tile-label">Tariff Subtotal</span>
-                  <strong className="tile-val">{formatCurrency(isOtaPrepaidStay ? stayNetTotal : (folioData.grossTariff || stayNetTotal))}</strong>
-                  <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : 'Stay + F&B')}</small>
+                  <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
+                  <strong className="tile-val">
+                    {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
+                  </strong>
+                  <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${folioData.discountAmount > 0 ? ` (Disc -${formatCurrency(folioData.discountAmount)})` : ''}` : 'Stay Tariff'))}</small>
                 </div>
                 <div className="financial-tile">
-                  <span className="tile-label">Discount</span>
-                  <strong className="tile-val discount">- {formatCurrency(folioData.discountAmount || 0)}</strong>
-                  <small>{folioData.discountPct || 0}%</small>
+                  <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
+                  <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
+                    {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(folioData.discountAmount || 0)}`}
+                  </strong>
+                  <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
                 </div>
                 <div className="financial-tile">
                   <span className="tile-label">Total Amount</span>
-                  <strong className="tile-val">{formatCurrency(isOtaPrepaidStay ? stayNetTotal : (folioData.netTotalCharge || stayNetTotal))}</strong>
-                  <small>{isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireBookingVal)})` : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST')}</small>
+                  <strong className="tile-val">
+                    {formatCurrency(isOtaPrepaidStay ? (stayNetTotal + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
+                  </strong>
+                  <small>{fnbTotal > 0 ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireBookingVal)})` : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}</small>
                 </div>
                 <div className="financial-tile">
                   <span className="tile-label">Advance Paid</span>
-                  <strong className="tile-val paid">{formatCurrency(advancePaidVal)}</strong>
-                  <small>{isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in')}</small>
+                  <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
+                  <small>{fnbPaidTotal > 0 ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}</small>
                 </div>
                 <div className="financial-tile highlight-due">
                   <span className="tile-label">Remaining Due</span>
-                  <strong className="tile-val due" style={{ color: (folioData.balanceDue || 0) <= 0 ? '#15803d' : '#b91c1c' }}>
-                    {formatCurrency(Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (isOtaPrepaidStay ? stayDueAmount : (stayNetTotal - advancePaidVal))))}
+                  <strong className="tile-val due" style={{ color: (stayDueAmount + fnbPendingTotal) <= 0 ? '#15803d' : '#b91c1c' }}>
+                    {formatCurrency(Math.max(0, stayDueAmount + fnbPendingTotal))}
                   </strong>
-                  <small>{(folioData.balanceDue || 0) <= 0 ? 'Fully Settled' : 'Due at checkout'}</small>
+                  <small>{(stayDueAmount + fnbPendingTotal) <= 0 ? 'Fully Settled' : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')}</small>
                 </div>
               </div>
             </React.Fragment>

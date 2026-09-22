@@ -3173,12 +3173,27 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const discountPct = Number(c.discountPct || summary.discountPct || r.discount_pct || 0);
   const discountAmt = Number(c.discountAmount || summary.discountAmount || r.discount_amount || 0);
 
-  let grossTariff = Number(c.grossTariff || summary.grossTariff || 0);
-  let effectiveTariff = Number(c.roomTariffNet || 0);
+  // Other Charges
+  const extraCharges = Number(c.hotelExtrasCharge || summary.hotelExtrasCharge || r.extra_bed_charge || r.extra_rooms_charge || 0);
+  const foodTotal = Number(c.foodTotal || summary.foodTotal || 0);
+  const barTotal = Number(c.barTotal || summary.barTotal || 0);
+  const fnbTotal = foodTotal + barTotal;
+
+  let grossTariff = Number(c.roomGrossTariff || summary.roomGrossTariff || c.roomTaxable || summary.roomTaxable || 0);
+  if (grossTariff <= 0) {
+    const rawGross = Number(c.grossTariff || summary.grossTariff || 0);
+    if (rawGross > 0 && fnbTotal > 0 && rawGross >= fnbTotal) {
+      grossTariff = rawGross - fnbTotal;
+    } else {
+      grossTariff = rawGross;
+    }
+  }
+
+  let effectiveTariff = Number(c.roomTariffNet || c.stayTaxable || summary.stayTaxable || 0);
 
   if (effectiveTariff <= 0) {
     const rawCharge = Number(c.roomCharge || summary.roomCharge || r.total_room_charge || r.room_rate || 0);
-    const rawGst = Number(c.tariffTax5Pct || c.totalGst || summary.taxAmount || c.taxAmount || 0);
+    const rawGst = Number(c.stayTax || c.tariffTax5Pct || c.totalGst || summary.taxAmount || c.taxAmount || 0);
     if (rawGst > 0) {
       effectiveTariff = Math.max(0, rawCharge - rawGst);
     } else {
@@ -3194,7 +3209,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   // Taxes (CGST 2.5% + SGST 2.5% = 5%)
   let cgst = 0;
   let sgst = 0;
-  const explicitTax = Number(c.tariffTax5Pct || c.totalGst || summary.taxAmount || 0);
+  const explicitTax = Number(c.stayTax || c.tariffTax5Pct || c.totalGst || summary.taxAmount || 0);
   if (explicitTax > 0) {
     cgst = Number((explicitTax / 2).toFixed(2));
     sgst = Number((explicitTax - cgst).toFixed(2));
@@ -3202,11 +3217,6 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
     cgst = Number((effectiveTariff * 0.025).toFixed(2));
     sgst = Number((effectiveTariff * 0.025).toFixed(2));
   }
-
-  // Other Charges
-  const extraCharges = Number(c.hotelExtrasCharge || summary.hotelExtrasCharge || r.extra_bed_charge || r.extra_rooms_charge || 0);
-  const foodTotal = Number(c.foodTotal || summary.foodTotal || 0);
-  const barTotal = Number(c.barTotal || summary.barTotal || 0);
 
   // Surcharges
   const cardSurcharge = Number(s.cardSurcharge || s.card_surcharge || r.final_card_surcharge || r.advance_card_surcharge || 0);

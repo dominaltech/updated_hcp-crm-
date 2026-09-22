@@ -1643,7 +1643,8 @@ app.get('/api/rooms/:id/folio', (req, res) => {
 
     // Running totals
     const grandTotal = effectiveGrandTotal;
-    const grossTariff = combinedPreTaxRoomCharge + combinedDiscountAmount + foodTotal + barTotal;
+    const roomGrossTariff = combinedPreTaxRoomCharge + combinedDiscountAmount;
+    const grossTariff = roomGrossTariff;
     const balanceDue = effectiveBalanceDue;
 
     // Fetch all recorded visitors strictly for this active booking session
@@ -1662,7 +1663,11 @@ app.get('/api/rooms/:id/folio', (req, res) => {
         visitors: visitors || [],
         payments: payments || [],
         summary: {
-          grossTariff,
+          grossTariff: roomGrossTariff,
+          roomGrossTariff,
+          roomTaxable: combinedPreTaxRoomCharge,
+          stayTaxable: combinedPreTaxRoomCharge,
+          stayTax: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
           discountAmount: combinedDiscountAmount,
           discountPct: combinedDiscountPct,
           roomCharge: effectiveRoomCharge,
@@ -1674,6 +1679,7 @@ app.get('/api/rooms/:id/folio', (req, res) => {
           upiTax: combinedUpiTax,
           foodTotal,
           barTotal,
+          fnbTotal: foodTotal + barTotal,
           grandTotal,
           netTotalCharge: grandTotal,
           initialPaid: effectivePaid,
@@ -1859,7 +1865,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       SELECT COALESCE(SUM(total), 0) as total 
       FROM restaurant_orders 
       WHERE ((booking_id IN (${activeBookingPlaceholders})) OR (booking_id IS NULL AND room_id IN (${placeholders}) AND datetime(created_at) >= ?))
-        AND payment_mode = 'room_folio' AND is_paid = 0
+        AND is_paid = 0
     `).get(...activeBookingIds, ...groupRoomIds, checkinLocal);
     const restUnpaid = restUnpaidRow ? restUnpaidRow.total : 0;
 
@@ -1867,22 +1873,24 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       SELECT COALESCE(SUM(total), 0) as total 
       FROM bar_orders 
       WHERE ((booking_id IN (${activeBookingPlaceholders})) OR (booking_id IS NULL AND room_id IN (${placeholders}) AND datetime(created_at) >= ?))
-        AND payment_mode = 'room_folio' AND is_paid = 0
+        AND is_paid = 0
     `).get(...activeBookingIds, ...groupRoomIds, checkinLocal);
     const barUnpaid = barUnpaidRow ? barUnpaidRow.total : 0;
 
-    // Mark restaurant and bar orders as paid strictly for this stay session
+    // Mark restaurant and bar orders as paid strictly for this stay session upon checkout
     db.prepare(`
-      UPDATE restaurant_orders SET is_paid = 1 
+      UPDATE restaurant_orders 
+      SET is_paid = 1, settled_at = ?, settled_by = ?
       WHERE ((booking_id IN (${activeBookingPlaceholders})) OR (booking_id IS NULL AND room_id IN (${placeholders}) AND datetime(created_at) >= ?))
-        AND payment_mode = 'room_folio'
-    `).run(...activeBookingIds, ...groupRoomIds, checkinLocal);
+        AND is_paid = 0
+    `).run(checkoutTime, cleanCheckedOutBy, ...activeBookingIds, ...groupRoomIds, checkinLocal);
 
     db.prepare(`
-      UPDATE bar_orders SET is_paid = 1 
+      UPDATE bar_orders 
+      SET is_paid = 1, settled_at = ?, settled_by = ?
       WHERE ((booking_id IN (${activeBookingPlaceholders})) OR (booking_id IS NULL AND room_id IN (${placeholders}) AND datetime(created_at) >= ?))
-        AND payment_mode = 'room_folio'
-    `).run(...activeBookingIds, ...groupRoomIds, checkinLocal);
+        AND is_paid = 0
+    `).run(checkoutTime, cleanCheckedOutBy, ...activeBookingIds, ...groupRoomIds, checkinLocal);
 
     const netSettle = parseFloat(settle_amount) || 0;
     const netRefund = parseFloat(refund_amount) || 0;
@@ -6047,6 +6055,8 @@ app.get('/api/hospitality/history', (req, res) => {
         b.discount_amount,
         b.total_room_charge,
         b.total_paid,
+        COALESCE((SELECT SUM(total) FROM restaurant_orders ro WHERE ro.booking_id = b.id), 0) as food_total,
+        COALESCE((SELECT SUM(total) FROM bar_orders bo WHERE bo.booking_id = b.id), 0) as bar_total,
         b.split_cash,
         b.split_card,
         b.split_online,
@@ -6177,6 +6187,9 @@ app.get('/api/hospitality/history', (req, res) => {
           status: row.booking_status,
           total_room_charge: row.total_room_charge,
           total_paid: row.total_paid,
+          food_total: row.food_total || 0,
+          bar_total: row.bar_total || 0,
+          grand_total: (row.total_room_charge || 0) + (row.food_total || 0) + (row.bar_total || 0),
           split_cash: row.split_cash,
           split_card: row.split_card,
           split_online: row.split_online,
@@ -6215,6 +6228,9 @@ app.get('/api/hospitality/history', (req, res) => {
         if (!entry.room_types.includes(row.room_type)) entry.room_types.push(row.room_type);
         entry.total_room_charge += (row.total_room_charge || 0);
         entry.total_paid += (row.total_paid || 0);
+        entry.food_total = (entry.food_total || 0) + (row.food_total || 0);
+        entry.bar_total = (entry.bar_total || 0) + (row.bar_total || 0);
+        entry.grand_total = entry.total_room_charge + entry.food_total + entry.bar_total;
         entry.refund_amount = (entry.refund_amount || 0) + (row.refund_amount || 0);
         if (!entry.refund_voucher_no && row.refund_voucher_no) entry.refund_voucher_no = row.refund_voucher_no;
         if (!entry.refund_mode && row.refund_mode) entry.refund_mode = row.refund_mode;

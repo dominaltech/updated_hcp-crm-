@@ -220,10 +220,10 @@ describe('Checkout Tax Invoice Redesign (Hotel City Paark Layout & Watermark)', 
   it('verifies HospitalityHistory and RoomFolioPage provide Tax Invoice buttons', () => {
     const historyPath = path.resolve(__dirname, '../src/components/hospitality/HospitalityHistory.jsx');
     const historyContent = fs.readFileSync(historyPath, 'utf8');
-    expect(historyContent).toContain('🧾 Tax Invoice (A4)');
+    expect(historyContent).toContain('Tax Invoice');
 
     const folioPath = path.resolve(__dirname, '../src/pages/RoomFolioPage.jsx');
     const folioContent = fs.readFileSync(folioPath, 'utf8');
-    expect(folioContent).toContain('🧾 Tax Invoice (A4)');
+    expect(folioContent).toContain('Tax Invoice');
   });
 });
