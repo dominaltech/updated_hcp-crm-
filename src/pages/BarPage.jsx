@@ -47,7 +47,15 @@ export default function BarPage({ onPrintBOTSlip, onPrintBillSlip }) {
     try {
       const roomsData = await api.getRooms();
       const roomList = Array.isArray(roomsData) ? roomsData : (roomsData?.rooms || []);
-      setOccupiedRooms(roomList.filter((r) => r.status === 'occupied'));
+      let occ = roomList.filter((r) => r.status === 'occupied');
+      if (occ.length === 0) {
+        try {
+          const occData = await api.getOccupiedRooms();
+          const cloudOcc = Array.isArray(occData) ? occData : (occData?.rooms || []);
+          if (cloudOcc.length > 0) occ = cloudOcc;
+        } catch (_) {}
+      }
+      setOccupiedRooms(occ);
     } catch (e) {
       console.warn('Error refreshing occupied rooms:', e);
     }
@@ -101,7 +109,15 @@ export default function BarPage({ onPrintBOTSlip, onPrintBillSlip }) {
       setCategories(combinedCats);
 
       const roomList = Array.isArray(roomsData) ? roomsData : (roomsData?.rooms || []);
-      setOccupiedRooms(roomList.filter((r) => r.status === 'occupied'));
+      let occ = roomList.filter((r) => r.status === 'occupied');
+      if (occ.length === 0) {
+        try {
+          const occData = await api.getOccupiedRooms();
+          const cloudOcc = Array.isArray(occData) ? occData : (occData?.rooms || []);
+          if (cloudOcc.length > 0) occ = cloudOcc;
+        } catch (_) {}
+      }
+      setOccupiedRooms(occ);
     } catch (e) {
       console.warn('Error loading bar menu:', e);
     }

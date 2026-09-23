@@ -2,19 +2,22 @@
   "name": "hote_city_park_crm",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "node --watch server.js",
     "dev:react": "vite",
     "build": "vite build",
     "start": "node server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "electron:start": "electron .",
+    "package:win": "electron-packager . \"Hotel City Park CRM\" --platform=win32 --arch=x64 --out=release-electron --icon=build/icon.ico --asar=false --overwrite --ignore=\"^/(scratch|tests|QA|nnnnew|release|release-electron|\\.git)\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
@@ -29,6 +32,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.3",
+    "electron-packager": "^17.1.2",
     "supertest": "^7.2.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.1"

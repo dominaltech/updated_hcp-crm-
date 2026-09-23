@@ -238,6 +238,11 @@ export const api = {
   settleFnbOrder: (data) => request('/hospitality/settle-fnb-order', { method: 'POST', body: data }),
   sendOrderBillToMobile: (data) => request('/orders/send-bill-mobile', { method: 'POST', body: data }),
 
+  // Multi-Machine Cloud Sync
+  getOccupiedRooms: () => request('/restaurant/occupied-rooms'),
+  getSyncOccupancies: () => request('/sync/occupancies'),
+  pushSyncNow: () => request('/sync/push-now', { method: 'POST' }),
+
   // Expenses & Petty Cash
   getExpenses: () => request('/expenses'),
   createExpense: (data) => request('/expenses', { method: 'POST', body: data }),

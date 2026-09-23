@@ -32,6 +32,7 @@ if (fs.existsSync(envPath)) {
 const db = require('./database');
 const { hashPassword, hashPasswordSync, verifyPassword, migratePlaintextPasswords, generateToken, requireAuth, requireRole, optionalAuth } = require('./middleware/auth');
 const secretManager = require('./services/secretManager');
+const supabaseService = require('./services/supabaseService');
 
 // Automatically migrate any legacy plaintext staff passwords to bcrypt hashes on startup
 migratePlaintextPasswords(db);
@@ -1026,6 +1027,26 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
 
   try {
     const result = transaction();
+
+    // Non-blocking background sync of newly checked-in rooms to Supabase
+    try {
+      if (result && Array.isArray(result.roomNumbers)) {
+        result.roomNumbers.forEach((roomNum, idx) => {
+          supabaseService.syncActiveOccupancy({
+            room_number: String(roomNum),
+            guest_name: result.guestName,
+            guest_mobile: result.mobile,
+            room_id: result.roomIds ? result.roomIds[idx] : null,
+            room_type: result.roomTypes ? result.roomTypes[idx] : null,
+            booking_id: result.bookingIds ? result.bookingIds[idx] : result.id,
+            checkin_time: result.checkinTime
+          }).catch(err => console.warn('[Supabase] checkin sync error:', err.message));
+        });
+      }
+    } catch (syncErr) {
+      console.warn('[Supabase] Checkin sync dispatch skipped:', syncErr.message);
+    }
+
     res.json({
       success: true,
       data: result,
@@ -1311,7 +1332,7 @@ function calculateActualStayAndExtension({
 }
 
 // 9. GET OCCUPIED ROOM FOLIO (Consolidated Room + Restaurant + Bar for all linked rooms)
-app.get('/api/rooms/:id/folio', (req, res) => {
+app.get('/api/rooms/:id/folio', async (req, res) => {
   try {
     const { id } = req.params;
     const room = db.prepare(`
@@ -1550,6 +1571,48 @@ app.get('/api/rooms/:id/folio', (req, res) => {
          OR (bo.booking_id IS NULL AND bo.room_id IN (${roomPlaceholders}) AND datetime(bo.created_at) >= ?)
       ORDER BY bo.created_at ASC
     `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
+
+    // Merge any pending cloud charges from separate POS machines via Supabase
+    try {
+      const allRoomNums = room.all_group_room_numbers || [room.room_number];
+      for (const rNum of allRoomNums) {
+        const pending = await supabaseService.fetchPendingRoomCharges(rNum);
+        if (pending && pending.length > 0) {
+          for (const cc of pending) {
+            const totalAmt = parseFloat(cc.grand_total) || 0;
+            if (cc.department === 'bar') {
+              if (!barOrders.some(bo => bo.order_number === cc.bill_no)) {
+                barOrders.push({
+                  id: `cloud-${cc.id}`,
+                  order_number: cc.bill_no,
+                  total: totalAmt,
+                  is_paid: 0,
+                  created_at: cc.created_at,
+                  cashier_name: cc.cashier_name || 'Bar Cashier',
+                  is_cloud_synced: true,
+                  items_json: cc.items_summary || ''
+                });
+              }
+            } else {
+              if (!restaurantOrders.some(ro => ro.order_number === cc.bill_no)) {
+                restaurantOrders.push({
+                  id: `cloud-${cc.id}`,
+                  order_number: cc.bill_no,
+                  total: totalAmt,
+                  is_paid: 0,
+                  created_at: cc.created_at,
+                  cashier_name: cc.cashier_name || 'Restaurant Cashier',
+                  is_cloud_synced: true,
+                  items_json: cc.items_summary || ''
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (cErr) {
+      console.warn('[Supabase] Failed to fetch cloud room charges for folio:', cErr.message);
+    }
 
     // Only UNPAID orders add to running room folio due
     const pendingRestaurantOrders = restaurantOrders.filter(o => o.is_paid === 0);
@@ -2142,6 +2205,26 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
 
   try {
     const result = transaction();
+
+    // Non-blocking background sync: Remove checked-out rooms from Supabase cloud
+    try {
+      if (result && Array.isArray(result.checkedOutRooms)) {
+        result.checkedOutRooms.forEach(roomNum => {
+          supabaseService.removeActiveOccupancy(roomNum)
+            .catch(err => console.warn('[Supabase] checkout remove error:', err.message));
+
+          supabaseService.fetchPendingRoomCharges(roomNum).then(pending => {
+            if (pending && pending.length > 0) {
+              const ids = pending.map(c => c.id);
+              supabaseService.markChargesImported(ids).catch(() => {});
+            }
+          }).catch(() => {});
+        });
+      }
+    } catch (syncErr) {
+      console.warn('[Supabase] Checkout sync dispatch skipped:', syncErr.message);
+    }
+
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Checkout error:', error);
@@ -2997,6 +3080,26 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
 
   try {
     const data = transaction();
+
+    // Non-blocking background push to Supabase room_charges_inbox if charged to room
+    try {
+      const isRoomCharge = (req.body.is_paid === 0 || req.body.payment_mode === 'room_folio' || req.body.isStayingGuest || req.body.roomBillStatus === 'pending');
+      const targetRoomNum = req.body.room_number || (req.body.room_id ? db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.body.room_id)?.room_number : null) || (data.table_number && String(data.table_number).startsWith('RS-') ? String(data.table_number).replace(/^RS-/i, '') : null);
+      if (isRoomCharge && targetRoomNum) {
+        supabaseService.pushRoomCharge({
+          room_number: String(targetRoomNum),
+          department: 'restaurant',
+          bill_no: data.orderNumber,
+          grand_total: data.total || data.grand_total,
+          split_details: data.split_details || null,
+          cashier_name: data.cashier_name || 'Cashier',
+          items_summary: Array.isArray(data.items) ? data.items.map(i => `${i.name} x${i.quantity || i.qty || 1}`).join(', ') : ''
+        }).catch(err => console.warn('[Supabase] restaurant charge push error:', err.message));
+      }
+    } catch (pushErr) {
+      console.warn('[Supabase] Restaurant charge push dispatch skipped:', pushErr.message);
+    }
+
     res.json({ success: true, order: data });
   } catch (error) {
     console.error('Settlement error:', error);
@@ -3005,7 +3108,7 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
 });
 
 // Occupied rooms for restaurant settlement with linked room info
-app.get('/api/restaurant/occupied-rooms', (req, res) => {
+app.get('/api/restaurant/occupied-rooms', async (req, res) => {
   try {
     const rooms = db.prepare(`
       SELECT 
@@ -3027,6 +3130,35 @@ app.get('/api/restaurant/occupied-rooms', (req, res) => {
       WHERE r.status = 'occupied'
       ORDER BY CAST(r.room_number AS INTEGER) ASC, r.room_number ASC
     `).all();
+
+    // If no local occupied rooms found (e.g. running on separate POS machine), fetch live from Supabase cloud
+    if (rooms.length === 0) {
+      try {
+        const cloudOcc = await supabaseService.fetchActiveOccupancies();
+        if (cloudOcc && cloudOcc.length > 0) {
+          const mapped = cloudOcc.map(co => ({
+            id: co.room_id || co.room_number,
+            room_number: co.room_number,
+            room_type: co.room_type || 'Room',
+            status: 'occupied',
+            booking_id: co.booking_id,
+            checkin_time: co.checkin_time,
+            guest_name: co.guest_name,
+            guest_mobile: co.guest_mobile,
+            guest_address: '',
+            guest_doc_type: '',
+            is_combined: false,
+            linked_rooms: [co.room_number],
+            other_linked_rooms: [],
+            combined_title: `Room ${co.room_number}`,
+            is_cloud_synced: true
+          }));
+          return res.json({ success: true, rooms: mapped });
+        }
+      } catch (cloudErr) {
+        console.warn('[Supabase] Fallback fetch failed in occupied-rooms:', cloudErr.message);
+      }
+    }
 
     // Query all active bookings to detect linked combined rooms
     const allActiveBookings = db.prepare(`
@@ -3059,6 +3191,25 @@ app.get('/api/restaurant/occupied-rooms', (req, res) => {
   } catch (error) {
     console.error('Error fetching occupied rooms:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Cloud connectivity endpoints for multi-machine setups
+app.get('/api/sync/occupancies', async (req, res) => {
+  try {
+    const list = await supabaseService.fetchActiveOccupancies();
+    res.json({ success: true, occupancies: list || [] });
+  } catch (err) {
+    res.json({ success: false, occupancies: [], error: err.message });
+  }
+});
+
+app.post('/api/sync/push-now', async (req, res) => {
+  try {
+    const result = await supabaseService.syncAllActiveRoomsFromLocal(db);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -4452,6 +4603,26 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
 
   try {
     const data = transaction();
+
+    // Non-blocking background push to Supabase room_charges_inbox if charged to room
+    try {
+      const isRoomCharge = (req.body.is_paid === 0 || req.body.payment_mode === 'room_folio' || req.body.isStayingGuest || req.body.roomBillStatus === 'pending');
+      const targetRoomNum = req.body.room_number || (req.body.room_id ? db.prepare('SELECT room_number FROM rooms WHERE id = ?').get(req.body.room_id)?.room_number : null) || (data.table_number && String(data.table_number).startsWith('RS-') ? String(data.table_number).replace(/^RS-/i, '') : null);
+      if (isRoomCharge && targetRoomNum) {
+        supabaseService.pushRoomCharge({
+          room_number: String(targetRoomNum),
+          department: 'bar',
+          bill_no: data.orderNumber,
+          grand_total: data.total || data.grand_total,
+          split_details: data.split_details || null,
+          cashier_name: data.cashier_name || 'Cashier',
+          items_summary: Array.isArray(data.items) ? data.items.map(i => `${i.name} x${i.quantity || i.qty || 1}`).join(', ') : ''
+        }).catch(err => console.warn('[Supabase] bar charge push error:', err.message));
+      }
+    } catch (pushErr) {
+      console.warn('[Supabase] Bar charge push dispatch skipped:', pushErr.message);
+    }
+
     res.json({ success: true, order: data });
   } catch (error) {
     console.error('Bar Settlement error:', error);
@@ -8103,6 +8274,13 @@ if (require.main === module && !process.env.NETLIFY) {
     console.log(`🍽️ Restaurant POS Screen: http://localhost:${PORT}/restaurant`);
     console.log(`🍸 Bar POS Screen: http://localhost:${PORT}/bar`);
     console.log(`⚙️ Manage Rooms (Owner): http://localhost:${PORT}/manage`);
+
+    // Non-blocking background sync of active occupancies to Supabase cloud
+    supabaseService.syncAllActiveRoomsFromLocal(db)
+      .then(res => {
+        if (res && res.success) console.log(`[Supabase] Initial sync: ${res.synced} occupied room(s) synced to cloud.`);
+      })
+      .catch(err => console.warn('[Supabase] Initial sync skipped:', err.message));
   });
 
   server.on('error', (err) => {

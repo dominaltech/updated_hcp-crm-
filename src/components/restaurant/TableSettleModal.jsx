@@ -41,28 +41,43 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
       setRoomServiceFor(isRS ? null : 'room_mates');
 
       api.getRooms()
-        .then((rooms) => {
-          const roomList = Array.isArray(rooms) ? rooms : (rooms?.rooms || []);
-          const occ = roomList.filter((r) => r.status === 'occupied');
+        .then(async (rooms) => {
+          let roomList = Array.isArray(rooms) ? rooms : (rooms?.rooms || []);
+          let occ = roomList.filter((r) => r.status === 'occupied');
+
+          // Fallback to cloud-synced occupied rooms if local has 0 occupied rooms (standalone POS machine)
+          if (occ.length === 0) {
+            try {
+              const occData = await api.getOccupiedRooms();
+              const cloudOcc = Array.isArray(occData) ? occData : (occData?.rooms || []);
+              if (cloudOcc.length > 0) {
+                occ = cloudOcc;
+                roomList = cloudOcc;
+              }
+            } catch (cloudErr) {
+              console.warn('Could not load cloud occupied rooms:', cloudErr);
+            }
+          }
+
           setOccupiedRooms(occ);
 
           let resolvedId = '';
           if (initialRoom) {
             resolvedId = String(initialRoom);
-            const foundInitial = roomList.find((r) => String(r.id) === resolvedId);
-            if (foundInitial && !occ.some((r) => String(r.id) === resolvedId)) {
+            const foundInitial = roomList.find((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId);
+            if (foundInitial && !occ.some((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId)) {
               setOccupiedRooms((prev) => [foundInitial, ...prev]);
             }
           } else if (isRS) {
             const rNum = String(session.table?.table_number || '').replace(/^RS-/i, '').trim();
             const found = roomList.find((r) => String(r.room_number) === rNum);
             if (found) {
-              resolvedId = String(found.id);
-              if (!occ.some((r) => String(r.id) === resolvedId)) {
+              resolvedId = String(found.id || found.room_number);
+              if (!occ.some((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId)) {
                 setOccupiedRooms((prev) => [found, ...prev]);
               }
             } else if (occ.length > 0) {
-              resolvedId = String(occ[0].id);
+              resolvedId = String(occ[0].id || occ[0].room_number);
             }
           }
           if (resolvedId && initialIsStaying) {
@@ -112,7 +127,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
   const remainingAlloc = grandTotal - totalAllocated;
   const isAllocationValid = Math.abs(remainingAlloc) < 0.01;
 
-  const selectedRoom = occupiedRooms.find((r) => String(r.id) === String(selectedRoomId));
+  const selectedRoom = occupiedRooms.find((r) => String(r.id) === String(selectedRoomId) || String(r.room_number) === String(selectedRoomId));
 
   const handleSettle = async () => {
     const isRS = session.table?.table_type === 'room_service' || String(session.table?.table_number || '').startsWith('RS-');
@@ -185,6 +200,9 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
         grandTotal: session.grandTotal,
         chargeToRoomId: isStayingGuest ? selectedRoomId : null,
         room_id: isStayingGuest ? selectedRoomId : null,
+        room_number: isStayingGuest ? (selectedRoom?.room_number || String(selectedRoomId)) : null,
+        isStayingGuest: Boolean(isStayingGuest),
+        roomBillStatus: isStayingGuest ? roomBillStatus : 'paid',
         room_service_for: isStayingGuest ? roomServiceFor : null,
         roomServiceFor: isStayingGuest ? roomServiceFor : null,
         guest_phone: isStayingGuest ? (selectedRoom?.guest_mobile || selectedRoom?.mobile || null) : null,
