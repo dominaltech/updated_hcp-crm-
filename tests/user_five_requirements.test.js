@@ -340,6 +340,29 @@ describe('User 5 Requirements Verification', () => {
     expect(timeInputCode).toContain('handleMinuteInputChange');
     expect(timeInputCode).toContain('handleHourInputChange');
   });
+
+  // Requirement 10: In Step 1 for OTA, Check-Out Date & Time * [Fixed & Paid] starts completely empty
+  it('Requirement 10: Check-Out Date & Time * starts empty for OTA and is not pre-filled by default', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const step1Code = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/CheckinWizard/Step1Source.jsx'), 'utf8');
+
+    // 1. handleSourceSelect initializes checkoutDate and approxCheckout to empty
+    expect(step1Code).toContain("checkoutDate: '',");
+    expect(step1Code).toContain("approxCheckout: '',");
+
+    // 2. OTA time input value is empty when currentCheckoutDate is not selected yet
+    expect(step1Code).toContain('value={currentCheckoutDate ? "10:00 AM (Fixed)" : ""}');
+    expect(step1Code).toContain('placeholder={currentCheckoutDate ? "10:00 AM (Fixed)" : "--:--"}');
+
+    // 3. Date picker value is currentCheckoutDate which is empty string initially
+    expect(step1Code).toContain('value={currentCheckoutDate}');
+
+    // 4. Wizard draft initialization in CheckinWizardModal starts with empty checkoutDate and checkoutTime
+    const wizardModalCode = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/CheckinWizard/CheckinWizardModal.jsx'), 'utf8');
+    expect(wizardModalCode).toContain("checkoutDate: '',");
+    expect(wizardModalCode).toContain("checkoutTime: '',");
+  });
 });
 
 
