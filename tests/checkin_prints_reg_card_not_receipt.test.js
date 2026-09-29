@@ -15,5 +15,8 @@ describe('Check-In Print Verification (Print Check-In Form / Reg Card, Not Recei
 
     // 3. Must call printGuestRegistrationA4 in handleSubmit
     expect(content).toContain('printGuestRegistrationA4(regData, { includePhotos: false });');
+
+    // 4. Must import getLocalIsoDateTime
+    expect(content).toContain('import { getLocalIsoDateTime } from');
   });
 });

@@ -13,6 +13,7 @@ import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
 import { printGuestRegistrationA4, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
+import { getLocalIsoDateTime } from '../../../utils/formatters';
 
 export default function CheckinWizardModal({
   isOpen,
