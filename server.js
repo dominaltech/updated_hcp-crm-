@@ -700,6 +700,11 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const b = req.body || {};
     const room_id = b.room_id ?? b.roomId;
     const additional_room_ids = b.additional_room_ids ?? b.additionalRooms ?? b.additional_rooms ?? [];
+
+    const primaryRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(room_id);
+    if (!primaryRoom) throw new Error('Primary room not found');
+    if (primaryRoom.status === 'occupied') throw new Error(`Room ${primaryRoom.room_number} is already occupied`);
+
     const guest_name = b.guest_name ?? b.guestName;
     const father_name = b.father_name ?? b.fatherName;
     const mobile = b.mobile;
@@ -710,6 +715,7 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const doc_type = b.doc_type ?? b.docType;
     const doc_front = b.doc_front ?? b.docFront;
     const doc_back = b.doc_back ?? b.docBack;
+    const guest_photo = b.guest_photo ?? b.guestPhoto ?? b.photo ?? '';
     let adults_male = parseInt(b.adults_male ?? b.adultsMale ?? 1) || 0;
     let adults_female = parseInt(b.adults_female ?? b.adultsFemale ?? 0) || 0;
     let adults_other = parseInt(b.adults_other ?? b.adultsOther ?? 0) || 0;
@@ -762,10 +768,6 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const extra_rooms_charge = parseFloat(b.extra_rooms_charge ?? b.extraRoomsCharge ?? 0) || 0;
     const extra_breakfast_charge = parseFloat(b.extra_breakfast_charge ?? b.extraBreakfastCharge ?? 0) || 0;
     const extra_meal_plan = (b.extra_meal_plan || b.extraMealPlan || null);
-
-    const primaryRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(room_id);
-    if (!primaryRoom) throw new Error('Primary room not found');
-    if (primaryRoom.status === 'occupied') throw new Error(`Room ${primaryRoom.room_number} is already occupied`);
 
     // Fetch and validate additional rooms if any
     const allRooms = [primaryRoom];
