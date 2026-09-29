@@ -1841,11 +1841,16 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   if (hotelExtrasParts.length === 0 && hotelExtrasTotal > 0) hotelExtrasParts.push(`Hotel Extras: ₹${hotelExtrasTotal.toLocaleString('en-IN')}`);
   const hotelExtrasDesc = hotelExtrasParts.length > 0 ? hotelExtrasParts.join(' • ') : 'No Extra Charges';
 
-  // Effective Total Booking Value:
+  // Effective Total Booking Value (For OTA, voucher amount already includes 5% GST):
   let effectiveTotalBooking = grandTotal;
   if (isOta) {
-    effectiveTotalBooking = otaPrebookedAmount + hotelExtrasTotal + (isOtaPayAtHotel ? taxAmount : 0);
+    effectiveTotalBooking = otaPrebookedAmount + hotelExtrasTotal;
   }
+  const otaVoucherGst = isOta
+    ? (taxAmount > 0 && Math.abs(taxAmount - Math.round((otaPrebookedAmount - (otaPrebookedAmount / 1.05)) * 100) / 100) < 5
+        ? taxAmount
+        : Math.round((otaPrebookedAmount - (otaPrebookedAmount / 1.05)) * 100) / 100)
+    : 0;
 
   const prebookedCollected = isOtaPrepaid ? otaPrebookedAmount : 0;
   const combinedTotalCollected = prebookedCollected + hotelDeskCollected;
@@ -2425,12 +2430,12 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     ${isOta ? `<div style="font-size: 7pt; color: #475569; font-weight: 750; margin-top: 1px;">${escapeHtml(hotelExtrasDesc)}</div>` : ''}
                   </td>
                   <td style="padding: 4px 4px; font-size: 10.5pt; font-weight: 900; color: #0f172a; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8;">
-                    ₹ ${(isOtaPrepaid ? 0 : taxAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    ${isOta ? `<div style="font-size: 7pt; color: #64748b; margin-top: 1px;">${isOtaPrepaid ? '(In Voucher)' : '(Standard)'}</div>` : ''}
+                    ₹ ${(isOta ? (isOtaPrepaid ? 0 : otaVoucherGst) : taxAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ${isOta ? `<div style="font-size: 7pt; color: #166534; font-weight: 850; margin-top: 1px;">${isOtaPrepaid ? '(In Voucher)' : '(Included in Voucher)'}</div>` : ''}
                   </td>
                   <td style="padding: 4px 4px; font-size: 11pt; font-weight: 950; color: #1e40af; border-right: 1.5px solid #94a3b8; border-bottom: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.85);">
                     ₹ ${(isOta ? effectiveTotalBooking : grandTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    ${isOta ? `<div style="font-size: 7pt; color: #1e40af; margin-top: 1px; font-weight: 800;">Prebooked + Extras</div>` : ''}
+                    ${isOta ? `<div style="font-size: 7pt; color: #1e40af; margin-top: 1px; font-weight: 800;">${isOtaPayAtHotel ? '(Incl. 5% GST)' : 'Prebooked + Extras'}</div>` : ''}
                   </td>
                   <td style="padding: 4px 4px; font-size: 11pt; font-weight: 950; color: #166534; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.85);">
                     ₹ ${(isOta ? combinedTotalCollected : totalPaid).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -2452,13 +2457,14 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                         <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
                           🏨 HOTEL INCIDENTALS BREAKDOWN: CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL
                         </span>
-                        <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL]</span>'}</span>
+                        <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL] (Incl. 5% GST)</span>'}</span>
                         <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Mattress(es): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
                       </div>
                       <div style="font-size: 8pt; font-weight: 950; color: #0f172a;">
                         <span style="color: #475569; font-weight: 750;">Total Settled:</span>
                         <strong style="color: #166534;">₹ ${combinedTotalCollected.toLocaleString('en-IN')}</strong>
                         ${isOtaPrepaid ? `<span style="font-size: 7.5pt; color: #166534; font-weight: 800;">(₹${prebookedCollected.toLocaleString('en-IN')} Prepaid + ₹${hotelDeskCollected.toLocaleString('en-IN')} Desk)</span>` : ''}
+                        ${(isOtaPayAtHotel && effectiveBalanceDue > 0) ? `<span style="font-size: 8pt; color: #b91c1c; font-weight: 850; margin-left: 10px;">Balance Remaining: <strong>₹ ${effectiveBalanceDue.toLocaleString('en-IN')}</strong></span>` : ''}
                       </div>
                     </div>
                   </td>

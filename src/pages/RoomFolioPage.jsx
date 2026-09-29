@@ -1912,61 +1912,79 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {isOtaBooking ? (
-                        <>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>
-                              OTA Voucher Package ({folioData.otaPlatform || 'OTA'} - {groupRoomsList.length > 1 ? `${groupRoomsList.length} Rooms` : '1 Room'}, {stayNights === 1 ? '24 Hours' : `${stayNights * 24} Hours (${stayNights} × 24 hrs)`}):
-                            </span>
-                            <div style={{ textAlign: 'right' }}>
-                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0))}</strong>
-                              {isOtaPrepaidStay ? (
-                                <span style={{ display: 'block', fontSize: '0.72rem', color: '#166534', fontWeight: 800 }}>
-                                  ✓ Pre-Paid by OTA (Voucher Covered)
-                                </span>
-                              ) : (
-                                <span style={{ display: 'block', fontSize: '0.72rem', color: '#b45309', fontWeight: 800 }}>
-                                  🏨 Pay at Hotel Desk (Collect full voucher package)
-                                </span>
-                              )}
+                    {isOtaBooking ? (
+                      /* USER REQUIREMENT 2: OTA should NOT show bill amount breakdown.
+                         ONLY show:
+                         1. With/Without Breakfast (strictly WITHOUT amount)
+                         2. GST 5% with amount
+                         3. Total Bill
+                         4. Paid
+                         5. Remaining
+                      */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
+                        {/* 1. Meal Plan (With / Without Breakfast) without amount */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.90rem', padding: '10px 14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ color: 'var(--text-secondary, #64748b)', fontWeight: 750 }}>Meal Plan:</span>
+                          <span style={{ fontWeight: 850, color: (folioData.mealPlan || folioData.room?.meal_plan) === 'with_breakfast' ? '#166534' : '#334155', fontSize: '0.95rem' }}>
+                            {(folioData.mealPlan || folioData.room?.meal_plan) === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
+                          </span>
+                        </div>
+
+                        {/* 2. GST (5%) with amount */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.90rem', padding: '10px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fef3c7' }}>
+                          <span style={{ color: '#92400e', fontWeight: 800 }}>GST (5%):</span>
+                          <strong style={{ color: '#b45309', fontSize: '1.08rem', fontWeight: 900 }}>
+                            {formatCurrency(Math.round((entireBookingVal - (entireBookingVal / 1.05)) * 100) / 100)}
+                          </strong>
+                        </div>
+
+                        {/* 3. Total Bill */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'rgba(239, 246, 255, 0.7)', borderRadius: '10px', border: '1.5px solid #bfdbfe' }}>
+                          <div>
+                            <span style={{ fontSize: '0.90rem', fontWeight: 850, color: '#1e40af' }}>Total Bill:</span>
+                            <div style={{ fontSize: '0.74rem', color: '#3b82f6', fontWeight: 600 }}>
+                              {isOtaPrepaidStay ? 'Pre-Paid OTA Voucher + Hotel Extras' : 'OTA Pay-at-Hotel (Incl. 5% GST)'}
                             </div>
                           </div>
+                          <strong style={{ fontSize: '1.30rem', fontWeight: 950, color: '#1e40af' }}>
+                            {formatCurrency(entireBookingVal)}
+                          </strong>
+                        </div>
 
-                          {hotelChargedBeds > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>
-                                Hotel Extra Mattress ({hotelChargedBeds} Mattress{hotelChargedBeds > 1 ? 'es' : ''} @ ₹500):
+                        {/* 4. Paid & Remaining */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div style={{ padding: '10px 14px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                            <span style={{ fontSize: '0.76rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase', display: 'block' }}>Paid</span>
+                            <strong style={{ fontSize: '1.18rem', color: '#166534', fontWeight: 900, display: 'block', marginTop: '2px' }}>
+                              {formatCurrency(entireCollectedVal)}
+                            </strong>
+                            {isOtaPrepaidStay && (
+                              <span style={{ fontSize: '0.70rem', color: '#15803d', fontWeight: 700 }}>
+                                {formatCurrency(otaVoucherVal)} Voucher{advancePaidVal > 0 ? ` + ${formatCurrency(advancePaidVal)} Desk` : ''}
                               </span>
-                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
-                            </div>
-                          )}
+                            )}
+                          </div>
 
-                          {voucherIncludedBeds > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#166534' }}>
-                              <span>Voucher Extra Mattress ({voucherIncludedBeds} Mattress{voucherIncludedBeds > 1 ? 'es' : ''}):</span>
-                              <span style={{ fontWeight: 750 }}>Included in OTA (₹0)</span>
-                            </div>
-                          )}
+                          <div style={{ padding: '10px 14px', background: stayDueAmount > 0 ? '#fef2f2' : '#f8fafc', borderRadius: '10px', border: `1px solid ${stayDueAmount > 0 ? '#fecaca' : '#e2e8f0'}` }}>
+                            <span style={{ fontSize: '0.76rem', color: stayDueAmount > 0 ? '#991b1b' : '#475569', fontWeight: 800, textTransform: 'uppercase', display: 'block' }}>Remaining</span>
+                            <strong style={{ fontSize: '1.18rem', color: stayDueAmount > 0 ? '#dc2626' : '#15803d', fontWeight: 900, display: 'block', marginTop: '2px' }}>
+                              {stayDueAmount > 0 ? formatCurrency(stayDueAmount) : '₹0.00 (Settled)'}
+                            </strong>
+                          </div>
+                        </div>
 
-                          {folioData.isEarlyCheckin && otaEarlyFee > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>
-                                🌅 Early Check-In Extra Charge (≤{folioData.ota_early_checkin_max_hours || 6}h):
-                              </span>
-                              <strong style={{ color: '#d97706' }}>+ {formatCurrency(otaEarlyFee)}</strong>
-                            </div>
-                          )}
-
-                          {isOtaPrepaidStay && advancePaidVal > hotelExtrasCharge && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>Hotel Stay Incidentals &amp; Extras:</span>
-                              <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(advancePaidVal - hotelExtrasCharge)}</strong>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
+                        {fnbPendingTotal > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '2px', padding: '8px 12px', background: '#fff7ed', borderRadius: '8px', border: '1px solid #ffedd5', fontWeight: 800 }}>
+                            <span style={{ color: '#9a3412' }}>Total Folio Due (Stay + F&amp;B):</span>
+                            <span style={{ color: '#c2410c' }}>
+                              {formatCurrency(folioDueAmount)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
                             <span style={{ color: 'var(--text-secondary, #64748b)' }}>Base Room Tariff ({stayNights === 1 ? '24 Hours' : `${stayNights * 24} Hours (${stayNights} × 24 hrs)`}):</span>
                             <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency((folioData.room?.price || folioData.room?.room_rate || 0) * stayNights)}</strong>
@@ -1978,147 +1996,79 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                               <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
                             </div>
                           )}
-                        </>
-                      )}
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Meal Plan:</span>
-                        <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
-                          {folioData.mealPlan === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
-                        </span>
-                      </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Meal Plan:</span>
+                            <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
+                              {folioData.mealPlan === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
+                            </span>
+                          </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>{isOtaPrepaidStay ? 'Hotel Extras Subtotal:' : (isOtaPayAtHotel ? 'Package + Extras Subtotal:' : 'Room Tariff Subtotal:')}</span>
-                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(stayPreTax)}</strong>
-                      </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Room Tariff Subtotal:</span>
+                            <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(stayPreTax)}</strong>
+                          </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Discount ({folioData.discountPct || 0}%):</span>
-                        <strong style={{ color: '#dc2626' }}>- {formatCurrency(folioData.discountAmount || 0)}</strong>
-                      </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Discount ({folioData.discountPct || 0}%):</span>
+                            <strong style={{ color: '#dc2626' }}>- {formatCurrency(folioData.discountAmount || 0)}</strong>
+                          </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Room GST ({folioData.room?.gst_pct !== undefined && folioData.room?.gst_pct !== null ? `${folioData.room.gst_pct}%` : '5%'}):</span>
-                        <strong style={{ color: '#d97706' }}>{isOtaPrepaidStay ? '₹0 (In Voucher)' : (isOtaPayAtHotel ? '₹0 (In OTA Rate)' : `+ ${formatCurrency(stayGst)}`)}</strong>
-                      </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Room GST ({folioData.room?.gst_pct !== undefined && folioData.room?.gst_pct !== null ? `${folioData.room.gst_pct}%` : '5%'}):</span>
+                            <strong style={{ color: '#d97706' }}>+ {formatCurrency(stayGst)}</strong>
+                          </div>
 
-                      {folioData.isEarlyCheckout && (
-                        <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid #86efac', borderRadius: '8px', fontSize: '0.8rem', color: '#166534' }}>
+                          {folioData.isEarlyCheckout && (
+                            <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid #86efac', borderRadius: '8px', fontSize: '0.8rem', color: '#166534' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong>⚡ Early Checkout Active</strong>
+                                <span style={{ fontWeight: 800 }}>{folioData.stayDurationStr || `${folioData.earlyStayDays}d ${folioData.earlyStayHours}h`} (Exp: {folioData.expectedNights}d)</span>
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: '#15803d', marginTop: '2px' }}>
+                                Recalculated Room Rent: {formatCurrency(folioData.stayCalcNow?.roomCharge || folioData.recalculatedRoomCharge || stayNetTotal)}
+                                {folioData.refundAmount > 0 && <span style={{ color: '#b91c1c', fontWeight: 800, marginLeft: '8px' }}>• Excess Refund Due: {formatCurrency(folioData.refundAmount)}</span>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: '16px',
+                            padding: '12px 14px',
+                            background: 'var(--bg-surface-secondary, #f8fafc)',
+                            borderRadius: '10px',
+                            border: '1px solid var(--border-color, #e2e8f0)'
+                          }}
+                        >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong>⚡ Early Checkout Active</strong>
-                            <span style={{ fontWeight: 800 }}>{folioData.stayDurationStr || `${folioData.earlyStayDays}d ${folioData.earlyStayHours}h`} (Exp: {folioData.expectedNights}d)</span>
+                            <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #334155)' }}>
+                              Total Hospitality Bill:
+                            </span>
+                            <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--apple-blue, #0284c7)' }}>
+                              {formatCurrency(stayNetTotal)}
+                            </strong>
                           </div>
-                          <div style={{ fontSize: '0.74rem', color: '#15803d', marginTop: '2px' }}>
-                            Recalculated Room Rent: {formatCurrency(folioData.stayCalcNow?.roomCharge || folioData.recalculatedRoomCharge || stayNetTotal)}
-                            {folioData.refundAmount > 0 && <span style={{ color: '#b91c1c', fontWeight: 800, marginLeft: '8px' }}>• Excess Refund Due: {formatCurrency(folioData.refundAmount)}</span>}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
+                            <span>Advance Paid at Check-in: {formatCurrency(advancePaidVal)}</span>
+                            <span style={{ fontWeight: 750, color: stayDueAmount > 0 ? '#b91c1c' : '#15803d' }}>
+                              Stay Due: {formatCurrency(stayDueAmount)}
+                              {stayDueAmount === 0 && (stayExcessAdvance > 0 ? ` (Excess Adv: ${formatCurrency(stayExcessAdvance)})` : ' (Settled)')}
+                            </span>
                           </div>
+                          {fnbPendingTotal > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed var(--border-color, #e2e8f0)', fontWeight: 800 }}>
+                              <span>{netFolioBalance < 0 ? 'Net Folio Balance (Refund Due):' : 'Total Folio Due (Stay + F&amp;B):'}</span>
+                              <span style={{ color: netFolioBalance < 0 ? '#15803d' : '#b91c1c' }}>
+                                {netFolioBalance < 0
+                                  ? `✓ Refund: ${formatCurrency(folioRefundAmount)} (F&B covered)`
+                                  : formatCurrency(folioDueAmount)}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: '16px',
-                      padding: '12px 14px',
-                      background: 'var(--bg-surface-secondary, #f8fafc)',
-                      borderRadius: '10px',
-                      border: '1px solid var(--border-color, #e2e8f0)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #334155)' }}>
-                        {isOtaPrepaidStay ? 'Hotel Extras Bill (Payable @ Hotel):' : (isOtaPayAtHotel ? 'Total Payable @ Hotel (OTA Package + Extras):' : 'Total Hospitality Bill:')}
-                      </span>
-                      <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--apple-blue, #0284c7)' }}>
-                        {formatCurrency(stayNetTotal)}
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)', marginTop: '4px' }}>
-                      <span>Advance Paid at Check-in: {formatCurrency(advancePaidVal)}</span>
-                      <span style={{ fontWeight: 750, color: stayDueAmount > 0 ? '#b91c1c' : '#15803d' }}>
-                        Stay Due: {formatCurrency(stayDueAmount)}
-                        {stayDueAmount === 0 && (stayExcessAdvance > 0 ? ` (Excess Adv: ${formatCurrency(stayExcessAdvance)})` : ' (Settled)')}
-                      </span>
-                    </div>
-                    {fnbPendingTotal > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed var(--border-color, #e2e8f0)', fontWeight: 800 }}>
-                        <span>{netFolioBalance < 0 ? 'Net Folio Balance (Refund Due):' : 'Total Folio Due (Stay + F&amp;B):'}</span>
-                        <span style={{ color: netFolioBalance < 0 ? '#15803d' : '#b91c1c' }}>
-                          {netFolioBalance < 0
-                            ? `✓ Refund: ${formatCurrency(folioRefundAmount)} (F&B covered)`
-                            : formatCurrency(folioDueAmount)}
-                        </span>
-                      </div>
-                    )}
-
-                    {isOtaPrepaidStay && (
-                      <div
-                        style={{
-                          marginTop: '10px',
-                          paddingTop: '10px',
-                          borderTop: '1.5px dashed var(--border-color, #cbd5e1)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary, #334155)' }}>
-                            Entire Booking Value:
-                          </span>
-                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)' }}>
-                            {formatCurrency(entireBookingVal)}
-                          </strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span>🌐</span> Entire Amount Collected:
-                          </span>
-                          <strong style={{ fontSize: '1.18rem', fontWeight: 950, color: '#166534' }}>
-                            {formatCurrency(entireCollectedVal)}
-                          </strong>
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 750, textAlign: 'right' }}>
-                          ✓ {formatCurrency(otaVoucherVal)} Pre-Paid via {folioData.otaPlatform || 'OTA'} + {formatCurrency(advancePaidVal)} Collected at Hotel Desk
-                        </div>
-                      </div>
-                    )}
-
-                    {isOtaPayAtHotel && (
-                      <div
-                        style={{
-                          marginTop: '10px',
-                          paddingTop: '10px',
-                          borderTop: '1.5px dashed var(--border-color, #cbd5e1)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary, #334155)' }}>
-                            Entire Stay Bill (Payable @ Hotel):
-                          </span>
-                          <strong style={{ fontSize: '1.1rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)' }}>
-                            {formatCurrency(stayNetTotal)}
-                          </strong>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--apple-blue, #0369a1)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span>🏨</span> Advance Collected at Desk:
-                          </span>
-                          <strong style={{ fontSize: '1.18rem', fontWeight: 950, color: 'var(--apple-blue, #0369a1)' }}>
-                            {formatCurrency(advancePaidVal)}
-                          </strong>
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: stayDueAmount > 0 ? '#b91c1c' : '#15803d', fontWeight: 750, textAlign: 'right' }}>
-                          {stayDueAmount > 0
-                            ? `⚠️ ${formatCurrency(stayDueAmount)} Pending to collect at Checkout (${formatCurrency(otaVoucherVal)} OTA Package + Extras)`
-                            : '✓ Full Stay Amount Settled'}
-                        </div>
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2273,6 +2223,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
               {/* Checkout Financial Comparison Card: If Checkout Now vs If Checkout @ Declared Departure (Point 1) */}
               {(() => {
+                if (isOtaBooking) return null;
                 // Stay duration parameters
                 const nowDays = Number(folioData.stayCalcNow?.chargedDays || folioData.chargedDays || 1);
                 const decDays = Number(folioData.stayCalcDeclared?.expectedNights || folioData.expectedNights || stayNights);
@@ -2916,59 +2867,106 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
               {/* 3. Financial Analytics: 5 KPI Tiles (Below the 2 Main Breakdown Cards) */}
               <div className="folio-financial-tiles-grid" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
-                {(() => {
-                  const tileDiscountAmount = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
-                  return (
-                    <>
-                      <div className="financial-tile">
-                        <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
-                        <strong className="tile-val">
-                          {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
-                        </strong>
-                        <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}` : 'Stay Tariff'))}</small>
-                      </div>
-                      <div className="financial-tile">
-                        <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
-                        <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
-                          {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(tileDiscountAmount)}`}
-                        </strong>
-                        <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
-                      </div>
-                    </>
-                  );
-                })()}
-                <div className="financial-tile">
-                  <span className="tile-label">Total Amount</span>
-                  <strong className="tile-val">
-                    {formatCurrency(isOtaPrepaidStay ? (stayNetTotal + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
-                  </strong>
-                  <small>{fnbTotal > 0 ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireBookingVal)})` : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}</small>
-                </div>
-                <div className="financial-tile">
-                  <span className="tile-label">Advance Paid</span>
-                  <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
-                  <small>{fnbPaidTotal > 0 ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}</small>
-                </div>
-                <div
-                  className="financial-tile"
-                  style={netFolioBalance < 0 ? { background: 'rgba(34, 197, 94, 0.08)', border: '1.5px solid #86efac' } : { border: folioDueAmount > 0 ? '1.5px solid #fca5a5' : undefined }}
-                >
-                  <span className="tile-label" style={{ color: netFolioBalance < 0 ? '#166534' : undefined }}>
-                    {netFolioBalance < 0 ? 'Refund Due' : 'Remaining Due'}
-                  </span>
-                  <strong className="tile-val" style={{ color: netFolioBalance < 0 ? '#15803d' : (folioDueAmount <= 0 ? '#15803d' : '#b91c1c') }}>
-                    {netFolioBalance < 0 ? formatCurrency(folioRefundAmount) : formatCurrency(folioDueAmount)}
-                  </strong>
-                  <small style={{ color: netFolioBalance < 0 ? '#15803d' : undefined }}>
-                    {netFolioBalance < 0
-                      ? `Refund to guest (${formatCurrency(fnbPendingTotal)} F&B covered by advance)`
-                      : (folioDueAmount <= 0
-                          ? 'Fully Settled'
-                          : (stayExcessAdvance > 0
-                              ? `${formatCurrency(fnbPendingTotal)} F&B - ${formatCurrency(stayExcessAdvance)} adv credit`
-                              : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')))}
-                  </small>
-                </div>
+                {isOtaBooking ? (
+                  <>
+                    <div className="financial-tile">
+                      <span className="tile-label">Meal Plan</span>
+                      <strong className="tile-val" style={{ fontSize: '1.05rem', color: (folioData.mealPlan || folioData.room?.meal_plan) === 'with_breakfast' ? '#166534' : '#334155' }}>
+                        {(folioData.mealPlan || folioData.room?.meal_plan) === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast'}
+                      </strong>
+                      <small>No Extra Charge</small>
+                    </div>
+                    <div className="financial-tile">
+                      <span className="tile-label">GST (5%)</span>
+                      <strong className="tile-val" style={{ color: '#b45309' }}>
+                        {formatCurrency(Math.round((entireBookingVal - (entireBookingVal / 1.05)) * 100) / 100)}
+                      </strong>
+                      <small>Included in Voucher</small>
+                    </div>
+                    <div className="financial-tile">
+                      <span className="tile-label">Total Bill</span>
+                      <strong className="tile-val" style={{ color: '#1e40af' }}>
+                        {formatCurrency(entireBookingVal)}
+                      </strong>
+                      <small>{isOtaPrepaidStay ? 'Pre-Paid Voucher + Extras' : 'Pay at Hotel (Incl. GST)'}</small>
+                    </div>
+                    <div className="financial-tile">
+                      <span className="tile-label">Paid</span>
+                      <strong className="tile-val paid">{formatCurrency(entireCollectedVal)}</strong>
+                      <small>{isOtaPrepaidStay ? 'Prepaid Voucher + Desk' : 'Collected Advance'}</small>
+                    </div>
+                    <div
+                      className="financial-tile"
+                      style={stayDueAmount > 0 ? { border: '1.5px solid #fca5a5', background: 'rgba(239, 68, 68, 0.04)' } : { border: '1.5px solid #86efac', background: 'rgba(34, 197, 94, 0.08)' }}
+                    >
+                      <span className="tile-label" style={{ color: stayDueAmount > 0 ? '#991b1b' : '#166534' }}>
+                        Remaining
+                      </span>
+                      <strong className="tile-val" style={{ color: stayDueAmount > 0 ? '#dc2626' : '#15803d' }}>
+                        {stayDueAmount > 0 ? formatCurrency(stayDueAmount) : 'Settled'}
+                      </strong>
+                      <small style={{ color: stayDueAmount > 0 ? '#dc2626' : '#15803d' }}>
+                        {stayDueAmount > 0 ? 'Due at Checkout' : 'Fully Settled'}
+                      </small>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {(() => {
+                      const tileDiscountAmount = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
+                      return (
+                        <>
+                          <div className="financial-tile">
+                            <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
+                            <strong className="tile-val">
+                              {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
+                            </strong>
+                            <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}` : 'Stay Tariff'))}</small>
+                          </div>
+                          <div className="financial-tile">
+                            <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
+                            <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
+                              {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(tileDiscountAmount)}`}
+                            </strong>
+                            <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    <div className="financial-tile">
+                      <span className="tile-label">Total Amount</span>
+                      <strong className="tile-val">
+                        {formatCurrency(isOtaPrepaidStay ? (stayNetTotal + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
+                      </strong>
+                      <small>{fnbTotal > 0 ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireBookingVal)})` : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}</small>
+                    </div>
+                    <div className="financial-tile">
+                      <span className="tile-label">Advance Paid</span>
+                      <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
+                      <small>{fnbPaidTotal > 0 ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}</small>
+                    </div>
+                    <div
+                      className="financial-tile"
+                      style={netFolioBalance < 0 ? { background: 'rgba(34, 197, 94, 0.08)', border: '1.5px solid #86efac' } : { border: folioDueAmount > 0 ? '1.5px solid #fca5a5' : undefined }}
+                    >
+                      <span className="tile-label" style={{ color: netFolioBalance < 0 ? '#166534' : undefined }}>
+                        {netFolioBalance < 0 ? 'Refund Due' : 'Remaining Due'}
+                      </span>
+                      <strong className="tile-val" style={{ color: netFolioBalance < 0 ? '#15803d' : (folioDueAmount <= 0 ? '#15803d' : '#b91c1c') }}>
+                        {netFolioBalance < 0 ? formatCurrency(folioRefundAmount) : formatCurrency(folioDueAmount)}
+                      </strong>
+                      <small style={{ color: netFolioBalance < 0 ? '#15803d' : undefined }}>
+                        {netFolioBalance < 0
+                          ? `Refund to guest (${formatCurrency(fnbPendingTotal)} F&B covered by advance)`
+                          : (folioDueAmount <= 0
+                              ? 'Fully Settled'
+                              : (stayExcessAdvance > 0
+                                  ? `${formatCurrency(fnbPendingTotal)} F&B - ${formatCurrency(stayExcessAdvance)} adv credit`
+                                  : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')))}
+                      </small>
+                    </div>
+                  </>
+                )}
               </div>
             </React.Fragment>
           );
