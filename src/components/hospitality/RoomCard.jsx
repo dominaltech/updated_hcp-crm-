@@ -238,6 +238,29 @@ export default function RoomCard({
                 </div>
               )}
 
+              {/* OTA Payment Collection Badge (Pre-Paid vs Pay at Hotel) */}
+              {room.booking_source === 'OTA' && (
+                <div
+                  className="room-ota-mode-pill"
+                  style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    color: (room.is_prepaid === 0 || room.is_prepaid === '0' || room.is_prepaid === false || String(room.rate_type || '').includes('hotel')) ? '#b45309' : '#15803d',
+                    background: (room.is_prepaid === 0 || room.is_prepaid === '0' || room.is_prepaid === false || String(room.rate_type || '').includes('hotel')) ? '#fef3c7' : '#dcfce7',
+                    border: `1px solid ${(room.is_prepaid === 0 || room.is_prepaid === '0' || room.is_prepaid === false || String(room.rate_type || '').includes('hotel')) ? '#fde68a' : '#bbf7d0'}`,
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    margin: '2px 0 1px 0',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px'
+                  }}
+                  title={`OTA Channel: ${(room.is_prepaid === 0 || room.is_prepaid === '0' || room.is_prepaid === false || String(room.rate_type || '').includes('hotel')) ? 'Pay at Hotel' : 'Pre-Paid'}`}
+                >
+                  🌐 OTA ({(room.is_prepaid === 0 || room.is_prepaid === '0' || room.is_prepaid === false || String(room.rate_type || '').includes('hotel')) ? 'Pay at Hotel' : 'Pre-Paid'})
+                </div>
+              )}
+
               {/* Check-Out Time: For OTA, always show fixed checkout time. For standard rooms, visible when imminent (<4h) */}
               {formattedTime && (room.booking_source === 'OTA' || isImminentCheckout) && (
                 <div

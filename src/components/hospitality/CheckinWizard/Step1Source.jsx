@@ -272,7 +272,7 @@ export default function Step1Source({
       const currentActualTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       updateDraft({
         isEarlyCheckin: true,
-        originalCheckinTime: draft.originalCheckinTime || '12:00',
+        originalCheckinTime: draft.originalCheckinTime || '',
         earlyCheckinTime: currentActualTime,
         checkoutTime: '10:00', // automatically fixed 10 am for OTA
         approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '',
@@ -1369,7 +1369,7 @@ export default function Step1Source({
                           📅 Original (Scheduled) Check-In Time *
                         </label>
                         <UnifiedTimeInput
-                          value={draft.originalCheckinTime || '12:00'}
+                          value={draft.originalCheckinTime || ''}
                           onChange={(val) => updateDraft({ originalCheckinTime: val })}
                           style={{ height: '38px', width: '100%', borderRadius: '8px', border: '1.5px solid #cbd5e1', background: '#ffffff' }}
                         />

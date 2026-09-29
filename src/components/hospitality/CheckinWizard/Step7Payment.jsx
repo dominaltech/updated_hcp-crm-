@@ -101,7 +101,7 @@ export default function Step7Payment({
 
   const minAdvancePct = Number(minCheckinAdvancePct !== undefined ? minCheckinAdvancePct : 50);
   const isOta = draft.bookingSource === 'OTA';
-  const isMinAdvanceEnforced = !isOta && !isBtc && minAdvancePct > 0;
+  const isMinAdvanceEnforced = !isBtc && minAdvancePct > 0 && totalDue > 0;
   const minRequiredAdvance = isMinAdvanceEnforced ? Math.ceil((totalDue * minAdvancePct) / 100) : 0;
   const isAdvanceSufficient = !isMinAdvanceEnforced || totalPaid >= minRequiredAdvance;
 

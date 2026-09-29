@@ -285,11 +285,6 @@ export default function Step6Stay({
             totalCharge += chargeableBeds * roomRate * nights;
           }
         });
-        if (totalCharge === 0 && otaExtraAdults > 0) {
-          totalCharge = draft.extraBedRate !== undefined
-            ? (otaExtraAdults * Number(draft.extraBedRate) * nights)
-            : (otaExtraAdults * extraBedRate * nights);
-        }
         return totalCharge;
       })()
     : (allRooms.reduce((sum, r) => {
@@ -2173,11 +2168,11 @@ export default function Step6Stay({
                   {/* Extra Adults / Beds */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
                     <div>
-                      <span style={{ fontWeight: 750, color: '#334155' }}>Hotel Extra Adults / Beds:</span>
+                      <span style={{ fontWeight: 750, color: '#334155' }}>Hotel Extra Mattress:</span>
                       <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                        {extraBedCharge > 0 || otaExtraAdults > 0
-                          ? `${currentExtraBeds > otaBookedExtraBeds ? (currentExtraBeds - otaBookedExtraBeds) + ' Bed(s)' : otaExtraAdults + ' Extra Adult(s)'} × ${nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`}`
-                          : '0 Extra Adults (₹0)'}
+                        {extraBedCharge > 0
+                          ? `${currentExtraBeds > otaBookedExtraBeds ? (currentExtraBeds - otaBookedExtraBeds) : currentExtraBeds} Mattress(es) × ${nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`}`
+                          : (otaExtraAdults > 0 ? `${otaExtraAdults} Extra Guest(s) (Within base bed capacity • ₹0)` : '0 Extra Mattress (₹0)')}
                       </div>
                     </div>
                     <strong style={{ color: extraBedCharge > 0 ? '#b45309' : '#64748b' }}>

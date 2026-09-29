@@ -304,9 +304,6 @@ export default function CheckinWizardModal({
             totalCharge += chargeableBeds * roomRate * nights;
           }
         });
-        if (totalCharge === 0 && otaExtraAdults > 0) {
-          totalCharge = otaExtraAdults * (draft.extraBedRate !== undefined ? Number(draft.extraBedRate) : extraBedRate) * nights;
-        }
         return totalCharge;
       })()
     : (allSelectedRooms.reduce((sum, r) => {
@@ -571,7 +568,7 @@ export default function CheckinWizardModal({
     }
 
     const minPct = Number(minCheckinAdvancePct !== undefined ? minCheckinAdvancePct : 50);
-    if (!isOta && !isBtc && minPct > 0) {
+    if (!isBtc && minPct > 0 && totalDue > 0) {
       const minRequired = Math.ceil((totalDue * minPct) / 100);
       if (totalPaid < minRequired) {
         showToast(

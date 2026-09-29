@@ -1720,9 +1720,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   const hotelChargedBeds = Number(
     data.hotelChargedBeds !== undefined
       ? data.hotelChargedBeds
-      : (isOta
-          ? (extraAdults > 0 ? extraAdults : (extraBedCharge > 0 ? Math.round(Number(extraBedCharge) / 500) : 0))
-          : (extraBedCharge > 0 ? Math.round(Number(extraBedCharge) / 500) : 0))
+      : (extraBedCharge > 0 ? Math.round(Number(extraBedCharge) / 500) : 0)
   );
 
   const voucherIncludedBeds = Number(
@@ -2259,7 +2257,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     </td>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Booking Source:</td>
                     <td style="padding: 3px 6px; font-weight: 900; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 9pt; color: #0f172a;">
-                      <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 3px; font-weight: 850;">${escapeHtml(bookingSource)}</span>${btcCompanyName ? ` (${escapeHtml(btcCompanyName)})` : ''}
+                      <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 3px; font-weight: 850;">${isOta ? `OTA (${isOtaPrepaid ? 'Pre-Paid' : 'Pay at Hotel'})` : escapeHtml(bookingSource)}</span>${btcCompanyName ? ` (${escapeHtml(btcCompanyName)})` : ''}
                     </td>
                   </tr>
                   <tr>
@@ -2386,7 +2384,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           ` : ''}
 
           <!-- PAYMENT SUMMARY (Table Manner with Crisp Borders & Prominent Typography) -->
-          <div style="border: 2px solid #1e3a8a; margin-bottom: 4px; background: rgba(255, 255, 255, 0.75);">
+          <div style="border: 2px solid #1e3a8a; margin-top: 8px; margin-bottom: 4px; background: rgba(255, 255, 255, 0.75);">
             <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); padding: 3px 8px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #1e3a8a; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>PAYMENT SUMMARY</span>
               <span style="font-size: 7.5pt; font-weight: 800; color: #86efac; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
@@ -3071,21 +3069,21 @@ export function buildGuestPaymentSummaryHTML(data) {
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
         <div>
           <!-- HEADER -->
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 12px; gap: 20px;">
             <!-- Logo + Hotel Info -->
-            <div style="display: flex; align-items: center; gap: 14px;">
-              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 68px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+            <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;">
+              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 68px; width: auto; object-fit: contain; flex-shrink: 0;" loading="eager" decoding="sync" />
               <div>
-                <h1 style="margin: 0; font-size: 20pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">HOTEL CityPaark</h1>
-                <div style="margin: 2px 0 0; font-size: 8.5pt; font-weight: 850; color: #1e3a8a; letter-spacing: 0.5px; text-transform: uppercase;">
+                <h1 style="margin: 0; font-size: 19pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">HOTEL CityPaark</h1>
+                <div style="margin: 2px 0 0; font-size: 8.2pt; font-weight: 850; color: #1e3a8a; letter-spacing: 0.5px; text-transform: uppercase;">
                   by JMG HOSPITALITY AND INFRA LLP
                 </div>
-                <p style="margin: 2px 0 0; font-size: 8.5pt; font-weight: 750; color: #1e293b; white-space: nowrap;">
+                <p style="margin: 3px 0 0; font-size: 8pt; font-weight: 750; color: #1e293b; max-width: 380px; line-height: 1.25;">
                   119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)
                 </p>
-                <p style="margin: 2px 0 0; font-size: 8.5pt; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                  <img src="/phone-call.png" alt="" style="width: 12px; height: 12px; object-fit: contain; vertical-align: middle;" loading="eager" decoding="sync" />
-                  <span style="font-weight: 750; color: #0284c7;">: 0217-2729791, 92, 93, +91 9960013388, 9370013388</span>
+                <p style="margin: 3px 0 0; font-size: 8pt; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                  <img src="/phone-call.png" alt="" style="width: 11px; height: 11px; object-fit: contain; vertical-align: middle;" loading="eager" decoding="sync" />
+                  <span style="font-weight: 750; color: #0284c7;">: 0217-2729791, 92, 93, +91 9960013388</span>
                   <span style="margin: 0 4px; color: #64748b;">•</span>
                   <span style="color: #475569;">hcitypark@rediffmail.com</span>
                 </p>
@@ -3093,8 +3091,8 @@ export function buildGuestPaymentSummaryHTML(data) {
             </div>
 
             <!-- Statement Badge Box -->
-            <div style="text-align: right;">
-              <div style="display: inline-block; background: #1e3a8a; color: #fff; padding: 4px 12px; border-radius: 4px; font-weight: 900; font-size: 11pt; letter-spacing: 0.04em;">
+            <div style="text-align: right; flex-shrink: 0;">
+              <div style="display: inline-block; background: #1e3a8a; color: #fff; padding: 5px 14px; border-radius: 4px; font-weight: 900; font-size: 10.5pt; letter-spacing: 0.04em; white-space: nowrap;">
                 PAYMENT SUMMARY STATEMENT
               </div>
               <div style="margin-top: 5px; font-size: 8.5pt; color: #475569; font-weight: 750;">
@@ -3729,8 +3727,25 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   let bookingModeStr = rawBookingMode;
   const otaName = r.ota_platform || r.otaPlatform || c.otaPlatform || c.ota_platform;
   const btcName = r.btc_company_name || r.btcCompanyName || c.btcCompanyName || c.btc_company_name;
-  if (String(rawBookingMode).toUpperCase() === 'OTA' && otaName) {
-    bookingModeStr = `OTA (${otaName})`;
+  if (String(rawBookingMode).toUpperCase() === 'OTA' || Boolean(otaName)) {
+    const isPayAtHotel = (
+      r.rate_type === 'pay_at_hotel' ||
+      r.rateType === 'pay_at_hotel' ||
+      c.rateType === 'pay_at_hotel' ||
+      c.rate_type === 'pay_at_hotel' ||
+      r.is_prepaid === 0 ||
+      r.is_prepaid === '0' ||
+      r.is_prepaid === false ||
+      r.isPrepaid === false ||
+      c.is_prepaid === 0 ||
+      c.is_prepaid === '0' ||
+      c.is_prepaid === false ||
+      c.isPrepaid === false ||
+      r.booking?.is_prepaid === 0 ||
+      r.booking?.is_prepaid === false
+    );
+    const payModeLabel = isPayAtHotel ? 'Pay at Hotel' : 'Pre-Paid';
+    bookingModeStr = otaName ? `OTA (${payModeLabel}) - ${otaName}` : `OTA (${payModeLabel})`;
   } else if (String(rawBookingMode).toUpperCase().startsWith('BTC')) {
     // User Requirement: "Booking Mode : BTC (Infosys BPM Technolo" should show only "Booking Mode : BTC "
     bookingModeStr = 'BTC';

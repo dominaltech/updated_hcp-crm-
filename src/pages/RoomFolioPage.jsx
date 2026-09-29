@@ -1275,7 +1275,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
               </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="stay-metric-pill" style={{ fontSize: '0.76rem', padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', fontWeight: 800, borderRadius: '6px', border: '1px solid #bae6fd' }}>
-                  {folioData.bookingSource || 'Walk-in'}
+                  {folioData.bookingSource === 'OTA'
+                    ? `OTA (${(folioData.isOtaPrepaid || folioData.isPrepaid) ? 'Pre-Paid' : 'Pay at Hotel'})`
+                    : (folioData.bookingSource || 'Walk-in')}
                 </span>
                 {folioData.bookingSource === 'BTC' && folioData.btcCompanyName && (
                   <span className="stay-metric-pill" style={{ fontSize: '0.76rem', padding: '4px 10px', background: '#eff6ff', color: '#1e3a8a', fontWeight: 800, borderRadius: '6px', border: '1px solid #bfdbfe' }}>
