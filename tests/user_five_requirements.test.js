@@ -363,6 +363,27 @@ describe('User 5 Requirements Verification', () => {
     expect(wizardModalCode).toContain("checkoutDate: '',");
     expect(wizardModalCode).toContain("checkoutTime: '',");
   });
+
+  // Requirement 11: Dashboard room card does not show OTA (Pay at Hotel) badge; shows room no, occupied, name, number, and c/o time
+  it('Requirement 11: Dashboard room cards do not show OTA (Pay at Hotel) badge and show room no, occupied, name, number, c/o time', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const roomCardCode = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/RoomCard.jsx'), 'utf8');
+
+    // 1. Must NOT contain room-ota-mode-pill or OTA (Pay at Hotel) on the card
+    expect(roomCardCode).not.toContain('room-ota-mode-pill');
+    expect(roomCardCode).not.toContain('🌐 OTA (');
+
+    // 2. Contains room number, occupied status, guest name, mobile number
+    expect(roomCardCode).toContain('room.room_number');
+    expect(roomCardCode).toContain("status-pill ${room.status}");
+    expect(roomCardCode).toContain('room.guest_name');
+    expect(roomCardCode).toContain('mobileNum');
+
+    // 3. Contains C/O: time formatting
+    expect(roomCardCode).toContain("isOverdue ? 'Overdue: ' : 'C/O: '");
+  });
 });
+
 
 
