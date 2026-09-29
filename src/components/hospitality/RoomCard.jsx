@@ -238,26 +238,30 @@ export default function RoomCard({
                 </div>
               )}
 
-              {/* Check-Out Time: For OTA, always show fixed checkout time. For standard rooms, visible when imminent (<4h) */}
-              {formattedTime && (room.booking_source === 'OTA' || isImminentCheckout) && (
+              {/* Check-Out Time: Visible ONLY within 4 hours (imminent / overdue) with red blink */}
+              {formattedTime && isImminentCheckout && (
                 <div
-                  className={`room-checkout-pill ${isImminentCheckout ? 'imminent' : ''}`}
-                  style={room.booking_source === 'OTA' && !isImminentCheckout ? {
-                    background: '#f0f9ff',
-                    border: '1px solid #bae6fd',
-                    color: '#0369a1',
-                    fontWeight: 750,
-                    padding: '2px 6px',
-                    fontSize: '0.68rem',
-                    borderRadius: '5px'
-                  } : undefined}
+                  className="room-checkout-pill imminent"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 8px',
+                    fontSize: '0.70rem',
+                    fontWeight: 800,
+                    borderRadius: '6px',
+                    background: '#fef2f2',
+                    border: '1.5px solid #f87171',
+                    color: '#dc2626',
+                    animation: 'redishBlinkPulse 1.5s infinite ease-in-out'
+                  }}
                   title={
-                    room.booking_source === 'OTA'
-                      ? `Checkout Time: ${formattedTime}${isOverdue ? ' (Overdue)' : ''}`
-                      : `Checkout scheduled for ${formattedTime}${isOverdue ? ' (Overdue)' : ' (Due in < 4 hours)'}`
+                    isOverdue
+                      ? `Checkout Overdue: ${formattedTime}`
+                      : `Checkout scheduled for ${formattedTime} (Due in < 4 hours)`
                   }
                 >
-                  {isImminentCheckout && <span className="pulse-dot" />}
+                  <span className="pulse-dot" style={{ background: '#ef4444' }} />
                   <span>
                     {isOverdue ? 'Overdue: ' : 'C/O: '}
                     {formattedTime}

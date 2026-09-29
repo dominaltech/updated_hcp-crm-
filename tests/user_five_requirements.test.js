@@ -383,6 +383,26 @@ describe('User 5 Requirements Verification', () => {
     // 3. Contains C/O: time formatting
     expect(roomCardCode).toContain("isOverdue ? 'Overdue: ' : 'C/O: '");
   });
+
+  // Requirement 12: Check-out time shows ONLY before 4 hours with red blink
+  it('Requirement 12: Check-out time on room card shows ONLY within 4 hours before checkout with red blink', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const roomCardCode = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/RoomCard.jsx'), 'utf8');
+
+    // 1. Checkout pill is conditioned strictly on formattedTime && isImminentCheckout (diffHours <= 4)
+    expect(roomCardCode).toContain('{formattedTime && isImminentCheckout && (');
+    expect(roomCardCode).not.toContain('(room.booking_source === \'OTA\' || isImminentCheckout)');
+
+    // 2. 4-hour threshold calculation
+    expect(roomCardCode).toContain('if (diffHours <= 4) {');
+    expect(roomCardCode).toContain('isImminentCheckout = true;');
+
+    // 3. Red blinking indicator with pulse dot and redishBlinkPulse animation
+    expect(roomCardCode).toContain('className="room-checkout-pill imminent"');
+    expect(roomCardCode).toContain('animation: \'redishBlinkPulse 1.5s infinite ease-in-out\'');
+    expect(roomCardCode).toContain('<span className="pulse-dot" style={{ background: \'#ef4444\' }} />');
+  });
 });
 
 
