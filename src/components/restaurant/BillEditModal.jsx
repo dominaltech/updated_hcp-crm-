@@ -521,7 +521,7 @@ export default function BillEditModal({
                 <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(subtotal)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary, #64748b)' }}>
-                <span>GST (5%):</span>
+                <span>{department === 'bar' ? 'VAT (5%):' : 'GST (5%):'}</span>
                 <span style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(gst)}</span>
               </div>
               <div

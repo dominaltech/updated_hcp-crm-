@@ -321,15 +321,16 @@ export function printBOTSlip(bot, tableNumber, waiterName, notes) {
 /**
  * 80mm Thermal Pre-Bill Slip (Check before payment)
  */
-export function printPreBillSlip(table, cart, waiterName) {
+export function printPreBillSlip(table, cart, waiterName, customDept = '') {
   const items = Array.isArray(cart) ? cart : [];
   const tableObj = (typeof table === 'object' && table !== null) ? table : { table_number: String(table || '') };
   const tNum = String(tableObj.table_number || tableObj.number || '');
   const isRS = tableObj.table_type === 'room_service' || tNum.startsWith('RS-');
-  const isParcel = tableObj.table_type === 'parcel' || tableObj.is_parcel || tNum.startsWith('P-');
+  const isParcel = tableObj.table_type === 'parcel' || tableObj.is_parcel || tNum.startsWith('P-') || tNum.startsWith('BP-');
+  const isBar = (customDept === 'bar') || Boolean(tableObj.is_bar || tableObj.department === 'bar' || tNum.startsWith('BP-') || String(tableObj.special_notes || '').toLowerCase().includes('bar'));
 
-  const headerDept = isRS ? 'Room Service Food & Beverage' : isParcel ? 'Takeaway & Delivery Counter' : 'Restaurant & Dining Floor';
-  const displayLocation = isRS ? `Room: <strong>${tNum.replace(/^RS-/i, '').trim()}</strong>` : isParcel ? `Parcel: <strong>#${tNum.replace(/^P-/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tNum)}</strong>`;
+  const headerDept = isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : (isRS ? 'Room Service Food & Beverage' : isParcel ? 'Takeaway & Delivery Counter' : 'Restaurant & Dining Floor');
+  const displayLocation = isRS ? `Room: <strong>${tNum.replace(/^RS-/i, '').trim()}</strong>` : isParcel ? `Parcel: <strong>#${tNum.replace(/^(B?P-)/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tNum)}</strong>`;
 
   const subtotal = items.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
   const discountAmount = Number(tableObj.discount_amount || tableObj.discountAmount || 0);
@@ -338,7 +339,8 @@ export function printPreBillSlip(table, cart, waiterName) {
   const sgstRate = 2.5;
   const cgstAmount = Math.round(taxableAmount * 0.025);
   const sgstAmount = Math.round(taxableAmount * 0.025);
-  const tax = cgstAmount + sgstAmount;
+  const vatAmount = Math.round(taxableAmount * 0.05 * 100) / 100;
+  const tax = isBar ? vatAmount : (cgstAmount + sgstAmount);
   const grandTotal = taxableAmount + tax;
   const gstEnabled = true;
 
@@ -401,7 +403,12 @@ export function printPreBillSlip(table, cart, waiterName) {
         <span>-₹ ${discountAmount.toFixed(2)}</span>
       </div>
     ` : ''}
-    ${gstEnabled ? `
+    ${isBar ? `
+      <div class="flex-row">
+        <span>VAT (5%):</span>
+        <span>₹ ${tax.toFixed(2)}</span>
+      </div>
+    ` : gstEnabled ? `
       <div class="flex-row">
         <span>CGST (${cgstRate}%):</span>
         <span>₹ ${cgstAmount.toFixed(2)}</span>
@@ -458,7 +465,8 @@ export function printCheckoutSlip(rawOrder, customDeptTitle) {
   const isParcel = tStr.startsWith('P-') || order.order_type === 'parcel' || order.orderType === 'parcel';
   const displayLocation = isRS ? `Room: <strong>${tStr.replace(/^RS-/i, '').trim()}</strong> [Room Service]` : isParcel ? `Parcel: <strong>#${tStr.replace(/^P-/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tStr || 'Counter/Takeaway')}</strong>`;
 
-  const deptTitle = customDeptTitle || order.department_title || (order.is_bar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'HOTEL CITY PARK - RESTAURANT');
+  const isBar = Boolean(order.is_bar || order.department === 'bar' || (customDeptTitle && customDeptTitle.toUpperCase().includes('BAR')) || (order.department_title && order.department_title.toUpperCase().includes('BAR')) || tStr.startsWith('BP-'));
+  const deptTitle = customDeptTitle || order.department_title || (isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'HOTEL CITY PARK - RESTAURANT');
 
   const rows = items
     .map(it => {
@@ -527,7 +535,7 @@ export function printCheckoutSlip(rawOrder, customDeptTitle) {
         : ''
     }
     <div class="flex-row">
-      <span>GST (5%):</span>
+      <span>${isBar ? 'VAT (5%):' : 'GST (5%):'}</span>
       <span>₹${tax.toFixed(2)}</span>
     </div>
     <div class="double-divider"></div>
@@ -5076,7 +5084,7 @@ export function printPosThermalClosingSlip(analyticsData, department = 'restaura
       <span>₹${Number(sum.grossSales || 0).toFixed(2)}</span>
     </div>
     <div class="flex-row" style="font-size: 10px; color: #555;">
-      <span>Net Food/Drinks: ₹${Number(sum.totalSubtotal || 0).toFixed(2)} | GST: ₹${Number(sum.totalTax || 0).toFixed(2)}</span>
+      <span>Net Food/Drinks: ₹${Number(sum.totalSubtotal || 0).toFixed(2)} | ${isBar ? 'Liquor VAT' : 'GST'}: ₹${Number(sum.totalTax || 0).toFixed(2)}</span>
     </div>
 
     <div class="divider"></div>

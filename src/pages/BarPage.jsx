@@ -509,7 +509,7 @@ export default function BarPage({ onPrintBOTSlip, onPrintBillSlip }) {
                 else printBOTSlip(botData?.bot || botData, botData?.tableNumber, botData?.waiterName);
               }}
               onPrintPrebill={(prebillData) => {
-                printPreBillSlip(prebillData.table, prebillData.cart || prebillData.items, prebillData.waiterName);
+                printPreBillSlip(prebillData.table, prebillData.cart || prebillData.items, prebillData.waiterName, 'bar');
               }}
             />
           )}

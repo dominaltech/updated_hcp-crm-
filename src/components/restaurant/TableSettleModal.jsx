@@ -348,7 +348,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               </div>
 
               <div style={{ padding: '14px 18px', background: 'rgba(245, 158, 11, 0.12)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>GST (5%)</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{department === 'bar' ? 'VAT (5%)' : 'GST (5%)'}</span>
                 <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#d97706', marginTop: '4px' }}>+ {formatCurrency(session.gst)}</div>
               </div>
 

@@ -198,7 +198,7 @@ export default function TableSessionView({
       if (onPrintPrebill) {
         onPrintPrebill(prebillInfo);
       } else {
-        printPreBillSlip(res?.table || table, cart, waiterName);
+        printPreBillSlip(res?.table || table, cart, waiterName, department);
       }
       onBack();
     } catch (err) {
@@ -907,7 +907,7 @@ export default function TableSessionView({
               <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(subtotal)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.80rem', color: '#64748b', marginBottom: '3px' }}>
-              <span>GST (5%):</span>
+              <span>{department === 'bar' ? 'VAT (5%):' : 'GST (5%):'}</span>
               <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(gst)}</span>
             </div>
             <div

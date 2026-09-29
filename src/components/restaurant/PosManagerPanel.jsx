@@ -498,7 +498,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
   const handleSaveSettings = async () => {
     try {
       await api.savePosSettings(settings);
-      showToast('Tax & GST settings saved successfully!', 'green');
+      showToast(`${department === 'bar' ? 'Tax & VAT' : 'Tax & GST'} settings saved successfully!`, 'green');
     } catch (err) {
       showToast('Error saving settings: ' + err.message, 'red');
     }
@@ -718,7 +718,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             }}
           >
             <span>🪑</span>
-            <span>Tables &amp; Counters ({tables.length})</span>
+            <span>{department === 'bar' ? 'Bar Seats & Tables' : 'Tables & Counters'} ({tables.length})</span>
           </button>
 
           <button
@@ -762,7 +762,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             }}
           >
             <span>⚙️</span>
-            <span>Tax &amp; GST Settings</span>
+            <span>{department === 'bar' ? 'Tax & VAT Settings' : 'Tax & GST Settings'}</span>
           </button>
         </div>
 
@@ -1124,7 +1124,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                   <strong style={{ color: '#dc2626' }}>- {formatCurrency(analyticsData?.summary?.totalDiscount || 0)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                  <span>GST Collected (CGST + SGST):</span>
+                  <span>{department === 'bar' ? 'Liquor VAT Collected:' : 'GST Collected (CGST + SGST):'}</span>
                   <strong style={{ color: '#059669' }}>+ {formatCurrency(analyticsData?.summary?.totalTax || 0)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
@@ -1760,10 +1760,12 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                Floor Tables &amp; Service Counters ({physicalTables.length})
+                {department === 'bar' ? 'Bar Lounge Tables & Counter Seats' : 'Floor Tables & Dining Sections'} ({physicalTables.length})
               </h4>
               <p style={{ margin: '2px 0 0', fontSize: '0.80rem', color: '#64748b' }}>
-                Configure floor tables, seating capacity, and table numbers for {department === 'bar' ? 'Bar' : 'Restaurant'}.
+                {department === 'bar'
+                  ? 'Configure bar tables, counter seats, lounge sofas, and capacity.'
+                  : 'Configure dining floor tables, seating capacity, and table numbers.'}
               </p>
             </div>
 
@@ -1792,7 +1794,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
               }}
             >
               <span>+</span>
-              <span>Add New Table</span>
+              <span>Add New {department === 'bar' ? 'Bar Seat / Table' : 'Table'}</span>
             </button>
           </div>
 
@@ -1905,66 +1907,74 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 4: TAX & GST SETTINGS */}
+      {/* TAB 4: TAX & GST / VAT SETTINGS */}
       {/* ========================================================================= */}
       {activeTab === 'settings' && (
         <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px', maxWidth: '640px' }}>
           <h4 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-            Tax &amp; Service Charge Configuration
+            {department === 'bar' ? 'Bar VAT & Cover Charge Configuration' : 'Restaurant Tax & GST Configuration'}
           </h4>
           <p style={{ margin: '0 0 20px 0', fontSize: '0.82rem', color: '#64748b' }}>
-            Configure GST percentages and bar PAX cover charges applied to bills.
+            {department === 'bar'
+              ? 'Configure State Liquor VAT percentage and guest PAX cover charges applied to bar bills.'
+              : 'Configure Restaurant GST percentage applied to dining bills.'}
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                Restaurant GST (%)
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={settings.restaurant_gst_pct}
-                  onChange={(e) => setSettings({ ...settings, restaurant_gst_pct: parseFloat(e.target.value) || 0 })}
-                  style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
-                />
-                <span style={{ fontWeight: 800, color: '#64748b' }}>% (Current default: 5%)</span>
+            {department === 'restaurant' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                  Restaurant GST (%)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={settings.restaurant_gst_pct}
+                    onChange={(e) => setSettings({ ...settings, restaurant_gst_pct: parseFloat(e.target.value) || 0 })}
+                    style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
+                  />
+                  <span style={{ fontWeight: 800, color: '#64748b' }}>% (Current default: 5%)</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                Bar Lounge GST (%)
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={settings.bar_gst_pct}
-                  onChange={(e) => setSettings({ ...settings, bar_gst_pct: parseFloat(e.target.value) || 0 })}
-                  style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
-                />
-                <span style={{ fontWeight: 800, color: '#64748b' }}>% (Current default: 5%)</span>
-              </div>
-            </div>
+            {department === 'bar' && (
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                    Bar Lounge VAT (%)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={settings.bar_gst_pct}
+                      onChange={(e) => setSettings({ ...settings, bar_gst_pct: parseFloat(e.target.value) || 0 })}
+                      style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
+                    />
+                    <span style={{ fontWeight: 800, color: '#64748b' }}>% (State Liquor VAT default: 5%)</span>
+                  </div>
+                </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                Bar Lounge PAX / Cover Charge (₹ per pax)
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontWeight: 800, color: '#64748b' }}>₹</span>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={settings.bar_pax_charge}
-                  onChange={(e) => setSettings({ ...settings, bar_pax_charge: parseFloat(e.target.value) || 0 })}
-                  style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
-                />
-                <span style={{ fontSize: '0.80rem', color: '#64748b' }}>Applied to bar dining covers</span>
-              </div>
-            </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                    Bar Lounge PAX / Cover Charge (₹ per pax)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 800, color: '#64748b' }}>₹</span>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={settings.bar_pax_charge}
+                      onChange={(e) => setSettings({ ...settings, bar_pax_charge: parseFloat(e.target.value) || 0 })}
+                      style={{ width: '120px', padding: '8px 12px', fontSize: '0.90rem', borderRadius: '10px' }}
+                    />
+                    <span style={{ fontSize: '0.80rem', color: '#64748b' }}>Applied to bar dining covers</span>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div style={{ paddingTop: '10px' }}>
               <button
@@ -2185,12 +2195,12 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             <form onSubmit={handleCreateNewItem} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                  Item Name *
+                  {department === 'bar' ? 'Drink / Beverage Name *' : 'Dish / Food Name *'}
                 </label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Paneer Butter Masala"
+                  placeholder={department === 'bar' ? 'e.g. Mojito, Blue Lagoon, Single Malt...' : 'e.g. Paneer Butter Masala, Dal Makhani...'}
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.86rem', borderRadius: '10px' }}
@@ -2235,7 +2245,13 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 <ThemedSelect
                   value={newItemCategory}
                   onChange={(val) => setNewItemCategory(val)}
-                  options={[
+                  options={department === 'bar' ? [
+                    ...categories.map((c) => ({ value: c.name, label: c.name })),
+                    { value: 'Signature Cocktails', label: 'Signature Cocktails' },
+                    { value: 'Mocktails', label: 'Mocktails' },
+                    { value: 'Spirits', label: 'Spirits' },
+                    { value: 'Beers', label: 'Beers' }
+                  ] : [
                     ...categories.map((c) => ({ value: c.name, label: c.name })),
                     { value: 'Main Course', label: 'Main Course' },
                     { value: 'Starters', label: 'Starters' },
@@ -2246,21 +2262,23 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                  Type
-                </label>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 750 }}>
-                    <input type="radio" checked={newItemVeg === 1} onChange={() => setNewItemVeg(1)} />
-                    <span>🟢 Veg</span>
+              {department !== 'bar' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    Type
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 750 }}>
-                    <input type="radio" checked={newItemVeg === 0} onChange={() => setNewItemVeg(0)} />
-                    <span>🔴 Non-Veg</span>
-                  </label>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 750 }}>
+                      <input type="radio" checked={newItemVeg === 1} onChange={() => setNewItemVeg(1)} />
+                      <span>🟢 Veg</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 750 }}>
+                      <input type="radio" checked={newItemVeg === 0} onChange={() => setNewItemVeg(0)} />
+                      <span>🔴 Non-Veg</span>
+                    </label>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
                 <button
@@ -2473,7 +2491,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-              + Add New Category
+              + Add New {department === 'bar' ? 'Drink Category' : 'Food Category'}
             </h3>
             <form onSubmit={handleAddCategory} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
@@ -2483,7 +2501,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Tandoori Starters, Mocktails, Soups..."
+                  placeholder={department === 'bar' ? 'e.g. Signature Cocktails, Mocktails, Spirits, Beers...' : 'e.g. Tandoori Starters, Soups, Breads, Desserts...'}
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.88rem', borderRadius: '10px' }}
@@ -2637,7 +2655,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-              {editingTable ? `Edit Table ${editingTable.table_number}` : 'Add New Table / Counter'}
+              {editingTable ? `Edit Table ${editingTable.table_number}` : (department === 'bar' ? 'Add New Bar Seat / Table' : 'Add New Table / Counter')}
             </h3>
 
             <form
@@ -2646,7 +2664,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             >
               <div>
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                  Table / Counter Number *
+                  {department === 'bar' ? 'Bar Table / Counter Number *' : 'Table / Counter Number *'}
                 </label>
                 <input
                   type="text"
@@ -2730,7 +2748,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                     cursor: 'pointer'
                   }}
                 >
-                  {editingTable ? 'Update Table' : 'Create Table'}
+                  {editingTable ? 'Update Table' : (department === 'bar' ? 'Create Bar Table / Seat' : 'Create Table')}
                 </button>
               </div>
             </form>

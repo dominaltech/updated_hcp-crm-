@@ -514,7 +514,7 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
                 else printKOTSlip(kotData?.kot || kotData, kotData?.tableNumber, kotData?.waiterName);
               }}
               onPrintPrebill={(prebillData) => {
-                printPreBillSlip(prebillData.table, prebillData.cart || prebillData.items, prebillData.waiterName);
+                printPreBillSlip(prebillData.table, prebillData.cart || prebillData.items, prebillData.waiterName, 'restaurant');
               }}
             />
           )}
