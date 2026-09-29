@@ -970,7 +970,6 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
 
     const isManualEntry = manual_entry ? 1 : 0;
     const cleanDocProofsJson = typeof doc_proofs_json === 'string' ? doc_proofs_json : JSON.stringify(doc_proofs_json || []);
-    const cleanExtraBeds = parseInt(extra_beds) || 0;
     const cleanExtraBedCharge = parseFloat(extra_bed_charge) || 0;
     const cleanCheckedInBy = (req.body.checked_in_by || 'Front Desk').trim();
 
