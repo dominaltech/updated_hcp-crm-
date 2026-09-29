@@ -12,8 +12,7 @@ import Step6Stay from './Step6Stay';
 import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
-import { printGuestRegistrationA4, printCashReceipt, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
-import { getLocalIsoDateTime } from '../../../utils/formatters';
+import { printGuestRegistrationA4, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
 
 export default function CheckinWizardModal({
   isOpen,
@@ -877,119 +876,18 @@ export default function CheckinWizardModal({
           checkedInBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
         };
 
-        // 1. If advance payment made, print separate payment receipts for each payment method paid
-        const splitCashVal = Number(draft.splitCash) || 0;
-        const splitOnlineVal = Number(draft.splitOnline) || 0;
-        const splitCardVal = Number(draft.splitCard) || 0;
-        const splitChequeVal = Number(draft.splitCheque) || 0;
-        const totalPaidAmt = splitCashVal + splitOnlineVal + splitCardVal + splitChequeVal;
-
-        const cardSurchargeVal = (splitCardVal > 0 && cardPct > 0) ? Math.round((splitCardVal * cardPct) / 100) : 0;
-        const upiTaxVal = (splitOnlineVal > upiThresh && upiPct > 0) ? Math.round((splitOnlineVal * upiPct) / 100) : 0;
-        const cardAndUpiFees = {
-          cardSurcharge: cardSurchargeVal,
-          upiTax: upiTaxVal
-        };
-
         try {
-          if (totalPaidAmt > 0) {
-            const advReceipts = [];
-            const voucherNo = res.booking?.voucher_number || res.voucher_number || res.voucherNumber || regData.voucher_number || `REG-${Date.now().toString().slice(-4)}`;
-            const cashierName = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
-            const guestName = draft.guestName || draft.name || 'Valued Guest';
-            const roomNums = [room?.room_number, ...(additionalRoomsList || []).map(r => r.room_number)].filter(Boolean).join(', ') || String(room?.room_number || '-');
+          // User Requirement: When checked in, print the check-in form (Registration Card), NOT the receipt
+          printGuestRegistrationA4(regData, { includePhotos: false });
 
-            const cashReceiptNo = res.receipt_numbers?.cash || res.receiptNumbers?.cash || res.receipts?.find(r => r.mode === 'cash')?.receipt_no || 'CR01';
-            const upiReceiptNo = res.receipt_numbers?.upi || res.receiptNumbers?.upi || res.receipts?.find(r => r.mode === 'upi')?.receipt_no || 'UPI01';
-            const cardReceiptNo = res.receipt_numbers?.card || res.receiptNumbers?.card || res.receipts?.find(r => r.mode === 'card')?.receipt_no || 'POS01';
-            const chqReceiptNo = res.receipt_numbers?.cheque || res.receiptNumbers?.cheque || res.receipts?.find(r => r.mode === 'cheque')?.receipt_no || 'CHQ01';
-
-            if (splitCashVal > 0) {
-              advReceipts.push({
-                voucher_number: voucherNo,
-                receipt_no: cashReceiptNo,
-                receipt_date: new Date(),
-                guest_name: guestName,
-                amount: splitCashVal,
-                base_amount: splitCashVal,
-                payment_mode: 'Cash',
-                mode: 'cash',
-                room_numbers: roomNums,
-                particulars: `Room #${roomNums} - Check-In Advance Payment (Cash)`,
-                cashier_name: cashierName,
-                is_split: true
-              });
-            }
-            if (splitOnlineVal > 0) {
-              advReceipts.push({
-                voucher_number: voucherNo,
-                receipt_no: upiReceiptNo,
-                receipt_date: new Date(),
-                guest_name: guestName,
-                amount: splitOnlineVal + (cardAndUpiFees?.upiTax || 0),
-                base_amount: splitOnlineVal,
-                payment_mode: 'Online UPI',
-                mode: 'upi',
-                utr_number: draft.onlineUtr || draft.utrNumber,
-                upi_tax: cardAndUpiFees?.upiTax || 0,
-                room_numbers: roomNums,
-                particulars: `Room #${roomNums} - Check-In Advance Payment (UPI)`,
-                cashier_name: cashierName,
-                is_split: true
-              });
-            }
-            if (splitCardVal > 0) {
-              advReceipts.push({
-                voucher_number: voucherNo,
-                receipt_no: cardReceiptNo,
-                receipt_date: new Date(),
-                guest_name: guestName,
-                amount: splitCardVal + (cardAndUpiFees?.cardSurcharge || 0),
-                base_amount: splitCardVal,
-                payment_mode: 'Card POS',
-                mode: 'card',
-                card_surcharge: cardAndUpiFees?.cardSurcharge || 0,
-                room_numbers: roomNums,
-                particulars: `Room #${roomNums} - Check-In Advance Payment (Card POS)`,
-                cashier_name: cashierName,
-                is_split: true
-              });
-            }
-            if (splitChequeVal > 0) {
-              advReceipts.push({
-                voucher_number: voucherNo,
-                receipt_no: chqReceiptNo,
-                receipt_date: new Date(),
-                guest_name: guestName,
-                amount: splitChequeVal,
-                base_amount: splitChequeVal,
-                payment_mode: 'Cheque',
-                mode: 'cheque',
-                cheque_no: draft.advanceChequeNo,
-                bank_name: draft.advanceChequeBank,
-                room_numbers: roomNums,
-                particulars: `Room #${roomNums} - Check-In Advance Payment (Cheque)`,
-                cashier_name: cashierName,
-                is_split: true
-              });
-            }
-
-            if (advReceipts.length > 0) {
-              printCashReceipt(advReceipts);
-            }
-          } else {
-            // If 0 advance (e.g. BTC or pay later), print paper registration card
-            printGuestRegistrationA4(regData, { includePhotos: false });
-          }
-
-          // 2. Defer heavy PDF digital archive export so it doesn't freeze the main thread or print preview
+          // Defer heavy PDF digital archive export so it doesn't freeze the main thread or print preview
           setTimeout(() => {
             downloadGuestRegistrationPDF(regData).catch(err => {
               console.warn('Auto PDF download notice:', err);
             });
           }, 2000);
         } catch (printErr) {
-          console.warn('Auto receipt print notice:', printErr);
+          console.warn('Auto check-in form print notice:', printErr);
         }
 
         onClose();
