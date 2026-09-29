@@ -13,7 +13,7 @@ import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
 import { printGuestRegistrationA4, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
-import { getLocalIsoDateTime, timeToMinutes } from '../../../utils/formatters';
+import { getLocalIsoDateTime, timeToMinutes, getMinCheckoutDate } from '../../../utils/formatters';
 
 export default function CheckinWizardModal({
   isOpen,
@@ -380,6 +380,11 @@ export default function CheckinWizardModal({
           showToast('OTA Bill amount is mandatory for OTA bookings.', 'red');
           return false;
         }
+        const minOut = getMinCheckoutDate(draft.checkinTime);
+        if (draft.checkoutDate && draft.checkoutDate < minOut) {
+          showToast('Check-out date cannot be today when current time is past 10:00 AM. Minimum check-out date is tomorrow.', 'red');
+          return false;
+        }
         if (draft.isEarlyCheckin === null || draft.isEarlyCheckin === undefined) {
           showToast('Please select Early Check-In or On-Time Check-In for OTA guest.', 'red');
           return false;
@@ -449,6 +454,13 @@ export default function CheckinWizardModal({
       if (!draft.checkoutDate) {
         showToast('Expected Checkout Date is mandatory. Please select checkout date.', 'red');
         return false;
+      }
+      if (isOta) {
+        const minOut = getMinCheckoutDate(draft.checkinTime);
+        if (draft.checkoutDate < minOut) {
+          showToast('Check-out date cannot be today when current time is past 10:00 AM. Minimum check-out date is tomorrow.', 'red');
+          return false;
+        }
       }
       if (!isOta && (!draft.checkoutTime || !draft.checkoutTime.trim())) {
         showToast('Expected Checkout Time is mandatory. Please select checkout time.', 'red');

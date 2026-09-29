@@ -4,7 +4,7 @@ import UnifiedTimeInput from '../../common/UnifiedTimeInput';
 import ThemedDatePicker from '../../common/ThemedDatePicker';
 import { useApp } from '../../../context/AppContext';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
-import { timeToMinutes } from '../../../utils/formatters';
+import { timeToMinutes, getMinCheckoutDate, getLocalIsoDate } from '../../../utils/formatters';
 
 const CHANNELS = [
   {
@@ -99,7 +99,7 @@ export default function Step1Source({
   const isOtaStep3BillDone = isOtaStep2PaymentDone && Boolean(draft.otaManualAmount && Number(draft.otaManualAmount) > 0);
   const isOtaStep4TimingDone = isOtaStep3BillDone && (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined) && (!draft.isEarlyCheckin || (Boolean(draft.originalCheckinTime) && Boolean(draft.earlyCheckinTime) && !isScheduledBeforeEarly));
   const isOtaReady = isOta
-    ? (isOtaStep4TimingDone && Boolean(draft.otaVoucherNo?.trim()))
+    ? (isOtaStep4TimingDone && Boolean(draft.otaVoucherNo?.trim()) && (!draft.checkoutDate || (minCheckoutDate && draft.checkoutDate >= minCheckoutDate)))
     : true;
 
   // Room rates & extension configuration
@@ -113,12 +113,13 @@ export default function Step1Source({
   const ext6hRate = Number(room?.ext_6h_rate ?? 1000);
   const ext9hRate = Number(room?.ext_9h_rate ?? 1500);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalIsoDate(new Date());
 
   const currentCheckoutDate = draft.checkoutDate || (draft.approxCheckout ? draft.approxCheckout.split('T')[0] : '');
   const currentCheckoutTime = draft.checkoutTime || (draft.approxCheckout && draft.approxCheckout.includes('T') ? draft.approxCheckout.split('T')[1]?.slice(0, 5) : '');
 
   const checkinDateStr = draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr;
+  const minCheckoutDate = getMinCheckoutDate(checkinDateStr);
   let nights = 1;
   if (checkinDateStr && currentCheckoutDate) {
     const dIn = new Date(checkinDateStr);
@@ -202,7 +203,10 @@ export default function Step1Source({
   const currentExtInfo = calculateExtension(currentCheckoutTime, currentCheckoutDate, draft.bookingSource);
 
   const applyCheckoutUpdate = (newDate, newTime) => {
-    const targetDate = newDate !== undefined ? newDate : currentCheckoutDate;
+    let targetDate = newDate !== undefined ? newDate : currentCheckoutDate;
+    if (draft.bookingSource === 'OTA' && targetDate && minCheckoutDate && targetDate < minCheckoutDate) {
+      targetDate = minCheckoutDate;
+    }
     const isOta = draft.bookingSource === 'OTA';
     const isOtaEarly = draft.bookingSource === 'OTA' && draft.isEarlyCheckin === true;
     const targetTime = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTime !== undefined ? newTime : currentCheckoutTime));
@@ -281,12 +285,14 @@ export default function Step1Source({
     if (isEarly) {
       const now = new Date();
       const currentActualTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const safeOtaDate = currentCheckoutDate && currentCheckoutDate >= minCheckoutDate ? currentCheckoutDate : minCheckoutDate;
       updateDraft({
         isEarlyCheckin: true,
         originalCheckinTime: '',
         earlyCheckinTime: currentActualTime,
+        checkoutDate: safeOtaDate,
         checkoutTime: '10:00', // automatically fixed 10 am for OTA
-        approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '',
+        approxCheckout: safeOtaDate ? `${safeOtaDate}T10:00` : '',
         extensionCharge: 0
       });
     } else {
@@ -303,6 +309,8 @@ export default function Step1Source({
 
   const handleSourceSelect = (source) => {
     setBlockedNotice('');
+    const effectiveMinDate = getMinCheckoutDate(checkinDateStr);
+    const safeOtaDate = currentCheckoutDate && currentCheckoutDate >= effectiveMinDate ? currentCheckoutDate : effectiveMinDate;
     updateDraft({
       bookingSource: source,
       isPrepaid: null, // No default selection! Staff must explicitly choose Pre-Paid or Pay at Hotel
@@ -310,8 +318,9 @@ export default function Step1Source({
       isEarlyCheckin: null, // Mandatory selection for OTA: Early vs On-Time
       originalCheckinTime: '',
       earlyCheckinTime: '',
+      checkoutDate: source === 'OTA' ? safeOtaDate : (draft.checkoutDate || ''),
       checkoutTime: source === 'OTA' ? '10:00' : '',
-      approxCheckout: source === 'OTA' ? (currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '') : `${currentCheckoutDate || ''}`,
+      approxCheckout: source === 'OTA' ? (safeOtaDate ? `${safeOtaDate}T10:00` : '') : `${currentCheckoutDate || ''}`,
       extensionCharge: 0
     });
   };
@@ -395,6 +404,10 @@ export default function Step1Source({
         triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Voucher No. before choosing a document.');
         return;
       }
+      if (draft.checkoutDate && draft.checkoutDate < minCheckoutDate) {
+        triggerShake('⚠️ Check-Out Date cannot be today when current time is past 10:00 AM. Minimum check-out date is tomorrow.');
+        return;
+      }
       if (draft.isEarlyCheckin === null || draft.isEarlyCheckin === undefined) {
         triggerShake('⚠️ Step 4 Required: Mandatory: Please select Early Check-In or On-Time Check-In for OTA guest.');
         return;
@@ -444,6 +457,10 @@ export default function Step1Source({
       }
       if (!draft.otaVoucherNo?.trim()) {
         triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Voucher No. before filling form.');
+        return;
+      }
+      if (draft.checkoutDate && draft.checkoutDate < minCheckoutDate) {
+        triggerShake('⚠️ Check-Out Date cannot be today when current time is past 10:00 AM. Minimum check-out date is tomorrow.');
         return;
       }
       if (draft.isEarlyCheckin === null || draft.isEarlyCheckin === undefined) {
@@ -1109,12 +1126,17 @@ export default function Step1Source({
                   <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '6px' }}>
                     <ThemedDatePicker
                       required
-                      min={checkinDateStr}
+                      min={minCheckoutDate}
                       value={currentCheckoutDate}
                       onChange={(e) => applyCheckoutUpdate(e.target.value, draft.isEarlyCheckin ? '10:00' : currentCheckoutTime)}
-                      error={!currentCheckoutDate}
+                      error={!currentCheckoutDate || (currentCheckoutDate < minCheckoutDate)}
                       style={{ height: '44px', fontSize: '0.92rem' }}
                     />
+                    {currentCheckoutDate && currentCheckoutDate < minCheckoutDate && (
+                      <div style={{ gridColumn: 'span 2', marginTop: '4px', fontSize: '0.74rem', color: '#b91c1c', fontWeight: 800 }}>
+                        ⚠️ Check-out date cannot be today when current time is past 10:00 AM. Minimum check-out date is tomorrow ({minCheckoutDate}).
+                      </div>
+                    )}
                     {draft.bookingSource === 'OTA' ? (
                       <div style={{ position: 'relative' }}>
                         <input

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatCurrency, getLocalIsoDateTime } from '../../../utils/formatters';
+import { formatCurrency, getLocalIsoDateTime, getMinCheckoutDate } from '../../../utils/formatters';
 import { compressImageFile, compressBase64Image } from '../../../utils/imageCompressor';
 import { api } from '../../../services/api';
 import UnifiedTimeInput from '../../common/UnifiedTimeInput';
@@ -1101,7 +1101,11 @@ export default function Step6Stay({
   }
 
   const handleCheckoutChange = (newDateStr, newTimeStr) => {
-    const dStr = newDateStr !== undefined ? newDateStr : checkoutDateStr;
+    let dStr = newDateStr !== undefined ? newDateStr : checkoutDateStr;
+    const minOut = isOta ? getMinCheckoutDate(draft.checkinTime) : '';
+    if (isOta && dStr && minOut && dStr < minOut) {
+      dStr = minOut;
+    }
     const isOtaEarly = isOta && draft.isEarlyCheckin === true;
     const tStr = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr));
 
@@ -1876,9 +1880,9 @@ export default function Step6Stay({
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '6px' }}>
                     <ThemedDatePicker
                       value={checkoutDateStr}
-                      min={draft.checkinTime ? draft.checkinTime.split('T')[0] : ''}
+                      min={isOta ? getMinCheckoutDate(draft.checkinTime) : (draft.checkinTime ? draft.checkinTime.split('T')[0] : '')}
                       onChange={(e) => handleCheckoutChange(e.target.value, '10:00')}
-                      error={!checkoutDateStr}
+                      error={!checkoutDateStr || (isOta && checkoutDateStr < getMinCheckoutDate(draft.checkinTime))}
                       style={{ height: '38px', fontSize: '0.82rem' }}
                     />
 
@@ -2945,7 +2949,7 @@ export default function Step6Stay({
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '6px' }}>
                     <ThemedDatePicker
                       value={checkoutDateStr}
-                      min={draft.checkinTime ? draft.checkinTime.split('T')[0] : ''}
+                      min={isOta ? getMinCheckoutDate(draft.checkinTime) : (draft.checkinTime ? draft.checkinTime.split('T')[0] : '')}
                       onChange={(e) => handleCheckoutChange(e.target.value, checkoutTimeStr)}
                       error={!checkoutDateStr}
                       style={{ height: '38px', fontSize: '0.82rem' }}

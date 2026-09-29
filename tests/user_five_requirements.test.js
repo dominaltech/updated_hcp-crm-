@@ -22,7 +22,7 @@ import {
   buildFinalBillA4HTML,
   buildGuestPaymentSummaryHTML
 } from '../src/services/printService';
-import { timeToMinutes } from '../src/utils/formatters';
+import { timeToMinutes, getMinCheckoutDate, getLocalIsoDate } from '../src/utils/formatters';
 
 describe('User 5 Requirements Verification', () => {
   // Requirement 1 & 4: Advance calculation and bed capacity
@@ -224,5 +224,40 @@ describe('User 5 Requirements Verification', () => {
       (isEarlyCheckin !== null && isEarlyCheckin !== undefined) &&
       (!isEarlyCheckin || (Boolean(validScheduled) && Boolean(validEarly) && !isScheduledBeforeEarlyValid));
     expect(isOtaStep4TimingDoneValid).toBe(true);
+  });
+
+  // Requirement 7: If real time is above 10:00 AM, unable to select current day as check-out date; minimum is tomorrow
+  it('Requirement 7: If real time is above 10:00 AM, unable to select current day as check-out date; minimum is tomorrow', () => {
+    // 1. Current clock time is 16:00 (4:00 PM) today (2026-09-29)
+    // 10:00 AM checkout today is in the past. Minimum checkout date must be tomorrow (2026-09-30).
+    const refTime4PM = new Date('2026-09-29T16:00:00');
+    const minDateAfter10AM = getMinCheckoutDate('2026-09-29', refTime4PM);
+    expect(minDateAfter10AM).toBe('2026-09-30');
+
+    // Current day is 2026-09-29, which is less than minCheckoutDate (2026-09-30), so selecting today is invalid.
+    const isTodaySelectableAfter10AM = '2026-09-29' >= minDateAfter10AM;
+    expect(isTodaySelectableAfter10AM).toBe(false);
+
+    // Tomorrow (2026-09-30) is selectable
+    const isTomorrowSelectable = '2026-09-30' >= minDateAfter10AM;
+    expect(isTomorrowSelectable).toBe(true);
+
+    // 2. Exact 10:00 AM clock time today (2026-09-29T10:00:00)
+    // Checkout time has arrived; next available standard 10:00 AM checkout is tomorrow.
+    const refTime10AM = new Date('2026-09-29T10:00:00');
+    const minDateAt10AM = getMinCheckoutDate('2026-09-29', refTime10AM);
+    expect(minDateAt10AM).toBe('2026-09-30');
+
+    // 3. Early morning before 10:00 AM (e.g. 08:30 AM on 2026-09-29)
+    // Today's 10:00 AM has not arrived yet, so today (2026-09-29) is still allowed as minimum checkout.
+    const refTime830AM = new Date('2026-09-29T08:30:00');
+    const minDateBefore10AM = getMinCheckoutDate('2026-09-29', refTime830AM);
+    expect(minDateBefore10AM).toBe('2026-09-29');
+
+    // 4. Future check-in date (e.g. reservation on 2026-10-05)
+    // Minimum checkout date is the check-in date itself.
+    const futureCheckin = '2026-10-05';
+    const minDateFuture = getMinCheckoutDate(futureCheckin, refTime4PM);
+    expect(minDateFuture).toBe('2026-10-05');
   });
 });

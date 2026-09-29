@@ -120,6 +120,8 @@ export default function ThemedDatePicker({
     e.stopPropagation();
     const today = new Date();
     const iso = formatIsoDate(today.getFullYear(), today.getMonth(), today.getDate());
+    if (min && iso < min) return;
+    if (max && iso > max) return;
     if (onChange) {
       onChange({ target: { value: iso, name } });
     }
@@ -602,70 +604,80 @@ export default function ThemedDatePicker({
           )}
 
           {/* Quick Footer Action Buttons: Today | Clear | Close */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: '10px',
-              paddingTop: '8px',
-              borderTop: '1px solid var(--border-color, #f1f5f9)',
-              fontSize: '0.74rem'
-            }}
-          >
-            <button
-              type="button"
-              onClick={handlePickToday}
-              style={{
-                border: 'none',
-                background: 'rgba(0, 113, 227, 0.08)',
-                color: 'var(--apple-blue, #0071e3)',
-                fontWeight: 800,
-                padding: '4px 8px',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              Today
-            </button>
-
-            {value && (
-              <button
-                type="button"
-                onClick={handleClear}
+          {(() => {
+            const today = new Date();
+            const todayIso = formatIsoDate(today.getFullYear(), today.getMonth(), today.getDate());
+            const isTodayDisabled = Boolean((min && todayIso < min) || (max && todayIso > max));
+            return (
+              <div
                 style={{
-                  border: 'none',
-                  background: '#fef2f2',
-                  color: '#dc2626',
-                  fontWeight: 800,
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: '10px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid var(--border-color, #f1f5f9)',
+                  fontSize: '0.74rem'
                 }}
               >
-                Clear
-              </button>
-            )}
+                <button
+                  type="button"
+                  disabled={isTodayDisabled}
+                  onClick={handlePickToday}
+                  title={isTodayDisabled ? 'Today is before minimum allowed date' : 'Select today'}
+                  style={{
+                    border: 'none',
+                    background: isTodayDisabled ? '#f1f5f9' : 'rgba(0, 113, 227, 0.08)',
+                    color: isTodayDisabled ? '#94a3b8' : 'var(--apple-blue, #0071e3)',
+                    fontWeight: 800,
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    cursor: isTodayDisabled ? 'not-allowed' : 'pointer',
+                    opacity: isTodayDisabled ? 0.4 : 1
+                  }}
+                >
+                  Today
+                </button>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsOpen(false);
-              }}
-              style={{
-                border: '1px solid var(--border-color, #cbd5e1)',
-                background: 'transparent',
-                color: 'var(--text-secondary, #64748b)',
-                fontWeight: 700,
-                padding: '4px 8px',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-          </div>
+                {value && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    style={{
+                      border: 'none',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      fontWeight: 800,
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                  }}
+                  style={{
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    background: 'transparent',
+                    color: 'var(--text-secondary, #64748b)',
+                    fontWeight: 700,
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

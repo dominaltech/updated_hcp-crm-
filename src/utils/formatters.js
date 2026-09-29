@@ -150,4 +150,55 @@ export function timeToMinutes(timeStr) {
   return h * 60 + m;
 }
 
+/**
+ * Returns YYYY-MM-DD string in local timezone (avoids UTC timezone shift bugs).
+ */
+export function getLocalIsoDate(dateInput = new Date()) {
+  if (!dateInput) return '';
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Calculates the minimum allowed check-out date (YYYY-MM-DD).
+ * Rule:
+ * 1. If real time (clock time) is past/above 10:00 AM (>= 10:00),
+ *    checkout at 10:00 AM today is no longer possible (it is already in the past).
+ *    Therefore, the minimum allowed check-out date for guests checking in today
+ *    is TOMORROW.
+ * 2. If real time is before 10:00 AM (< 10:00), check-out today at 10:00 AM
+ *    is still in the future, so today is allowed as the minimum.
+ * 3. If check-in date is in the future (> today), the minimum check-out date
+ *    is that check-in date.
+ */
+export function getMinCheckoutDate(checkinDateInput, referenceTime = new Date()) {
+  const now = referenceTime instanceof Date ? referenceTime : new Date(referenceTime);
+  const todayStr = getLocalIsoDate(now);
+
+  // Tomorrow's date
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowStr = getLocalIsoDate(tomorrow);
+
+  const checkinStr = checkinDateInput ? String(checkinDateInput).split('T')[0] : todayStr;
+
+  // Real clock time in minutes from midnight
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const isPast10AM = currentMinutes >= 10 * 60; // 10:00 AM (600 minutes)
+
+  // If check-in is today or in the past:
+  if (checkinStr <= todayStr) {
+    if (isPast10AM) {
+      return tomorrowStr;
+    }
+    return todayStr;
+  }
+
+  // If check-in is in the future:
+  return checkinStr;
+}
+
 
