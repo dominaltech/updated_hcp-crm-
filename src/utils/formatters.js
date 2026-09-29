@@ -131,3 +131,23 @@ export function getLocalIsoDateTime(dateInput = new Date()) {
   return `${y}-${m}-${day}T${hh}:${mm}`;
 }
 
+/**
+ * Converts any time string (e.g. "13:00", "01:00 PM", "15:41", "3:41 pm")
+ * into total minutes from midnight (0 - 1439).
+ * Returns null if input is empty or invalid.
+ */
+export function timeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const s = timeStr.trim();
+  const match = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  const p = (match[3] || '').toUpperCase();
+  if (p === 'PM' && h < 12) h += 12;
+  if (p === 'AM' && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+

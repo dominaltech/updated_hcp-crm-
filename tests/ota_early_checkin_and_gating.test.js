@@ -34,8 +34,7 @@ describe('OTA Early Check-In Time and Fixed 10:00 AM Checkout Rules', () => {
   });
 
   it('verifies in Step 1 that Checkout Date remains an interactive date picker', () => {
-    expect(step1Content).toContain('<input');
-    expect(step1Content).toContain('type="date"');
+    expect(step1Content).toContain('<ThemedDatePicker');
     expect(step1Content).toContain('value={currentCheckoutDate}');
     expect(step1Content).toContain("applyCheckoutUpdate(e.target.value, draft.isEarlyCheckin ? '10:00' : currentCheckoutTime)");
   });

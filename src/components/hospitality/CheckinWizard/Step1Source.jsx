@@ -4,6 +4,7 @@ import UnifiedTimeInput from '../../common/UnifiedTimeInput';
 import ThemedDatePicker from '../../common/ThemedDatePicker';
 import { useApp } from '../../../context/AppContext';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
+import { timeToMinutes } from '../../../utils/formatters';
 
 const CHANNELS = [
   {
@@ -83,10 +84,20 @@ export default function Step1Source({
   const isChannelSelected = Boolean(draft.bookingSource);
   const isBtcReady = draft.bookingSource === 'BTC' ? Boolean(draft.btcCompanyId) : true;
   const isOta = draft.bookingSource === 'OTA';
+  const schedMins = timeToMinutes(draft.originalCheckinTime);
+  const earlyMins = timeToMinutes(draft.earlyCheckinTime);
+  const isScheduledBeforeEarly = Boolean(
+    isOta &&
+    draft.isEarlyCheckin === true &&
+    schedMins !== null &&
+    earlyMins !== null &&
+    schedMins <= earlyMins
+  );
+
   const isOtaStep1PlatformDone = Boolean(draft.otaPlatform);
   const isOtaStep2PaymentDone = isOtaStep1PlatformDone && (draft.isPrepaid !== null && draft.isPrepaid !== undefined);
   const isOtaStep3BillDone = isOtaStep2PaymentDone && Boolean(draft.otaManualAmount && Number(draft.otaManualAmount) > 0);
-  const isOtaStep4TimingDone = isOtaStep3BillDone && (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined) && (!draft.isEarlyCheckin || (draft.originalCheckinTime && draft.earlyCheckinTime));
+  const isOtaStep4TimingDone = isOtaStep3BillDone && (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined) && (!draft.isEarlyCheckin || (Boolean(draft.originalCheckinTime) && Boolean(draft.earlyCheckinTime) && !isScheduledBeforeEarly));
   const isOtaReady = isOta
     ? (isOtaStep4TimingDone && Boolean(draft.otaVoucherNo?.trim()))
     : true;
@@ -272,7 +283,7 @@ export default function Step1Source({
       const currentActualTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       updateDraft({
         isEarlyCheckin: true,
-        originalCheckinTime: draft.originalCheckinTime || '',
+        originalCheckinTime: '',
         earlyCheckinTime: currentActualTime,
         checkoutTime: '10:00', // automatically fixed 10 am for OTA
         approxCheckout: currentCheckoutDate ? `${currentCheckoutDate}T10:00` : '',
@@ -397,6 +408,10 @@ export default function Step1Source({
           triggerShake('⚠️ Please enter Actual Early Check-In Time.');
           return;
         }
+        if (isScheduledBeforeEarly) {
+          triggerShake('⚠️ Original (Scheduled) Check-In Time cannot be earlier than or equal to Actual Early Check-In Time.');
+          return;
+        }
       }
     }
     if (draft.bookingSource === 'BTC' && !draft.btcCompanyId) {
@@ -442,6 +457,10 @@ export default function Step1Source({
         }
         if (!draft.earlyCheckinTime) {
           triggerShake('⚠️ Please enter Actual Early Check-In Time.');
+          return;
+        }
+        if (isScheduledBeforeEarly) {
+          triggerShake('⚠️ Original (Scheduled) Check-In Time cannot be earlier than or equal to Actual Early Check-In Time.');
           return;
         }
       }
@@ -1175,6 +1194,10 @@ export default function Step1Source({
                   <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', padding: '3px 10px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
                     🔒 Enter Bill Amount First
                   </span>
+                ) : isScheduledBeforeEarly ? (
+                  <span style={{ fontSize: '0.76rem', fontWeight: 850, color: '#b91c1c', background: '#fef2f2', padding: '3px 12px', borderRadius: '10px', border: '1px solid #fecaca' }}>
+                    ⚠️ Scheduled Time Must Be After Actual Early Time
+                  </span>
                 ) : isOtaStep4TimingDone ? (
                   <span style={{ fontSize: '0.80rem', fontWeight: 850, color: '#15803d', background: '#dcfce7', padding: '3px 12px', borderRadius: '10px', border: '1px solid #86efac' }}>
                     ✓ Timing: {draft.isEarlyCheckin ? 'Early Check-In' : 'On-Time'}
@@ -1290,14 +1313,14 @@ export default function Step1Source({
                     style={{
                       fontSize: '0.74rem',
                       fontWeight: 800,
-                      color: draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '#15803d' : '#ef4444',
-                      background: draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '#dcfce7' : '#fef2f2',
+                      color: isScheduledBeforeEarly ? '#b91c1c' : (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '#15803d' : '#ef4444'),
+                      background: isScheduledBeforeEarly ? '#fef2f2' : (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '#dcfce7' : '#fef2f2'),
                       padding: '2px 8px',
                       borderRadius: '6px',
-                      border: draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '1px solid #86efac' : '1px solid #fecaca'
+                      border: isScheduledBeforeEarly ? '1px solid #fecaca' : (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '1px solid #86efac' : '1px solid #fecaca')
                     }}
                   >
-                    {draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '✓ Selected' : 'Mandatory Choice'}
+                    {isScheduledBeforeEarly ? '⚠️ Invalid Time' : (draft.isEarlyCheckin !== null && draft.isEarlyCheckin !== undefined ? '✓ Selected' : 'Mandatory Choice')}
                   </span>
                 </div>
 
@@ -1365,14 +1388,22 @@ export default function Step1Source({
                   >
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                       <div>
-                        <label style={{ fontSize: '0.80rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '0.80rem', fontWeight: 800, color: isScheduledBeforeEarly ? '#b91c1c' : '#475569', display: 'block', marginBottom: '4px' }}>
                           📅 Original (Scheduled) Check-In Time *
                         </label>
                         <UnifiedTimeInput
                           value={draft.originalCheckinTime || ''}
                           onChange={(val) => updateDraft({ originalCheckinTime: val })}
-                          style={{ height: '38px', width: '100%', borderRadius: '8px', border: '1.5px solid #cbd5e1', background: '#ffffff' }}
+                          minTime={draft.earlyCheckinTime}
+                          hasError={isScheduledBeforeEarly}
+                          style={{ height: '38px', width: '100%', borderRadius: '8px' }}
                         />
+                        {isScheduledBeforeEarly && (
+                          <div style={{ marginTop: '5px', fontSize: '0.72rem', color: '#b91c1c', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>⚠️</span>
+                            <span>Original scheduled check-in time cannot be earlier than or equal to actual early check-in time ({to12Hour(draft.earlyCheckinTime).display}).</span>
+                          </div>
+                        )}
                       </div>
 
                       <div>

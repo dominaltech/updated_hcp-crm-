@@ -13,7 +13,7 @@ import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
 import { printGuestRegistrationA4, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
-import { getLocalIsoDateTime } from '../../../utils/formatters';
+import { getLocalIsoDateTime, timeToMinutes } from '../../../utils/formatters';
 
 export default function CheckinWizardModal({
   isOpen,
@@ -379,6 +379,26 @@ export default function CheckinWizardModal({
         if (!draft.otaManualAmount || Number(draft.otaManualAmount) <= 0) {
           showToast('OTA Bill amount is mandatory for OTA bookings.', 'red');
           return false;
+        }
+        if (draft.isEarlyCheckin === null || draft.isEarlyCheckin === undefined) {
+          showToast('Please select Early Check-In or On-Time Check-In for OTA guest.', 'red');
+          return false;
+        }
+        if (draft.isEarlyCheckin) {
+          if (!draft.originalCheckinTime) {
+            showToast('Original Scheduled Check-In Time is required for early check-in.', 'red');
+            return false;
+          }
+          if (!draft.earlyCheckinTime) {
+            showToast('Actual Early Check-In Time is required.', 'red');
+            return false;
+          }
+          const schedM = timeToMinutes(draft.originalCheckinTime);
+          const earlyM = timeToMinutes(draft.earlyCheckinTime);
+          if (schedM !== null && earlyM !== null && schedM <= earlyM) {
+            showToast('Original (Scheduled) Check-In Time cannot be earlier than or equal to Actual Early Check-In Time.', 'red');
+            return false;
+          }
         }
       }
       if (draft.bookingSource === 'BTC' && !draft.btcCompanyId) {

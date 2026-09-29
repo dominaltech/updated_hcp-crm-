@@ -22,6 +22,7 @@ import {
   buildFinalBillA4HTML,
   buildGuestPaymentSummaryHTML
 } from '../src/services/printService';
+import { timeToMinutes } from '../src/utils/formatters';
 
 describe('User 5 Requirements Verification', () => {
   // Requirement 1 & 4: Advance calculation and bed capacity
@@ -163,5 +164,65 @@ describe('User 5 Requirements Verification', () => {
     expect(paymentSummaryHtml).toContain('gap: 20px');
     expect(paymentSummaryHtml).toContain('max-width: 380px');
     expect(paymentSummaryHtml).toContain('flex-shrink: 0');
+  });
+
+  // Requirement 6: Scheduled Check-In Time cannot be before or equal to Actual Early Check-In Time
+  it('Requirement 6: Scheduled Check-In Time cannot be before or equal to Actual Early Check-In Time', () => {
+    // 1. timeToMinutes parsing tests
+    expect(timeToMinutes('01:00 PM')).toBe(780);
+    expect(timeToMinutes('13:00')).toBe(780);
+    expect(timeToMinutes('03:41 PM')).toBe(941);
+    expect(timeToMinutes('15:41')).toBe(941);
+    expect(timeToMinutes('12:00 PM')).toBe(720);
+    expect(timeToMinutes('12:00 AM')).toBe(0);
+    expect(timeToMinutes('10:00 AM')).toBe(600);
+    expect(timeToMinutes('')).toBeNull();
+    expect(timeToMinutes(null)).toBeNull();
+
+    // 2. User screenshot scenario:
+    // Scheduled is 01:00 PM (780 mins), but actual arrival is 03:41 PM (941 mins).
+    // Scheduled is before actual arrival (780 <= 941), which is INVALID.
+    const earlyActual = '15:41'; // 03:41 PM
+    const scheduledPast = '13:00'; // 01:00 PM
+    const schedMinsPast = timeToMinutes(scheduledPast);
+    const earlyMinsActual = timeToMinutes(earlyActual);
+
+    const isScheduledBeforeEarlyPast = Boolean(
+      schedMinsPast !== null && earlyMinsActual !== null && schedMinsPast <= earlyMinsActual
+    );
+    expect(isScheduledBeforeEarlyPast).toBe(true);
+
+    // Gating check: isOtaStep4TimingDone should be false when scheduled <= early
+    const isOtaStep3BillDone = true;
+    const isEarlyCheckin = true;
+    const isOtaStep4TimingDoneInvalid = isOtaStep3BillDone &&
+      (isEarlyCheckin !== null && isEarlyCheckin !== undefined) &&
+      (!isEarlyCheckin || (Boolean(scheduledPast) && Boolean(earlyActual) && !isScheduledBeforeEarlyPast));
+    expect(isOtaStep4TimingDoneInvalid).toBe(false);
+
+    // 3. Same time scenario (scheduled 03:41 PM == actual 03:41 PM):
+    // If they arrive at the scheduled time, it is not early arrival!
+    const schedSame = '15:41';
+    const isScheduledBeforeEarlySame = Boolean(
+      timeToMinutes(schedSame) <= timeToMinutes(earlyActual)
+    );
+    expect(isScheduledBeforeEarlySame).toBe(true);
+
+    // 4. Valid future scheduled time scenario:
+    // Actual early arrival is 08:00 AM, scheduled check-in is 12:00 PM (or 02:00 PM).
+    const validEarly = '08:00'; // 8:00 AM (480 mins)
+    const validScheduled = '12:00'; // 12:00 PM (720 mins)
+    const schedMinsValid = timeToMinutes(validScheduled);
+    const earlyMinsValid = timeToMinutes(validEarly);
+
+    const isScheduledBeforeEarlyValid = Boolean(
+      schedMinsValid !== null && earlyMinsValid !== null && schedMinsValid <= earlyMinsValid
+    );
+    expect(isScheduledBeforeEarlyValid).toBe(false);
+
+    const isOtaStep4TimingDoneValid = isOtaStep3BillDone &&
+      (isEarlyCheckin !== null && isEarlyCheckin !== undefined) &&
+      (!isEarlyCheckin || (Boolean(validScheduled) && Boolean(validEarly) && !isScheduledBeforeEarlyValid));
+    expect(isOtaStep4TimingDoneValid).toBe(true);
   });
 });

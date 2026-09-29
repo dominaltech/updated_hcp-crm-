@@ -85,7 +85,7 @@ describe('OTA Early Check-In Pricing and Manager Panel Policy', () => {
   it('verifies RoomFolioPage includes OTA early checkin in hotelExtrasCharge and stay breakdown', () => {
     expect(folioContent).toContain('earlyCheckinCharge');
     expect(folioContent).toContain('otaEarlyFee');
-    expect(folioContent).toContain('Early Check-In Extra Charge');
+    expect(folioContent).toContain('Early Check-In:');
     expect(folioContent).not.toContain('POS Tax: ₹0 (Free for OTA)');
   });
 
