@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
-import { formatCurrency, formatDateTime } from '../utils/formatters';
+import { formatCurrency, formatDateTime, formatTime12, formatTaxInvoiceNumber } from '../utils/formatters';
+import UnifiedTimeInput from '../components/common/UnifiedTimeInput';
+import ThemedDatePicker from '../components/common/ThemedDatePicker';
 import ImageLightbox from '../components/common/ImageLightbox';
 import FolioSettlementModal from '../components/hospitality/FolioSettlementModal';
 import DocumentActionModal from '../components/hospitality/DocumentActionModal';
-import { printCashReceipt, printGuestRegistrationA4, downloadGuestRegistrationPDF, printGuestPaymentSummary, printFinalBillA4 } from '../services/printService';
+import { printCashReceipt, printGuestRegistrationA4, downloadGuestRegistrationPDF, printGuestPaymentSummary, printFinalBillA4, printGuestActivitiesSummary } from '../services/printService';
 export const getFnbPaymentModeInfo = (ord) => {
   if (!ord) return { label: 'Unknown', shortLabel: 'Unknown', icon: '💰', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
 
@@ -130,12 +132,54 @@ export const getFnbPaymentModeInfo = (ord) => {
   };
 };
 
-export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpenVisitors, onCheckoutDone }) {
+const buildInitialFromRoom = (r) => {
+  if (!r) return null;
+  const roomCharge = Number(r.total_room_charge || r.price || 0);
+  const advPaid = Number(r.initial_paid || r.total_paid || 0);
+  const balDue = Math.max(0, roomCharge - advPaid);
+  return {
+    ...r,
+    room: r,
+    roomNumber: r.room_number,
+    roomType: r.room_type,
+    guestName: r.guest_name || 'Guest',
+    mobile: r.guest_mobile || r.mobile || '',
+    checkinTime: r.checkin_time,
+    approxCheckoutTime: r.approx_checkout_time,
+    bookingId: r.current_booking_id || r.booking_id || r.id,
+    initialPaid: advPaid,
+    advancePaid: advPaid,
+    roomCharge: roomCharge,
+    voucherNumber: r.voucher_number || '',
+    summary: {
+      foodTotal: 0,
+      barTotal: 0,
+      roomCharge: roomCharge,
+      advancePaid: advPaid,
+      balanceDue: balDue
+    }
+  };
+};
+
+const folioMemoryCache = new Map();
+
+export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpenVisitors, onCheckoutDone, initialRoom = null }) {
   const { showToast, showConfirm, currentUser } = useApp();
-  const [folioData, setFolioData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [folioData, setFolioData] = useState(() => {
+    if (folioMemoryCache.has(roomId)) {
+      return folioMemoryCache.get(roomId);
+    }
+    if (initialRoom && (initialRoom.id === roomId || String(initialRoom.id) === String(roomId))) {
+      return buildInitialFromRoom(initialRoom);
+    }
+    return null;
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    return !(folioMemoryCache.has(roomId) || (initialRoom && (initialRoom.id === roomId || String(initialRoom.id) === String(roomId))));
+  });
   const [isExtendOpen, setIsExtendOpen] = useState(false);
-  const [extendDatetime, setExtendDatetime] = useState('');
+  const [extendDate, setExtendDate] = useState('');
+  const [extendTime, setExtendTime] = useState('');
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxTitle, setLightboxTitle] = useState('Preview');
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
@@ -150,6 +194,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [isSettlingFnb, setIsSettlingFnb] = useState(false);
   const [isSendingMobile, setIsSendingMobile] = useState(false);
 
+  // In-Stay Advance Payment Modal State (Points 4 & 17)
+  const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [addPayAmount, setAddPayAmount] = useState('');
+  const [addPayMode, setAddPayMode] = useState('cash');
+  const [addPaySplitCash, setAddPaySplitCash] = useState('');
+  const [addPaySplitOnline, setAddPaySplitOnline] = useState('');
+  const [addPaySplitCard, setAddPaySplitCard] = useState('');
+  const [addPaySplitCheque, setAddPaySplitCheque] = useState('');
+  const [addPayUtr, setAddPayUtr] = useState('');
+  const [addPayCardDigits, setAddPayCardDigits] = useState('');
+  const [addPayChequeNo, setAddPayChequeNo] = useState('');
+  const [addPayChequePhoto, setAddPayChequePhoto] = useState(null);
+  const [addPayNotes, setAddPayNotes] = useState('In-Stay Advance Payment');
+  const [isSubmittingPay, setIsSubmittingPay] = useState(false);
+
   useEffect(() => {
     if (selectedFnbOrder) {
       setFnbPayMode('cash');
@@ -161,7 +220,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     }
   }, [selectedFnbOrder]);
 
-  const isAnySubModalOpen = Boolean(isSettlementOpen || lightboxImage || isExtendOpen || selectedFnbOrder);
+  const isAnySubModalOpen = Boolean(isSettlementOpen || lightboxImage || isExtendOpen || selectedFnbOrder || isAddPaymentOpen);
   useEffect(() => {
     if (isAnySubModalOpen) {
       document.documentElement.classList.add('modal-open');
@@ -176,8 +235,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     };
   }, [isAnySubModalOpen]);
 
-  const loadFolio = useCallback(async () => {
-    setIsLoading(true);
+  const loadFolio = useCallback(async (isSilent = false) => {
+    if (!isSilent && !folioMemoryCache.has(roomId) && !folioData) {
+      setIsLoading(true);
+    }
     try {
       const res = await api.getRoomFolio(roomId);
       const raw = res?.folio || res;
@@ -186,17 +247,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
       const foodTotal = Number(summary.foodTotal ?? 0);
       const barTotal = Number(summary.barTotal ?? 0);
-      const roomCharge = Number(summary.roomCharge ?? (r.total_room_charge || 0));
-      const discountAmount = Number(summary.discountAmount ?? (r.discount_amount || 0));
-      const discountPct = Number(summary.discountPct ?? (r.discount_pct || 0));
-      const roomGrossTariff = Number(summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
-      const roomTaxable = Number(summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
-      const stayTaxable = Number(summary.stayTaxable ?? roomTaxable);
-      const stayTax = Number(summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
-      const grossTariff = Number(summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount));
-      const netTotalCharge = Number(summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
+      const roomCharge = Number(summary.stayCalcNow?.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
+      const discountAmount = Number(summary.stayCalcNow?.discountAmount ?? summary.discountAmount ?? (r.discount_amount || 0));
+      const discountPct = Number(summary.stayCalcNow?.discountPct ?? summary.discountPct ?? (r.discount_pct || 0));
+      const roomGrossTariff = Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
+      const roomTaxable = Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
+      const stayTaxable = Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.stayTaxable ?? roomTaxable);
+      const stayTax = Number(summary.stayCalcNow?.roomGst ?? summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
+      const grossTariff = Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount));
+      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
       const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
-      const balanceDue = Number(summary.balanceDue ?? (netTotalCharge - advancePaid));
+      const balanceDue = Number(summary.stayCalcNow?.balanceDue ?? summary.balanceDue ?? (netTotalCharge - advancePaid));
       const visitors = Array.isArray(raw.visitors) ? raw.visitors : [];
       const payments = Array.isArray(raw.payments) ? raw.payments : [];
       const visitorsCount = Number(summary.visitorsCount ?? visitors.length);
@@ -242,8 +303,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         btcCompanyContactPerson: r.btc_contact_person || r.btcCompanyContactPerson,
         btcCompanyPhone: r.btc_contact_phone || r.btcCompanyPhone,
         btcCompanyEmail: r.btc_contact_email || r.btcCompanyEmail,
-        companyName: r.btc_company_name || r.company_name,
-        gstNumber: r.btc_gst_number || r.gst_number,
+        companyName: r.btc_company_name || r.company_name || raw.company_name || '',
+        gstNumber: r.btc_gst_number || r.gst_number || raw.gst_number || '',
+        companyAddress: r.btc_address || r.btcCompanyAddress || r.company_address || raw.company_address || '',
+        taxType: r.tax_type || raw.tax_type || (r.is_igst ? 'IGST' : 'CGST_SGST'),
+        isIgst: Boolean(r.is_igst || raw.is_igst || r.tax_type === 'IGST'),
         otaPlatform: r.ota_platform || r.otaPlatform,
         otaBookingId: r.ota_booking_id || r.otaBookingId || r.ota_voucher_no || r.otaVoucherNo,
         ota_booking_id: r.ota_booking_id || r.otaBookingId || r.ota_voucher_no || r.otaVoucherNo,
@@ -251,6 +315,15 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         isEarlyCheckin: Boolean(r.is_early_checkin || raw.is_early_checkin),
         originalCheckinTime: r.original_checkin_time || raw.original_checkin_time || '12:00 PM',
         earlyCheckinTime: r.early_checkin_time || raw.early_checkin_time || '',
+        earlyCheckinCharge: r.early_checkin_charge !== undefined && r.early_checkin_charge !== null
+          ? r.early_checkin_charge
+          : (summary.earlyCheckinCharge || (r.booking_source === 'OTA' && r.is_early_checkin ? (r.ota_early_checkin_price || 900) : 0)),
+        earlyCheckinGst: r.early_checkin_gst !== undefined && r.early_checkin_gst !== null
+          ? r.early_checkin_gst
+          : (summary.earlyCheckinGst || 0),
+        ota_early_checkin_price: r.ota_early_checkin_price ?? raw.ota_early_checkin_price ?? 900,
+        ota_early_checkin_max_hours: r.ota_early_checkin_max_hours ?? raw.ota_early_checkin_max_hours ?? 6,
+        ota_early_checkin_gst_pct: r.ota_early_checkin_gst_pct ?? raw.ota_early_checkin_gst_pct ?? 5,
         mealPlan: r.meal_plan,
         approxCheckoutTime: r.approx_checkout_time,
         checkinTime: r.checkin_time,
@@ -296,7 +369,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         stayDurationStr: summary.stayDurationStr || '',
         expectedNights: summary.expectedNights || 1,
         originalRoomCharge: summary.originalRoomCharge || roomCharge,
-        recalculatedRoomCharge: summary.recalculatedRoomCharge || roomCharge,
+        recalculatedRoomCharge: summary.stayCalcNow?.roomCharge || summary.recalculatedRoomCharge || roomCharge,
         refundAmount: summary.refundAmount || 0,
         memberDocuments: Array.isArray(r.member_documents) ? r.member_documents : (Array.isArray(raw.member_documents) ? raw.member_documents : []),
         member_documents: Array.isArray(r.member_documents) ? r.member_documents : (Array.isArray(raw.member_documents) ? raw.member_documents : []),
@@ -305,11 +378,23 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         aadharNumber: r.aadhar_number || raw.aadhar_number || '',
         aadhar_number: r.aadhar_number || raw.aadhar_number || '',
         extensionLogs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : [])),
-        extension_logs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : []))
+        extension_logs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : [])),
+        stayCalcNow: summary.stayCalcNow || null,
+        stayCalcDeclared: summary.stayCalcDeclared || null
       };
       setFolioData(normalized);
+      folioMemoryCache.set(roomId, normalized);
       if (normalized.approxCheckoutTime) {
-        setExtendDatetime(new Date(normalized.approxCheckoutTime).toISOString().slice(0, 16));
+        const d = new Date(normalized.approxCheckoutTime);
+        if (!isNaN(d.getTime())) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          setExtendDate(`${y}-${m}-${day}`);
+          setExtendTime(`${hh}:${mm}`);
+        }
       }
     } catch (err) {
       showToast('Error loading folio: ' + err.message, 'red');
@@ -323,19 +408,180 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   }, [loadFolio]);
 
   const handleSaveExtendCheckout = async () => {
-    if (!extendDatetime) return;
+    if (!extendDate) {
+      showToast('Please select an extend checkout date.', 'red');
+      return;
+    }
+    const timeVal = extendTime || '11:00';
+    const combinedIso = `${extendDate}T${timeVal}:00`;
     try {
       const cashierName = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
       await api.extendCheckout(folioData.bookingId, {
-        approx_checkout_time: extendDatetime,
+        approx_checkout_time: combinedIso,
         extended_by: cashierName,
         cashier_name: cashierName
       });
-      showToast('Checkout date extended successfully.', 'green');
+      showToast('Checkout date & time extended successfully.', 'green');
       setIsExtendOpen(false);
       loadFolio();
     } catch (err) {
       showToast('Error extending checkout time: ' + err.message, 'red');
+    }
+  };
+
+  const handleSaveAddPayment = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const splitCash = parseFloat(addPaySplitCash) || 0;
+    const splitOnline = parseFloat(addPaySplitOnline) || 0;
+    const splitCard = parseFloat(addPaySplitCard) || 0;
+    const splitCheque = parseFloat(addPaySplitCheque) || 0;
+    const totalAmt = splitCash + splitOnline + splitCard + splitCheque;
+
+    if (!totalAmt || totalAmt <= 0) {
+      showToast('Please enter a payment amount in at least one payment method.', 'red');
+      return;
+    }
+    if (splitOnline > 0 && !addPayUtr.trim()) {
+      showToast('UTR / Reference Number is mandatory for UPI payments.', 'red');
+      return;
+    }
+    if (splitCheque > 0 && !addPayChequeNo.trim()) {
+      showToast('Cheque Number is mandatory for Cheque payments.', 'red');
+      return;
+    }
+
+    const activeMethods = [];
+    if (splitCash > 0) activeMethods.push({ mode: 'cash', label: 'Cash', amount: splitCash });
+    if (splitOnline > 0) activeMethods.push({ mode: 'upi', label: 'Online UPI', amount: splitOnline });
+    if (splitCard > 0) activeMethods.push({ mode: 'card', label: 'Card POS', amount: splitCard });
+    if (splitCheque > 0) activeMethods.push({ mode: 'cheque', label: 'Cheque', amount: splitCheque });
+
+    const primaryMode = activeMethods.length === 1 ? activeMethods[0].mode : 'split';
+
+    setIsSubmittingPay(true);
+    try {
+      const cashierName = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
+      const targetBookingId = folioData?.bookingId || folioData?.booking_id || roomId;
+      const res = await api.addRoomPayment(roomId, {
+        bookingId: targetBookingId,
+        amount: totalAmt,
+        payment_mode: primaryMode,
+        split_cash: splitCash,
+        split_online: splitOnline,
+        split_card: splitCard,
+        split_cheque: splitCheque,
+        notes: addPayNotes.trim() || 'In-Stay Advance Payment',
+        particulars: `Room #${folioData?.roomNumber || roomId} - In-Stay Advance Payment`,
+        utr_number: addPayUtr.trim(),
+        card_digits: addPayCardDigits.trim(),
+        cheque_no: addPayChequeNo.trim(),
+        cheque_photo: addPayChequePhoto,
+        cashier_name: cashierName,
+        guest_name: folioData?.guestName
+      });
+
+      showToast(`Advance payment of ₹${totalAmt.toLocaleString('en-IN')} recorded successfully!`, 'green');
+
+      // User requirement: Only print separate payment receipts for each method paid (no master invoice)
+      const baseVoucher = folioData?.voucherNumber || folioData?.voucher_number || folioData?.room?.voucher_number || res?.payment?.voucher_number || res?.voucher_number || `260926-${String(folioData?.bookingId || roomId).slice(-2)}`;
+      const guestName = folioData?.guestName || 'Valued Guest';
+      const roomNum = folioData?.roomNumber || roomId;
+      const isMulti = activeMethods.length > 1;
+      const splitReceipts = [];
+
+      const cashReceiptNo = res?.receiptNumbers?.cash || res?.receipt_numbers?.cash || (res?.receipt_no && /^CR\d+/i.test(res?.receipt_no) ? res.receipt_no : 'CR01');
+      const upiReceiptNo = res?.receiptNumbers?.upi || res?.receipt_numbers?.upi || (res?.receipt_no && /^UPI\d+/i.test(res?.receipt_no) ? res.receipt_no : 'UPI01');
+      const cardReceiptNo = res?.receiptNumbers?.card || res?.receipt_numbers?.card || (res?.receipt_no && /^POS\d+/i.test(res?.receipt_no) ? res.receipt_no : 'POS01');
+      const chqReceiptNo = res?.receiptNumbers?.cheque || res?.receipt_numbers?.cheque || (res?.receipt_no && /^CHQ\d+/i.test(res?.receipt_no) ? res.receipt_no : 'CHQ01');
+
+      if (splitCash > 0) {
+        splitReceipts.push({
+          receipt_no: cashReceiptNo,
+          voucher_number: baseVoucher,
+          receipt_date: new Date(),
+          guest_name: guestName,
+          amount: splitCash,
+          base_amount: splitCash,
+          payment_mode: 'Cash',
+          mode: 'cash',
+          room_numbers: roomNum,
+          particulars: `Room #${roomNum} - In-Stay Advance Payment (Cash)`,
+          cashier_name: cashierName,
+          is_split: isMulti
+        });
+      }
+      if (splitOnline > 0) {
+        splitReceipts.push({
+          receipt_no: upiReceiptNo,
+          voucher_number: baseVoucher,
+          receipt_date: new Date(),
+          guest_name: guestName,
+          amount: splitOnline,
+          base_amount: splitOnline,
+          payment_mode: 'Online UPI',
+          mode: 'upi',
+          utr_number: addPayUtr.trim(),
+          room_numbers: roomNum,
+          particulars: `Room #${roomNum} - In-Stay Advance Payment (UPI)`,
+          cashier_name: cashierName,
+          is_split: isMulti
+        });
+      }
+      if (splitCard > 0) {
+        splitReceipts.push({
+          receipt_no: cardReceiptNo,
+          voucher_number: baseVoucher,
+          receipt_date: new Date(),
+          guest_name: guestName,
+          amount: splitCard,
+          base_amount: splitCard,
+          payment_mode: 'Card POS',
+          mode: 'card',
+          card_digits: addPayCardDigits.trim(),
+          room_numbers: roomNum,
+          particulars: `Room #${roomNum} - In-Stay Advance Payment (Card POS)`,
+          cashier_name: cashierName,
+          is_split: isMulti
+        });
+      }
+      if (splitCheque > 0) {
+        splitReceipts.push({
+          receipt_no: chqReceiptNo,
+          voucher_number: baseVoucher,
+          receipt_date: new Date(),
+          guest_name: guestName,
+          amount: splitCheque,
+          base_amount: splitCheque,
+          payment_mode: 'Cheque',
+          mode: 'cheque',
+          cheque_no: addPayChequeNo.trim(),
+          cheque_photo: addPayChequePhoto,
+          room_numbers: roomNum,
+          particulars: `Room #${roomNum} - In-Stay Advance Payment (Cheque)`,
+          cashier_name: cashierName,
+          is_split: isMulti
+        });
+      }
+
+      if (splitReceipts.length > 0) {
+        printCashReceipt(splitReceipts);
+      }
+
+      setIsAddPaymentOpen(false);
+      setAddPaySplitCash('');
+      setAddPaySplitOnline('');
+      setAddPaySplitCard('');
+      setAddPaySplitCheque('');
+      setAddPayAmount('');
+      setAddPayUtr('');
+      setAddPayCardDigits('');
+      setAddPayChequeNo('');
+      setAddPayChequePhoto(null);
+      loadFolio();
+    } catch (err) {
+      showToast('Error recording advance payment: ' + err.message, 'red');
+    } finally {
+      setIsSubmittingPay(false);
     }
   };
 
@@ -405,7 +651,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         showToast(`Bill #${selectedFnbOrder.order_number || selectedFnbOrder.id} settled successfully!`, 'green');
 
         printCashReceipt({
-          receipt_no: res.receiptNo || `RCP-${Date.now().toString().slice(-6)}`,
+          receipt_no: folioData?.voucherNumber || folioData?.voucher_number || res.receiptNo || `RCP-${Date.now().toString().slice(-6)}`,
+          voucher_number: folioData?.voucherNumber || folioData?.voucher_number,
           receipt_date: new Date().toISOString(),
           guest_name: folioData.guestName,
           amount: baseTotal,
@@ -465,7 +712,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !folioData) {
     return (
       <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
         <div style={{ fontSize: '2rem', marginBottom: '10px' }}>⏳</div>
@@ -533,8 +780,19 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     const summary = folioData.summary || {};
 
     const checkinDateObj = folioData.checkinTime ? new Date(folioData.checkinTime) : new Date();
-    const checkoutDateObj = folioData.approxCheckoutTime ? new Date(folioData.approxCheckoutTime) : new Date(checkinDateObj.getTime() + 86400000);
-    const stayNights = Math.max(1, Math.ceil((checkoutDateObj - checkinDateObj) / (1000 * 60 * 60 * 24)));
+    let stayNights = Number(folioData.stayNights) || 1;
+    if (folioData.checkinTime && folioData.approxCheckoutTime) {
+      try {
+        const dIn = new Date(folioData.checkinTime.split('T')[0]);
+        const dOut = new Date(folioData.approxCheckoutTime.split('T')[0]);
+        const diffDays = Math.round((dOut - dIn) / (1000 * 60 * 60 * 24));
+        stayNights = Math.max(1, diffDays);
+      } catch (e) {
+        stayNights = Math.max(1, Math.round((checkoutDateObj - checkinDateObj) / (1000 * 60 * 60 * 24)));
+      }
+    } else {
+      stayNights = Math.max(1, Math.round((checkoutDateObj - checkinDateObj) / (1000 * 60 * 60 * 24)));
+    }
 
     const pendingRestaurant = (folioData.restaurantOrders || [])
       .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered')
@@ -647,6 +905,58 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     };
   };
 
+  const pendingRestaurantOrders = (folioData.restaurantOrders || [])
+    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered');
+  const pendingBarOrders = (folioData.barOrders || [])
+    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered');
+  const globalFnbPending = pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
+                           pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const globalAdvancePaid = Number(folioData.advancePaid || 0);
+  const otaEarlyFeeVal = (folioData.bookingSource === 'OTA' && folioData.isEarlyCheckin)
+    ? Number(folioData.earlyCheckinCharge !== undefined && folioData.earlyCheckinCharge !== null ? folioData.earlyCheckinCharge : (folioData.ota_early_checkin_price || 900))
+    : 0;
+  const hotelExtrasChargeVal = Number(folioData.extraBedCharge || 0) + Number(folioData.extra_rooms_charge || 0) + Number(folioData.extra_breakfast_charge || 0) + otaEarlyFeeVal;
+  const globalStayNet = isOtaPrepaid
+    ? (globalAdvancePaid > 0 ? Math.max(hotelExtrasChargeVal, globalAdvancePaid) : hotelExtrasChargeVal)
+    : Number(folioData.stayCalcNow?.roomCharge ?? folioData.roomCharge ?? 0);
+  const globalRawStayBalance = isOtaPrepaid
+    ? (hotelExtrasChargeVal - globalAdvancePaid)
+    : (globalStayNet - globalAdvancePaid);
+  const globalNetFolioBalance = globalRawStayBalance + globalFnbPending;
+  const folioDueAmount = Math.max(0, globalNetFolioBalance);
+  const folioRefundAmount = globalNetFolioBalance < 0 ? Math.abs(globalNetFolioBalance) : 0;
+
+  const openAddPaymentModal = (presetMode = null) => {
+    const due = folioDueAmount > 0 ? folioDueAmount : 0;
+    if (presetMode === 'cash') {
+      setAddPaySplitCash(due > 0 ? String(due) : '');
+      setAddPaySplitOnline('');
+      setAddPaySplitCard('');
+      setAddPaySplitCheque('');
+    } else if (presetMode === 'online') {
+      setAddPaySplitCash('');
+      setAddPaySplitOnline(due > 0 ? String(due) : '');
+      setAddPaySplitCard('');
+      setAddPaySplitCheque('');
+    } else if (presetMode === 'card') {
+      setAddPaySplitCash('');
+      setAddPaySplitOnline('');
+      setAddPaySplitCard(due > 0 ? String(due) : '');
+      setAddPaySplitCheque('');
+    } else {
+      setAddPaySplitCash(due > 0 ? String(due) : '');
+      setAddPaySplitOnline('');
+      setAddPaySplitCard('');
+      setAddPaySplitCheque('');
+    }
+    setAddPayUtr('');
+    setAddPayCardDigits('');
+    setAddPayChequeNo('');
+    setAddPayChequePhoto(null);
+    setAddPayNotes('In-Stay Advance Payment');
+    setIsAddPaymentOpen(true);
+  };
+
   return (
     <section className="panel-view active" id="view-room-folio">
       {/* Top Action Toolbar with Universal Back & Close Buttons */}
@@ -722,9 +1032,32 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
+            className="filter-chip btn-folio-action-chip"
+            onClick={() => {
+              const printPayload = buildFolioPrintPayload();
+              printGuestActivitiesSummary(printPayload);
+            }}
+            style={{ fontWeight: 800, background: '#f5f3ff', color: '#6d28d9', borderColor: '#c4b5fd' }}
+            title="Print Comprehensive Guest Activities & Financial Summary Statement (Point 20)"
+          >
+            📑 Activities Summary
+          </button>
+
+          <button
+            type="button"
+            className="filter-chip btn-folio-action-chip"
+            onClick={() => setIsAddPaymentOpen(true)}
+            style={{ fontWeight: 850, background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' }}
+            title="Record In-Stay Advance Payment (Cash / UPI / Card / Cheque) (Points 4 & 17)"
+          >
+            💳 + Add Payment
+          </button>
+
+          <button
+            type="button"
             className="filter-chip btn-folio-action-chip btn-folio-tax-chip"
             onClick={() => {
-              const roomObj = folioData?.room || folioData;
+              const roomObj = { ...folioData, ...(folioData?.room || {}) };
               setDocActionModal({
                 isOpen: true,
                 type: 'invoice',
@@ -735,8 +1068,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     settleAmt: 0,
                     refundAmt: 0,
                     settled_at: new Date(),
-                    invoiceNo: roomObj?.invoice_no || (folioData?.bookingId ? `L${folioData.bookingId}` : undefined),
-                    checked_out_by: 'Front Desk'
+                    invoiceNo: roomObj?.invoice_no || formatTaxInvoiceNumber(folioData?.voucherNumber || folioData?.voucher_no || roomObj?.voucher_number || roomObj?.voucher_no || roomObj?.checkin_voucher_no || folioData?.bookingId),
+                    checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
                   }
                 }
               });
@@ -900,6 +1233,36 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
               </div>
             </div>
           )}
+
+          {/* Corporate Company Details Card (Point 23) */}
+          {(folioData.companyName || folioData.gstNumber || folioData.companyAddress) && (
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🏢</span> Corporate Company Details
+                </span>
+                <span style={{ fontSize: '0.72rem', background: '#eff6ff', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', fontWeight: 750, border: '1px solid #bfdbfe' }}>
+                  {folioData.isIgst || folioData.taxType === 'IGST' ? 'IGST (Inter-State 12%)' : 'CGST + SGST (5%)'}
+                </span>
+              </div>
+              <div className="folio-info-grid" style={{ fontSize: '0.84rem' }}>
+                <div className="folio-info-row">
+                  <span className="label">Company:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{folioData.companyName || '-'}</strong>
+                </div>
+                <div className="folio-info-row">
+                  <span className="label">GSTIN:</span>
+                  <strong style={{ letterSpacing: '0.04em', color: '#0284c7' }}>{folioData.gstNumber || '-'}</strong>
+                </div>
+                {folioData.companyAddress && (
+                  <div className="folio-info-row" style={{ gridColumn: '1/-1' }}>
+                    <span className="label">Address:</span>
+                    <span>{folioData.companyAddress}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Column 2: Stay Details Card */}
@@ -950,13 +1313,19 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     {folioData.checkinTime ? new Date(folioData.checkinTime).toLocaleDateString('en-IN') : '-'}
                   </div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
-                    {folioData.checkinTime ? new Date(folioData.checkinTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {folioData.checkinTime ? formatTime12(folioData.checkinTime) : ''}
                   </div>
                   {folioData.isEarlyCheckin && (
                     <div style={{ marginTop: '5px', padding: '4px 6px', background: '#fffbeb', borderRadius: '4px', border: '1px solid #fef3c7', fontSize: '0.72rem', color: '#92400e', lineHeight: 1.3 }}>
-                      <div>Actual Early C/I: <strong>{folioData.earlyCheckinTime || (folioData.checkinTime ? new Date(folioData.checkinTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Early')}</strong></div>
-                      <div>Scheduled Time: <strong>{folioData.originalCheckinTime || '12:00 PM'}</strong></div>
-                      <div style={{ color: '#16a34a', fontWeight: 800, marginTop: '2px' }}>Surcharge: ₹0 (Free for OTA)</div>
+                      <div>Actual Early C/I: <strong>{formatTime12(folioData.earlyCheckinTime) || (folioData.checkinTime ? formatTime12(folioData.checkinTime) : 'Early')}</strong></div>
+                      <div>Scheduled Time: <strong>{formatTime12(folioData.originalCheckinTime) || '12:00 PM'}</strong></div>
+                      {folioData.bookingSource === 'OTA' ? (
+                        <div style={{ color: '#d97706', fontWeight: 800, marginTop: '2px' }}>
+                          🌅 Early Check-In: +₹{Number(folioData.earlyCheckinCharge ?? (folioData.ota_early_checkin_price ?? 900)).toLocaleString('en-IN')} (Extra @ Hotel)
+                        </div>
+                      ) : (
+                        <div style={{ color: '#16a34a', fontWeight: 800, marginTop: '2px' }}>Standard Check-In</div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -969,7 +1338,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <button
                       type="button"
                       className="btn-change-checkout"
-                      onClick={() => setIsExtendOpen(!isExtendOpen)}
+                      onClick={() => {
+                        if (!isExtendOpen && folioData?.approxCheckoutTime) {
+                          const d = new Date(folioData.approxCheckoutTime);
+                          if (!isNaN(d.getTime())) {
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            const hh = String(d.getHours()).padStart(2, '0');
+                            const mm = String(d.getMinutes()).padStart(2, '0');
+                            setExtendDate(`${y}-${m}-${day}`);
+                            setExtendTime(`${hh}:${mm}`);
+                          }
+                        }
+                        setIsExtendOpen(!isExtendOpen);
+                      }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', fontWeight: 700, cursor: 'pointer' }}
                       title="Extend guest checkout date & time"
                     >
@@ -980,29 +1363,32 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     {folioData.approxCheckoutTime ? new Date(folioData.approxCheckoutTime).toLocaleDateString('en-IN') : '-'}
                   </div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0284c7' }}>
-                    {folioData.approxCheckoutTime ? new Date(folioData.approxCheckoutTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {folioData.approxCheckoutTime ? formatTime12(folioData.approxCheckoutTime) : ''}
                   </div>
                 </div>
               </div>
 
               {/* Extend checkout collapsible form */}
               {isExtendOpen && (
-                <div style={{ marginTop: '12px', padding: '12px', background: '#ffffff', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--apple-blue)' }}>
-                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                <div style={{ marginTop: '12px', padding: '12px', background: '#ffffff', borderRadius: 'var(--radius-sm)', border: '1.5px solid var(--apple-blue)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
                     {folioData.bookingSource === 'OTA' ? 'Extend Checkout Date & Time (OTA Fixed & Paid):' : 'Extend Expected Checkout Date & Time:'}
                   </label>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input
-                      type="datetime-local"
-                      className="form-input"
-                      value={extendDatetime}
-                      onChange={(e) => setExtendDatetime(e.target.value)}
-                      style={{ flex: 1, minWidth: '180px', padding: '6px 10px', fontSize: '0.85rem' }}
+                    <ThemedDatePicker
+                      value={extendDate}
+                      onChange={(e) => setExtendDate(e.target.value)}
+                      style={{ width: '160px', height: '36px', fontSize: '0.85rem' }}
                     />
-                    <button type="button" className="btn-custom-ok" onClick={handleSaveExtendCheckout} style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: 700 }}>
+                    <UnifiedTimeInput
+                      value={extendTime}
+                      onChange={(val) => setExtendTime(val)}
+                      style={{ height: '36px', minWidth: '160px', fontSize: '0.85rem' }}
+                    />
+                    <button type="button" className="btn-custom-ok" onClick={handleSaveExtendCheckout} style={{ padding: '7px 16px', fontSize: '0.82rem', fontWeight: 700, borderRadius: '8px' }}>
                       Extend Checkout
                     </button>
-                    <button type="button" className="btn-custom-cancel" onClick={() => setIsExtendOpen(false)} style={{ padding: '6px 10px', fontSize: '0.82rem' }}>
+                    <button type="button" className="btn-custom-cancel" onClick={() => setIsExtendOpen(false)} style={{ padding: '7px 12px', fontSize: '0.82rem', borderRadius: '8px' }}>
                       Cancel
                     </button>
                   </div>
@@ -1026,7 +1412,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   {folioData.children > 0 && <span>, {folioData.children} Child</span>}
                   {folioData.extraBeds > 0 && (
                     <span>
-                      {' • '}🛏️ {folioData.extraBeds} Extra Bed{folioData.extraBeds > 1 ? 's' : ''}
+                      {' • '}🛏️ {folioData.extraBeds} Extra Mattress{folioData.extraBeds > 1 ? 'es' : ''}
                       {isOtaBooking && hotelChargedBeds > 0 && (
                         <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
                           {' '}({voucherIncludedBeds > 0 ? `${voucherIncludedBeds} Voucher + ` : ''}{hotelChargedBeds} Hotel Extra)
@@ -1123,10 +1509,16 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           // Restaurant calculations
           const fnbFoodGross = allRestaurantOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          const fnbFoodTaxable = allRestaurantOrders.reduce((sum, o) => sum + (Number(o.subtotal) || Math.round(Number(o.total || 0) / 1.05)), 0);
+          const fnbFoodGst = fnbFoodGross - fnbFoodTaxable;
+
           const fnbBarGross = allBarOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          const fnbBarTaxable = allBarOrders.reduce((sum, o) => sum + (Number(o.subtotal) || Math.round(Number(o.total || 0) / 1.05)), 0);
+          const fnbBarGst = fnbBarGross - fnbBarTaxable;
+
+          const fnbTaxable = fnbFoodTaxable + fnbBarTaxable;
+          const fnbGst = fnbFoodGst + fnbBarGst;
           const fnbTotal = fnbFoodGross + fnbBarGross;
-          const fnbTaxable = Math.round(fnbTotal / 1.05);
-          const fnbGst = fnbTotal - fnbTaxable;
           const fnbPaidTotal = allFnbOrders.filter((o) => o.is_paid === 1).reduce((sum, o) => sum + (Number(o.total) || 0), 0);
           const fnbPendingTotal = allFnbOrders.filter((o) => o.is_paid === 0).reduce((sum, o) => sum + (Number(o.total) || 0), 0);
           const fnbPaidCash = allFnbOrders
@@ -1141,17 +1533,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           // Hospitality calculations
           const isOtaPrepaidStay = isOtaPrepaid;
-          const hotelExtrasCharge = Number(folioData.extraBedCharge || 0) + Number(folioData.extra_rooms_charge || 0) + Number(folioData.extra_breakfast_charge || 0);
+          const otaEarlyFee = (folioData.bookingSource === 'OTA' && folioData.isEarlyCheckin)
+            ? Number(folioData.earlyCheckinCharge !== undefined && folioData.earlyCheckinCharge !== null ? folioData.earlyCheckinCharge : (folioData.ota_early_checkin_price || 900))
+            : 0;
+          const hotelExtrasCharge = Number(folioData.extraBedCharge || 0) + Number(folioData.extra_rooms_charge || 0) + Number(folioData.extra_breakfast_charge || 0) + otaEarlyFee;
           const advancePaidVal = Number(folioData.advancePaid || 0);
           const stayNetTotal = isOtaPrepaidStay
             ? (advancePaidVal > 0 ? Math.max(hotelExtrasCharge, advancePaidVal) : hotelExtrasCharge)
-            : Number(folioData.roomCharge || 0);
+            : Number(folioData.stayCalcNow?.roomCharge ?? folioData.roomCharge ?? 0);
           const otaVoucherVal = Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0);
           const entireBookingVal = isOtaPrepaidStay ? (otaVoucherVal + stayNetTotal) : stayNetTotal;
           const entireCollectedVal = isOtaPrepaidStay ? (otaVoucherVal + advancePaidVal) : advancePaidVal;
           const stayTaxable = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : Math.round(stayNetTotal / 1.05);
           const stayGst = (isOtaPrepaidStay || isOtaPayAtHotel) ? 0 : (stayNetTotal - stayTaxable);
-          const stayPreTax = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : (stayTaxable + Number(folioData.discountAmount || 0));
+          const stayDiscountVal = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
+          const stayPreTax = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : (stayTaxable + stayDiscountVal);
           const rawStayBalance = isOtaPrepaidStay
             ? (hotelExtrasCharge - advancePaidVal)
             : (stayNetTotal - advancePaidVal);
@@ -1521,7 +1917,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
                             <span style={{ color: 'var(--text-secondary, #64748b)' }}>
-                              OTA Voucher Package ({folioData.otaPlatform || 'OTA'} - {groupRoomsList.length > 1 ? `${groupRoomsList.length} Rooms` : '1 Room'}, {stayNights} Night{stayNights > 1 ? 's' : ''}):
+                              OTA Voucher Package ({folioData.otaPlatform || 'OTA'} - {groupRoomsList.length > 1 ? `${groupRoomsList.length} Rooms` : '1 Room'}, {stayNights === 1 ? '24 Hours' : `${stayNights * 24} Hours (${stayNights} × 24 hrs)`}):
                             </span>
                             <div style={{ textAlign: 'right' }}>
                               <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0))}</strong>
@@ -1540,7 +1936,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           {hotelChargedBeds > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
                               <span style={{ color: 'var(--text-secondary, #64748b)' }}>
-                                Hotel Extra Bed ({hotelChargedBeds} Bed{hotelChargedBeds > 1 ? 's' : ''} @ ₹500):
+                                Hotel Extra Mattress ({hotelChargedBeds} Mattress{hotelChargedBeds > 1 ? 'es' : ''} @ ₹500):
                               </span>
                               <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
                             </div>
@@ -1548,8 +1944,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
                           {voucherIncludedBeds > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#166534' }}>
-                              <span>Voucher Extra Bed ({voucherIncludedBeds} Bed{voucherIncludedBeds > 1 ? 's' : ''}):</span>
+                              <span>Voucher Extra Mattress ({voucherIncludedBeds} Mattress{voucherIncludedBeds > 1 ? 'es' : ''}):</span>
                               <span style={{ fontWeight: 750 }}>Included in OTA (₹0)</span>
+                            </div>
+                          )}
+
+                          {folioData.isEarlyCheckin && otaEarlyFee > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
+                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>
+                                🌅 Early Check-In Extra Charge (≤{folioData.ota_early_checkin_max_hours || 6}h):
+                              </span>
+                              <strong style={{ color: '#d97706' }}>+ {formatCurrency(otaEarlyFee)}</strong>
                             </div>
                           )}
 
@@ -1563,13 +1968,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       ) : (
                         <>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Base Room Tariff ({stayNights} Night{stayNights > 1 ? 's' : ''}):</span>
+                            <span style={{ color: 'var(--text-secondary, #64748b)' }}>Base Room Tariff ({stayNights === 1 ? '24 Hours' : `${stayNights * 24} Hours (${stayNights} × 24 hrs)`}):</span>
                             <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency((folioData.room?.price || folioData.room?.room_rate || 0) * stayNights)}</strong>
                           </div>
 
                           {folioData.extraBeds > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>Extra Bed ({folioData.extraBeds} Bed{folioData.extraBeds > 1 ? 's' : ''}):</span>
+                              <span style={{ color: 'var(--text-secondary, #64748b)' }}>Extra Mattress ({folioData.extraBeds} Mattress{folioData.extraBeds > 1 ? 'es' : ''}):</span>
                               <strong style={{ color: 'var(--text-primary, #0f172a)' }}>+ {formatCurrency(folioData.extraBedCharge || 0)}</strong>
                             </div>
                           )}
@@ -1584,7 +1989,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>{isOtaPrepaidStay ? 'Hotel Extras Subtotal:' : (isOtaPayAtHotel ? 'Package + Extras Subtotal:' : 'Stay Tariff Subtotal:')}</span>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>{isOtaPrepaidStay ? 'Hotel Extras Subtotal:' : (isOtaPayAtHotel ? 'Package + Extras Subtotal:' : 'Room Tariff Subtotal:')}</span>
                         <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(stayPreTax)}</strong>
                       </div>
 
@@ -1594,7 +1999,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Stay GST (5%):</span>
+                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Room GST ({folioData.room?.gst_pct !== undefined && folioData.room?.gst_pct !== null ? `${folioData.room.gst_pct}%` : '5%'}):</span>
                         <strong style={{ color: '#d97706' }}>{isOtaPrepaidStay ? '₹0 (In Voucher)' : (isOtaPayAtHotel ? '₹0 (In OTA Rate)' : `+ ${formatCurrency(stayGst)}`)}</strong>
                       </div>
 
@@ -1605,7 +2010,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <span style={{ fontWeight: 800 }}>{folioData.stayDurationStr || `${folioData.earlyStayDays}d ${folioData.earlyStayHours}h`} (Exp: {folioData.expectedNights}d)</span>
                           </div>
                           <div style={{ fontSize: '0.74rem', color: '#15803d', marginTop: '2px' }}>
-                            Recalculated Room Rent: {formatCurrency(folioData.recalculatedRoomCharge || stayNetTotal)}
+                            Recalculated Room Rent: {formatCurrency(folioData.stayCalcNow?.roomCharge || folioData.recalculatedRoomCharge || stayNetTotal)}
                             {folioData.refundAmount > 0 && <span style={{ color: '#b91c1c', fontWeight: 800, marginLeft: '8px' }}>• Excess Refund Due: {formatCurrency(folioData.refundAmount)}</span>}
                           </div>
                         </div>
@@ -1751,30 +2156,77 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Food (Restaurant):</span>
-                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbFoodGross)}</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {/* Food (Restaurant) Base */}
+                      {fnbFoodGross > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border-color, #e2e8f0)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                              Food (Restaurant){allRestaurantOrders.length > 0 ? ` (${allRestaurantOrders.length} Order${allRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                            </span>
+                            <span style={{ fontSize: '0.96rem', color: '#0369a1', fontWeight: 800 }}>
+                              Taxable Base
+                            </span>
+                          </div>
+                          <strong style={{ fontSize: '1.20rem', color: 'var(--text-primary, #0f172a)', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                            {formatCurrency(fnbFoodTaxable)}
+                          </strong>
+                        </div>
+                      )}
+
+                      {/* Bar (Lounge) Base */}
+                      {fnbBarGross > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border-color, #e2e8f0)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                              Bar (Lounge){allBarOrders.length > 0 ? ` (${allBarOrders.length} Order${allBarOrders.length === 1 ? '' : 's'})` : ''}:
+                            </span>
+                            <span style={{ fontSize: '0.96rem', color: '#0369a1', fontWeight: 800 }}>
+                              Taxable Base
+                            </span>
+                          </div>
+                          <strong style={{ fontSize: '1.20rem', color: 'var(--text-primary, #0f172a)', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                            + {formatCurrency(fnbBarTaxable)}
+                          </strong>
+                        </div>
+                      )}
+
+                      {/* Total F&B Taxable Subtotal */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border-color, #cbd5e1)', background: 'rgba(241, 245, 249, 0.6)', paddingLeft: '4px', paddingRight: '4px', borderRadius: '4px' }}>
+                        <span style={{ color: '#334155', fontWeight: 800, fontSize: '0.80rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                          F&amp;B Orders Subtotal (Taxable):
+                        </span>
+                        <strong style={{ fontSize: '1.18rem', color: '#0f172a', fontWeight: 950 }}>
+                          {formatCurrency(fnbTaxable)}
+                        </strong>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Bar (Lounge):</span>
-                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbBarGross)}</strong>
+                      {/* F&B Tax (5% GST) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border-color, #e2e8f0)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                            F&amp;B Tax (5% GST):
+                          </span>
+                          <span style={{ fontSize: '0.96rem', color: '#0369a1', fontWeight: 800 }}>
+                            5% GST on {formatCurrency(fnbTaxable)}
+                          </span>
+                        </div>
+                        <strong style={{ fontSize: '1.20rem', color: '#0369a1', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                          + {formatCurrency(fnbGst)}
+                        </strong>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>F&amp;B Orders Subtotal:</span>
-                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbTaxable)}</strong>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>F&amp;B Tax (5% GST):</span>
-                        <strong style={{ color: '#d97706' }}>+ {formatCurrency(fnbGst)}</strong>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span style={{ color: 'var(--text-secondary, #64748b)' }}>Total F&amp;B Orders:</span>
-                        <strong style={{ color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(fnbTotal)}</strong>
+                      {/* Total F&B Orders Subtotal */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1.5px solid var(--border-color, #cbd5e1)' }}>
+                        <div>
+                          <span style={{ fontWeight: 850, color: 'var(--text-primary, #0f172a)', fontSize: '0.94rem' }}>Total F&amp;B Orders (Incl. GST):</span>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary, #64748b)' }}>
+                            Total Taxable: {formatCurrency(fnbTaxable)} | Total GST: {formatCurrency(fnbGst)}
+                          </div>
+                        </div>
+                        <strong style={{ fontSize: '1.25rem', color: '#b45309', fontWeight: 950 }}>
+                          {formatCurrency(fnbTotal)}
+                        </strong>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', paddingTop: '4px', borderTop: '1px dashed var(--border-color, #e2e8f0)' }}>
@@ -1801,7 +2253,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: netFolioBalance < 0 ? '#166534' : '#92400e' }}>Pending Added to Room Folio:</span>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: netFolioBalance < 0 ? '#166534' : '#92400e' }}>Pending Added to Room Voucher:</span>
                       <strong style={{ fontSize: '1.3rem', fontWeight: 900, color: netFolioBalance < 0 ? '#15803d' : (fnbPendingTotal > 0 ? '#b91c1c' : '#15803d') }}>
                         {formatCurrency(fnbPendingTotal)}
                       </strong>
@@ -1811,7 +2263,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         ? (netFolioBalance < 0
                             ? `✓ Fully covered by check-in excess advance (${formatCurrency(stayExcessAdvance)} adv - ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(folioRefundAmount)} Refund Due to Guest).`
                             : (stayExcessAdvance > 0
-                                ? `⏳ ${formatCurrency(stayExcessAdvance)} absorbed by excess advance. Remaining Folio Due: ${formatCurrency(folioDueAmount)}.`
+                                ? `⏳ ${formatCurrency(stayExcessAdvance)} absorbed by excess advance. Remaining Room Voucher Due: ${formatCurrency(folioDueAmount)}.`
                                 : `⏳ Added to room balance due (${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(folioDueAmount)} Total Due).`))
                         : '✓ All F&B orders settled.'}
                     </div>
@@ -1819,22 +2271,672 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 </div>
               </div>
 
+              {/* Checkout Financial Comparison Card: If Checkout Now vs If Checkout @ Declared Departure (Point 1) */}
+              {(() => {
+                // Stay duration parameters
+                const nowDays = Number(folioData.stayCalcNow?.chargedDays || folioData.chargedDays || 1);
+                const decDays = Number(folioData.stayCalcDeclared?.expectedNights || folioData.expectedNights || stayNights);
+                const effectiveGstPct = Number(folioData.stayCalcNow?.gstPct ?? folioData.room?.gst_pct ?? 5);
+
+                const dailyBaseRate = Number(folioData.stayCalcNow?.dailyBaseRate ?? folioData.room?.price ?? folioData.room?.room_rate ?? 0);
+                const extraBedDaily = Number(folioData.stayCalcNow?.extraMattressDaily ?? folioData.extraBedCharge ?? 0);
+                const extraBedsCount = Number(folioData.stayCalcNow?.extraMattressBeds ?? folioData.extraBeds ?? 0);
+
+                const hasBreakfast = folioData.mealPlan === 'with_breakfast' || folioData.room?.meal_plan === 'with_breakfast' || (folioData.stayCalcNow?.breakfastCost > 0);
+                const breakfastPax = Number(folioData.stayCalcNow?.breakfastPax ?? (hasBreakfast ? Math.max(1, (folioData.adultsMale || 1) + (folioData.adultsFemale || 0)) : 0));
+                const breakfastDailyRate = Number(folioData.stayCalcNow?.breakfastDailyRate ?? (folioData.room?.breakfast_price || 250));
+
+                // Now Breakdown
+                const nowBaseTariff = Number(folioData.stayCalcNow?.baseRoomTariff ?? (nowDays * dailyBaseRate));
+                const nowBaseGst = Number(folioData.stayCalcNow?.baseRoomTariffGst ?? Math.round((nowBaseTariff * effectiveGstPct) / 100));
+
+                const nowExtraMattressCost = Number(folioData.stayCalcNow?.extraMattressCost ?? (nowDays * extraBedDaily));
+                const nowExtraMattressGst = Number(folioData.stayCalcNow?.extraMattressGst ?? Math.round((nowExtraMattressCost * effectiveGstPct) / 100));
+
+                const nowBreakfastCost = Number(folioData.stayCalcNow?.breakfastCost ?? (hasBreakfast ? (nowDays * breakfastPax * breakfastDailyRate) : 0));
+                const nowBreakfastGst = Number(folioData.stayCalcNow?.breakfastGst ?? Math.round((nowBreakfastCost * effectiveGstPct) / 100));
+
+                const nowExtensionHours = Number(folioData.stayCalcNow?.extensionHours ?? folioData.stayCalcNow?.extraHours ?? folioData.earlyStayHours ?? 0);
+                const nowExtensionCharge = Number(folioData.stayCalcNow?.extensionCharge ?? folioData.earlyExtensionCharge ?? 0);
+                const nowExtensionGst = Number(folioData.stayCalcNow?.extensionGst ?? Math.round((nowExtensionCharge * effectiveGstPct) / 100));
+
+                const nowPreTaxGross = nowBaseTariff + nowExtraMattressCost + nowBreakfastCost + nowExtensionCharge;
+                const nowGrossGst = Math.round((nowPreTaxGross * effectiveGstPct) / 100);
+                const nowGrossTotal = nowPreTaxGross + nowGrossGst;
+                const nowDiscountAmount = Number(
+                  folioData.stayCalcNow?.discountAmount ??
+                  (folioData.discountPct > 0
+                    ? Math.round((nowPreTaxGross * folioData.discountPct) / 100)
+                    : (folioData.discountAmount || 0))
+                );
+                const nowPreTaxRoom = Number(folioData.stayCalcNow?.roomSubtotalPreTax ?? (nowPreTaxGross - nowDiscountAmount));
+                const nowTotalRoomGst = Number(folioData.stayCalcNow?.roomGst ?? Math.round((nowPreTaxRoom * effectiveGstPct) / 100));
+                const nowCalculatedRoomCharge = nowPreTaxRoom + nowTotalRoomGst;
+                const nowDiscountTotal = Number(folioData.stayCalcNow?.discountTotal ?? Math.max(0, nowGrossTotal - nowCalculatedRoomCharge));
+                const nowDiscountGst = Number(folioData.stayCalcNow?.discountGst ?? Math.max(0, nowDiscountTotal - nowDiscountAmount));
+
+                const nowRoomCharge = Number(folioData.stayCalcNow?.roomCharge ?? (folioData.isEarlyCheckout ? (folioData.recalculatedRoomCharge || nowCalculatedRoomCharge) : (folioData.stayCalcNow ? nowCalculatedRoomCharge : stayNetTotal)));
+                const nowFolioTotal = nowRoomCharge + fnbPendingTotal;
+                const nowRawBal = nowFolioTotal - advancePaidVal;
+                const nowDue = Math.max(0, nowRawBal);
+                const nowRefund = nowRawBal < 0 ? Math.abs(nowRawBal) : 0;
+                const nowDuration = folioData.stayCalcNow?.stayDurationStr || folioData.stayDurationStr || 'Current Time';
+
+                // Declared Breakdown
+                const decBaseTariff = Number(folioData.stayCalcDeclared?.baseRoomTariff ?? (decDays * dailyBaseRate));
+                const decBaseGst = Number(folioData.stayCalcDeclared?.baseRoomTariffGst ?? Math.round((decBaseTariff * effectiveGstPct) / 100));
+
+                const decExtraMattressCost = Number(folioData.stayCalcDeclared?.extraMattressCost ?? (decDays * extraBedDaily));
+                const decExtraMattressGst = Number(folioData.stayCalcDeclared?.extraMattressGst ?? Math.round((decExtraMattressCost * effectiveGstPct) / 100));
+
+                const decBreakfastCost = Number(folioData.stayCalcDeclared?.breakfastCost ?? (hasBreakfast ? (decDays * breakfastPax * breakfastDailyRate) : 0));
+                const decBreakfastGst = Number(folioData.stayCalcDeclared?.breakfastGst ?? Math.round((decBreakfastCost * effectiveGstPct) / 100));
+
+                const decPreTaxGross = decBaseTariff + decExtraMattressCost + decBreakfastCost;
+                const decGrossGst = Math.round((decPreTaxGross * effectiveGstPct) / 100);
+                const decGrossTotal = decPreTaxGross + decGrossGst;
+                const decDiscountAmount = Number(
+                  folioData.stayCalcDeclared?.discountAmount ??
+                  (folioData.discountPct > 0
+                    ? Math.round((decPreTaxGross * folioData.discountPct) / 100)
+                    : (nowDays > 0 ? Math.round(((folioData.discountAmount || 0) / nowDays) * decDays) : (folioData.discountAmount || 0)))
+                );
+                const decPreTaxRoom = Number(folioData.stayCalcDeclared?.roomSubtotalPreTax ?? (decPreTaxGross - decDiscountAmount));
+                const decTotalRoomGst = Number(folioData.stayCalcDeclared?.roomGst ?? Math.round((decPreTaxRoom * effectiveGstPct) / 100));
+                const decCalculatedRoomCharge = decPreTaxRoom + decTotalRoomGst;
+                const decDiscountTotal = Number(folioData.stayCalcDeclared?.discountTotal ?? Math.max(0, decGrossTotal - decCalculatedRoomCharge));
+                const decDiscountGst = Number(folioData.stayCalcDeclared?.discountGst ?? Math.max(0, decDiscountTotal - decDiscountAmount));
+
+                const decRoomCharge = Number(folioData.stayCalcDeclared?.roomCharge ?? (folioData.originalRoomCharge || decCalculatedRoomCharge || stayNetTotal));
+                const decFolioTotal = decRoomCharge + fnbPendingTotal;
+                const decRawBal = decFolioTotal - advancePaidVal;
+                const decDue = Math.max(0, decRawBal);
+                const decRefund = decRawBal < 0 ? Math.abs(decRawBal) : 0;
+                const decDuration = (folioData.stayCalcDeclared?.expectedNights || stayNights) === 1
+                  ? '24 Hours'
+                  : `${((folioData.stayCalcDeclared?.expectedNights || stayNights) * 24)} Hours (${folioData.stayCalcDeclared?.expectedNights || stayNights} × 24 hrs)`;
+
+                // F&B Breakdown
+                const fnbGrossTaxable = Number(folioData.stayCalcNow?.fnbTaxable ?? fnbTaxable ?? Math.round(fnbTotal / 1.05));
+                const fnbOrdersGst = Number(folioData.stayCalcNow?.fnbGst ?? fnbGst ?? (fnbTotal - fnbGrossTaxable));
+
+                return (
+                  <div
+                    className="folio-checkout-comparison-card"
+                    style={{
+                      gridColumn: '1/-1',
+                      marginTop: '20px',
+                      padding: '16px 20px',
+                      background: 'linear-gradient(135deg, rgba(240, 249, 255, 0.95) 0%, rgba(245, 243, 255, 0.95) 100%)',
+                      borderRadius: '16px',
+                      border: '1.5px solid #bae6fd',
+                      boxShadow: '0 4px 16px rgba(2, 132, 199, 0.08)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '1.3rem' }}>⏱️</span>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>
+                            Checkout Financial Comparison (Now vs Declared Checkout Time)
+                          </h4>
+                          <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                            Complete itemized cost breakdown with base tariffs, GST, breakfast, extra mattress &amp; F&amp;B
+                          </span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '3px 10px', background: '#0284c7', color: '#fff', borderRadius: '12px' }}>
+                        Itemized Tariff Tracking
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
+                      {/* Box 1: Checkout NOW */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '12px',
+                          padding: '14px 16px',
+                          border: '1.5px solid #86efac',
+                          boxShadow: '0 2px 8px rgba(34, 197, 94, 0.08)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <span style={{ fontSize: '0.90rem', fontWeight: 850, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>⚡</span> If Checkout Right Now
+                          </span>
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                            {nowDuration}
+                          </span>
+                        </div>
+
+                        {/* Room Stay Breakdown Block */}
+                        <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '0.73rem', fontWeight: 850, textTransform: 'uppercase', color: '#475569', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>🏨 Room Stay Breakdown</span>
+                            <span style={{ fontSize: '0.71rem', color: '#64748b', textTransform: 'none', fontWeight: 600 }}>
+                              ({nowDays} Day{nowDays > 1 ? 's' : ''}{nowExtensionHours > 0 ? ` + ${nowExtensionHours} hr` : ''})
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.82rem' }}>
+                            {isOtaPrepaidStay ? (
+                              <>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ color: '#64748b' }}>OTA Voucher Package:</span>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <strong style={{ color: '#0f172a' }}>{formatCurrency(otaVoucherVal)}</strong>
+                                    <span style={{ display: 'block', fontSize: '0.69rem', color: '#166534', fontWeight: 750 }}>✓ Voucher Covered</span>
+                                  </div>
+                                </div>
+                                {hotelExtrasCharge > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: '#64748b' }}>Hotel Extras &amp; Extension:</span>
+                                    <strong style={{ color: '#0f172a' }}>+ {formatCurrency(hotelExtrasCharge)}</strong>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {/* 1. Base Room Tariff */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Base Room Tariff:</span>
+                                    <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                      {nowDays} day{nowDays > 1 ? 's' : ''} × {formatCurrency(dailyBaseRate)}
+                                    </span>
+                                  </div>
+                                  <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                    {formatCurrency(nowBaseTariff)}
+                                  </strong>
+                                </div>
+
+                                {/* 2. Extra Mattress / PAX */}
+                                {nowExtraMattressCost > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Base Extra Mattress:</span>
+                                      <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                        {extraBedsCount > 0 ? `${extraBedsCount} Bed${extraBedsCount > 1 ? 's' : ''} × ` : ''}{nowDays} day{nowDays > 1 ? 's' : ''} × {formatCurrency(extraBedDaily)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(nowExtraMattressCost)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 3. Breakfast Included Cost */}
+                                {nowBreakfastCost > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Breakfast Included Plan:</span>
+                                      <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                        {breakfastPax} Pax × {nowDays} day{nowDays > 1 ? 's' : ''} × {formatCurrency(breakfastDailyRate)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(nowBreakfastCost)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 4. Extra Hours Extension */}
+                                {nowExtensionCharge > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Extra Hours Extension:</span>
+                                      <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                        {nowExtensionHours} hr{nowExtensionHours > 1 ? 's' : ''} beyond 24h
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(nowExtensionCharge)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 5. Total Base Tariff */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed #cbd5e1', background: 'rgba(241, 245, 249, 0.6)', paddingLeft: '4px', paddingRight: '4px', borderRadius: '4px' }}>
+                                  <span style={{ color: '#334155', fontWeight: 800, fontSize: '0.80rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Total Base Tariff:</span>
+                                  <strong style={{ fontSize: '1.18rem', color: '#0f172a', fontWeight: 950 }}>
+                                    {formatCurrency(nowPreTaxGross)}
+                                  </strong>
+                                </div>
+
+                                {/* 6. Discount Applied */}
+                                {nowDiscountAmount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                        Discount Applied{folioData.discountPct ? ` (${folioData.discountPct}%)` : ''}:
+                                      </span>
+                                      <span style={{ fontSize: '0.96rem', color: '#dc2626', fontWeight: 800 }}>
+                                        Discount on total base tariff
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#dc2626', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      - {formatCurrency(nowDiscountAmount)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 7. Net Taxable Subtotal */}
+                                {nowDiscountAmount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #cbd5e1', background: 'rgba(241, 245, 249, 0.6)', paddingLeft: '4px', paddingRight: '4px', borderRadius: '4px' }}>
+                                    <span style={{ color: '#334155', fontWeight: 800, fontSize: '0.80rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Net Taxable Subtotal:</span>
+                                    <strong style={{ fontSize: '1.18rem', color: '#0f172a', fontWeight: 950 }}>
+                                      {formatCurrency(nowPreTaxRoom)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 8. Room GST */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Room GST ({effectiveGstPct}%):</span>
+                                    <span style={{ fontSize: '0.96rem', color: '#0369a1', fontWeight: 800 }}>
+                                      {effectiveGstPct}% GST on taxable subtotal ({formatCurrency(nowPreTaxRoom)})
+                                    </span>
+                                  </div>
+                                  <strong style={{ fontSize: '1.20rem', color: '#0369a1', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                    + {formatCurrency(nowTotalRoomGst)}
+                                  </strong>
+                                </div>
+                              </>
+                            )}
+
+                            {/* Room Stay Subtotal */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1.5px solid #cbd5e1' }}>
+                              <div>
+                                <span style={{ fontWeight: 850, color: '#0f172a', fontSize: '0.94rem' }}>Room Stay (Incl. GST):</span>
+                                {!isOtaPrepaidStay && (
+                                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                    Total Taxable: {formatCurrency(nowPreTaxRoom)} | Total GST: {formatCurrency(nowTotalRoomGst)}
+                                  </div>
+                                )}
+                              </div>
+                              <strong style={{ fontSize: '1.22rem', color: '#0f172a', fontWeight: 950 }}>
+                                {formatCurrency(nowRoomCharge)}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* F&B Breakdown Block */}
+                        <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                          <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>🍽️ Food &amp; Beverage (F&amp;B)</span>
+                            <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
+                              ({allFnbOrders.length} Order{allFnbOrders.length === 1 ? '' : 's'})
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {/* Food (Restaurant) Base */}
+                            {fnbFoodGross > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Food (Restaurant){allRestaurantOrders.length > 0 ? ` (${allRestaurantOrders.length} Order${allRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                </span>
+                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                  {formatCurrency(fnbFoodTaxable)}
+                                </strong>
+                              </div>
+                            )}
+
+                            {/* Bar (Lounge) Base */}
+                            {fnbBarGross > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Bar (Lounge){allBarOrders.length > 0 ? ` (${allBarOrders.length} Order${allBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                </span>
+                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                  + {formatCurrency(fnbBarTaxable)}
+                                </strong>
+                              </div>
+                            )}
+
+                            {/* F&B Taxable Subtotal */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
+                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                F&amp;B Taxable Subtotal:
+                              </span>
+                              <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
+                                {formatCurrency(fnbTaxable)}
+                              </strong>
+                            </div>
+
+                            {/* F&B GST */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                F&amp;B GST (5%):
+                              </span>
+                              <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                + {formatCurrency(fnbGst)}
+                              </strong>
+                            </div>
+
+                            {/* Total F&B Orders */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
+                              <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
+                                Total F&amp;B Orders (Incl. GST):
+                              </span>
+                              <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
+                                + {formatCurrency(fnbTotal)}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grand Totals & Settlement */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.84rem', marginTop: '2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
+                              <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                Stay ({formatCurrency(nowRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)})
+                              </div>
+                            </div>
+                            <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950 }}>{formatCurrency(nowRoomCharge + fnbTotal)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
+                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</span>
+                          </div>
+                          <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1.5px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: nowRefund > 0 ? '#166534' : '#b91c1c' }}>
+                              {nowRefund > 0 ? '🟢 Refund Due to Guest:' : '🔴 Balance to Collect:'}
+                            </span>
+                            <strong style={{ fontSize: '1.25rem', fontWeight: 950, color: nowRefund > 0 ? '#15803d' : '#dc2626' }}>
+                              {formatCurrency(nowRefund > 0 ? nowRefund : nowDue)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Box 2: Checkout @ Declared Expected Time */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '12px',
+                          padding: '14px 16px',
+                          border: '1.5px solid #93c5fd',
+                          boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                          <span style={{ fontSize: '0.90rem', fontWeight: 850, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📅</span> If Checkout @ Declared Time
+                          </span>
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '6px', border: '1px solid #bae6fd' }}>
+                            {decDuration}
+                          </span>
+                        </div>
+
+                        {/* Room Stay Breakdown Block */}
+                        <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '0.73rem', fontWeight: 850, textTransform: 'uppercase', color: '#475569', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>🏨 Room Stay Breakdown</span>
+                            <span style={{ fontSize: '0.71rem', color: '#64748b', textTransform: 'none', fontWeight: 600 }}>
+                              ({decDays} Day{decDays > 1 ? 's' : ''} / {decDuration})
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.82rem' }}>
+                            {isOtaPrepaidStay ? (
+                              <>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ color: '#64748b' }}>OTA Voucher Package:</span>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <strong style={{ color: '#0f172a' }}>{formatCurrency(otaVoucherVal)}</strong>
+                                    <span style={{ display: 'block', fontSize: '0.69rem', color: '#166534', fontWeight: 750 }}>✓ Voucher Covered</span>
+                                  </div>
+                                </div>
+                                {hotelExtrasCharge > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: '#64748b' }}>Hotel Extras:</span>
+                                    <strong style={{ color: '#0f172a' }}>+ {formatCurrency(hotelExtrasCharge)}</strong>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {/* 1. Base Room Tariff */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Base Room Tariff:</span>
+                                    <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                      {decDays} day{decDays > 1 ? 's' : ''} × {formatCurrency(dailyBaseRate)}
+                                    </span>
+                                  </div>
+                                  <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                    {formatCurrency(decBaseTariff)}
+                                  </strong>
+                                </div>
+
+                                {/* 2. Extra Mattress / PAX */}
+                                {decExtraMattressCost > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Base Extra Mattress:</span>
+                                      <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                        {extraBedsCount > 0 ? `${extraBedsCount} Bed${extraBedsCount > 1 ? 's' : ''} × ` : ''}{decDays} day{decDays > 1 ? 's' : ''} × {formatCurrency(extraBedDaily)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(decExtraMattressCost)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 3. Breakfast Included Cost */}
+                                {decBreakfastCost > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Breakfast Included Plan:</span>
+                                      <span style={{ fontSize: '1.02rem', color: '#0369a1', fontWeight: 850 }}>
+                                        {breakfastPax} Pax × {decDays} day{decDays > 1 ? 's' : ''} × {formatCurrency(breakfastDailyRate)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(decBreakfastCost)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 4. Total Base Tariff */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed #cbd5e1', background: 'rgba(241, 245, 249, 0.6)', paddingLeft: '4px', paddingRight: '4px', borderRadius: '4px' }}>
+                                  <span style={{ color: '#334155', fontWeight: 800, fontSize: '0.80rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Total Base Tariff:</span>
+                                  <strong style={{ fontSize: '1.18rem', color: '#0f172a', fontWeight: 950 }}>
+                                    {formatCurrency(decPreTaxGross)}
+                                  </strong>
+                                </div>
+
+                                {/* 5. Discount Applied */}
+                                {decDiscountAmount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                        Discount Applied{folioData.discountPct ? ` (${folioData.discountPct}%)` : ''}:
+                                      </span>
+                                      <span style={{ fontSize: '0.96rem', color: '#dc2626', fontWeight: 800 }}>
+                                        Discount on total base tariff
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.20rem', color: '#dc2626', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      - {formatCurrency(decDiscountAmount)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 6. Net Taxable Subtotal */}
+                                {decDiscountAmount > 0 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #cbd5e1', background: 'rgba(241, 245, 249, 0.6)', paddingLeft: '4px', paddingRight: '4px', borderRadius: '4px' }}>
+                                    <span style={{ color: '#334155', fontWeight: 800, fontSize: '0.80rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Net Taxable Subtotal:</span>
+                                    <strong style={{ fontSize: '1.18rem', color: '#0f172a', fontWeight: 950 }}>
+                                      {formatCurrency(decPreTaxRoom)}
+                                    </strong>
+                                  </div>
+                                )}
+
+                                {/* 7. Room GST */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ color: '#475569', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Room GST ({effectiveGstPct}%):</span>
+                                    <span style={{ fontSize: '0.96rem', color: '#0369a1', fontWeight: 800 }}>
+                                      {effectiveGstPct}% GST on taxable subtotal ({formatCurrency(decPreTaxRoom)})
+                                    </span>
+                                  </div>
+                                  <strong style={{ fontSize: '1.20rem', color: '#0369a1', fontWeight: 950, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                    + {formatCurrency(decTotalRoomGst)}
+                                  </strong>
+                                </div>
+                              </>
+                            )}
+
+                            {/* Room Stay Subtotal */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1.5px solid #cbd5e1' }}>
+                              <div>
+                                <span style={{ fontWeight: 850, color: '#0f172a', fontSize: '0.94rem' }}>Room Stay (Declared {decDuration}):</span>
+                                {!isOtaPrepaidStay && (
+                                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                    Total Taxable: {formatCurrency(decPreTaxRoom)} | Total GST: {formatCurrency(decTotalRoomGst)}
+                                  </div>
+                                )}
+                              </div>
+                              <strong style={{ fontSize: '1.22rem', color: '#0f172a', fontWeight: 950 }}>
+                                {formatCurrency(decRoomCharge)}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* F&B Breakdown Block */}
+                        <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                          <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>🍽️ Food &amp; Beverage (F&amp;B)</span>
+                            <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
+                              ({allFnbOrders.length} Order{allFnbOrders.length === 1 ? '' : 's'})
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {/* Food (Restaurant) Base */}
+                            {fnbFoodGross > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Food (Restaurant){allRestaurantOrders.length > 0 ? ` (${allRestaurantOrders.length} Order${allRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                </span>
+                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                  {formatCurrency(fnbFoodTaxable)}
+                                </strong>
+                              </div>
+                            )}
+
+                            {/* Bar (Lounge) Base */}
+                            {fnbBarGross > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Bar (Lounge){allBarOrders.length > 0 ? ` (${allBarOrders.length} Order${allBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                </span>
+                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                  + {formatCurrency(fnbBarTaxable)}
+                                </strong>
+                              </div>
+                            )}
+
+                            {/* F&B Taxable Subtotal */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
+                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                F&amp;B Taxable Subtotal:
+                              </span>
+                              <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
+                                {formatCurrency(fnbTaxable)}
+                              </strong>
+                            </div>
+
+                            {/* F&B GST */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                F&amp;B GST (5%):
+                              </span>
+                              <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                + {formatCurrency(fnbGst)}
+                              </strong>
+                            </div>
+
+                            {/* Total F&B Orders */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
+                              <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
+                                Total F&amp;B Orders (Incl. GST):
+                              </span>
+                              <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
+                                + {formatCurrency(fnbTotal)}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grand Totals & Settlement */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.84rem', marginTop: '2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
+                              <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                Stay ({formatCurrency(decRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)})
+                              </div>
+                            </div>
+                            <strong style={{ fontSize: '1.08rem', color: '#0f172a' }}>{formatCurrency(decRoomCharge + fnbTotal)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
+                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</span>
+                          </div>
+                          <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1.5px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: decRefund > 0 ? '#166534' : '#b91c1c' }}>
+                              {decRefund > 0 ? '🟢 Refund Due to Guest:' : '🔴 Balance to Collect:'}
+                            </span>
+                            <strong style={{ fontSize: '1.25rem', fontWeight: 950, color: decRefund > 0 ? '#15803d' : '#dc2626' }}>
+                              {formatCurrency(decRefund > 0 ? decRefund : decDue)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* 3. Financial Analytics: 5 KPI Tiles (Below the 2 Main Breakdown Cards) */}
               <div className="folio-financial-tiles-grid" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
-                <div className="financial-tile">
-                  <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
-                  <strong className="tile-val">
-                    {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
-                  </strong>
-                  <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${folioData.discountAmount > 0 ? ` (Disc -${formatCurrency(folioData.discountAmount)})` : ''}` : 'Stay Tariff'))}</small>
-                </div>
-                <div className="financial-tile">
-                  <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
-                  <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
-                    {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(folioData.discountAmount || 0)}`}
-                  </strong>
-                  <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
-                </div>
+                {(() => {
+                  const tileDiscountAmount = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
+                  return (
+                    <>
+                      <div className="financial-tile">
+                        <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
+                        <strong className="tile-val">
+                          {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
+                        </strong>
+                        <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}` : 'Stay Tariff'))}</small>
+                      </div>
+                      <div className="financial-tile">
+                        <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
+                        <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
+                          {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(tileDiscountAmount)}`}
+                        </strong>
+                        <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div className="financial-tile">
                   <span className="tile-label">Total Amount</span>
                   <strong className="tile-val">
@@ -1884,18 +2986,29 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              className="filter-chip"
-              onClick={() => {
-                const printPayload = buildFolioPrintPayload();
-                printGuestPaymentSummary(printPayload);
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd', padding: '6px 14px', fontSize: '0.84rem' }}
-              title="Print Customer Payment Summary Statement (A4 Sheet)"
-            >
-              📄 Print Payment Summary
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => openAddPaymentModal()}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0', padding: '6px 14px', fontSize: '0.84rem' }}
+                title="Record an in-stay advance payment (Cash / UPI / Card / Cheque)"
+              >
+                💳 + Add Payment
+              </button>
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => {
+                  const printPayload = buildFolioPrintPayload();
+                  printGuestPaymentSummary(printPayload);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#eff6ff', color: '#1e40af', borderColor: '#93c5fd', padding: '6px 14px', fontSize: '0.84rem' }}
+                title="Print Customer Payment Summary Statement (A4 Sheet)"
+              >
+                📄 Print Payment Summary
+              </button>
+            </div>
           </div>
 
           <div id="folio-advance-payments-container">
@@ -1937,25 +3050,65 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       <button
                         type="button"
                         className="filter-chip"
-                        onClick={() =>
-                          printCashReceipt({
-                            receipt_no: p.receipt_no || p.receipt_number || `ADV-${p.id}`,
-                            receipt_date: p.created_at,
-                            guest_name: folioData.guestName,
-                            amount: p.amount,
-                            payment_mode: p.payment_mode,
-                            split_cash: p.split_cash,
-                            split_online: p.split_online,
-                            split_card: p.split_card,
-                            split_cheque: p.split_cheque,
-                            utr_number: p.utr_number || p.online_utr,
-                            cheque_no: p.cheque_no,
-                            bank_name: p.bank_name,
-                            room_numbers: folioData.roomNumber,
-                            particulars: `Room ${folioData.roomNumber} - Advance Stay Payment`,
-                            cashier_name: p.cashier_name || p.cashier || p.staff_name || folioData.room?.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
-                          })
-                        }
+                        onClick={() => {
+                          const sCash = parseFloat(p.split_cash) || 0;
+                          const sOnline = parseFloat(p.split_online) || 0;
+                          const sCard = parseFloat(p.split_card) || 0;
+                          const sCheque = parseFloat(p.split_cheque) || 0;
+                          const baseVoucher = folioData.voucherNumber || folioData.voucher_number || folioData.room?.voucher_number || (p.voucher_number ? p.voucher_number : (p.receipt_no && /^\d{6}-\d+/.test(p.receipt_no) ? p.receipt_no : `260926-${String(folioData.bookingId || p.id).slice(-2)}`));
+                          const activeSplit = [
+                            sCash > 0 && { mode: 'cash', label: 'Cash', suffix: 'CASH', amt: sCash },
+                            sOnline > 0 && { mode: 'upi', label: 'Online UPI', suffix: 'UPI', amt: sOnline, utr: p.utr_number || p.online_utr },
+                            sCard > 0 && { mode: 'card', label: 'Card POS', suffix: 'POS', amt: sCard },
+                            sCheque > 0 && { mode: 'cheque', label: 'Cheque', suffix: 'CHQ', amt: sCheque, chequeNo: p.cheque_no, bankName: p.bank_name }
+                          ].filter(Boolean);
+
+                          if (activeSplit.length > 1) {
+                            const recs = activeSplit.map(s => ({
+                              receipt_no: (p.receipt_no && !p.receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(p.receipt_no)) ? p.receipt_no : (s.mode === 'cash' ? 'CR01' : (s.mode === 'upi' ? 'UPI01' : (s.mode === 'card' ? 'POS01' : 'CHQ01'))),
+                              voucher_number: baseVoucher,
+                              receipt_date: p.created_at,
+                              guest_name: folioData.guestName,
+                              amount: s.amt,
+                              base_amount: s.amt,
+                              payment_mode: s.label,
+                              mode: s.mode,
+                              utr_number: s.utr,
+                              cheque_no: s.chequeNo,
+                              bank_name: s.bankName,
+                              room_numbers: folioData.roomNumber,
+                              particulars: `Room #${folioData.roomNumber} - Advance Stay Payment (${s.label})`,
+                              cashier_name: p.cashier_name || p.cashier || p.staff_name || folioData.room?.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : ''),
+                              is_split: true
+                            }));
+                            printCashReceipt(recs);
+                          } else {
+                            const singleMode = (p.payment_mode || '').toLowerCase();
+                            const singleReceiptNo = (p.receipt_no && !p.receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(p.receipt_no))
+                              ? p.receipt_no
+                              : (singleMode.includes('upi') ? 'UPI01' : singleMode.includes('card') ? 'POS01' : singleMode.includes('cheque') ? 'CHQ01' : 'CR01');
+
+                            printCashReceipt({
+                              receipt_no: singleReceiptNo,
+                              voucher_number: baseVoucher,
+                              receipt_date: p.created_at,
+                              guest_name: folioData.guestName,
+                              amount: p.amount,
+                              base_amount: p.amount,
+                              payment_mode: p.payment_mode,
+                              split_cash: p.split_cash,
+                              split_online: p.split_online,
+                              split_card: p.split_card,
+                              split_cheque: p.split_cheque,
+                              utr_number: p.utr_number || p.online_utr,
+                              cheque_no: p.cheque_no,
+                              bank_name: p.bank_name,
+                              room_numbers: folioData.roomNumber,
+                              particulars: `Room ${folioData.roomNumber} - Advance Stay Payment`,
+                              cashier_name: p.cashier_name || p.cashier || p.staff_name || folioData.room?.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
+                            });
+                          }
+                        }}
                         style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
                         title="Print Official Cash Receipt (2-on-A4)"
                       >
@@ -2005,27 +3158,63 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <button
                       type="button"
                       className="filter-chip"
-                      onClick={() =>
-                        printCashReceipt({
-                          receipt_no: `ADV-${folioData.bookingId}`,
-                          receipt_date: folioData.checkinTime,
-                          guest_name: folioData.guestName,
-                          amount: folioData.initialPaid,
-                          payment_mode: folioData.room?.split_online > 0 ? 'Online' : 'Cash',
-                          split_cash: folioData.room?.split_cash,
-                          split_online: folioData.room?.split_online,
-                          split_card: folioData.room?.split_card,
-                          split_cheque: folioData.room?.split_cheque,
-                          card_surcharge: folioData.room?.advance_card_surcharge || folioData.room?.card_surcharge || 0,
-                          upi_tax: folioData.room?.advance_upi_tax || folioData.room?.upi_tax || 0,
-                          utr_number: folioData.room?.advance_utr_number || folioData.advance_utr_number || folioData.room?.utr_number,
-                          cheque_no: folioData.room?.cheque_no,
-                          bank_name: folioData.room?.bank_name,
-                          room_numbers: folioData.roomNumber,
-                          particulars: `Room ${folioData.roomNumber} - Initial Check-in Advance`,
-                          cashier_name: folioData.room?.checked_in_by || folioData.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
-                        })
-                      }
+                      onClick={() => {
+                        const sCash = parseFloat(folioData.room?.split_cash) || 0;
+                        const sOnline = parseFloat(folioData.room?.split_online) || 0;
+                        const sCard = parseFloat(folioData.room?.split_card) || 0;
+                        const sCheque = parseFloat(folioData.room?.split_cheque) || 0;
+                        const baseVoucher = folioData.voucherNumber || folioData.voucher_number || folioData.room?.voucher_number || `260926-${String(folioData.bookingId || 1).slice(-2)}`;
+                        const activeSplit = [
+                          sCash > 0 && { mode: 'cash', label: 'Cash', suffix: 'CASH', amt: sCash },
+                          sOnline > 0 && { mode: 'upi', label: 'Online UPI', suffix: 'UPI', amt: sOnline, utr: folioData.room?.advance_utr_number || folioData.advance_utr_number || folioData.room?.utr_number },
+                          sCard > 0 && { mode: 'card', label: 'Card POS', suffix: 'POS', amt: sCard },
+                          sCheque > 0 && { mode: 'cheque', label: 'Cheque', suffix: 'CHQ', amt: sCheque, chequeNo: folioData.room?.cheque_no, bankName: folioData.room?.bank_name }
+                        ].filter(Boolean);
+
+                        if (activeSplit.length > 1) {
+                          const recs = activeSplit.map(s => ({
+                            receipt_no: (s.mode === 'cash' ? 'CR01' : (s.mode === 'upi' ? 'UPI01' : (s.mode === 'card' ? 'POS01' : 'CHQ01'))),
+                            voucher_number: baseVoucher,
+                            receipt_date: folioData.checkinTime,
+                            guest_name: folioData.guestName,
+                            amount: s.amt,
+                            base_amount: s.amt,
+                            payment_mode: s.label,
+                            mode: s.mode,
+                            utr_number: s.utr,
+                            cheque_no: s.chequeNo,
+                            bank_name: s.bankName,
+                            room_numbers: folioData.roomNumber,
+                            particulars: `Room #${folioData.roomNumber} - Initial Check-in Advance (${s.label})`,
+                            cashier_name: folioData.room?.checked_in_by || folioData.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : ''),
+                            is_split: true
+                          }));
+                          printCashReceipt(recs);
+                        } else {
+                          const singleReceiptNo = folioData.room?.advance_receipt_no || (folioData.room?.split_online > 0 ? 'UPI01' : (folioData.room?.split_card > 0 ? 'POS01' : (folioData.room?.split_cheque > 0 ? 'CHQ01' : 'CR01')));
+                          printCashReceipt({
+                            receipt_no: singleReceiptNo,
+                            voucher_number: baseVoucher,
+                            receipt_date: folioData.checkinTime,
+                            guest_name: folioData.guestName,
+                            amount: folioData.initialPaid,
+                            base_amount: folioData.initialPaid,
+                            payment_mode: folioData.room?.split_online > 0 ? 'Online' : 'Cash',
+                            split_cash: folioData.room?.split_cash,
+                            split_online: folioData.room?.split_online,
+                            split_card: folioData.room?.split_card,
+                            split_cheque: folioData.room?.split_cheque,
+                            card_surcharge: folioData.room?.advance_card_surcharge || folioData.room?.card_surcharge || 0,
+                            upi_tax: folioData.room?.advance_upi_tax || folioData.room?.upi_tax || 0,
+                            utr_number: folioData.room?.advance_utr_number || folioData.advance_utr_number || folioData.room?.utr_number,
+                            cheque_no: folioData.room?.cheque_no,
+                            bank_name: folioData.room?.bank_name,
+                            room_numbers: folioData.roomNumber,
+                            particulars: `Room ${folioData.roomNumber} - Initial Check-in Advance`,
+                            cashier_name: folioData.room?.checked_in_by || folioData.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
+                          });
+                        }
+                      }}
                       style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
                       title="Print Official Cash Receipt (2-on-A4)"
                     >
@@ -2071,9 +3260,439 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         onClose={() => setIsSettlementOpen(false)}
         onCheckoutSuccess={(res) => {
           setIsSettlementOpen(false);
+          folioMemoryCache.delete(roomId);
           if (onCheckoutDone) onCheckoutDone(res);
         }}
       />
+
+      {/* In-Stay Advance Payment Modal with Split Payment & Individual Receipts */}
+      {isAddPaymentOpen && (() => {
+        const splitCashVal = parseFloat(addPaySplitCash) || 0;
+        const splitOnlineVal = parseFloat(addPaySplitOnline) || 0;
+        const splitCardVal = parseFloat(addPaySplitCard) || 0;
+        const splitChequeVal = parseFloat(addPaySplitCheque) || 0;
+        const totalAddPayment = splitCashVal + splitOnlineVal + splitCardVal + splitChequeVal;
+        const targetDue = folioDueAmount > 0 ? folioDueAmount : 0;
+        const remainingToFill = Math.max(0, targetDue - totalAddPayment);
+        const remainingAfterPay = Math.max(0, targetDue - totalAddPayment);
+
+        const fillRemainingAddPay = (method, e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          const currentMethodVal = method === 'cash' ? splitCashVal : (method === 'online' ? splitOnlineVal : (method === 'card' ? splitCardVal : splitChequeVal));
+          const otherTotal = totalAddPayment - currentMethodVal;
+          const needed = targetDue > 0 ? Math.max(0, targetDue - otherTotal) : 0;
+          if (method === 'cash') setAddPaySplitCash(needed > 0 ? String(needed) : '');
+          else if (method === 'online') setAddPaySplitOnline(needed > 0 ? String(needed) : '');
+          else if (method === 'card') setAddPaySplitCard(needed > 0 ? String(needed) : '');
+          else if (method === 'cheque') setAddPaySplitCheque(needed > 0 ? String(needed) : '');
+        };
+
+        const activeMethodsCount = [splitCashVal > 0, splitOnlineVal > 0, splitCardVal > 0, splitChequeVal > 0].filter(Boolean).length;
+
+        return (
+          <div
+            className="modal-overlay"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.7)',
+              backdropFilter: 'blur(5px)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px'
+            }}
+            onClick={() => !isSubmittingPay && setIsAddPaymentOpen(false)}
+          >
+            <div
+              className="modal-content"
+              style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                maxWidth: '580px',
+                width: '100%',
+                maxHeight: '92vh',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'modalSlideIn 0.2s ease-out'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>💳</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#fff' }}>Record In-Stay Payment</h3>
+                    <div style={{ fontSize: '0.78rem', color: '#e0f2fe' }}>
+                      Room #{folioData?.roomNumber} • {folioData?.guestName}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="universal-close-btn"
+                  onClick={() => setIsAddPaymentOpen(false)}
+                  disabled={isSubmittingPay}
+                  style={{ color: '#fff', fontSize: '1.4rem' }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Current Balance Notice */}
+              <div style={{ padding: '10px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem' }}>
+                <span style={{ color: '#64748b' }}>Current Folio Balance:</span>
+                <strong style={{ color: folioDueAmount > 0 ? '#b91c1c' : '#15803d', fontWeight: 850 }}>
+                  {folioDueAmount > 0 ? `${formatCurrency(folioDueAmount)} Due` : `${formatCurrency(folioRefundAmount)} Refund Due`}
+                </strong>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              {folioDueAmount > 0 && (
+                <div style={{ padding: '8px 20px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b' }}>Quick Presets:</span>
+                  <button
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => {
+                      setAddPaySplitCash(String(folioDueAmount));
+                      setAddPaySplitOnline('');
+                      setAddPaySplitCard('');
+                      setAddPaySplitCheque('');
+                    }}
+                    style={{ fontSize: '0.74rem', padding: '3px 8px', fontWeight: 800 }}
+                  >
+                    100% Cash (₹{folioDueAmount})
+                  </button>
+                  <button
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => {
+                      setAddPaySplitCash('');
+                      setAddPaySplitOnline(String(folioDueAmount));
+                      setAddPaySplitCard('');
+                      setAddPaySplitCheque('');
+                    }}
+                    style={{ fontSize: '0.74rem', padding: '3px 8px', fontWeight: 800 }}
+                  >
+                    100% UPI (₹{folioDueAmount})
+                  </button>
+                  <button
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => {
+                      setAddPaySplitCash('');
+                      setAddPaySplitOnline('');
+                      setAddPaySplitCard(String(folioDueAmount));
+                      setAddPaySplitCheque('');
+                    }}
+                    style={{ fontSize: '0.74rem', padding: '3px 8px', fontWeight: 800 }}
+                  >
+                    100% Card (₹{folioDueAmount})
+                  </button>
+                  {totalAddPayment > 0 && (
+                    <button
+                      type="button"
+                      className="filter-chip"
+                      onClick={() => {
+                        setAddPaySplitCash('');
+                        setAddPaySplitOnline('');
+                        setAddPaySplitCard('');
+                        setAddPaySplitCheque('');
+                        setAddPayUtr('');
+                        setAddPayCardDigits('');
+                        setAddPayChequeNo('');
+                      }}
+                      style={{ fontSize: '0.74rem', padding: '3px 8px', fontWeight: 800, color: '#dc2626', borderColor: '#fca5a5' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Scrollable Form Body */}
+              <form onSubmit={handleSaveAddPayment} style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Payment Methods &amp; Split Breakdown
+                    </label>
+                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      Enter amounts across any method
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '10px' }}>
+                    {/* Cash Box */}
+                    <div
+                      className={`pay-method-box ${splitCashVal > 0 ? 'active' : ''}`}
+                      style={{ border: splitCashVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitCashVal > 0 ? '#f0f9ff' : '#ffffff' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                          <span>💵</span> Cash
+                        </div>
+                        {remainingToFill > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => fillRemainingAddPay('cash', e)}
+                            style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                            title="Fill remaining balance into Cash"
+                          >
+                            + Fill ₹{remainingToFill}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={addPaySplitCash}
+                          onChange={(e) => setAddPaySplitCash(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* UPI Box */}
+                    <div
+                      className={`pay-method-box ${splitOnlineVal > 0 ? 'active' : ''}`}
+                      style={{ border: splitOnlineVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitOnlineVal > 0 ? '#f0f9ff' : '#ffffff' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                          <span>📱</span> UPI / Online
+                        </div>
+                        {remainingToFill > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => fillRemainingAddPay('online', e)}
+                            style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                            title="Fill remaining balance into UPI"
+                          >
+                            + Fill ₹{remainingToFill}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={addPaySplitOnline}
+                          onChange={(e) => setAddPaySplitOnline(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                      {splitOnlineVal > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Enter UTR / Ref No *"
+                            value={addPayUtr}
+                            onChange={(e) => setAddPayUtr(e.target.value)}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 10px', fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #0284c7' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card POS Box */}
+                    <div
+                      className={`pay-method-box ${splitCardVal > 0 ? 'active' : ''}`}
+                      style={{ border: splitCardVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitCardVal > 0 ? '#f0f9ff' : '#ffffff' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                          <span>💳</span> Card POS
+                        </div>
+                        {remainingToFill > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => fillRemainingAddPay('card', e)}
+                            style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                            title="Fill remaining balance into Card"
+                          >
+                            + Fill ₹{remainingToFill}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={addPaySplitCard}
+                          onChange={(e) => setAddPaySplitCard(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                      {splitCardVal > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <input
+                            type="text"
+                            maxLength={10}
+                            placeholder="Card Last 4 Digits / Auth"
+                            value={addPayCardDigits}
+                            onChange={(e) => setAddPayCardDigits(e.target.value)}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 10px', fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #0284c7' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cheque Box */}
+                    <div
+                      className={`pay-method-box ${splitChequeVal > 0 ? 'active' : ''}`}
+                      style={{ border: splitChequeVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitChequeVal > 0 ? '#f0f9ff' : '#ffffff' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                          <span>📑</span> Cheque
+                        </div>
+                        {remainingToFill > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => fillRemainingAddPay('cheque', e)}
+                            style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                            title="Fill remaining balance into Cheque"
+                          >
+                            + Fill ₹{remainingToFill}
+                          </button>
+                        )}
+                      </div>
+                      <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={addPaySplitCheque}
+                          onChange={(e) => setAddPaySplitCheque(e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                      {splitChequeVal > 0 && (
+                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Cheque Number *"
+                            value={addPayChequeNo}
+                            onChange={(e) => setAddPayChequeNo(e.target.value)}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 10px', fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #0284c7' }}
+                          />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => setAddPayChequePhoto(ev.target.result);
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            style={{ fontSize: '0.76rem' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                    Remarks / Purpose
+                  </label>
+                  <input
+                    type="text"
+                    value={addPayNotes}
+                    onChange={(e) => setAddPayNotes(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box', height: '38px', padding: '0 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '0.86rem' }}
+                  />
+                </div>
+
+                {/* Total & Split Policy Indicator */}
+                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#334155' }}>Total Advance Payment:</span>
+                    <strong style={{ fontSize: '1.2rem', fontWeight: 950, color: totalAddPayment > 0 ? '#0284c7' : '#94a3b8' }}>
+                      ₹{totalAddPayment.toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                  {totalAddPayment > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#64748b' }}>Receipts to Print:</span>
+                      <span style={{ fontWeight: 800, color: activeMethodsCount > 1 ? '#0284c7' : '#16a34a' }}>
+                        {activeMethodsCount > 1 ? `⚡ ${activeMethodsCount} Distinct Receipts (Separate A4 per method)` : `✓ 1 Receipt (${splitCashVal > 0 ? 'Cash' : (splitOnlineVal > 0 ? 'UPI' : (splitCardVal > 0 ? 'Card' : 'Cheque'))})`}
+                      </span>
+                    </div>
+                  )}
+                  {folioDueAmount > 0 && totalAddPayment > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: '#64748b' }}>
+                      <span>Remaining Balance After Payment:</span>
+                      <span style={{ fontWeight: 800, color: remainingAfterPay > 0 ? '#b91c1c' : '#16a34a' }}>
+                        ₹{remainingAfterPay.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    disabled={isSubmittingPay}
+                    onClick={() => setIsAddPaymentOpen(false)}
+                    style={{ flex: 1, height: '44px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '10px', fontWeight: 750, color: '#475569', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPay || totalAddPayment <= 0}
+                    style={{
+                      flex: 2,
+                      height: '44px',
+                      background: totalAddPayment > 0 ? '#0284c7' : '#94a3b8',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontWeight: 900,
+                      color: '#ffffff',
+                      cursor: totalAddPayment > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSubmittingPay
+                      ? 'Processing...'
+                      : activeMethodsCount > 1
+                        ? `💳 Record & Print ${activeMethodsCount} Receipts`
+                        : '💳 Record & Print Receipt'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Lightbox Preview */}
       <ImageLightbox
@@ -2558,7 +4177,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           <span style={{ color: '#b45309' }}>{formatCurrency(Math.round(selectedFnbOrder.total * 1.025))}</span>
                         </div>
                         <div style={{ fontSize: '0.73rem', color: '#713f12', marginTop: '6px', lineHeight: 1.35 }}>
-                          ℹ️ <em>2.5% card charge is itemized on the guest receipt. In hotel accounting, base {formatCurrency(selectedFnbOrder.total)} is realized as hotel revenue (surcharge excluded from hotel profits).</em>
+                          ℹ️ <em>2.5% card charge is itemized on the guest receipt. In hotel accounting, base {formatCurrency(selectedFnbOrder.total)} is realized as hotel revenue (POS tax excluded from hotel profits).</em>
                         </div>
                       </div>
                     )}
@@ -2620,7 +4239,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         )}
                         {Number(fnbSplitCard) > 0 && (
                           <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 750 }}>
-                            + ₹{Math.round(Number(fnbSplitCard) * 0.025)} (2.5% card surcharge on card portion, printed on receipt).
+                            + ₹{Math.round(Number(fnbSplitCard) * 0.025)} (2.5% card POS tax on card portion, printed on receipt).
                           </div>
                         )}
                       </div>

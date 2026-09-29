@@ -118,8 +118,12 @@ export const api = {
   // OCR & AI Vision
   analyzeIdCard: (data) => request('/ocr/analyze-id', { method: 'POST', body: data }),
   getAiKey: () => request('/settings/ai-key'),
-  saveAiKey: (key) => request('/settings/ai-key', { method: 'POST', body: { key, apiKey: key } }),
-  testAiKey: (key) => request('/settings/test-gemini', { method: 'POST', body: { key, apiKey: key } }),
+  saveAiKey: (key, slot = null) => request('/settings/ai-key', { method: 'POST', body: slot ? { key, apiKey: key, slot } : { key, apiKey: key } }),
+  saveAiKeySlot: (slot, key) => request('/settings/ai-key', { method: 'POST', body: { slot, key } }),
+  clearAiKeySlot: (slot) => request('/settings/ai-key', { method: 'POST', body: { slot, clear: true } }),
+  saveAiKeysBulk: (keys) => request('/settings/ai-key', { method: 'POST', body: { keys } }),
+  testAiKey: (key, slot = null) => request('/settings/test-gemini', { method: 'POST', body: { key, apiKey: key, slot } }),
+  testAllAiKeys: () => request('/settings/test-gemini', { method: 'POST', body: { testAll: true } }),
   getRoomGst: () => request('/settings/room-gst'),
   saveRoomGst: (room_gst_pct) => request('/settings/room-gst', { method: 'POST', body: { room_gst_pct } }),
 
@@ -214,6 +218,15 @@ export const api = {
   getCheckinPolicy: () => request('/settings/checkin-policy'),
   saveCheckinPolicy: (min_checkin_advance_pct) => request('/settings/checkin-policy', { method: 'POST', body: { min_checkin_advance_pct } }),
 
+  // Auto-Save Directory & PDF Silent Export
+  getAutoSaveDir: () => request('/settings/auto-save-dir'),
+  saveAutoSaveDir: (auto_save_directory) => request('/settings/auto-save-dir', { method: 'POST', body: { auto_save_directory } }),
+  saveInvoicePdf: (data) => request('/save-invoice-pdf', { method: 'POST', body: data }),
+
+  // Invoice Sequence & Financial Year Settings
+  getInvoiceSettings: () => request('/settings/invoice-sequence'),
+  saveInvoiceSettings: (data) => request('/settings/invoice-sequence', { method: 'POST', body: data }),
+
   // Visitors
   getVisitors: (roomId) => request(`/rooms/${roomId}/visitors`),
   addVisitor: (roomId, data) => request(`/rooms/${roomId}/visitors`, { method: 'POST', body: data }),
@@ -243,10 +256,31 @@ export const api = {
   getSyncOccupancies: () => request('/sync/occupancies'),
   pushSyncNow: () => request('/sync/push-now', { method: 'POST' }),
 
+  // Payments for room folio (In-stay advance payment)
+  addRoomPayment: (roomId, data) => request(`/rooms/${roomId}/payments`, { method: 'POST', body: data }),
+
   // Expenses & Petty Cash
-  getExpenses: () => request('/expenses'),
+  getExpenses: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/expenses${qs ? '?' + qs : ''}`);
+  },
   createExpense: (data) => request('/expenses', { method: 'POST', body: data }),
+  adjustExpense: (id, data) => request(`/expenses/${id}/adjust`, { method: 'POST', body: data }),
   deleteExpense: (id) => request(`/expenses/${id}`, { method: 'DELETE' }),
+  getExpenseCategoriesConfig: () => request('/expense-categories-config'),
+  updateExpenseCategoriesConfig: (data) => request('/expense-categories-config', { method: 'POST', body: data }),
+
+  // Manager Accounting & Analysis
+  getAccountingAnalysis: (params = {}) => {
+    const cleanParams = {};
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        cleanParams[k] = v;
+      }
+    });
+    const qs = new URLSearchParams(cleanParams).toString();
+    return request(`/manager/accounting-analysis${qs ? '?' + qs : ''}`);
+  },
 
   // Hardware Scanner Integration
   getScannerDevices: async () => {
@@ -287,6 +321,7 @@ export const api = {
   },
 
   // Generic HTTP helper (underlying request function)
+  cleanDemoData: () => request('/settings/clean-demo-data', { method: 'POST' }),
   request,
 
   // Auth Token Management

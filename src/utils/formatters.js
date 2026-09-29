@@ -15,6 +15,38 @@ export function formatCheckoutTimeDisplay(dateInput) {
   return `${hours}:${minsFormatted} ${ampm}`;
 }
 
+/**
+ * Formats time as 12-hour AM/PM string (e.g. "12:39 pm", "02:15 am")
+ * Guarantees 12-hour AM/PM format (never 24-hour military time).
+ */
+export function formatTime12(timeInput) {
+  if (!timeInput) return '';
+  if (typeof timeInput === 'string') {
+    const trimmed = timeInput.trim();
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const parts = trimmed.split(':');
+      let h = parseInt(parts[0], 10);
+      const m = parts[1] || '00';
+      if (isNaN(h)) return '';
+      const ampm = h >= 12 ? 'pm' : 'am';
+      h = h % 12;
+      if (h === 0) h = 12;
+      return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+    }
+    if (/am|pm/i.test(trimmed)) {
+      return trimmed;
+    }
+  }
+  const d = timeInput instanceof Date ? timeInput : new Date(timeInput);
+  if (isNaN(d.getTime())) return String(timeInput);
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+}
+
 export function formatDateTime(dateInput) {
   if (!dateInput) return '';
   const d = new Date(dateInput);
@@ -45,10 +77,57 @@ export function amountToWordsIndian(num) {
 }
 
 /**
- * Strips 4-digit century from voucher / receipt numbers e.g. "20260920-520" -> "260920-520"
+ * Strips 4-digit century and mode prefixes from voucher / receipt numbers e.g. "20260920-520" -> "260920-520", "CR260924-002" -> "260924-002"
  */
 export function cleanVoucherNumber(val) {
   if (!val) return '';
   const str = String(val).trim();
-  return str.replace(/\b20(\d{6}-\d+)\b/g, '$1');
+  return str
+    .replace(/\b20(\d{6}-\d+)\b/g, '$1')
+    .replace(/^[A-Za-z_-]*(\d{6}-\d+)/i, '$1')
+    .replace(/^(CR|UPI|POS|CHQ|BTC|RCP-?|ADV-?|DEB-?|REG-?)(2\d{5}-\d+)$/i, '$2');
 }
+
+/**
+ * Formats a voucher or invoice reference into official Tax Invoice number (e.g. "260926-600" -> "HCP600")
+ * Extracts the sequential bill number and prefixes with 'HCP' (Hotel City Park).
+ */
+export function formatTaxInvoiceNumber(val) {
+  if (!val) return 'HCP1';
+  const str = String(val).trim();
+  // Already in HCP<digits> format (e.g. "HCP600", "HCP1573")
+  if (/^HCP\d+$/i.test(str)) {
+    return str.toUpperCase();
+  }
+  // Legacy L<digits> format (e.g. "L600" -> "HCP600")
+  if (/^L\d+$/i.test(str)) {
+    return `HCP${str.slice(1)}`;
+  }
+  // Has hyphen with sequential number (e.g. "260926-600", "20260926-600", "INV-600")
+  const match = str.match(/-(\d+)$/);
+  if (match) {
+    return `HCP${match[1]}`;
+  }
+  // Short bill number (e.g. "600", "1", "45")
+  if (/^\d{1,4}$/.test(str)) {
+    return `HCP${str}`;
+  }
+  return str;
+}
+
+/**
+ * Returns date and time string in local wall-clock ISO format: "YYYY-MM-DDTHH:mm"
+ * Automatically avoids UTC timezone conversion shift bugs from new Date().toISOString()
+ */
+export function getLocalIsoDateTime(dateInput = new Date()) {
+  if (!dateInput) return '';
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${hh}:${mm}`;
+}
+

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import ThemedSelect from '../common/ThemedSelect';
 
 export default function BillEditModal({
   isOpen,
@@ -488,17 +489,18 @@ export default function BillEditModal({
               <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: 'var(--text-secondary, #475569)', marginBottom: '4px' }}>
                 Payment Mode
               </label>
-              <select
-                className="form-select"
+              <ThemedSelect
                 value={paymentMode}
-                onChange={(e) => setPaymentMode(e.target.value)}
-                style={{ width: '100%', padding: '7px 10px', fontSize: '0.85rem', borderRadius: '8px' }}
-              >
-                <option value="cash">💵 Cash</option>
-                <option value="card">💳 Credit / Debit Card</option>
-                <option value="online">📱 UPI / Online Transfer</option>
-                <option value="room_folio">🏨 Charge to Room Folio</option>
-              </select>
+                onChange={(val) => setPaymentMode(val)}
+                options={[
+                  { value: 'cash', label: '💵 Cash' },
+                  { value: 'card', label: '💳 Credit / Debit Card' },
+                  { value: 'online', label: '📱 UPI / Online Transfer' },
+                  { value: 'room_folio', label: '🏨 Charge to Room Folio' }
+                ]}
+                colorTheme="blue"
+                style={{ width: '100%', height: '38px' }}
+              />
 
               <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: 'var(--text-secondary, #475569)', marginTop: '10px', marginBottom: '4px' }}>
                 Edit Reason / Audit Note <span style={{ color: '#ef4444' }}>*</span>

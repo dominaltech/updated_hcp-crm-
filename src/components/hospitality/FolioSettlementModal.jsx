@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
-import { printCashReceipt, printPettyCashVoucher, printFinalBillA4, printGuestRegistrationA4 } from '../../services/printService';
+import { printCashReceipt, printPettyCashVoucher, printFinalBillA4, printGuestRegistrationA4, autoSavePdfDocument, buildFinalBillA4HTML, buildMoneyReceiptHTML } from '../../services/printService';
 
 export default function FolioSettlementModal({
   isOpen,
@@ -45,9 +45,9 @@ export default function FolioSettlementModal({
   const expectedNights = folioData?.expectedNights ?? folioData?.summary?.expectedNights ?? 1;
 
   const summaryRefund = folioData?.summary?.refundAmount || folioData?.refundAmount || 0;
-  const balanceDue = folioData ? Math.max(0, folioData.balanceDue || 0) : 0;
-  const isRefund = (folioData && (folioData.balanceDue < 0 || summaryRefund > 0)) || false;
-  const refundAmount = isRefund ? (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue)) : 0;
+  const balanceDue = folioData ? Math.max(0, folioData.stayCalcNow?.balanceDue ?? folioData.balanceDue ?? 0) : 0;
+  const isRefund = (folioData && (folioData.stayCalcNow?.refundDue > 0 || folioData.balanceDue < 0 || summaryRefund > 0)) || false;
+  const refundAmount = isRefund ? (folioData.stayCalcNow?.refundDue > 0 ? folioData.stayCalcNow.refundDue : (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue))) : 0;
 
   const effectiveFoodTotal = Number(folioData?.foodTotal || 0);
   const effectiveBarTotal = Number(folioData?.barTotal || 0);
@@ -97,37 +97,25 @@ export default function FolioSettlementModal({
   const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
   const isCompanyPayingLater = isBtc && btcCheckoutMode === 'company_later';
 
-  // Overpayment prevention and strict single payment method enforcement (prevents split payment)
+  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque
   const handleAmountChange = (field, value) => {
     setSelectedMethod(field);
     let val = Math.max(0, Number(value) || 0);
-    if (val > balanceDue) {
-      val = balanceDue;
+
+    const otherPayments =
+      (field === 'cash' ? 0 : splitCash) +
+      (field === 'online' ? 0 : splitOnline) +
+      (field === 'card' ? 0 : splitCard) +
+      (field === 'cheque' ? 0 : splitCheque);
+
+    if (balanceDue > 0 && (otherPayments + val) > balanceDue) {
+      val = Math.max(0, balanceDue - otherPayments);
     }
 
-    if (field === 'cash') {
-      setSplitCash(val);
-      setSplitOnline(0);
-      setSplitCard(0);
-      setSplitCheque(0);
-    } else if (field === 'online') {
-      setSplitCash(0);
-      setSplitOnline(val);
-      setSplitCard(0);
-      setSplitCheque(0);
-    } else if (field === 'card') {
-      setSplitCash(0);
-      setSplitOnline(0);
-      setSplitCard(val);
-      setSplitCheque(0);
-    } else if (field === 'cheque') {
-      if (isBtc) {
-        setSplitCash(0);
-        setSplitOnline(0);
-        setSplitCard(0);
-        setSplitCheque(val);
-      }
-    }
+    if (field === 'cash') setSplitCash(val);
+    else if (field === 'online') setSplitOnline(val);
+    else if (field === 'card') setSplitCard(val);
+    else if (field === 'cheque') setSplitCheque(val);
   };
 
   const selectPaymentMethod = (field, inputRef) => {
@@ -135,44 +123,21 @@ export default function FolioSettlementModal({
     if (inputRef && inputRef.current) {
       inputRef.current.focus();
     }
+  };
 
-    const currentActiveField =
-      splitCash > 0 ? 'cash' :
-      splitOnline > 0 ? 'online' :
-      splitCard > 0 ? 'card' :
-      splitCheque > 0 ? 'cheque' : null;
-
-    if (currentActiveField && currentActiveField !== field) {
-      const currentSettled = splitCash + splitOnline + splitCard + splitCheque;
-      if (field === 'cash') {
-        setSplitCash(currentSettled);
-        setSplitOnline(0);
-        setSplitCard(0);
-        setSplitCheque(0);
-      } else if (field === 'online') {
-        setSplitCash(0);
-        setSplitOnline(currentSettled);
-        setSplitCard(0);
-        setSplitCheque(0);
-      } else if (field === 'card') {
-        setSplitCash(0);
-        setSplitOnline(0);
-        setSplitCard(currentSettled);
-        setSplitCheque(0);
-      } else if (field === 'cheque') {
-        if (isBtc) {
-          setSplitCash(0);
-          setSplitOnline(0);
-          setSplitCard(0);
-          setSplitCheque(currentSettled);
-        }
-      }
-      setTimeout(() => {
-        try {
-          inputRef?.current?.select?.();
-        } catch (e) {}
-      }, 50);
-    }
+  const fillRemaining = (field, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setSelectedMethod(field);
+    const otherPayments =
+      (field === 'cash' ? 0 : splitCash) +
+      (field === 'online' ? 0 : splitOnline) +
+      (field === 'card' ? 0 : splitCard) +
+      (field === 'cheque' ? 0 : splitCheque);
+    const rem = Math.max(0, balanceDue - otherPayments);
+    if (field === 'cash') setSplitCash(rem);
+    else if (field === 'online') setSplitOnline(rem);
+    else if (field === 'card') setSplitCard(rem);
+    else if (field === 'cheque') setSplitCheque(rem);
   };
 
   const quickFill = (mode) => {
@@ -244,7 +209,7 @@ export default function FolioSettlementModal({
       const settleAmt = isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled);
       const refundAmt = isRefund ? refundAmount : 0;
       const finalRecalcRoom = isEarlyCheckout
-        ? (folioData.recalculatedRoomCharge || folioData.summary?.recalculatedRoomCharge || folioData.roomCharge)
+        ? (folioData.stayCalcNow?.roomCharge ?? folioData.recalculatedRoomCharge ?? folioData.summary?.recalculatedRoomCharge ?? folioData.roomCharge)
         : (folioData.roomCharge || folioData.summary?.roomCharge || folioData.total_room_charge);
       const cleanReason = refundReason.trim() || (isEarlyCheckout ? `Early checkout refund: Stayed ${stayDurationStr || `${earlyStayDays}d ${earlyStayHours}h`}` : 'Early checkout excess refund');
 
@@ -256,6 +221,14 @@ export default function FolioSettlementModal({
         is_early_checkout: isEarlyCheckout,
         isRefund,
         is_refund: isRefund,
+        food_total: effectiveFoodTotal,
+        foodTotal: effectiveFoodTotal,
+        bar_total: effectiveBarTotal,
+        barTotal: effectiveBarTotal,
+        fnb_total: effectiveFnbTotal,
+        fnbTotal: effectiveFnbTotal,
+        balance_due: balanceDue,
+        balanceDue: balanceDue,
         is_btc_pending: isCompanyPayingLater,
         isBtcPending: isCompanyPayingLater,
         settle_amount: settleAmt,
@@ -288,8 +261,8 @@ export default function FolioSettlementModal({
         splitCheque: isCompanyPayingLater ? 0 : splitCheque,
         cheque_no: isCompanyPayingLater ? '' : chequeNo.trim(),
         bank_name: isCompanyPayingLater ? '' : chequeBank.trim(),
-        checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk',
-        checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+        checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
+        checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
       };
 
       const res = await api.checkout(room.id, payload);
@@ -332,15 +305,15 @@ export default function FolioSettlementModal({
               companyName: room.btc_company_name || folioData.btcCompanyName,
               gstNumber: room.btc_gst_number || folioData.gstNumber,
               roomTariffNet: folioData.roomChargesTotal || folioData.grandTariffNet || folioData.baseRoomCharge || 0,
-              discountAmount: folioData.discountAmt || 0,
-              discountPct: folioData.discountPct || 0,
-              taxAmount: folioData.grandGstAmount || folioData.taxAmount || 0,
+              discountAmount: folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? folioData.discountAmt ?? 0,
+              discountPct: folioData.stayCalcNow?.discountPct ?? folioData.discountPct ?? 0,
+              taxAmount: folioData.stayCalcNow?.roomGst ?? folioData.grandGstAmount ?? folioData.taxAmount ?? 0,
               foodTotal: folioData.foodTotal || 0,
               barTotal: folioData.barTotal || 0,
               extraBedCharge: folioData.extraBedsTotal || 0,
-              grandTotal: folioData.finalGrandTotal || folioData.grandTotal || 0,
+              grandTotal: folioData.stayCalcNow?.grandTotal ?? folioData.finalGrandTotal ?? folioData.grandTotal ?? 0,
               totalPaid: folioData.advancePaid || 0,
-              balanceDue: folioData.balanceDue || 0,
+              balanceDue: folioData.stayCalcNow?.balanceDue ?? folioData.balanceDue ?? 0,
               isCompanyPayingLater: true,
               isBtcPending: true,
               checkedInBy: room.checked_in_by || 'Front Desk',
@@ -348,25 +321,134 @@ export default function FolioSettlementModal({
             };
             printGuestRegistrationA4(regPrintData, { includePhotos: false });
           } else {
-            // User requirement: while checking with at the spot paid 100% bill then only should print out tax invoice
-            printFinalBillA4(room, folioData, {
-              settleAmt: isRefund ? 0 : settleAmt,
-              refundAmt: isRefund ? refundAmt : 0,
-              settled_at: new Date(),
-              cardSurcharge,
-              upiTax,
-              splitCash,
-              splitOnline,
-              splitCard,
-              splitCheque,
-              checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
-            });
+            // User requirement: Only print separate payment receipts for each method paid (no master invoice)
+            const checkoutReceipts = [];
+            const roomNums = (room.all_group_room_numbers && room.all_group_room_numbers.length > 0)
+              ? room.all_group_room_numbers.join(', ')
+              : (room.room_number || folioData.roomNumber);
+            const baseVoucher = folioData.voucherNumber || folioData.voucher_number || room.voucher_number || `CHK-${Date.now().toString().slice(-4)}`;
+            const guestName = folioData.guestName || room.guest_name || 'Valued Guest';
+            const cashierName = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
+
+            const cashReceiptNo = res.receipt_numbers?.cash || res.receiptNumbers?.cash || res.receipts?.find(r => r.mode === 'cash')?.receipt_no || 'CR01';
+            const upiReceiptNo = res.receipt_numbers?.upi || res.receiptNumbers?.upi || res.receipts?.find(r => r.mode === 'upi')?.receipt_no || 'UPI01';
+            const cardReceiptNo = res.receipt_numbers?.card || res.receiptNumbers?.card || res.receipts?.find(r => r.mode === 'card')?.receipt_no || 'POS01';
+            const chqReceiptNo = res.receipt_numbers?.cheque || res.receiptNumbers?.cheque || res.receipts?.find(r => r.mode === 'cheque')?.receipt_no || 'CHQ01';
+
+            if (splitCash > 0) {
+              checkoutReceipts.push({
+                voucher_number: baseVoucher,
+                receipt_no: cashReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitCash,
+                base_amount: splitCash,
+                payment_mode: 'Cash',
+                mode: 'cash',
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Checkout Bill Settlement (Cash)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitOnline > 0) {
+              checkoutReceipts.push({
+                voucher_number: baseVoucher,
+                receipt_no: upiReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitOnline + upiTax,
+                base_amount: splitOnline,
+                payment_mode: 'Online UPI',
+                mode: 'upi',
+                utr_number: onlineUtr.trim(),
+                upi_tax: upiTax,
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Checkout Bill Settlement (UPI)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitCard > 0) {
+              checkoutReceipts.push({
+                voucher_number: baseVoucher,
+                receipt_no: cardReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitCard + cardSurcharge,
+                base_amount: splitCard,
+                payment_mode: 'Card POS',
+                mode: 'card',
+                card_surcharge: cardSurcharge,
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Checkout Bill Settlement (Card POS)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitCheque > 0) {
+              checkoutReceipts.push({
+                voucher_number: baseVoucher,
+                receipt_no: chqReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitCheque,
+                base_amount: splitCheque,
+                payment_mode: 'Cheque',
+                mode: 'cheque',
+                cheque_no: chequeNo.trim(),
+                bank_name: chequeBank.trim(),
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Checkout Bill Settlement (Cheque)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+
+            // Silently auto-save payment receipts to device
+            if (checkoutReceipts.length > 0) {
+              checkoutReceipts.forEach(r => {
+                try {
+                  const receiptHtml = buildMoneyReceiptHTML(r);
+                  const receiptFilename = `Receipt_${r.receipt_no || r.mode}_${Date.now()}`;
+                  autoSavePdfDocument(receiptFilename, receiptHtml);
+                } catch (e) {
+                  console.warn('Silent auto-save of checkout receipt skipped:', e);
+                }
+              });
+            }
+
+            // User requirement: directly print the official Tax Invoice on checkout (and auto-save PDF in device)
+            try {
+              const settlementData = {
+                settleAmt: isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled),
+                refundAmt: isRefund ? refundAmount : 0,
+                settled_at: new Date(),
+                cardSurcharge,
+                upiTax,
+                splitCash,
+                splitOnline,
+                splitCard,
+                splitCheque,
+                onlineUtr,
+                chequeNo,
+                chequeBank,
+                receiptNumbers: res.receipt_numbers || res.receiptNumbers,
+                receipt_no: res.finalReceiptNo || res.final_receipt_no,
+                checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
+              };
+              printFinalBillA4(room, folioData, settlementData);
+            } catch (invErr) {
+              console.warn('Direct print tax invoice on checkout failed:', invErr);
+            }
           }
 
           if (isRefund && refundAmt > 0) {
-            const debNo = res.data?.refundVoucherNo || res.refundVoucherNo || `DEB-${Date.now().toString().slice(-4)}`;
+            const debNo = folioData.voucherNumber || folioData.voucher_number || room.voucher_number || room.checkin_voucher_no || res.data?.refundVoucherNo || res.refundVoucherNo || `DEB-${Date.now().toString().slice(-4)}`;
             printPettyCashVoucher({
               voucher_no: debNo,
+              voucher_number: debNo,
+              checkin_voucher_no: folioData.voucherNumber || room.voucher_number,
               created_at: new Date(),
               expense_date: new Date(),
               guest_name: folioData.guestName,
@@ -554,7 +636,7 @@ export default function FolioSettlementModal({
                 <div style={{ background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Recalculated Tariff</div>
                   <strong style={{ fontSize: '1rem', color: '#16a34a' }}>
-                    {formatCurrency(folioData.recalculatedRoomCharge || folioData.summary?.recalculatedRoomCharge || folioData.roomCharge)}
+                    {formatCurrency(folioData.stayCalcNow?.roomCharge || folioData.recalculatedRoomCharge || folioData.summary?.recalculatedRoomCharge || folioData.roomCharge)}
                   </strong>
                   {(folioData.originalRoomCharge || folioData.summary?.originalRoomCharge) && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textDecoration: 'line-through', marginLeft: '6px' }}>
@@ -723,9 +805,21 @@ export default function FolioSettlementModal({
                     >
                       <div className="paybox-header">
                         <div className="paybox-icon">💵</div>
-                        <div className="paybox-info">
-                          <div className="paybox-name">Cash</div>
-                          <div className="paybox-desc">Direct Cash</div>
+                        <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <div>
+                            <div className="paybox-name">Cash</div>
+                            <div className="paybox-desc">Direct Cash</div>
+                          </div>
+                          {remainingSettle > 0 && splitCash < balanceDue && (
+                            <button
+                              type="button"
+                              onClick={(e) => fillRemaining('cash', e)}
+                              style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                              title="Fill remaining balance into Cash"
+                            >
+                              + Fill ₹{remainingSettle}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -752,9 +846,21 @@ export default function FolioSettlementModal({
                     >
                       <div className="paybox-header">
                         <div className="paybox-icon">📱</div>
-                        <div className="paybox-info">
-                          <div className="paybox-name">UPI / Online</div>
-                          <div className="paybox-desc">GPay, PhonePe, QR</div>
+                        <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <div>
+                            <div className="paybox-name">UPI / Online</div>
+                            <div className="paybox-desc">GPay, PhonePe, QR</div>
+                          </div>
+                          {remainingSettle > 0 && splitOnline < balanceDue && (
+                            <button
+                              type="button"
+                              onClick={(e) => fillRemaining('online', e)}
+                              style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                              title="Fill remaining balance into UPI"
+                            >
+                              + Fill ₹{remainingSettle}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -791,9 +897,21 @@ export default function FolioSettlementModal({
                     >
                       <div className="paybox-header">
                         <div className="paybox-icon">💳</div>
-                        <div className="paybox-info">
-                          <div className="paybox-name">Card POS</div>
-                          <div className="paybox-desc">Debit / Credit POS</div>
+                        <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <div>
+                            <div className="paybox-name">Card POS</div>
+                            <div className="paybox-desc">Debit / Credit POS</div>
+                          </div>
+                          {remainingSettle > 0 && splitCard < balanceDue && (
+                            <button
+                              type="button"
+                              onClick={(e) => fillRemaining('card', e)}
+                              style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                              title="Fill remaining balance into Card"
+                            >
+                              + Fill ₹{remainingSettle}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -1175,7 +1293,7 @@ export default function FolioSettlementModal({
                   splitOnline,
                   splitCard,
                   splitCheque,
-                  checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+                  checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
                 });
               }}
               style={{ fontWeight: 800, padding: '9px 16px', fontSize: '0.88rem', background: 'var(--bg-surface)', color: 'var(--apple-blue)', border: '1.5px solid var(--apple-blue)' }}

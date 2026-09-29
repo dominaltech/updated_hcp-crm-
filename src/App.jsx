@@ -139,6 +139,7 @@ function AppContent() {
         activeFolioRoom ? (
           <RoomFolioPage
             roomId={activeFolioRoom.id}
+            initialRoom={activeFolioRoom}
             onBack={() => setActiveFolioRoom(null)}
             onReprintRegForm={handleReprintRegForm}
             onOpenVisitors={() => setVisitorsRoom(activeFolioRoom)}

@@ -27,6 +27,11 @@ export default function PrintTemplatesContainer() {
            PRINTABLE A4 SHEET: CUSTOMER PAYMENT STATEMENT / SUMMARY
            ========================================================================== */}
       <div id="print-payment-summary-sheet" className="printable-full-a4-sheet" style={{ display: 'none' }}></div>
+
+      {/* ==========================================================================
+           PRINTABLE A4 SHEET: GUEST ACTIVITIES SUMMARY STATEMENT (POINT 20)
+           ========================================================================== */}
+      <div id="print-activities-summary-sheet" className="printable-full-a4-sheet" style={{ display: 'none' }}></div>
     </>
   );
 }

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../../services/api';
 import UnifiedTimeInput from '../../common/UnifiedTimeInput';
+import ThemedDatePicker from '../../common/ThemedDatePicker';
 import { useApp } from '../../../context/AppContext';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
 
@@ -58,6 +59,10 @@ export default function Step1Source({
   const [btcCompanies, setBtcCompanies] = useState([]);
   const [btcSearchQuery, setBtcSearchQuery] = useState('');
   const [btcSuggestions, setBtcSuggestions] = useState([]);
+  const [btcHighlightIndex, setBtcHighlightIndex] = useState(-1);
+  const btcDropdownRef = useRef(null);
+  const btcInputRef = useRef(null);
+  const btcContainerRef = useRef(null);
   const [selectedBtcCompany, setSelectedBtcCompany] = useState(null);
   const [isAddBtcOpen, setIsAddBtcOpen] = useState(false);
   const [isOtaRoomPickerOpen, setIsOtaRoomPickerOpen] = useState(false);
@@ -88,6 +93,8 @@ export default function Step1Source({
 
   // Room rates & extension configuration
   const allRooms = [room, ...(additionalRooms || [])].filter(Boolean);
+  const otaEarlyPrice = room?.ota_early_checkin_price !== undefined && room?.ota_early_checkin_price !== null ? Number(room.ota_early_checkin_price) : 900;
+  const otaEarlyMaxHours = room?.ota_early_checkin_max_hours !== undefined && room?.ota_early_checkin_max_hours !== null ? Number(room.ota_early_checkin_max_hours) : 6;
   const totalMaxExtraBeds = allRooms.reduce((sum, r) => sum + (Number(r?.max_extra_beds) || 1), 0);
   const baseRoomRate = Number(draft.baseRate || room?.price || 2000);
   const extGraceMins = Number(room?.ext_grace_mins ?? 60);
@@ -109,29 +116,47 @@ export default function Step1Source({
     nights = Math.max(1, diffDays);
   }
 
-  const calculateExtension = (timeStr, source = draft.bookingSource) => {
+  const calculateExtension = (timeStr, targetDate = currentCheckoutDate, source = draft.bookingSource) => {
+    if (source === 'OTA') return { charge: 0, label: 'Standard Rate (₹0)', isExtended: false };
     if (!timeStr) return { charge: 0, label: 'Standard Rate (₹0)', isExtended: false };
-    const [h, m] = timeStr.split(':').map(Number);
-    const totalMinutes = (h || 0) * 60 + (m || 0);
 
-    // Standard / Grace checkout up to 11:00 AM (660 mins) is ₹0
-    if (totalMinutes <= 11 * 60) {
+    const checkinIso = draft.checkinTime || todayStr;
+    const checkoutIso = targetDate ? `${targetDate}T${timeStr}` : '';
+    if (!checkoutIso) return { charge: 0, label: 'Standard Rate (₹0)', isExtended: false };
+
+    const dIn = new Date(checkinIso);
+    const dOut = new Date(checkoutIso);
+    if (isNaN(dIn.getTime()) || isNaN(dOut.getTime()) || dOut <= dIn) {
       return { charge: 0, label: 'Standard Rate (₹0)', isExtended: false };
     }
-    // Up to 1:00 PM (13:00 = 780 mins) -> +₹500 (ext_3h_rate)
-    if (totalMinutes <= 13 * 60) {
-      return { charge: ext3hRate, label: `Extended up to 1:00 PM (+₹${ext3hRate.toLocaleString('en-IN')})`, isExtended: true };
+
+    const elapsedHours = (dOut.getTime() - dIn.getTime()) / (1000 * 60 * 60);
+    const cInStr = checkinIso.split('T')[0];
+    const cOutStr = checkoutIso.split('T')[0];
+    let calendarDays = 1;
+    if (cInStr && cOutStr) {
+      calendarDays = Math.max(1, Math.round((new Date(cOutStr) - new Date(cInStr)) / (1000 * 60 * 60 * 24)));
     }
-    // Up to 4:00 PM (16:00 = 960 mins) -> +₹1,000 (ext_6h_rate)
-    if (totalMinutes <= 16 * 60) {
-      return { charge: ext6hRate, label: `Extended up to 4:00 PM (+₹${ext6hRate.toLocaleString('en-IN')})`, isExtended: true };
+    const paidStayHours = calendarDays * 24;
+
+    if (elapsedHours <= paidStayHours) {
+      return { charge: 0, label: 'Standard Stay (Within 24h Cycle)', isExtended: false };
     }
-    // Up to 7:00 PM (19:00 = 1140 mins) -> +₹1,500 (ext_9h_rate)
-    if (totalMinutes <= 19 * 60) {
-      return { charge: ext9hRate, label: `Extended up to 7:00 PM (+₹${ext9hRate.toLocaleString('en-IN')})`, isExtended: true };
+
+    const extraMinutes = (elapsedHours - paidStayHours) * 60;
+    const graceMins = Number(room?.ext_grace_mins) || 60;
+
+    if (extraMinutes <= graceMins) {
+      return { charge: 0, label: 'Standard Rate (Grace Period ₹0)', isExtended: false };
+    } else if (extraMinutes <= 180) {
+      return { charge: ext3hRate, label: `Extended 1–3 Hours (+₹${ext3hRate.toLocaleString('en-IN')})`, isExtended: true };
+    } else if (extraMinutes <= 360) {
+      return { charge: ext6hRate, label: `Extended 3–6 Hours (+₹${ext6hRate.toLocaleString('en-IN')})`, isExtended: true };
+    } else if (extraMinutes <= 540) {
+      return { charge: ext9hRate, label: `Extended 6–9 Hours (+₹${ext9hRate.toLocaleString('en-IN')})`, isExtended: true };
+    } else {
+      return { charge: baseRoomRate, label: `Extended >9 Hours (+₹${baseRoomRate.toLocaleString('en-IN')})`, isExtended: true };
     }
-    // Beyond 7:00 PM -> Full day room rate
-    return { charge: baseRoomRate, label: `Extended past 7:00 PM (+₹${baseRoomRate.toLocaleString('en-IN')})`, isExtended: true };
   };
 
   const to12Hour = (time24) => {
@@ -163,7 +188,7 @@ export default function Step1Source({
     { time24: '19:00', label: '07:00 PM' }
   ];
 
-  const currentExtInfo = calculateExtension(currentCheckoutTime, draft.bookingSource);
+  const currentExtInfo = calculateExtension(currentCheckoutTime, currentCheckoutDate, draft.bookingSource);
 
   const applyCheckoutUpdate = (newDate, newTime) => {
     const targetDate = newDate !== undefined ? newDate : currentCheckoutDate;
@@ -174,7 +199,7 @@ export default function Step1Source({
     const dIn = new Date(draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr);
     const dOut = targetDate ? new Date(targetDate) : null;
     const diffDays = dOut && !isNaN(dOut.getTime()) ? Math.max(1, Math.round((dOut - dIn) / (1000 * 60 * 60 * 24))) : 1;
-    const ext = calculateExtension(targetTime, draft.bookingSource);
+    const ext = calculateExtension(targetTime, targetDate, draft.bookingSource);
     updateDraft({
       checkoutDate: targetDate || '',
       checkoutTime: targetTime || '',
@@ -219,6 +244,28 @@ export default function Step1Source({
     loadCompanies();
   }, []);
 
+  // Close BTC suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (btcContainerRef.current && !btcContainerRef.current.contains(e.target)) {
+        setBtcSuggestions([]);
+        setBtcHighlightIndex(-1);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Auto-scroll highlighted BTC suggestion into view
+  useEffect(() => {
+    if (btcHighlightIndex >= 0 && btcDropdownRef.current) {
+      const items = btcDropdownRef.current.querySelectorAll('.btc-suggestion-item');
+      if (items[btcHighlightIndex]) {
+        items[btcHighlightIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [btcHighlightIndex]);
+
   const handleOtaEarlyCheckinToggle = (isEarly) => {
     if (isEarly) {
       const now = new Date();
@@ -257,6 +304,63 @@ export default function Step1Source({
       extensionCharge: 0
     });
   };
+
+  // Keyboard Navigation: Arrow keys navigate channel cards, Enter selects & proceeds
+  useEffect(() => {
+    const handleStep1KeyDown = (e) => {
+      const active = document.activeElement;
+      // Don't intercept when user is typing in form inputs / textareas / selects
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
+        return;
+      }
+
+      // Left / Right / Up / Down across channels
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const curIdx = CHANNELS.findIndex((c) => c.id === draft.bookingSource);
+        let nextIdx = 0;
+        if (curIdx !== -1) {
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            nextIdx = (curIdx + 1) % CHANNELS.length;
+          } else {
+            nextIdx = (curIdx - 1 + CHANNELS.length) % CHANNELS.length;
+          }
+        }
+        e.preventDefault();
+        handleSourceSelect(CHANNELS[nextIdx].id);
+        const btn = document.querySelector(`.modern-channel-card.${CHANNELS[nextIdx].accentClass}`);
+        if (btn) btn.focus();
+        return;
+      }
+
+      // Enter key: Select channel & proceed
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (!draft.bookingSource) {
+          e.preventDefault();
+          handleSourceSelect('Walk-in');
+          return;
+        }
+
+        // Walk-in or Website: proceed directly to Scan
+        if ((draft.bookingSource === 'Walk-in' || draft.bookingSource === 'Website') && onProceedToScan) {
+          e.preventDefault();
+          onProceedToScan(draft.docType || 'Aadhar Card');
+          return;
+        }
+
+        // OTA: if ready, proceed to Scan
+        if (draft.bookingSource === 'OTA' && isOtaReady && onProceedToScan) {
+          e.preventDefault();
+          onProceedToScan(draft.docType || 'Aadhar Card');
+          return;
+        }
+
+        // NOTE: For BTC, Enter does NOT jump to scan. User must explicitly choose document below.
+      }
+    };
+
+    window.addEventListener('keydown', handleStep1KeyDown);
+    return () => window.removeEventListener('keydown', handleStep1KeyDown);
+  }, [draft.bookingSource, draft.docType, isOtaReady, isBtcReady, onProceedToScan]);
 
   const handleDocTypeSelect = (docType) => {
     if (!isChannelSelected) {
@@ -355,6 +459,7 @@ export default function Step1Source({
     setBtcSearchQuery(query);
     if (!query.trim()) {
       setBtcSuggestions([]);
+      setBtcHighlightIndex(-1);
       return;
     }
     const q = query.toLowerCase();
@@ -366,6 +471,65 @@ export default function Step1Source({
         (c.contact_person || '').toLowerCase().includes(q)
     );
     setBtcSuggestions(filtered);
+    setBtcHighlightIndex(filtered.length > 0 ? 0 : -1);
+  };
+
+  const handleBtcKeyDown = (e) => {
+    if (btcSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setBtcHighlightIndex((prev) => (prev < btcSuggestions.length - 1 ? prev + 1 : 0));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setBtcHighlightIndex((prev) => (prev > 0 ? prev - 1 : btcSuggestions.length - 1));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'NumpadEnter' || e.keyCode === 13 || e.key === 'Tab') {
+        e.preventDefault();
+        const targetComp = btcHighlightIndex >= 0 ? btcSuggestions[btcHighlightIndex] : btcSuggestions[0];
+        if (targetComp) {
+          handleSelectBtc(targetComp);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setBtcSuggestions([]);
+        setBtcHighlightIndex(-1);
+        return;
+      }
+    } else {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && btcSearchQuery.trim()) {
+        e.preventDefault();
+        handleBtcSearch(btcSearchQuery);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'NumpadEnter' || e.keyCode === 13) {
+        e.preventDefault();
+        // If user typed a company name that matches, select it
+        if (btcSearchQuery.trim() && !draft.btcCompanyId) {
+          const q = btcSearchQuery.trim().toLowerCase();
+          const match = btcCompanies.find((c) =>
+            (c.company_name || c.name || '').toLowerCase() === q ||
+            (c.company_name || c.name || '').toLowerCase().includes(q)
+          );
+          if (match) {
+            handleSelectBtc(match);
+            return;
+          }
+        }
+        // If company is already selected, do NOT advance to scan. Smooth scroll to document selection.
+        if (draft.bookingSource === 'BTC' && (draft.btcCompanyId || selectedBtcCompany)) {
+          const docSection = document.querySelector('.channel-gated-section') || document.querySelector('.doc-selection-grid');
+          if (docSection) {
+            docSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+          return;
+        }
+      }
+    }
   };
 
   const handleSelectBtc = (company) => {
@@ -373,6 +537,7 @@ export default function Step1Source({
     const compName = company.company_name || company.name;
     setBtcSearchQuery(compName);
     setBtcSuggestions([]);
+    setBtcHighlightIndex(-1);
     setBlockedNotice('');
     updateDraft({
       btcCompanyId: company.id,
@@ -388,6 +553,16 @@ export default function Step1Source({
       btcCompanyContactPerson: company.contact_person || '',
       btcCompanyPan: company.pan_number || company.pan || ''
     });
+    if (btcInputRef.current) {
+      btcInputRef.current.blur();
+    }
+    // Smooth scroll down so user sees and chooses document
+    setTimeout(() => {
+      const docSection = document.querySelector('.channel-gated-section') || document.querySelector('.doc-selection-grid');
+      if (docSection) {
+        docSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 120);
   };
 
   const handleCreateBtc = async (e) => {
@@ -810,7 +985,7 @@ export default function Step1Source({
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <label style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a', display: 'block', margin: 0 }}>
-                      OTA Bill *
+                      OTA Bill * <span style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: 700 }}>(5% GST Included)</span>
                     </label>
                     <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ef4444', background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>
                       Mandatory
@@ -848,6 +1023,11 @@ export default function Step1Source({
                       }}
                     />
                   </div>
+                  {Number(draft.otaManualAmount) > 0 && (
+                    <div style={{ fontSize: '0.74rem', color: '#0369a1', marginTop: '4px', fontWeight: 650 }}>
+                      ✓ Includes 5% GST (Base: ₹{(Number(draft.otaManualAmount) / 1.05).toFixed(2)} + GST: ₹{(Number(draft.otaManualAmount) - (Number(draft.otaManualAmount) / 1.05)).toFixed(2)})
+                    </div>
+                  )}
                 </div>
 
                 {/* OTA Booking ID / Voucher No. */}
@@ -908,25 +1088,13 @@ export default function Step1Source({
                     </span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '6px' }}>
-                    <input
-                      type="date"
+                    <ThemedDatePicker
                       required
-                      className="form-input"
                       min={checkinDateStr}
                       value={currentCheckoutDate}
                       onChange={(e) => applyCheckoutUpdate(e.target.value, draft.isEarlyCheckin ? '10:00' : currentCheckoutTime)}
-                      style={{
-                        height: '44px',
-                        fontSize: '0.92rem',
-                        fontWeight: 750,
-                        color: '#0f172a',
-                        border: !currentCheckoutDate ? '2px solid #ef4444' : '1.5px solid #0284c7',
-                        borderRadius: '8px',
-                        padding: '0 8px',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        background: !currentCheckoutDate ? '#fff5f5' : '#ffffff'
-                      }}
+                      error={!currentCheckoutDate}
+                      style={{ height: '44px', fontSize: '0.92rem' }}
                     />
                     {draft.bookingSource === 'OTA' ? (
                       <div style={{ position: 'relative' }}>
@@ -1250,9 +1418,19 @@ export default function Step1Source({
                       </div>
                     </div>
 
-                    <div style={{ marginTop: '10px', fontSize: '0.80rem', fontWeight: 800, color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>✓</span>
-                      <span>No extra charge for early check-in (₹0 Surcharge • Included in OTA Booking)</span>
+                    <div style={{ marginTop: '12px', padding: '10px 14px', background: '#eff6ff', borderRadius: '10px', border: '1.5px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🌅</span>
+                          <span>OTA Early Check-In Extra Charge: <strong>+₹{otaEarlyPrice.toLocaleString('en-IN')}</strong></span>
+                        </div>
+                        <span style={{ fontSize: '0.74rem', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                          Max {otaEarlyMaxHours} hrs early
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: '#475569', fontWeight: 700 }}>
+                        Guest arriving early (up to {otaEarlyMaxHours} hours prior to scheduled check-in). Extra charge of ₹{otaEarlyPrice} applies (Payable at Front Desk).
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1568,11 +1746,11 @@ export default function Step1Source({
                     </div>
                   </div>
 
-                  {/* Extra Bed Count (Included in OTA Package Voucher) */}
+                  {/* Extra Mattress Count (Included in OTA Package Voucher) */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.86rem', fontWeight: 750, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ fontSize: '1.05rem' }}>🛏️</span>
-                      Extra Bed:
+                      Extra Mattress:
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <button
@@ -1735,27 +1913,120 @@ export default function Step1Source({
               <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#4338ca', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                 Corporate BTC Company Verification *
               </span>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsAddBtcOpen(true)}
-                style={{ fontSize: '0.76rem', fontWeight: 750, padding: '4px 12px', borderRadius: '8px', background: '#ffffff', border: '1px solid #cbd5e1' }}
-              >
-                <span>+</span> Add New Company
-              </button>
             </div>
 
-            <div style={{ position: 'relative', marginBottom: '12px' }}>
+            <div ref={btcContainerRef} data-autocomplete-container="true" style={{ position: 'relative', marginBottom: '12px' }}>
               <input
+                ref={btcInputRef}
                 type="text"
                 className="form-input"
+                data-autocomplete-input="true"
+                role="combobox"
+                aria-autocomplete="list"
                 placeholder="🔍 Type Company Name, GST No. or PAN No. to verify..."
                 value={btcSearchQuery}
                 onChange={(e) => handleBtcSearch(e.target.value)}
-                style={{ height: '42px', fontWeight: 600, paddingRight: '36px', background: '#ffffff' }}
+                onKeyDown={handleBtcKeyDown}
+                style={{ height: '42px', fontWeight: 600, paddingRight: '88px', background: '#ffffff' }}
               />
+
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  zIndex: 10
+                }}
+              >
+                {btcSuggestions.length > 0 && (
+                  <div style={{ display: 'flex', gap: '3px' }}>
+                    <button
+                      type="button"
+                      id="btc-btn-nav-up"
+                      title="Previous company (Arrow Up)"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setBtcHighlightIndex((prev) => (prev <= 0 ? btcSuggestions.length - 1 : prev - 1));
+                        btcInputRef.current?.focus();
+                      }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      style={{
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        padding: '3px 7px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: '#334155',
+                        lineHeight: 1
+                      }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      id="btc-btn-nav-down"
+                      title="Next company (Arrow Down)"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setBtcHighlightIndex((prev) => (prev < btcSuggestions.length - 1 ? prev + 1 : 0));
+                        btcInputRef.current?.focus();
+                      }}
+                      onMouseDown={(e) => e.preventDefault()}
+                      style={{
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        padding: '3px 7px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: '#334155',
+                        lineHeight: 1
+                      }}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                )}
+                {btcSearchQuery && (
+                  <button
+                    type="button"
+                    id="btc-btn-clear"
+                    title="Clear search"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setBtcSearchQuery('');
+                      setBtcSuggestions([]);
+                      setBtcHighlightIndex(-1);
+                      btcInputRef.current?.focus();
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      color: '#94a3b8',
+                      padding: '2px 4px'
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
               {btcSuggestions.length > 0 && (
                 <div
+                  ref={btcDropdownRef}
                   className="autocomplete-dropdown"
                   style={{
                     display: 'block',
@@ -1772,25 +2043,83 @@ export default function Step1Source({
                     overflowY: 'auto'
                   }}
                 >
-                  {btcSuggestions.map((comp) => {
+                  {btcSuggestions.map((comp, idx) => {
                     const cName = comp.company_name || comp.name;
+                    const isHighlighted = idx === btcHighlightIndex;
                     return (
                       <div
-                        key={comp.id}
-                        onClick={() => handleSelectBtc(comp)}
+                        key={comp.id || idx}
+                        id={`btc-suggestion-${idx}`}
+                        className={`btc-suggestion-item ${isHighlighted ? 'active-highlight' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleSelectBtc(comp);
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleSelectBtc(comp);
+                        }}
+                        onMouseEnter={() => setBtcHighlightIndex(idx)}
                         style={{
                           padding: '10px 14px',
                           borderBottom: '1px solid #f1f5f9',
                           cursor: 'pointer',
-                          transition: 'background 0.15s ease'
+                          background: isHighlighted ? '#eef2ff' : '#ffffff',
+                          borderLeft: isHighlighted ? '4px solid #4f46e5' : '4px solid transparent',
+                          transition: 'background 0.15s ease, border-left 0.15s ease',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
                       >
-                        <div style={{ fontWeight: 750, color: '#1e3a8a' }}>{cName}</div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                          GST: {comp.gst_number || comp.gstin || 'N/A'} • PAN: {comp.pan_number || comp.pan || 'N/A'} • Contact: {comp.contact_person || 'N/A'}
+                        <div>
+                          <div style={{ fontWeight: isHighlighted ? 850 : 750, color: isHighlighted ? '#312e81' : '#1e3a8a' }}>
+                            {cName}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: isHighlighted ? '#4338ca' : '#64748b', marginTop: '2px' }}>
+                            GST: {comp.gst_number || comp.gstin || 'N/A'} • PAN: {comp.pan_number || comp.pan || 'N/A'} • Contact: {comp.contact_person || 'N/A'}
+                          </div>
                         </div>
+                        {isHighlighted ? (
+                          <button
+                            type="button"
+                            id={`btc-btn-enter-${idx}`}
+                            className="btc-enter-badge-btn"
+                            title="Click or press Enter to select"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSelectBtc(comp);
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSelectBtc(comp);
+                            }}
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 800,
+                              color: '#ffffff',
+                              background: '#4f46e5',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: '0 2px 6px rgba(79, 70, 229, 0.35)'
+                            }}
+                          >
+                            <span>↵ Enter</span>
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', padding: '2px 6px' }}>
+                            Click to Select
+                          </span>
+                        )}
                       </div>
                     );
                   })}
@@ -1872,6 +2201,15 @@ export default function Step1Source({
                     placeholder="e.g. TCS-PO-2026-991 / INF-VOUCH-441"
                     value={draft.btcVoucherNo || ''}
                     onChange={(e) => updateDraft({ btcVoucherNo: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const docSection = document.querySelector('.channel-gated-section') || document.querySelector('.doc-selection-grid');
+                        if (docSection) {
+                          docSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }
+                      }
+                    }}
                     style={{ height: '38px', fontWeight: 600, background: '#ffffff' }}
                   />
                 </div>
@@ -2077,13 +2415,51 @@ export default function Step1Source({
           </div>
         </div>
 
+        {/* Prominent Prompt when BTC company is verified */}
+        {draft.bookingSource === 'BTC' && isBtcReady && (
+          <div
+            id="btc-choose-doc-banner"
+            style={{
+              background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)',
+              border: '1.5px solid #818cf8',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.10)',
+              animation: 'fadeIn 0.25s ease'
+            }}
+          >
+            <span style={{ fontSize: '1.4rem' }}>🪪</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.90rem', fontWeight: 850, color: '#312e81' }}>
+                Corporate Verified: <strong>{draft.btcCompanyName || selectedBtcCompany?.company_name}</strong>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#4338ca', fontWeight: 700, marginTop: '2px' }}>
+                👇 Please click on a guest ID document below to proceed to scanning:
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="doc-selection-grid">
           {docOptions.map((opt) => {
             const isSelected = draft.docType === opt.type && isChannelSelected;
             return (
               <div
                 key={opt.type}
+                tabIndex={isChannelSelected && isBtcReady ? 0 : -1}
+                role="button"
                 className={`doc-option-card ${isSelected ? 'selected' : ''}`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDocTypeSelect(opt.type);
+                  }
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDocTypeSelect(opt.type);
@@ -2097,6 +2473,27 @@ export default function Step1Source({
               </div>
             );
           })}
+        </div>
+
+        <div style={{ marginTop: '14px', textAlign: 'center' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleManualClick}
+            disabled={!isChannelSelected || !isBtcReady}
+            style={{
+              padding: '8px 18px',
+              fontSize: '0.82rem',
+              fontWeight: 750,
+              borderRadius: '10px',
+              color: '#475569',
+              background: '#f8fafc',
+              border: '1.5px solid #cbd5e1',
+              cursor: isChannelSelected && isBtcReady ? 'pointer' : 'not-allowed'
+            }}
+          >
+            ✍️ Skip Scan &amp; Fill Form Manually
+          </button>
         </div>
       </div>
     </div>

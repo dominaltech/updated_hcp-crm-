@@ -1,6 +1,59 @@
-import { amountToWordsIndian, formatCurrency, formatDateTime, cleanVoucherNumber } from '../utils/formatters';
-export { cleanVoucherNumber };
+import { amountToWordsIndian, formatCurrency, formatDateTime, cleanVoucherNumber, formatTaxInvoiceNumber } from '../utils/formatters';
+export { cleanVoucherNumber, formatTaxInvoiceNumber };
 import html2pdf from 'html2pdf.js';
+import { api } from './api';
+
+/**
+ * Automatically & silently saves an invoice/receipt as PDF to the configured
+ * local system directory without popping up any browser download or save dialog.
+ */
+export async function autoSavePdfDocument(filename, htmlContent) {
+  if (!htmlContent || typeof document === 'undefined') return;
+  try {
+    const safeFilename = (filename || `Document_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const pdfFilename = safeFilename.endsWith('.pdf') ? safeFilename : `${safeFilename}.pdf`;
+
+    // Render offscreen container
+    const offscreen = document.createElement('div');
+    offscreen.style.position = 'fixed';
+    offscreen.style.left = '-9999px';
+    offscreen.style.top = '0';
+    offscreen.style.width = '794px'; // 210mm at 96 DPI
+    offscreen.style.background = '#ffffff';
+    offscreen.innerHTML = htmlContent;
+    document.body.appendChild(offscreen);
+
+    let pdfBase64 = null;
+    try {
+      const opt = {
+        margin: [3, 4, 3, 4],
+        filename: pdfFilename,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 1.5, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      if (typeof html2pdf !== 'undefined') {
+        pdfBase64 = await html2pdf().set(opt).from(offscreen).outputPdf('datauristring');
+      }
+    } catch (pdfErr) {
+      console.warn('Silent base64 PDF rendering fallback to HTML:', pdfErr);
+    } finally {
+      if (offscreen.parentNode) {
+        offscreen.parentNode.removeChild(offscreen);
+      }
+    }
+
+    // Direct write to backend local directory without browser save dialog
+    await api.saveInvoicePdf({
+      filename: pdfFilename,
+      pdfBase64: pdfBase64 || null,
+      htmlContent: htmlContent
+    });
+    console.log(`[Auto-Save] Successfully auto-saved ${pdfFilename} to system folder.`);
+  } catch (err) {
+    console.warn('[Auto-Save] Background auto-save skipped or failed:', err.message);
+  }
+}
 
 // Preload and decode print assets ahead of time so browser print preview opens instantaneously
 const PRELOAD_PRINT_ASSETS = [
@@ -590,7 +643,7 @@ export function formatPaymentBreakdown(receipt) {
     }
     if (splitCard > 0) {
       const finalCard = splitCard + cardSurcharge;
-      parts.push(`Card: ₹${finalCard.toLocaleString('en-IN')}${cardSurcharge > 0 ? ` (₹${splitCard.toLocaleString('en-IN')} + ₹${cardSurcharge} Fee)` : ''}`);
+      parts.push(`Card: ₹${finalCard.toLocaleString('en-IN')}${cardSurcharge > 0 ? ` (₹${splitCard.toLocaleString('en-IN')} + ₹${cardSurcharge} POS Tax)` : ''}`);
     }
     if (parts.length > 0) return parts.join(' | ');
   }
@@ -610,7 +663,7 @@ export function formatPaymentBreakdown(receipt) {
   }
   if (modeLower.includes('card')) {
     const finalAmt = amt + singleCardSurcharge;
-    return `Card POS Swipe: ₹${finalAmt.toLocaleString('en-IN')}${singleCardSurcharge > 0 ? ` (₹${amt.toLocaleString('en-IN')} + ₹${singleCardSurcharge} Fee)` : ''}`;
+    return `Card POS Swipe: ₹${finalAmt.toLocaleString('en-IN')}${singleCardSurcharge > 0 ? ` (₹${amt.toLocaleString('en-IN')} + ₹${singleCardSurcharge} POS Tax)` : ''}`;
   }
   if (modeLower.includes('cash')) {
     return amt > 0 ? `Cash: ₹${amt.toLocaleString('en-IN')}` : 'Cash';
@@ -620,28 +673,57 @@ export function formatPaymentBreakdown(receipt) {
   return rawMode;
 }
 
+export function getReceiptModePrefix(mode) {
+  const m = String(mode || 'cash').toLowerCase();
+  if (m.includes('upi') || m.includes('online')) return 'UPI';
+  if (m.includes('card') || m.includes('pos')) return 'POS';
+  if (m.includes('cheque') || m.includes('check')) return 'CHQ';
+  if (m.includes('btc') || m.includes('company')) return 'BTC';
+  return 'CR';
+}
+
 /**
  * Formats receipt number with dynamic payment mode prefix:
- * Cash -> CR260920-596
- * UPI / Online -> UPI260920-596
- * Card / POS -> POS260920-596
- * Cheque -> CHQ260920-596
- * BTC -> BTC260920-596
+ * Cash -> CR01, CR02, CR260920-596
+ * UPI / Online -> UPI01, UPI02, UPI260920-596
+ * Card / POS -> POS01, POS02, POS260920-596
+ * Cheque -> CHQ01, CHQ02, CHQ260920-596
+ * BTC -> BTC01, BTC02, BTC260920-596
  */
 export function formatReceiptNumberWithMode(rawNo, mode) {
   if (rawNo === undefined || rawNo === null || rawNo === '') return '';
-  const m = String(mode || 'cash').toLowerCase();
-  let prefix = 'CR';
-  if (m.includes('upi') || m.includes('online')) prefix = 'UPI';
-  else if (m.includes('card') || m.includes('pos')) prefix = 'POS';
-  else if (m.includes('cheque') || m.includes('check')) prefix = 'CHQ';
-  else if (m.includes('btc') || m.includes('company')) prefix = 'BTC';
-
   const cleanStr = String(rawNo).trim();
-  // Strip any existing prefix: CR, UPI, POS, CHQ, BTC, RCP-, etc.
-  const cleanBase = cleanStr
-    .replace(/^(CR|UPI|POS|CHQ|BTC|RCP-?)/i, '')
-    .replace(/^20(\d{6}-\d+)$/, '$1');
+  const prefix = getReceiptModePrefix(mode);
+
+  // If already starts with the correct prefix followed purely by a sequential serial number without dates (e.g. CR01, UPI04, POS02)
+  const pureSerialRegex = new RegExp(`^${prefix}0*(\\d{1,4})$`, 'i');
+  const pureMatch = cleanStr.match(pureSerialRegex);
+  if (pureMatch) {
+    const num = parseInt(pureMatch[1], 10);
+    return `${prefix}${String(num).padStart(2, '0')}`;
+  }
+
+  // Strip trailing mode slashes e.g. /CASH, /UPI, /POS, /CHQ, /BTC
+  let stripped = cleanStr.replace(/\/(CASH|UPI|POS|CHQ|BTC)$/i, '');
+
+  // Strip any existing mode or receipt prefixes (e.g. UPI, CR, POS, CHQ, BTC, RCP-, ADV-, DEB-, REG-)
+  stripped = stripped.replace(/^(CR|UPI|POS|CHQ|BTC|RCP-?|ADV-?|DEB-?|REG-?)/i, '');
+
+  // Strip date prefixes like YYMMDD- or YYYYMMDD- (e.g. 260926-, 20260926-, 260920-)
+  stripped = stripped.replace(/^\d{6,8}-?/i, '');
+
+  // Strip any remaining non-digit prefixes (e.g. '-')
+  stripped = stripped.replace(/^[^\d]+/, '');
+
+  // Extract the trailing sequence number if any digits remain
+  const trailingDigitsMatch = stripped.match(/(\d+)$/);
+  if (trailingDigitsMatch) {
+    const num = parseInt(trailingDigitsMatch[1], 10);
+    return `${prefix}${String(num).padStart(2, '0')}`;
+  }
+
+  // Fallback: If no digits found, clean voucher and prepend prefix
+  const cleanBase = cleanVoucherNumber(stripped) || stripped;
   return `${prefix}${cleanBase}`;
 }
 
@@ -689,9 +771,9 @@ export function getActiveCashierName() {
  * Red serial No., guest name, sum in words, payment mode breakdown with UTR/Cheque/Cash,
  * multi-row table grid, Rs. box, Cheques subject to realization, For Hotel City Paark signature.
  */
-export function printCashReceipt(receipt) {
-  if (!receipt) return;
-  const baseAmount = Number(receipt.amount !== undefined ? receipt.amount : receipt.total !== undefined ? receipt.total : receipt.advance_amount) || 0;
+export function normalizeReceiptData(receipt) {
+  if (!receipt) return null;
+  const baseAmount = Number(receipt.base_amount !== undefined ? receipt.base_amount : (receipt.amount !== undefined ? receipt.amount : (receipt.total !== undefined ? receipt.total : receipt.advance_amount))) || 0;
   const modeLower = String(receipt.payment_mode || receipt.paymentMode || receipt.mode || (receipt.split_online > 0 ? 'upi' : receipt.split_card > 0 ? 'card' : receipt.split_cheque > 0 ? 'cheque' : 'cash')).toLowerCase();
 
   const cardSurcharge = Number(receipt.card_surcharge || receipt.cardSurcharge) || (modeLower.includes('card') ? Math.round(baseAmount * 0.025) : 0);
@@ -720,13 +802,16 @@ export function printCashReceipt(receipt) {
   const rawRoom = receipt.room_numbers || receipt.room_number || receipt.roomNumber || receipt.room || '-';
   const cleanRoom = String(rawRoom).replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, '');
 
-  const normalized = {
+  const resolvedVoucher = receipt.voucher_number || receipt.voucherNumber || receipt.checkin_voucher_no || receipt.booking_voucher_no || receipt.voucher_no || receipt.voucherNo || (receipt.booking && (receipt.booking.voucher_number || receipt.booking.voucherNumber)) || '';
+
+  return {
     receipt_no: receipt.receipt_no || receipt.receipt_number || receipt.id || '500',
+    voucher_number: resolvedVoucher,
     receipt_date: receipt.receipt_date || receipt.created_at || receipt.date || new Date(),
     guest_name: receipt.guest_name || receipt.guestName || receipt.payee || receipt.paid_to || receipt.customer_name || 'Valued Guest',
     amount: finalTotalAmount,
     base_amount: baseAmount,
-    payment_mode: receipt.payment_mode || receipt.paymentMode || receipt.mode || 'Cash',
+    payment_mode: receipt.payment_mode || receipt.paymentMode || receipt.mode || (modeLower.includes('upi') ? 'Online UPI' : (modeLower.includes('card') ? 'Card POS' : (modeLower.includes('cheque') ? 'Cheque' : 'Cash'))),
     cheque_no: receipt.cheque_no || receipt.chequeNo || '',
     bank_name: receipt.bank_name || receipt.chequeBank || receipt.bank || '',
     utr_number: receipt.utr_number || receipt.online_utr || receipt.onlineUtr || receipt.utr || '',
@@ -738,8 +823,18 @@ export function printCashReceipt(receipt) {
     upi_tax: upiTax,
     room_numbers: cleanRoom,
     particulars: particularsText,
-    cashier_name: cashierName
+    cashier_name: cashierName,
+    is_split: Boolean(receipt.is_split || receipt.isSplit)
   };
+}
+
+export function printCashReceipt(receiptOrList) {
+  if (!receiptOrList) return;
+  if (Array.isArray(receiptOrList)) {
+    const list = receiptOrList.map(normalizeReceiptData).filter(Boolean);
+    return printSplitPaymentReceipts(list);
+  }
+  const normalized = normalizeReceiptData(receiptOrList);
   return printAdvanceMoneyReceipt(normalized);
 }
 
@@ -776,24 +871,23 @@ export function buildMoneyReceiptHTML(receipt) {
   if (rawMode.includes('upi') || rawMode.includes('online')) {
     dynamicModeLabel = 'by Online UPI';
     finalDisplayAmount = baseAmt + upiTax;
-    const feeInfo = upiTax > 0 ? ` (₹${baseAmt.toLocaleString('en-IN')} + ₹${upiTax} Fee)` : '';
-    const utrInfo = utr ? ` [UTR: ${utr}]` : '';
-    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}${utrInfo}`;
+    const feeInfo = upiTax > 0 ? ` (+₹${upiTax} Fee)` : '';
+    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
   } else if (rawMode.includes('card') || rawMode.includes('pos')) {
     dynamicModeLabel = 'by Card POS';
     finalDisplayAmount = baseAmt + cardSurcharge;
-    const feeInfo = cardSurcharge > 0 ? ` (₹${baseAmt.toLocaleString('en-IN')} + ₹${cardSurcharge} Fee)` : '';
+    const feeInfo = cardSurcharge > 0 ? ` (+₹${cardSurcharge} Fee)` : '';
     dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
   } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
     dynamicModeLabel = 'by Cheque';
     finalDisplayAmount = baseAmt;
-    dynamicModeValue = `Cheque No: ${chqNo || '-'}${bankName ? ` (${bankName})` : ''} — ₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+    dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else if (rawMode.includes('btc') || rawMode.includes('company')) {
     dynamicModeLabel = 'by Corporate (BTC)';
     finalDisplayAmount = baseAmt;
-    dynamicModeValue = `Company Credit Ledger — ₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+    dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else {
-    // Cash: Strictly single mode without "Cash / Cheque"
+    // Cash: Strictly single mode
     dynamicModeLabel = 'by Cash';
     finalDisplayAmount = baseAmt;
     dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -805,45 +899,83 @@ export function buildMoneyReceiptHTML(receipt) {
   const rawParticulars = receipt.particulars || receipt.purpose || receipt.notes || receipt.description || (receipt.booking_id ? `Room Booking ${receipt.booking_id}` : 'Official Payment Receipt');
   const cleanParticulars = String(rawParticulars).replace(/Room\s*#\s*/gi, 'Room ');
 
-  const tableRows = [];
-  if (rawMode.includes('card') && cardSurcharge > 0) {
-    tableRows.push({
-      desc: `${cleanParticulars} (Card POS: ₹${finalDisplayAmount.toLocaleString('en-IN')} [₹${baseAmt.toLocaleString('en-IN')} + ₹${cardSurcharge} Fee])`,
-      amt: finalDisplayAmount
-    });
-  } else if ((rawMode.includes('upi') || rawMode.includes('online')) && upiTax > 0) {
-    tableRows.push({
-      desc: `${cleanParticulars} (Online UPI: ₹${finalDisplayAmount.toLocaleString('en-IN')} [₹${baseAmt.toLocaleString('en-IN')} + ₹${upiTax} Fee]${utr ? ` - UTR: ${utr}` : ''})`,
-      amt: finalDisplayAmount
-    });
-  } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
-    tableRows.push({
-      desc: `${cleanParticulars} (Cheque #${chqNo || '-'}${bankName ? ` - ${bankName}` : ''})`,
-      amt: finalDisplayAmount
-    });
+  // Row 1: "paid while checking" / "paid while Living" / "paid while checkout"
+  const checkStr = (cleanParticulars + ' ' + (receipt.payment_stage || '') + ' ' + (receipt.purpose || '') + ' ' + (receipt.notes || '')).toLowerCase();
+  let stageLabel = 'Paid while checking';
+  if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
+    stageLabel = 'Paid while checkout';
+  } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('advance') || checkStr.includes('checking')) {
+    stageLabel = 'Paid while checking';
+  } else if (checkStr.includes('living') || checkStr.includes('mid-stay') || checkStr.includes('running') || checkStr.includes('stay') || checkStr.includes('fnb') || checkStr.includes('order') || checkStr.includes('restaurant') || checkStr.includes('bar')) {
+    stageLabel = 'Paid while Living';
   } else {
-    tableRows.push({
-      desc: `${cleanParticulars} (Cash Payment)`,
-      amt: finalDisplayAmount
-    });
+    stageLabel = 'Paid while checking';
   }
 
-  while (tableRows.length < 2) {
-    tableRows.push({ desc: '&nbsp;', amt: null });
+  const rawRoom = receipt.room_numbers || receipt.roomNumber || receipt.room_number || '';
+  let cleanRoom = String(rawRoom).replace(/Room\s*#?\s*/gi, '').trim();
+  if (!cleanRoom) {
+    const roomMatch = cleanParticulars.match(/Room\s*#?\s*([A-Za-z0-9,\s-]+?)(?:\s*-\s*|\s*\(|$)/i);
+    if (roomMatch) {
+      cleanRoom = roomMatch[1].trim();
+    }
   }
+  const row1Title = cleanRoom ? `Room ${cleanRoom} - ${stageLabel}` : stageLabel;
+
+  // Row 2: Mode & UPI ID / UTR
+  let row2ModeDetail = 'Payment Mode: Cash';
+  if (rawMode.includes('upi') || rawMode.includes('online')) {
+    row2ModeDetail = utr ? `Payment Mode: Online UPI (UTR: ${utr})` : 'Payment Mode: Online UPI';
+  } else if (rawMode.includes('card') || rawMode.includes('pos')) {
+    const feeInfo = cardSurcharge > 0 ? ` [Fee: ₹${cardSurcharge}]` : '';
+    row2ModeDetail = `Payment Mode: Card POS${feeInfo}`;
+  } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
+    row2ModeDetail = `Payment Mode: Cheque (#${chqNo || '-'}${bankName ? ` - ${bankName}` : ''})`;
+  } else if (rawMode.includes('btc') || rawMode.includes('company')) {
+    row2ModeDetail = 'Payment Mode: Corporate BTC Credit';
+  } else {
+    row2ModeDetail = 'Payment Mode: Cash';
+  }
+
+  const tableRows = [
+    {
+      title: row1Title,
+      amt: finalDisplayAmount
+    },
+    {
+      title: row2ModeDetail,
+      amt: null
+    }
+  ];
 
   const tableRowsHtml = tableRows
     .map(
       (r) => `
       <tr>
-        <td style="padding: 4px 8px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000;">${r.desc}</td>
-        <td style="padding: 4px 8px; border-bottom: 1.5px solid #000; text-align: right; font-weight: ${r.amt !== null ? '900' : 'normal'};">
+        <td style="padding: 7px 10px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; vertical-align: middle;">
+          <div style="font-weight: 850; font-size: 12pt; color: #000000; line-height: 1.35;">${escapeHtml(r.title)}</div>
+        </td>
+        <td style="padding: 7px 10px; border-bottom: 1.5px solid #000; text-align: right; font-size: 12.5pt; font-weight: ${r.amt !== null ? '950' : 'normal'}; vertical-align: middle; white-space: nowrap;">
           ${r.amt !== null ? `₹ ${parseFloat(r.amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '&nbsp;'}
         </td>
       </tr>
     `
     )
     .join('');
+
+  let voucherFromCheckin = receipt.voucher_number || receipt.voucherNumber || receipt.checkin_voucher_no || receipt.booking_voucher_no || receipt.voucher_no || receipt.voucherNo || (receipt.booking && (receipt.booking.voucher_number || receipt.booking.voucherNumber)) || '';
+
+  // If voucher is not explicitly provided, but receipt_no has a check-in voucher format e.g. 260926-24 or UPI260926-004
+  if (!voucherFromCheckin) {
+    const candidate = String(receipt.receipt_no || receipt.receipt_number || '').trim();
+    const match = candidate.match(/(?:^|[^\d])(\d{6}-\d+)(?:$|[^\d])/);
+    if (match) {
+      voucherFromCheckin = match[1];
+    }
+  }
+
+  const cleanVoucher = cleanVoucherNumber(voucherFromCheckin) || voucherFromCheckin || '';
+  const displayVoucherNo = cleanVoucher || '-';
 
   const rawReceiptNo = receipt.receipt_no || receipt.receipt_number || (() => {
     const now = new Date();
@@ -857,70 +989,80 @@ export function buildMoneyReceiptHTML(receipt) {
   const formattedReceiptNo = formatReceiptNumberWithMode(rawReceiptNo, rawMode);
 
   const renderReceiptCard = (copyLabel) => `
-    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden;">
+    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 136mm; max-height: 137mm; box-sizing: border-box;">
       <!-- Elegant Watermark Crest (Without Name) -->
       <div class="receipt-watermark" style="position: absolute; top: 52%; left: 50%; transform: translate(-50%, -50%); opacity: 0.055; pointer-events: none; z-index: 0; text-align: center;">
         <img src="/hcp-logo-without-name.png" alt="" style="width: 145px; height: auto;" loading="eager" decoding="sync" />
       </div>
 
-      <!-- Header Row -->
-      <div class="receipt-header-row" style="position: relative; z-index: 1;">
-        <!-- Center / Left: Doc Title & Serial No / Date (Stacked vertically: Date below No.) -->
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding-right: 16px;">
-          <div style="display: flex; align-items: baseline; gap: 14px;">
-            <h2 class="receipt-doc-title">RECEIPT</h2>
-            <div class="receipt-copy-tag">${copyLabel}</div>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 5px;">
-            <div class="receipt-no-badge" style="display: flex; align-items: center;">
-              <span style="color: #000000; font-size: 13pt; font-weight: 900; margin-right: 4px;">No.</span>
-              <span class="receipt-no-highlight">${escapeHtml(formattedReceiptNo)}</span>
+      <!-- Header Row: City Park Logo on leftmost side taking entire height of header, followed by Information on right side of logo, RECEIPT heading in middle, and No. / Date / Voucher No on right -->
+      <div class="receipt-header-row" style="position: relative; z-index: 1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; border-bottom: 1.5px solid #000000; padding-bottom: 4px; margin-bottom: 4px;">
+        <!-- Leftest Side: City Park Logo taking ENTIRE height of header + Information on right side of logo (all leveled from left) -->
+        <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-start; height: 100%; text-align: left;">
+          <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" class="receipt-brand-logo-img" style="height: 74px; max-height: 80px; width: auto; max-width: 220px; object-fit: contain; display: block; flex-shrink: 0;" loading="eager" decoding="sync" />
+          <div style="display: flex; flex-direction: column; justify-content: center; text-align: left; align-items: flex-start; line-height: 1.25;">
+            <div style="font-size: 7.8pt; color: #1e3a8a; margin: 0 0 1px 0; text-align: left;">
+              <span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong>
             </div>
-            <div style="font-size: 9.5pt; font-weight: 900; display: flex; align-items: center; gap: 5px; margin-top: 1px;">
-              <span style="color: #000000;">Date:</span>
-              <span class="receipt-date-highlight" style="min-width: 150px; text-align: center;">${escapeHtml(formattedDateTimeStr)}</span>
+            <div class="receipt-address-text" style="font-size: 7pt; line-height: 1.3; color: #000000; font-weight: 700; text-align: left; margin: 0;">
+              119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
+              <img src="/phone-call.png" alt="" style="width: 9px; height: 9px; object-fit: contain; vertical-align: -1px; display: inline-block;" loading="eager" decoding="sync" /> : 0217-2729791, 92, 93, 9960013388<br>
+              E-mail : hcitypark@rediffmail.com • website : hotelcityparksolapur.com
             </div>
           </div>
         </div>
 
-        <!-- Right: Logo With Name (Enlarged by 50%) + Full Solapur Address -->
-        <div class="receipt-brand" style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
-          <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" class="receipt-brand-logo-img" style="height: 54px; max-height: 54px; width: auto; max-width: 195px; object-fit: contain; display: block;" loading="eager" decoding="sync" />
-          <div style="font-size: 8pt; color: #1e3a8a; margin: 1px 0;"><span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong></div>
-          <div class="receipt-address-text">
-            119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
-            <img src="/phone-call.png" alt="" style="width: 10px; height: 10px; object-fit: contain; vertical-align: -1px; display: inline-block;" loading="eager" decoding="sync" /> : 0217-2729791, 92, 93, 9960013388<br>
-            E-mail : hcitypark@rediffmail.com • website : hotelcityparksolapur.com
+        <!-- Middle: RECEIPT Heading & Copy Tag (little fonts, no box, 'ORIGINAL' / 'HOTEL COPY') -->
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 8px;">
+          <h2 class="receipt-doc-title" style="margin: 0; font-size: 20pt; font-weight: 950; font-family: Georgia, serif; letter-spacing: 2.5px; color: #000000; line-height: 1;">RECEIPT</h2>
+          <div class="receipt-copy-tag" style="margin-top: 3px; font-size: 8.5pt; font-weight: 850; letter-spacing: 1.5px; color: #000000; text-transform: uppercase;">${copyLabel}</div>
+        </div>
+
+        <!-- Right Side: Serial No, Date (without box) & Voucher No (Voucher No: on single line, bold value) -->
+        <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; text-align: right; gap: 3px; white-space: nowrap;">
+          <div class="receipt-no-badge" style="display: flex; align-items: center; justify-content: flex-end;">
+            <span style="color: #000000; font-size: 13pt; font-weight: 900; margin-right: 4px;">No.</span>
+            <span class="receipt-no-highlight">${escapeHtml(formattedReceiptNo)}</span>
+          </div>
+          <div style="font-size: 9pt; font-weight: 850; display: flex; align-items: center; gap: 4px; justify-content: flex-end; white-space: nowrap;">
+            <span style="color: #000000; font-weight: 900;">Date:</span>
+            <span class="receipt-date-highlight" style="font-weight: 850; color: #000000;">${escapeHtml(formattedDateTimeStr)}</span>
+          </div>
+          <div style="font-size: 9pt; font-weight: 850; display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap;">
+            <span style="color: #000000; font-weight: 900; white-space: nowrap;">Voucher No:</span>
+            <span class="voucher-no-highlight" style="min-width: 120px; text-align: center; font-family: monospace, Courier, sans-serif; font-size: 10.5pt; font-weight: 950; color: #000000; background: #f8fafc; border: 1.5px solid #000000; border-radius: 4px; padding: 1px 8px; white-space: nowrap;">${escapeHtml(displayVoucherNo)}</span>
           </div>
         </div>
       </div>
 
-      <!-- Printed Underlined Body Lines -->
+      <!-- Printed Underlined Body Lines (Enlarged prominent typography) -->
       <div class="receipt-body-content">
-        <div class="receipt-line-row">
-          <span class="receipt-lbl">Received with thanks from</span>
-          <span class="receipt-fill-line">${escapeHtml(receipt.guest_name || '-')}</span>
+        <div class="receipt-line-row" style="font-size: 12.5pt;">
+          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">Received with thanks from</span>
+          <span class="receipt-fill-line" style="font-size: 13pt; font-weight: 950;">${escapeHtml(receipt.guest_name || '-')}</span>
         </div>
 
-        <div class="receipt-line-row">
-          <span class="receipt-lbl">the sum of Rupees</span>
-          <span class="receipt-fill-line" style="font-style: italic;">${escapeHtml(amtWords)}</span>
+        <div class="receipt-line-row" style="font-size: 12.5pt;">
+          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">the sum of Rupees</span>
+          <span class="receipt-fill-line" style="font-size: 12.5pt; font-style: italic; font-weight: 900;">${escapeHtml(amtWords)}</span>
         </div>
 
-        <div class="receipt-line-row">
-          <span class="receipt-lbl">${escapeHtml(dynamicModeLabel)}</span>
-          <span class="receipt-fill-line">${escapeHtml(dynamicModeValue)}</span>
-          <span class="receipt-lbl" style="margin-left: 14px;">Room No.</span>
-          <span class="receipt-fill-line" style="max-width: 110px; text-align: center;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
+        <div class="receipt-line-row" style="font-size: 12.5pt;">
+          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">${escapeHtml(dynamicModeLabel)}</span>
+          <span class="receipt-fill-line" style="font-size: 13pt; font-weight: 950;">${escapeHtml(dynamicModeValue)}</span>
+          <span class="receipt-lbl" style="margin-left: 12px; font-size: 12.5pt; font-weight: 850;">Room No.</span>
+          <span class="receipt-fill-line" style="max-width: 80px; text-align: center; font-size: 13pt; font-weight: 950;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
+          <span class="receipt-lbl" style="margin-left: 12px; font-size: 12.5pt; font-weight: 850; white-space: nowrap;">Voucher No:</span>
+          <span class="receipt-fill-line" style="max-width: 140px; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 13pt;">${escapeHtml(displayVoucherNo)}</span>
         </div>
 
-        <!-- Multi-Row Ruled Table Grid -->
+        <!-- Multi-Row Ruled Table Grid (Using both rows: Row 1 = Paid while checking/living/checkout, Row 2 = Mode & UTR) -->
         <div class="receipt-table-section">
-          <table class="receipt-mini-table">
+          <table class="receipt-mini-table" style="font-size: 12pt;">
             <thead>
               <tr>
-                <th style="width: 60%; font-weight: 900;">Bill No</th>
-                <th style="width: 40%; font-weight: 900; text-align: right;">Amount</th>
+                <th style="width: 62%; font-weight: 950; font-size: 12.5pt; padding: 6px 10px;">Bill No</th>
+                <th style="width: 38%; font-weight: 950; font-size: 12.5pt; text-align: right; padding: 6px 10px;">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -933,15 +1075,15 @@ export function buildMoneyReceiptHTML(receipt) {
         <div class="receipt-footer-row">
           <div class="receipt-amount-badge-box">
             <div class="receipt-rs-box">
-              <span style="font-size: 11pt; font-weight: 900; margin-right: 6px;">Rs.</span>
-              <span style="font-size: 14pt; font-weight: 950;">₹ ${parseFloat(finalDisplayAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span style="font-size: 12pt; font-weight: 900; margin-right: 6px;">Rs.</span>
+              <span style="font-size: 16pt; font-weight: 950;">₹ ${parseFloat(finalDisplayAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             <div class="receipt-disclaimer">* Cheques subject to realization</div>
           </div>
           <div class="receipt-signature-box">
-            <div class="receipt-cashier-name">${escapeHtml(cashierName)}</div>
+            <div class="receipt-cashier-name" style="font-size: 10.5pt; font-weight: 900;">${escapeHtml(cashierName)}</div>
             <div class="receipt-sig-line"></div>
-            <div class="receipt-sig-label">For HOTEL CITY PARK</div>
+            <div class="receipt-sig-label" style="font-size: 11pt; font-weight: 950;">For HOTEL CITY PARK</div>
           </div>
         </div>
       </div>
@@ -949,11 +1091,11 @@ export function buildMoneyReceiptHTML(receipt) {
   `;
 
   return `
-    ${renderReceiptCard('ORIGINAL (GUEST COPY)')}
-    <div class="two-per-a4-perforation">
-      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ PERFORATION CUT LINE ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ${renderReceiptCard('ORIGINAL')}
+    <div class="two-per-a4-perforation" style="height: 10mm; margin: 3.5mm 0; display: flex; align-items: center; justify-content: center; width: 100%; box-sizing: border-box;">
+      <div class="perforation-dotted-line" style="width: 100%; border-top: 1.5px dotted #000000; height: 0;"></div>
     </div>
-    ${renderReceiptCard('HOTEL ACCOUNTS COPY')}
+    ${renderReceiptCard('HOTEL COPY')}
   `;
 }
 
@@ -968,12 +1110,17 @@ export function printAdvanceMoneyReceipt(receipt) {
 
   sheet.innerHTML = buildMoneyReceiptHTML(receipt);
 
+  // Background silent auto-save to system folder (no popup dialog)
+  const rNo = (receipt?.receipt_no || receipt?.voucher_number || 'Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+  autoSavePdfDocument(`Receipt_${rNo}_${Date.now()}`, sheet.innerHTML);
+
   sheet.style.display = 'flex';
+  sheet.classList.remove('multi-page');
   sheet.classList.add('print-active');
   document.body.classList.add('print-sheet-active');
 
   const cleanup = () => {
-    sheet.classList.remove('print-active');
+    sheet.classList.remove('print-active', 'multi-page');
     sheet.style.display = 'none';
     document.body.classList.remove('print-sheet-active');
     window.removeEventListener('afterprint', cleanup);
@@ -987,6 +1134,68 @@ export function printAdvanceMoneyReceipt(receipt) {
       setTimeout(cleanup, 2500);
     }, 40);
   });
+}
+
+/**
+ * Prints distinct payment receipts for each payment method in a split payment.
+ * Each receipt occupies its own A4 sheet (with Guest + Hotel Accounts copy).
+ */
+export function printSplitPaymentReceipts(receiptsList) {
+  if (!Array.isArray(receiptsList) || receiptsList.length === 0) return;
+  const validReceipts = receiptsList
+    .map(normalizeReceiptData)
+    .filter(r => r && (Number(r.amount) > 0 || Number(r.base_amount) > 0));
+
+  if (validReceipts.length === 0) return;
+  if (validReceipts.length === 1) {
+    return printAdvanceMoneyReceipt(validReceipts[0]);
+  }
+
+  const sheet = document.getElementById('print-money-receipt-sheet');
+  if (!sheet) {
+    console.warn('print-money-receipt-sheet element not found in DOM');
+    return;
+  }
+
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
+  // Multi-page split receipts: each receipt gets its own full page with page breaks
+  sheet.innerHTML = validReceipts.map((rcpt, idx) => `
+    <div class="split-receipt-page" style="${idx < validReceipts.length - 1 ? 'page-break-after: always; break-after: page;' : ''}">
+      ${buildMoneyReceiptHTML({ ...rcpt, is_split: true })}
+    </div>
+  `).join('');
+
+  // Background silent auto-save each split receipt to system folder
+  validReceipts.forEach(rcpt => {
+    const rcptNo = (rcpt.receipt_no || rcpt.voucher_number || 'Split_Receipt').replace(/[^a-zA-Z0-9_-]/g, '_');
+    autoSavePdfDocument(`Receipt_${rcptNo}_${Date.now()}`, buildMoneyReceiptHTML({ ...rcpt, is_split: true }));
+  });
+
+  sheet.style.display = 'block';
+  sheet.classList.add('print-active', 'multi-page');
+  document.body.classList.add('print-sheet-active');
+
+  const cleanup = () => {
+    sheet.classList.remove('print-active', 'multi-page');
+    sheet.style.display = 'none';
+    document.body.classList.remove('print-sheet-active');
+    window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  const triggerPrint = () => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 2500);
+    }, 40);
+  };
+  if (typeof requestAnimationFrame !== 'undefined') {
+    requestAnimationFrame(triggerPrint);
+  } else {
+    setTimeout(triggerPrint, 0);
+  }
 }
 
 /**
@@ -1017,9 +1226,11 @@ export function printPettyCashVoucher(voucher) {
 
   const isRefund = voucher.category === 'refund' || (voucher.title && String(voucher.title).toLowerCase().includes('refund')) || (voucher.description && String(voucher.description).toLowerCase().includes('refund'));
   
-  // Format petty cash voucher number starting sequentially from PCV-1 (e.g. PCV-1, PCV-2, PCV-3...)
-  let voucherNo = voucher.voucher_no || voucher.voucher_number || voucher.voucherNo || '';
-  if (!voucherNo) {
+  // Format voucher number: on refund, should be voucher no same as in checkin form (e.g. 260924-002)
+  let voucherNo = voucher.voucher_number || voucher.voucherNumber || voucher.checkin_voucher_no || voucher.booking_voucher_no || voucher.voucher_no || voucher.voucherNo || '';
+  if (isRefund && voucherNo) {
+    voucherNo = cleanVoucherNumber(voucherNo).replace(/^(PCV-?|DEB-?|REF-?)/i, '');
+  } else if (!voucherNo) {
     voucherNo = voucher.id ? `PCV-${voucher.id}` : 'PCV-1';
   } else if (typeof voucherNo === 'string' && voucherNo.startsWith('PCV-')) {
     // Already in PCV-X format
@@ -1034,9 +1245,9 @@ export function printPettyCashVoucher(voucher) {
     voucherNo = `PCV-${parseInt(match[1], 10)}`;
   } else if (/^REF-?(\d+)$/i.test(String(voucherNo).trim())) {
     const match = String(voucherNo).trim().match(/^REF-?(\d+)$/i);
-    voucherNo = `PCV-${parseInt(match[1], 10)}`;
+    voucherNo = isRefund ? voucherNo : `PCV-${parseInt(match[1], 10)}`;
   } else {
-    voucherNo = `PCV-${voucherNo}`;
+    voucherNo = isRefund ? cleanVoucherNumber(voucherNo) : `PCV-${voucherNo}`;
   }
 
   const debitAc = voucher.debit_account || voucher.debitAccount || (isRefund ? 'Guest Refund' : (voucher.category || 'Petty Cash'));
@@ -1078,7 +1289,7 @@ export function printPettyCashVoucher(voucher) {
         <!-- Right: Cash Voucher No. & Date with Highlights -->
         <div class="voucher-title-col">
           <div class="voucher-heading-badge">
-            Cash Voucher No. <span class="voucher-no-highlight">${escapeHtml(voucherNo)}</span>
+            ${isRefund ? 'Refund Voucher No.' : 'Cash Voucher No.'} <span class="voucher-no-highlight">${escapeHtml(voucherNo)}</span>
           </div>
           <div class="voucher-date-text">
             Date: <span class="voucher-date-highlight">${formattedDate}</span>
@@ -1178,8 +1389,8 @@ export function printPettyCashVoucher(voucher) {
 
   sheet.innerHTML = `
     ${renderVoucherCard('ORIGINAL COPY')}
-    <div class="two-per-a4-perforation">
-      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ PERFORATION CUT LINE ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    <div class="two-per-a4-perforation" style="height: 10mm; margin: 3.5mm 0; display: flex; align-items: center; justify-content: center; width: 100%; box-sizing: border-box;">
+      <div class="perforation-dotted-line" style="width: 100%; border-top: 1.5px dotted #000000; height: 0;"></div>
     </div>
     ${renderVoucherCard('ACCOUNTS DUPLICATE')}
   `;
@@ -1540,18 +1751,18 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     mealPlanDisplay = 'All Meals Included' + (isOta ? ' • OTA Pre-booked' : '');
   }
 
-  let stayBedDetailsText = 'Standard Room Allocation (No Extra Beds)';
+  let stayBedDetailsText = 'Standard Room Allocation (No Extra Mattress)';
   if (extraBeds > 0) {
     if (isOta) {
       if (hotelChargedBeds > 0 && voucherIncludedBeds > 0) {
-        stayBedDetailsText = `${voucherIncludedBeds} Bed (OTA Included) + ${hotelChargedBeds} Bed (₹${extraBedCharge.toLocaleString('en-IN')} Hotel Added)`;
+        stayBedDetailsText = `${voucherIncludedBeds} Mattress (OTA Included) + ${hotelChargedBeds} Mattress (₹${extraBedCharge.toLocaleString('en-IN')} Hotel Added)`;
       } else if (hotelChargedBeds > 0) {
-        stayBedDetailsText = `${hotelChargedBeds} Extra Bed${hotelChargedBeds > 1 ? 's' : ''} (₹${extraBedCharge.toLocaleString('en-IN')} Billed at Hotel • Not in OTA)`;
+        stayBedDetailsText = `${hotelChargedBeds} Extra Mattress${hotelChargedBeds > 1 ? 'es' : ''} (₹${extraBedCharge.toLocaleString('en-IN')} Billed at Hotel • Not in OTA)`;
       } else {
-        stayBedDetailsText = `${voucherIncludedBeds || extraBeds} Extra Bed${extraBeds > 1 ? 's' : ''} (Inclusive in OTA Package • ₹0 Extra)`;
+        stayBedDetailsText = `${voucherIncludedBeds || extraBeds} Extra Mattress${extraBeds > 1 ? 'es' : ''} (Inclusive in OTA Package • ₹0 Extra)`;
       }
     } else {
-      stayBedDetailsText = `${extraBeds} Extra Bed${extraBeds > 1 ? 's' : ''}${extraBedCharge > 0 ? ` (₹${extraBedCharge.toLocaleString('en-IN')})` : ''}`;
+      stayBedDetailsText = `${extraBeds} Extra Mattress${extraBeds > 1 ? 'es' : ''}${extraBedCharge > 0 ? ` (₹${extraBedCharge.toLocaleString('en-IN')})` : ''}`;
     }
   }
 
@@ -1591,23 +1802,31 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   );
 
   const extensionCharge = Number(data.extensionCharge || data.extension_charge || (data.room && data.room.extension_charge) || 0);
+  const earlyCheckinCharge = parseFloat(
+    data.earlyCheckinCharge !== undefined && data.earlyCheckinCharge !== null
+      ? data.earlyCheckinCharge
+      : (data.early_checkin_charge !== undefined && data.early_checkin_charge !== null
+        ? data.early_checkin_charge
+        : (isOta && isEarlyCheckin ? (data.room?.ota_early_checkin_price || 900) : 0))
+  ) || 0;
   const hotelDeskCollected = totalPaid;
 
-  // Total Extra Booking done at Hotel (Extra Beds, F&B, Extension, Extra Rooms, Extra Breakfast)
-  let hotelExtrasTotal = extraBedCharge + fnbTotal + extensionCharge + extraRoomsCharge + extraBreakfastCharge;
+  // Total Extra Booking done at Hotel (Extra Beds, F&B, Extension, Extra Rooms, Extra Breakfast, Early Check-In)
+  let hotelExtrasTotal = extraBedCharge + fnbTotal + extensionCharge + extraRoomsCharge + extraBreakfastCharge + (isOta && isEarlyCheckin ? earlyCheckinCharge : 0);
   if (isOtaPrepaid && hotelDeskCollected > 0 && hotelExtrasTotal < hotelDeskCollected) {
     hotelExtrasTotal = hotelDeskCollected;
   }
 
   // Description of hotel extras
   const hotelExtrasParts = [];
-  if (extraBedCharge > 0) hotelExtrasParts.push(`Extra Bed: ₹${extraBedCharge.toLocaleString('en-IN')}`);
-  else if (hotelChargedBeds > 0) hotelExtrasParts.push(`Extra Bed: ₹${(hotelChargedBeds * 500).toLocaleString('en-IN')}`);
+  if (extraBedCharge > 0) hotelExtrasParts.push(`Extra Mattress: ₹${extraBedCharge.toLocaleString('en-IN')}`);
+  else if (hotelChargedBeds > 0) hotelExtrasParts.push(`Extra Mattress: ₹${(hotelChargedBeds * 500).toLocaleString('en-IN')}`);
+  if (isOta && isEarlyCheckin && earlyCheckinCharge > 0) hotelExtrasParts.push(`Early Check-In: ₹${earlyCheckinCharge.toLocaleString('en-IN')}`);
   if (fnbTotal > 0) hotelExtrasParts.push(`F&B: ₹${fnbTotal.toLocaleString('en-IN')}`);
   if (extensionCharge > 0) hotelExtrasParts.push(`Extension: ₹${extensionCharge.toLocaleString('en-IN')}`);
   if (extraRoomsCharge > 0) hotelExtrasParts.push(`Extra Room: ₹${extraRoomsCharge.toLocaleString('en-IN')}`);
   if (extraBreakfastCharge > 0) hotelExtrasParts.push(`Breakfast: ₹${extraBreakfastCharge.toLocaleString('en-IN')}`);
-  const explicitExtrasSum = (extraBedCharge || (hotelChargedBeds * 500)) + fnbTotal + extensionCharge + extraRoomsCharge + extraBreakfastCharge;
+  const explicitExtrasSum = (extraBedCharge || (hotelChargedBeds * 500)) + fnbTotal + extensionCharge + extraRoomsCharge + extraBreakfastCharge + (isOta && isEarlyCheckin ? earlyCheckinCharge : 0);
   if (isOtaPrepaid && hotelDeskCollected > explicitExtrasSum) {
     hotelExtrasParts.push(`Other Extras: ₹${(hotelDeskCollected - explicitExtrasSum).toLocaleString('en-IN')}`);
   }
@@ -1689,7 +1908,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   let caseBannerIcon = '🚶';
   let caseBannerTitle = '';
   let caseBannerSubtitle = '';
-  let caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Folio: #${escapeHtml(voucherNo)}</span>`;
+  let caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Voucher No: ${escapeHtml(cleanVoucherNumber(voucherNo) || voucherNo)}</span>`;
   let caseHeaderLabel = '';
 
   if (isOtaPrepaid) {
@@ -1741,7 +1960,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerIcon = '🚶';
     caseBannerTitle = `DIRECT WALK-IN GUEST${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = '';
-    caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Folio: #${escapeHtml(voucherNo)}</span>`;
+    caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Voucher No: ${escapeHtml(cleanVoucherNumber(voucherNo) || voucherNo)}</span>`;
     caseHeaderLabel = `Direct Walk-in${hasExtraMembers ? ' with Extra Member' : ''}`;
   }
 
@@ -1863,7 +2082,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   }
 
   const page1Html = `
-    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; height: 268mm; max-height: 272mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 8px 12px; background: #fff; line-height: 1.25; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; overflow: hidden;">
+    <div class="full-a4-registration-card registration-page-1" style="position: relative; width: 100%; height: 276mm; min-height: 276mm; max-height: 278mm; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 8px 12px; background: #fff; line-height: 1.25; display: flex; flex-direction: column; justify-content: space-between; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid; overflow: hidden;">
       <!-- Top-Right Voucher / Reg No & Check-in Date Box (Top & Right Overlapped with Main Border) -->
       <div style="position: absolute; top: -3.5px; right: -3.5px; z-index: 10;">
         <table style="border-collapse: collapse; border: 1.5px solid #1e3a8a; border-top: 3.5px solid #1e3a8a; border-right: 3.5px solid #1e3a8a; font-size: 8pt; background: #ffffff;">
@@ -1893,7 +2112,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
         <img src="/HCP New Logo Png_witought-name.png" alt="" style="width: 440px; height: auto;" loading="eager" decoding="sync" />
       </div>
 
-      <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
+      <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between; height: 100%; box-sizing: border-box;">
         <div>
           <!-- HEADER -->
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 4px; padding-right: 215px; min-height: 108px;">
@@ -2085,16 +2304,16 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                         <div><span style="color: #0284c7; font-weight: 800;">Male:</span> <strong style="color: #0f172a; font-size: 10pt;">${male}</strong></div>
                         <div><span style="color: #db2777; font-weight: 800;">Female:</span> <strong style="color: #0f172a; font-size: 10pt;">${female}</strong></div>
                         <div><span style="color: #d97706; font-weight: 800;">Children:</span> <strong style="color: #0f172a; font-size: 10pt;">${children}</strong></div>
-                        <div><span style="color: #7c3aed; font-weight: 800;">Extra Bed:</span> <strong style="color: #0f172a; font-size: 10pt;">${extraBeds}</strong></div>
+                        <div><span style="color: #7c3aed; font-weight: 800;">Extra Mattress:</span> <strong style="color: #0f172a; font-size: 10pt;">${extraBeds}</strong></div>
                       </div>
                       ${isOta ? `
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 7.5pt; margin-top: 1px; padding-top: 1px; border-top: 1px dashed #cbd5e1;">
                           <span style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 3px; font-weight: 800;">
-                            📦 OTA Booked: ${otaBookedAdults !== null ? `${otaBookedAdults} Adult${otaBookedAdults > 1 ? 's' : ''}` : '1 Adult'}${otaBookedChildren > 0 ? `, ${otaBookedChildren} Child` : ''}${voucherIncludedBeds > 0 ? `, ${voucherIncludedBeds} Bed (₹0)` : ''}
+                            📦 OTA Booked: ${otaBookedAdults !== null ? `${otaBookedAdults} Adult${otaBookedAdults > 1 ? 's' : ''}` : '1 Adult'}${otaBookedChildren > 0 ? `, ${otaBookedChildren} Child` : ''}${voucherIncludedBeds > 0 ? `, ${voucherIncludedBeds} Mattress (₹0)` : ''}
                           </span>
                           ${(extraAdults > 0 || extraChildren > 0 || hotelChargedBeds > 0) ? `
                             <span style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 1px 5px; border-radius: 3px; font-weight: 800;">
-                              🏨 Hotel Extra: ${extraAdults > 0 ? `+${extraAdults} Adult(s)` : ''}${extraChildren > 0 ? ` +${extraChildren} Child` : ''}${hotelChargedBeds > 0 ? ` +${hotelChargedBeds} Bed (+₹${extraBedCharge.toLocaleString('en-IN')})` : ''}
+                              🏨 Hotel Extra: ${extraAdults > 0 ? `+${extraAdults} Adult(s)` : ''}${extraChildren > 0 ? ` +${extraChildren} Child` : ''}${hotelChargedBeds > 0 ? ` +${hotelChargedBeds} Mattress (+₹${extraBedCharge.toLocaleString('en-IN')})` : ''}
                             </span>
                           ` : `
                             <span style="color: #64748b; font-weight: 700;">(No Extra Hotel Pax)</span>
@@ -2110,7 +2329,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     ${checkinFormatted}
                     ${isEarlyCheckin ? `
                       <div style="font-size: 7.5pt; color: #b45309; font-weight: 800; margin-top: 1px;">
-                        Early Check-In: <strong>${escapeHtml(earlyCheckinTime || checkinFormatted)}</strong> (Scheduled: ${escapeHtml(originalCheckinTime)}) • Free
+                        Early Check-In: <strong>${escapeHtml(earlyCheckinTime || checkinFormatted)}</strong> (Scheduled: ${escapeHtml(originalCheckinTime)})${isOta && earlyCheckinCharge > 0 ? ` • Extra Charge: ₹${earlyCheckinCharge.toLocaleString('en-IN')}` : ' • Free'}
                       </div>
                     ` : ''}
                   </td>
@@ -2118,7 +2337,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     ${isOta ? 'Checkout Date/Time (Fixed):' : 'Expected Checkout:'}
                   </td>
                   <td style="padding: 3px 6px; font-weight: 950; color: #b91c1c; border-bottom: 1.5px solid #94a3b8; font-size: 9pt;">
-                    ${checkoutFormatted} ${stayNights ? `(${stayNights} Night${stayNights > 1 ? 's' : ''})` : ''}
+                    ${checkoutFormatted} ${stayNights ? `(${stayNights === 1 ? '24 Hours' : `${stayNights * 24} Hours (${stayNights} × 24 hrs)`})` : ''}
                     ${isOta ? '<span style="font-size: 7.5pt; color: #0369a1; font-weight: 800; margin-left: 4px;">(Fixed &amp; Paid)</span>' : ''}
                   </td>
                 </tr>
@@ -2127,7 +2346,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                   <td style="padding: 3px 6px; font-weight: 900; border-right: 1.5px solid #94a3b8; font-size: 9pt; color: #15803d;">
                     ${escapeHtml(mealPlanDisplay)}
                   </td>
-                  <td style="padding: 3px 6px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Stay &amp; Extra Beds:</td>
+                  <td style="padding: 3px 6px; font-weight: bold; border-right: 1.5px solid #94a3b8; background: rgba(240, 253, 250, 0.75); color: #0f766e;">Stay &amp; Extra Mattresses:</td>
                   <td style="padding: 3px 6px; font-weight: 850; font-size: 9pt; color: #854d0e;">
                     ${escapeHtml(stayBedDetailsText)}
                   </td>
@@ -2158,7 +2377,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
             <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); padding: 3px 8px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #1e3a8a; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>PAYMENT SUMMARY</span>
               <span style="font-size: 7.5pt; font-weight: 800; color: #86efac; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
-                ${isEarlyCheckin ? 'Early Check-In Surcharge: ₹0 • ' : ''}Standard 5% Hotel GST Included
+                Standard 5% Hotel GST Included
               </span>
             </div>
             
@@ -2226,7 +2445,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                           🏨 HOTEL INCIDENTALS BREAKDOWN: CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL
                         </span>
                         <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL]</span>'}</span>
-                        <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
+                        <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Mattress(es): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
                       </div>
                       <div style="font-size: 8pt; font-weight: 950; color: #0f172a;">
                         <span style="color: #475569; font-weight: 750;">Total Settled:</span>
@@ -2244,7 +2463,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                         <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
                           🏨 HOTEL INCIDENTALS BREAKDOWN: SERVICES &amp; EXTRAS
                         </span>
-                        ${extraBedCharge > 0 ? `<span>Extra Bed(s): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong></span>` : ''}
+                        ${extraBedCharge > 0 ? `<span>Extra Mattress(es): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong></span>` : ''}
                         ${fnbTotal > 0 ? `<span>F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>${fnbPendingTotal > 0 ? ` (<span style="color:#b91c1c; font-weight:800;">₹ ${fnbPendingTotal.toLocaleString('en-IN')} Pending</span>)` : ' (Paid)'}</span>` : ''}
                       </div>
                     </div>
@@ -2267,7 +2486,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
         </div>
 
         <!-- SIGNATURES (CLEAN CLEARANCE FOR PHYSICAL SIGNING AND CASHIER RUBBER STAMP ON A4) -->
-        <div style="margin-top: auto; padding-top: 4px; page-break-inside: avoid; break-inside: avoid;">
+        <div class="registration-footer-row" style="margin-top: auto; padding-top: 4px; page-break-inside: avoid; break-inside: avoid; flex-shrink: 0;">
           <!-- Extra Space for physical signature and cashier seal/stamp -->
           <div style="height: 36px;"></div>
 
@@ -2778,7 +2997,7 @@ export function buildGuestPaymentSummaryHTML(data) {
     const details = [];
     if (p.utr_number) details.push(`UTR: ${p.utr_number}`);
     if (p.cheque_no) details.push(`Chq: ${p.cheque_no}${p.bank_name ? ` (${p.bank_name})` : ''}`);
-    if (p.card_surcharge > 0) details.push(`+₹${p.card_surcharge} Fee`);
+    if (p.card_surcharge > 0) details.push(`+₹${p.card_surcharge} POS Tax`);
     if (p.upi_tax > 0) details.push(`+₹${p.upi_tax} Tax`);
     const modeDetailStr = details.length > 0 ? `<div style="font-size: 7.8pt; color: #0284c7; margin-top: 2px;">${details.join(' • ')}</div>` : '';
 
@@ -2894,7 +3113,7 @@ export function buildGuestPaymentSummaryHTML(data) {
                 <strong style="color: #0f172a;">${escapeHtml(mobile)}</strong>
               </div>
               <div>
-                <span style="color: #64748b; font-size: 8pt; font-weight: 800; text-transform: uppercase; display: block;">Folio / Voucher Ref</span>
+                <span style="color: #64748b; font-size: 8pt; font-weight: 800; text-transform: uppercase; display: block;">Voucher Number</span>
                 <strong style="color: #0f172a;">${escapeHtml(voucherNo)}</strong>
               </div>
               <div>
@@ -3066,6 +3285,313 @@ export async function downloadGuestPaymentSummaryPDF(data, options = {}) {
 }
 
 /**
+ * ==========================================================================
+ * GUEST ACTIVITIES SUMMARY STATEMENT (A4 Single-Page Printout - Point 20)
+ * Itemizes: Checkin amount, Room cost, Restaurant orders, Bar orders,
+ * Advance payments, and Grand total reconciliation.
+ * ==========================================================================
+ */
+export function buildGuestActivitiesSummaryHTML(data) {
+  if (!data) return '';
+  const r = data.room || data;
+  const guestName = data.guest_name || data.guestName || r.guest_name || 'Guest';
+  const mobile = data.mobile || data.phone || r.guest_phone || r.mobile || '-';
+  const roomNo = data.room_numbers || data.room_number || r.room_number || '-';
+  const roomType = data.room_type || r.room_type || 'Deluxe Room';
+  const checkinTime = data.checkin_time || data.checkinTime || r.checkin_time ? new Date(data.checkin_time || data.checkinTime || r.checkin_time).toLocaleString('en-IN', { hour12: true }) : '-';
+  const checkoutTime = (data.actual_checkout_time || data.actualCheckoutTime || data.approx_checkout_time || data.approxCheckoutTime || r.approx_checkout_time)
+    ? new Date(data.actual_checkout_time || data.actualCheckoutTime || data.approx_checkout_time || data.approxCheckoutTime || r.approx_checkout_time).toLocaleString('en-IN', { hour12: true })
+    : '-';
+  const source = data.booking_source || data.source || r.booking_source || 'Walk-in';
+
+  // Hospitality / Room Charges
+  const stayCharge = Number(data.roomCharge || data.room_charge || r.total_room_charge || 0);
+  const stayDiscount = Number(data.discountAmount || data.discount_amount || 0);
+  const stayGst = Number(data.stayTax || data.totalGst || 0);
+  const extraBedCharge = Number(data.extraBedCharge || data.extra_bed_charge || 0);
+  const stayNetTotal = Number(data.stayNetTotal || data.recalculatedRoomCharge || stayCharge);
+
+  // Orders
+  const restaurantOrders = Array.isArray(data.restaurantOrders) ? data.restaurantOrders : [];
+  const barOrders = Array.isArray(data.barOrders) ? data.barOrders : [];
+  const payments = Array.isArray(data.payments) ? data.payments : [];
+
+  const foodTotal = restaurantOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+  const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+  const fnbTotal = foodTotal + barTotal;
+
+  const totalPayments = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) + (payments.length === 0 ? Number(data.advancePaid || data.initialPaid || 0) : 0);
+  const grandTotal = stayNetTotal + fnbTotal;
+  const netDue = Math.max(0, grandTotal - totalPayments);
+  const refundDue = Math.max(0, totalPayments - grandTotal);
+
+  return `
+    <div class="full-a4-registration-card" style="position: relative; width: 100%; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; color: #000; padding: 16px 24px; background: #fff; line-height: 1.35; min-height: 275mm; display: flex; flex-direction: column; justify-content: space-between; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+      
+      <!-- Watermark Crest -->
+      <div style="position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); opacity: 0.08; pointer-events: none; z-index: 0; text-align: center; width: 100%;">
+        <img src="/hcp-logo-without-name.png" alt="" style="width: 280px; height: auto;" loading="eager" decoding="sync" />
+      </div>
+
+      <div style="position: relative; z-index: 1;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 64px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+            <div>
+              <div style="font-size: 8pt; color: #1e3a8a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">by JMG HOSPITALITY AND INFRA LLP</div>
+              <div style="font-size: 7.8pt; color: #334155; line-height: 1.35; margin-top: 2px;">
+                119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
+                Tel: 0217-2729791, 92, 93 • Mob: 9960013388 • GSTIN: 27AABFJ9168C1ZX
+              </div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 15pt; font-weight: 950; font-family: Georgia, serif; letter-spacing: 1px; color: #000;">ACTIVITIES SUMMARY</div>
+            <div style="font-size: 8.5pt; font-weight: 750; color: #475569; margin-top: 2px;">Statement of Guest Stay &amp; Orders</div>
+            <div style="font-size: 8.5pt; font-weight: 800; color: #000; margin-top: 4px;">Date: ${new Date().toLocaleDateString('en-IN')}</div>
+          </div>
+        </div>
+
+        <!-- Guest & Room Information Bar -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 14px; font-size: 8.5pt;">
+          <div><strong>Guest:</strong> ${escapeHtml(guestName)}<br><span style="color: #64748b;">Phone: ${escapeHtml(mobile)}</span></div>
+          <div><strong>Room:</strong> #${escapeHtml(roomNo)}<br><span style="color: #64748b;">${escapeHtml(roomType)}</span></div>
+          <div><strong>Check-in:</strong><br>${escapeHtml(checkinTime)}</div>
+          <div><strong>Check-out:</strong><br>${escapeHtml(checkoutTime)}</div>
+        </div>
+
+        <!-- 1. Room Stay & Accommodation Charges Table -->
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 9.5pt; font-weight: 900; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <span>🏨</span> 1. ROOM STAY &amp; ACCOMMODATION
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; border: 1px solid #000;">
+            <thead>
+              <tr style="background: #f1f5f9; border-bottom: 1px solid #000;">
+                <th style="padding: 4px 8px; text-align: left; width: 45%;">Particulars</th>
+                <th style="padding: 4px 8px; text-align: center; width: 25%;">Rate / Details</th>
+                <th style="padding: 4px 8px; text-align: right; width: 30%;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">Base Room Stay Tariff</td>
+                <td style="padding: 4px 8px; text-align: center; border-bottom: 1px solid #e2e8f0;">Standard Rate</td>
+                <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-weight: 750;">₹ ${stayCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              ${extraBedCharge > 0 ? `
+              <tr>
+                <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">Extra Mattress Charges</td>
+                <td style="padding: 4px 8px; text-align: center; border-bottom: 1px solid #e2e8f0;">Stay Extras</td>
+                <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0;">+ ₹ ${extraBedCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              ` : ''}
+              ${stayDiscount > 0 ? `
+              <tr>
+                <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; color: #b91c1c;">Stay Discount Applied</td>
+                <td style="padding: 4px 8px; text-align: center; border-bottom: 1px solid #e2e8f0; color: #b91c1c;">Special Offer</td>
+                <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; color: #b91c1c; font-weight: 750;">- ₹ ${stayDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              ` : ''}
+              ${stayGst > 0 ? `
+              <tr>
+                <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">Room GST (CGST + SGST or IGST)</td>
+                <td style="padding: 4px 8px; text-align: center; border-bottom: 1px solid #e2e8f0;">5% Hospitality GST</td>
+                <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0;">+ ₹ ${stayGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              ` : ''}
+              <tr style="background: #fafafa; font-weight: 850;">
+                <td colspan="2" style="padding: 4px 8px; text-align: right;">Total Room Stay Cost:</td>
+                <td style="padding: 4px 8px; text-align: right;">₹ ${stayNetTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 2. Advance Payments Collected Table -->
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 9.5pt; font-weight: 900; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <span>💳</span> 2. ADVANCE PAYMENTS &amp; BILLING TRANSACTIONS (${payments.length > 0 ? payments.length : (data.advancePaid > 0 ? 1 : 0)})
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; border: 1px solid #000;">
+            <thead>
+              <tr style="background: #f1f5f9; border-bottom: 1px solid #000;">
+                <th style="padding: 4px 8px; text-align: left; width: 25%;">Receipt No.</th>
+                <th style="padding: 4px 8px; text-align: left; width: 25%;">Date &amp; Time</th>
+                <th style="padding: 4px 8px; text-align: left; width: 25%;">Payment Mode &amp; Ref</th>
+                <th style="padding: 4px 8px; text-align: right; width: 25%;">Amount Paid (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payments.length > 0 ? payments.map((p) => `
+                <tr>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 800;">${escapeHtml(p.receipt_no || `REC-${p.id}`)}</td>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">${p.created_at ? new Date(p.created_at).toLocaleString('en-IN', { hour12: true }) : '-'}</td>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase;">
+                    ${escapeHtml(p.payment_mode || 'Cash')}${p.utr_number ? ` (UTR: ${p.utr_number})` : ''}
+                  </td>
+                  <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #166534;">
+                    ₹ ${Number(p.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              `).join('') : `
+                <tr>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 800;">Check-in Advance</td>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">${checkinTime}</td>
+                  <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">Cash / Front Desk</td>
+                  <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-weight: 800; color: #166534;">
+                    ₹ ${totalPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              `}
+              <tr style="background: #fafafa; font-weight: 850;">
+                <td colspan="3" style="padding: 4px 8px; text-align: right;">Total Advance Payments Received:</td>
+                <td style="padding: 4px 8px; text-align: right; color: #166534;">₹ ${totalPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3. Restaurant & Bar Activities Orders (Combined) -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 9.5pt; font-weight: 900; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <span>🍽️</span> 3. RESTAURANT &amp; BAR ORDERS (${restaurantOrders.length + barOrders.length})
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; border: 1px solid #000;">
+            <thead>
+              <tr style="background: #f1f5f9; border-bottom: 1px solid #000;">
+                <th style="padding: 4px 8px; text-align: left; width: 22%;">Order / Bill No.</th>
+                <th style="padding: 4px 8px; text-align: left; width: 18%;">Dept / Time</th>
+                <th style="padding: 4px 8px; text-align: left; width: 35%;">Order Items / Status</th>
+                <th style="padding: 4px 8px; text-align: right; width: 25%;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[...restaurantOrders.map(o => ({ ...o, dept: 'Restaurant' })), ...barOrders.map(o => ({ ...o, dept: 'Bar Lounge' }))].length > 0 ? (
+                [...restaurantOrders.map(o => ({ ...o, dept: 'Restaurant' })), ...barOrders.map(o => ({ ...o, dept: 'Bar Lounge' }))]
+                  .map((ord) => {
+                    let itemsStr = '';
+                    try {
+                      const parsed = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || []);
+                      itemsStr = Array.isArray(parsed) ? parsed.map(i => `${i.name || i.item_name} x${i.quantity || i.qty || 1}`).join(', ') : '';
+                    } catch (e) { itemsStr = ''; }
+                    const isPaid = ord.is_paid === 1;
+                    return `
+                      <tr>
+                        <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-weight: 750;">#${ord.id || ord.order_number || '-'}</td>
+                        <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0;">${ord.dept} • ${ord.created_at ? new Date(ord.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '-'}</td>
+                        <td style="padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-size: 7.8pt;">
+                          ${escapeHtml(itemsStr || 'F&B Items')}<br>
+                          <span style="font-weight: 800; color: ${isPaid ? '#166534' : '#b91c1c'};">${isPaid ? '✓ Paid at POS' : '⏳ Added to Room Voucher'}</span>
+                        </td>
+                        <td style="padding: 4px 8px; text-align: right; border-bottom: 1px solid #e2e8f0; font-weight: 750;">
+                          ₹ ${Number(ord.total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')
+              ) : `
+                <tr>
+                  <td colspan="4" style="padding: 8px; text-align: center; color: #64748b;">No food or beverage orders billed to this stay.</td>
+                </tr>
+              `}
+              <tr style="background: #fafafa; font-weight: 850;">
+                <td colspan="3" style="padding: 4px 8px; text-align: right;">Total Restaurant &amp; Bar Orders:</td>
+                <td style="padding: 4px 8px; text-align: right;">₹ ${fnbTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4. Consolidated Financial Summary & Settlement Reconciliation -->
+        <div style="border: 2px solid #000; border-radius: 6px; padding: 10px 14px; background: #fafafa; margin-bottom: 16px;">
+          <div style="font-size: 10pt; font-weight: 950; margin-bottom: 6px; border-bottom: 1.5px solid #000; padding-bottom: 4px; display: flex; justify-content: space-between;">
+            <span>TOTAL ACTIVITIES FINANCIAL RECONCILIATION</span>
+            <span style="font-size: 9pt; color: #475569;">Room Stay + F&amp;B - Payments</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; text-align: center; font-size: 8.5pt;">
+            <div style="padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px;">
+              <span style="color: #64748b; display: block;">Room Stay Bill:</span>
+              <strong style="font-size: 10.5pt; color: #0f172a;">₹ ${stayNetTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </div>
+            <div style="padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px;">
+              <span style="color: #64748b; display: block;">Restaurant &amp; Bar:</span>
+              <strong style="font-size: 10.5pt; color: #0f172a;">+ ₹ ${fnbTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </div>
+            <div style="padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px;">
+              <span style="color: #64748b; display: block;">Advance Paid:</span>
+              <strong style="font-size: 10.5pt; color: #166534;">₹ ${totalPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </div>
+            <div style="padding: 6px; background: ${refundDue > 0 ? '#f0fdf4' : '#fff1f2'}; border: 1.5px solid ${refundDue > 0 ? '#86efac' : '#fca5a5'}; border-radius: 4px;">
+              <span style="color: ${refundDue > 0 ? '#166534' : '#b91c1c'}; display: block; font-weight: 800;">
+                ${refundDue > 0 ? 'Refund Due to Guest:' : 'Net Balance Due:'}
+              </span>
+              <strong style="font-size: 11pt; color: ${refundDue > 0 ? '#166534' : '#b91c1c'};">
+                ₹ ${(refundDue > 0 ? refundDue : netDue).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signatures -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 14px; border-top: 1.5px solid #000; font-size: 8.5pt;">
+        <div style="text-align: center; width: 220px;">
+          <div style="height: 35px;"></div>
+          <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: 800;">GUEST SIGNATURE</div>
+        </div>
+        <div style="text-align: center; width: 220px;">
+          <div style="font-size: 8pt; color: #475569; margin-bottom: 2px;">For HOTEL CITY PARK</div>
+          <div style="height: 25px;"></div>
+          <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: 800;">AUTHORISED SIGNATORY</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function printGuestActivitiesSummary(data, options = {}) {
+  if (!data) return;
+  let sheet = document.getElementById('print-activities-summary-sheet');
+  if (!sheet) {
+    sheet = document.createElement('div');
+    sheet.id = 'print-activities-summary-sheet';
+    sheet.className = 'printable-full-a4-sheet';
+    sheet.style.display = 'none';
+    document.body.appendChild(sheet);
+  }
+
+  const exitThemeIsolation = enterPrintThemeIsolation();
+  const prevTitle = document.title;
+  const guestName = (data.guest_name || data.guestName || 'Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const roomNo = data.room_numbers || data.room_number || '';
+  document.title = `Activities_Summary_Room_${roomNo}_${guestName}`;
+
+  sheet.innerHTML = buildGuestActivitiesSummaryHTML(data);
+  sheet.style.display = 'block';
+  sheet.classList.add('print-active');
+  document.body.classList.add('print-sheet-active');
+
+  const cleanup = () => {
+    sheet.classList.remove('print-active');
+    sheet.style.display = 'none';
+    document.body.classList.remove('print-sheet-active');
+    document.title = prevTitle;
+    window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 2500);
+    }, 40);
+  });
+}
+
+/**
  * Builds Full A4 Final Checkout Tax Invoice HTML
  * Matching authentic Hotel City Paark paper invoice:
  * - Hotel Address & Contact on Left, Logo Crest on Right
@@ -3104,12 +3630,32 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const formatInvoiceTime = (dt) => {
     if (!dt) return '-';
     try {
-      const d = new Date(dt);
-      if (isNaN(d.getTime())) return String(dt).split(' ')[1] || String(dt);
-      const hours = String(d.getHours()).padStart(2, '0');
+      let d = new Date(dt);
+      if (isNaN(d.getTime()) && typeof dt === 'string') {
+        d = new Date(dt.replace(' ', 'T'));
+      }
+      if (isNaN(d.getTime())) {
+        const timePart = String(dt).split(' ')[1];
+        if (timePart) {
+          const tParts = timePart.split(':');
+          if (tParts.length >= 2) {
+            let h = parseInt(tParts[0], 10);
+            const m = tParts[1].padStart(2, '0');
+            const s = (tParts[2] || '00').slice(0, 2).padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
+          }
+        }
+        return String(dt);
+      }
+      let hours = d.getHours();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      const hoursStr = String(hours).padStart(2, '0');
       const minutes = String(d.getMinutes()).padStart(2, '0');
       const seconds = String(d.getSeconds()).padStart(2, '0');
-      return `${hours}:${minutes}:${seconds}`;
+      return `${hoursStr}:${minutes}:${seconds} ${ampm}`;
     } catch (e) {
       return String(dt);
     }
@@ -3135,6 +3681,15 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const mobile = r.mobile || r.guest_phone || r.phone || c.mobile || c.phone || '';
   const guestGstin = r.gstin || r.guest_gstin || c.gstin || c.guestGstin || '';
 
+  // Company details (either chosen from BTC or entered from Stage 4 form)
+  const rawCompanyName = (r.company_name || r.companyName || r.btc_company_name || r.btcCompanyName || c.company_name || c.companyName || c.btc_company_name || c.btcCompanyName || (r.booking && (r.booking.company_name || r.booking.btc_company_name)) || '').trim();
+  const companyName = rawCompanyName ? rawCompanyName.toUpperCase() : '';
+  const explicitCompanyGstin = (r.gst_number || r.gstNumber || r.company_gst || r.companyGst || r.btc_company_gst || r.btcCompanyGst || r.btc_gst_number || c.gst_number || c.gstNumber || c.companyGst || c.btcCompanyGst || c.btc_gst_number || '').trim();
+  const companyGstin = (explicitCompanyGstin || (companyName ? guestGstin : '')).trim();
+  const rawCompanyAddress = (r.company_address || r.companyAddress || r.btc_company_address || r.btcCompanyAddress || r.btc_address || r.btcAddress || c.company_address || c.companyAddress || c.btcCompanyAddress || c.btc_address || c.btcAddress || (r.booking && (r.booking.company_address || r.booking.btc_address)) || '').trim();
+  const companyAddress = rawCompanyAddress ? rawCompanyAddress.toUpperCase() : '';
+  const hasCompanyDetails = Boolean(companyName || companyAddress || explicitCompanyGstin);
+
   // Stay / Invoice metadata
   const bookingId = r.current_booking_id || r.booking_id || c.bookingId || c.booking_id || r.id || '';
   const now = new Date();
@@ -3145,13 +3700,35 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 
   const rawVoucher = r.voucher_number || r.voucher_no || c.voucher_no || c.voucher_number || s.voucher_no || s.voucher_number || r.checkin_voucher_no || s.invoiceNo || s.invoice_no || c.invoice_no || r.invoice_no || fallbackVoucher;
   const checkinFormNo = cleanVoucherNumber(rawVoucher);
-  // User Requirement: "invoice number will be same as (check in form number)" & "wher ever is like this 20260920-520 should be 260920-520"
-  const invoiceNo = checkinFormNo;
+  // User Requirement: Tax invoice number prefix is "L" now should be "HCP"
+  let rawInvoice = s.invoiceNo || s.invoice_no || c.invoice_no || r.invoice_no || checkinFormNo;
+  if ((rawInvoice === 'HCP1' || rawInvoice === 'L1' || rawInvoice === '1' || rawInvoice === 'HCP1573' || rawInvoice === 'L1573' || !rawInvoice) && checkinFormNo && checkinFormNo.includes('-')) {
+    rawInvoice = checkinFormNo;
+  }
+  const invoiceNo = formatTaxInvoiceNumber(rawInvoice);
   const regNo = checkinFormNo;
   const roomNum = r.room_number || r.roomNumber || c.room_number || '310';
   const roomType = r.room_type || r.roomType || c.room_type || '';
 
-  const adults = (Number(r.adults_male || 0) + Number(r.adults_female || 0) + Number(r.adults_other || 0)) || Number(r.adults || 0) || 1;
+  // Mode of Booking / Channel (Requirement 7)
+  const rawBookingMode = r.booking_source || r.bookingSource || c.bookingSource || c.booking_source || (r.booking && (r.booking.booking_source || r.booking.channel)) || 'Walk-in';
+  let bookingModeStr = rawBookingMode;
+  const otaName = r.ota_platform || r.otaPlatform || c.otaPlatform || c.ota_platform;
+  const btcName = r.btc_company_name || r.btcCompanyName || c.btcCompanyName || c.btc_company_name;
+  if (String(rawBookingMode).toUpperCase() === 'OTA' && otaName) {
+    bookingModeStr = `OTA (${otaName})`;
+  } else if (String(rawBookingMode).toUpperCase().startsWith('BTC')) {
+    // User Requirement: "Booking Mode : BTC (Infosys BPM Technolo" should show only "Booking Mode : BTC "
+    bookingModeStr = 'BTC';
+  }
+
+  const extraMattressCount = Number(r.extra_beds ?? c.extra_beds ?? c.extraBeds ?? r.extraBeds ?? (Number(r.extra_bed_charge || c.hotelExtrasCharge || 0) > 0 ? 1 : 0) || 0);
+  const baseBedCapacity = Number(r.max_adults ?? c.max_adults ?? 2);
+  let adults = (Number(r.adults_male || 0) + Number(r.adults_female || 0) + Number(r.adults_other || 0)) || Number(r.adults || 0) || 1;
+  // User Requirement: "if 2 bed + 1 Extra mattress = it will be 1pax or 3 pax (we want it should be 3 pax)"
+  if (extraMattressCount > 0) {
+    adults = Math.max(adults, baseBedCapacity + extraMattressCount);
+  }
   const children = Number(r.children || 0);
   const paxStr = children > 0 ? `${adults + children}` : `${adults}`;
 
@@ -3179,16 +3756,6 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const barTotal = Number(c.barTotal || summary.barTotal || 0);
   const fnbTotal = foodTotal + barTotal;
 
-  let grossTariff = Number(c.roomGrossTariff || summary.roomGrossTariff || c.roomTaxable || summary.roomTaxable || 0);
-  if (grossTariff <= 0) {
-    const rawGross = Number(c.grossTariff || summary.grossTariff || 0);
-    if (rawGross > 0 && fnbTotal > 0 && rawGross >= fnbTotal) {
-      grossTariff = rawGross - fnbTotal;
-    } else {
-      grossTariff = rawGross;
-    }
-  }
-
   let effectiveTariff = Number(c.roomTariffNet || c.stayTaxable || summary.stayTaxable || 0);
 
   if (effectiveTariff <= 0) {
@@ -3202,28 +3769,66 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
     }
   }
 
+  let grossTariff = Number(c.roomGrossTariff || summary.roomGrossTariff || c.roomTaxable || summary.roomTaxable || 0);
+  if (grossTariff <= 0) {
+    const rawGross = Number(c.grossTariff || summary.grossTariff || 0);
+    if (rawGross > 0) {
+      if (Math.abs(rawGross - (effectiveTariff + discountAmt)) < 1) {
+        grossTariff = rawGross;
+      } else if (fnbTotal > 0 && rawGross >= (effectiveTariff + fnbTotal)) {
+        grossTariff = rawGross - fnbTotal;
+      } else {
+        grossTariff = rawGross;
+      }
+    }
+  }
+
   if (grossTariff <= 0) {
     grossTariff = discountAmt > 0 ? (effectiveTariff + discountAmt) : effectiveTariff;
   }
 
-  // Taxes (CGST 2.5% + SGST 2.5% = 5%)
+  // Tax calculation: IGST or CGST + SGST (Point 21: stage 4 IGST selection prints IGST)
+  const isIgst = Boolean(r.is_igst || c.is_igst || c.isIgst || r.tax_type === 'IGST' || c.taxType === 'IGST' || s.is_igst || s.isIgst);
   let cgst = 0;
   let sgst = 0;
+  let igst = 0;
   const explicitTax = Number(c.stayTax || c.tariffTax5Pct || c.totalGst || summary.taxAmount || 0);
-  if (explicitTax > 0) {
-    cgst = Number((explicitTax / 2).toFixed(2));
-    sgst = Number((explicitTax - cgst).toFixed(2));
+  const totalGstAmt = explicitTax > 0 ? explicitTax : Number((effectiveTariff * 0.05).toFixed(2));
+  if (isIgst) {
+    igst = totalGstAmt;
   } else {
-    cgst = Number((effectiveTariff * 0.025).toFixed(2));
-    sgst = Number((effectiveTariff * 0.025).toFixed(2));
+    cgst = Number((totalGstAmt / 2).toFixed(2));
+    sgst = Number((totalGstAmt - cgst).toFixed(2));
   }
 
-  // Surcharges
+  // Room Bill Total (SAC: 996311) (Requirement 9)
+  const roomTaxable = effectiveTariff + extraCharges;
+  const roomGstTotal = isIgst ? igst : (cgst + sgst);
+  const roomBillTotal = roomTaxable + roomGstTotal;
+
+  // F&B Bill calculations (SAC: 996331) (Requirement 9)
+  const hasFnb = fnbTotal > 0;
+  const fnbGross = hasFnb ? (Math.round((fnbTotal / 1.05) * 100) / 100) : 0;
+  const fnbGstTotal = hasFnb ? Number((fnbTotal - fnbGross).toFixed(2)) : 0;
+  let fnbCgst = 0;
+  let fnbSgst = 0;
+  let fnbIgst = 0;
+  if (hasFnb) {
+    if (isIgst) {
+      fnbIgst = fnbGstTotal;
+    } else {
+      fnbCgst = Number((fnbGstTotal / 2).toFixed(2));
+      fnbSgst = Number((fnbGstTotal - fnbCgst).toFixed(2));
+    }
+  }
+  const fnbBillTotal = fnbGross + (isIgst ? fnbIgst : (fnbCgst + fnbSgst));
+
+  // POS Tax / Surcharges (Point 18)
   const cardSurcharge = Number(s.cardSurcharge || s.card_surcharge || r.final_card_surcharge || r.advance_card_surcharge || 0);
   const upiTax = Number(s.upiTax || s.upi_tax || r.final_upi_tax || r.advance_upi_tax || 0);
 
-  // Subtotal & Round-off
-  const unroundedTotal = effectiveTariff + cgst + sgst + extraCharges + foodTotal + barTotal + cardSurcharge + upiTax;
+  // Subtotal & Round-off (Requirement 9: Room + F&B + Surcharges)
+  const unroundedTotal = roomBillTotal + (hasFnb ? fnbBillTotal : 0) + cardSurcharge + upiTax;
   const invoiceTotal = Math.round(unroundedTotal);
   const roundOff = Number((invoiceTotal - unroundedTotal).toFixed(2));
 
@@ -3246,122 +3851,175 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const netPayable = Math.max(0, grossPayable - advanceReceived);
   const netPayableWords = formatWords(netPayable);
 
-  // Staff & Badge
-  const checkInBy = r.checked_in_by || r.checkedInBy || c.checked_in_by || 'bhuvi';
-  const checkOutBy = s.checked_out_by || s.checkedOutBy || r.checked_out_by || r.checkedOutBy || 'bhuvi';
+  // Staff & Badge Resolution (Requirement 8: Checkout by Cashier name, never 'Front Desk')
+  let loggedInCashier = '';
+  try {
+    const savedUser = JSON.parse(localStorage.getItem('hotel_staff_user') || 'null');
+    loggedInCashier = savedUser?.full_name || savedUser?.name || savedUser?.username || '';
+  } catch (e) {}
+
+  const checkInBy = r.checked_in_by || r.checkedInBy || c.checked_in_by || loggedInCashier || 'Cashier_1';
+  let rawCheckOut = s.checked_out_by || s.checkedOutBy || r.checked_out_by || r.checkedOutBy;
+  if (!rawCheckOut || rawCheckOut === 'Front Desk' || rawCheckOut === 'bhuvi') {
+    rawCheckOut = loggedInCashier || r.checked_in_by || r.checkedInBy || c.checked_in_by || 'Cashier_1';
+  }
+  const checkOutBy = rawCheckOut;
   const badgeNo = r.room_number || '909';
 
   return `
-    <div class="full-a4-registration-card tax-invoice-a4-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; color: #000; border: none; padding: 14px 24px; background: #fff; line-height: 1.35; min-height: 275mm; display: flex; flex-direction: column; justify-content: space-between; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+    <div class="full-a4-registration-card tax-invoice-a4-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; color: #000; border: none; padding: 5px 10px; background: #fff; line-height: 1.32; height: 268mm; min-height: 268mm; max-height: 270mm; page-break-inside: avoid !important; break-inside: avoid !important; page-break-after: avoid !important; break-after: avoid !important; display: flex; flex-direction: column; justify-content: space-between; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
       
       <!-- Elegant Centered Watermark Background Logo (Authentic Transparent Mauve/Rose Tint with Name) -->
       <div style="position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); opacity: 0.14; pointer-events: none; z-index: 0; text-align: center; width: 100%; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
         <img src="/hcp-logo-with-name-transparent.png" alt="Hotel CityPaark Watermark" style="width: 520px; max-width: 85%; height: auto; filter: contrast(120%) saturate(120%);" loading="eager" decoding="sync" />
       </div>
 
-      <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between; background: transparent;">
+      <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 100%; justify-content: space-between; background: transparent;">
         <div>
-          <!-- TOP HEADER: Address (Left) & Brand Logo with Name + by JMG HOSPITALITY AND INFRA LLP centered directly below (Right) -->
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; background: transparent;">
-            <!-- Left Hotel Address & Contact -->
-            <div style="font-size: 9.2pt; color: #000; line-height: 1.42; max-width: 60%;">
-              <div style="white-space: nowrap; font-size: 9.2pt; font-weight: 500;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)</div>
+          <!-- TOP HEADER: Address (Left, vertically middle-aligned with logo height) & Brand Logo with Name (Right) -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; background: transparent;">
+            <!-- Left Hotel Address & Contact (aligned in middle of logo height) -->
+            <div style="font-size: 7.8pt; color: #222; line-height: 1.38; max-width: 55%; font-weight: 400; align-self: center;">
+              <div style="white-space: nowrap; font-size: 7.8pt; font-weight: 400; color: #111;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)</div>
               <div>Tel.: 0217-2729791, 92, 93 Mob.: 9960013388</div>
               <div>E-mail : hcitypark@rediffmail.com</div>
               <div>website : hotelcityparksolapur.com</div>
             </div>
 
-            <!-- Right Brand Logo with Name (Increased 50% in size) & centered by JMG HOSPITALITY AND INFRA LLP directly below -->
-            <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
-              <img src="/hcp-logo-with-name-transparent.png" alt="Hotel CityPaark" style="height: 84px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
-              <div style="font-size: 8pt; font-weight: 700; color: #000; letter-spacing: 0.5px; margin-top: 3px; white-space: nowrap; font-family: 'Segoe UI', Arial, sans-serif;">
-                <span style="font-weight: 500; text-transform: lowercase;">by</span> <span style="font-weight: 750; text-transform: uppercase;">JMG HOSPITALITY AND INFRA LLP</span>
+            <!-- Right Brand Logo with Name (Height 126px) & by JMG HOSPITALITY AND INFRA LLP matching logo text width -->
+            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; width: 174px;">
+              <img src="/hcp-logo-with-name-transparent.png" alt="Hotel CityPaark" style="height: 126px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+              <div style="width: 100%; font-size: 7.2pt; font-weight: 600; color: #000; letter-spacing: 0.2px; margin-top: 3px; white-space: nowrap; font-family: 'Segoe UI', Arial, sans-serif; text-align: center;">
+                <span style="font-weight: 400; text-transform: lowercase;">by</span> <span style="font-weight: 600; text-transform: uppercase;">JMG HOSPITALITY AND INFRA LLP</span>
               </div>
             </div>
           </div>
 
-          <!-- Thin horizontal divider line across the page below header (exact as in photo) -->
-          <div style="border-bottom: 1.5px solid #000; margin-top: 6px; margin-bottom: 10px;"></div>
+          <!-- Continuous horizontal divider line across the page taking 100% width from right to left above TAX INVOICE -->
+          <div style="border-bottom: 1.5px solid #000; width: 100%; margin-top: 4px; margin-bottom: 6px;"></div>
 
-          <!-- CENTER TAX INVOICE (No line below, exact as in photo) -->
-          <div style="text-align: center; margin-bottom: 10px;">
-            <span style="font-size: 15pt; font-weight: 900; font-family: Georgia, 'Times New Roman', serif; letter-spacing: 2px; color: #000; text-transform: uppercase;">
+          <!-- CENTER TAX INVOICE -->
+          <div style="text-align: center; margin-bottom: 6px;">
+            <span style="font-size: 14pt; font-weight: 800; font-family: Georgia, 'Times New Roman', serif; letter-spacing: 2px; color: #000; text-transform: uppercase;">
               TAX INVOICE
             </span>
           </div>
 
-          <!-- GUEST & STAY META DETAILS (Exact Two-Column Layout from Photo with Unbroken Rows) -->
-          <div style="display: flex; justify-content: space-between; font-size: 10pt; margin-bottom: 8px; line-height: 1.45; background: transparent;">
-            <!-- Left Column: Guest Info -->
-            <div style="width: 42%;">
-              <div>
-                <span style="font-weight: 700; color: #000;">Guest Name :</span>
-                <strong style="color: #000; font-size: 11pt; margin-left: 6px;">${escapeHtml(guestName)}</strong>
-              </div>
-              <div style="margin-top: 3px;">
-                <span style="font-weight: 700; color: #000;">Address :</span>
-                <div style="padding-left: 55px; color: #000; font-weight: 800; text-transform: uppercase;">
+          <!-- GUEST & STAY META DETAILS (Official Structured Grid with Aligned Columns) -->
+          <div style="font-size: 9.5pt; line-height: 1.4; margin-bottom: 5px; background: transparent;">
+            <!-- Top Two Columns: Guest Info (Left 49%) & Stay Details (Right 49%) -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <!-- Left Column: Guest Info -->
+              <div style="width: 49%;">
+                <div style="display: flex; align-items: baseline;">
+                  <div style="width: 92px; flex-shrink: 0;"><span style="font-weight: 400; color: #333;">Guest Name :</span></div>
+                  <span style="color: #000; font-size: 9.8pt; font-weight: 600; margin-left: 4px;">${escapeHtml(guestName)}</span>
+                </div>
+                <div style="margin-top: 2.5px; display: flex; align-items: baseline;">
+                  <div style="width: 92px; flex-shrink: 0;"><span style="font-weight: 400; color: #333;">Address :</span></div>
+                  <span style="color: #000; font-weight: 400; text-transform: uppercase;">
                   ${escapeHtml(address || 'PUNE')}
+                </span>
+                </div>
+                ${(!hasCompanyDetails && (companyGstin || guestGstin)) ? `
+                <div style="margin-top: 2.5px; display: flex; align-items: baseline;">
+                  <span style="color: #333; font-weight: 400; width: 92px; flex-shrink: 0;">GSTIN :</span>
+                  <span style="color: #000; font-weight: 600; margin-left: 4px; font-family: monospace;">${escapeHtml(companyGstin || guestGstin)}</span>
+                </div>
+                ` : ''}
+              </div>
+
+              <!-- Right Column: Stay & Invoice Meta -->
+              <div style="width: 49%;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt; line-height: 1.4; background: transparent;">
+                  <tbody>
+                    <tr>
+                      <td style="padding: 1px 0; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Invoice No. :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(invoiceNo)}</span>
+                      </td>
+                      <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Reg. No. :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(regNo)}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 1px 0; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Room No. :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(roomNum)}</span>
+                      </td>
+                      <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Booking Mode :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(bookingModeStr)}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="2" style="padding: 1px 0; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Pax :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(paxStr)}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 1px 0; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Arrival Date :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${arrivalDate}</span>
+                      </td>
+                      <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Time :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${arrivalTime}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 1px 0; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Departure Date :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${departureDate}</span>
+                      </td>
+                      <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
+                        <span style="color: #333; font-weight: 400;">Time :</span>
+                        <span style="color: #000; font-weight: 400; margin-left: 4px;">${departureTime}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            ${hasCompanyDetails ? `
+            <!-- Corporate Details (Aligned cleanly with the 2-column grid above) -->
+            <div style="margin-top: 3px; border-top: 0.5px solid #e0e0e0; padding-top: 3px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: nowrap;">
+                <!-- Left 49%: Company Name -->
+                <div style="width: 49%; display: flex; align-items: baseline;">
+                  <span style="color: #333; font-weight: 400; width: 115px; flex-shrink: 0;">Company Name :</span>
+                  <span style="color: #000; font-size: 9.8pt; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${escapeHtml(companyName)}</span>
+                </div>
+                <!-- Right 49%: GSTIN directly aligned with Departure Date / Invoice No. column -->
+                <div style="width: 49%; display: flex; align-items: baseline;">
+                  <span style="color: #333; font-weight: 400; width: 55px; flex-shrink: 0;">GSTIN :</span>
+                  <span style="color: #000; font-weight: 600; margin-left: 4px; font-family: monospace;">${escapeHtml(companyGstin || guestGstin)}</span>
                 </div>
               </div>
-              ${guestGstin ? `
-              <div style="margin-top: 3px;">
-                <span style="font-weight: 700; color: #000;">GSTIN :</span>
-                <span style="color: #000; font-weight: 800; margin-left: 6px; font-family: monospace;">${escapeHtml(guestGstin)}</span>
+              ${companyAddress ? `
+              <div style="margin-top: 2px; display: flex; align-items: baseline;">
+                <span style="color: #333; font-weight: 400; width: 115px; flex-shrink: 0;">Company Address :&nbsp;</span>
+                <span style="color: #000; font-weight: 400; text-transform: uppercase;">${escapeHtml(companyAddress)}</span>
               </div>
               ` : ''}
             </div>
-
-            <!-- Right Column: Stay & Invoice Meta (Exact 2-Row Dates Layout with Time) -->
-            <div style="width: 56%;">
-              <table style="width: 100%; border-collapse: collapse; font-size: 10pt; line-height: 1.45; background: transparent;">
-                <tbody>
-                  <tr>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; width: 25%; white-space: nowrap;">Invoice No. :</td>
-                    <td style="padding: 1.5px 0; font-weight: 850; color: #000; width: 25%; white-space: nowrap;">${escapeHtml(invoiceNo)}</td>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; width: 20%; white-space: nowrap; padding-left: 8px;">Reg. No. :</td>
-                    <td style="padding: 1.5px 0; font-weight: 850; color: #000; width: 30%; white-space: nowrap;">${escapeHtml(regNo)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap;">Room No. :</td>
-                    <td colspan="3" style="padding: 1.5px 0; font-weight: 900; color: #000; white-space: nowrap;">
-                      ${escapeHtml(roomNum)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap;">Pax :</td>
-                    <td colspan="3" style="padding: 1.5px 0; font-weight: 850; color: #000; white-space: nowrap;">
-                      ${escapeHtml(paxStr)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap;">Arrival Date :</td>
-                    <td style="padding: 1.5px 0; font-weight: 800; color: #000; white-space: nowrap;">${arrivalDate}</td>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap; padding-left: 8px;">Time :</td>
-                    <td style="padding: 1.5px 0; font-weight: 800; color: #000; white-space: nowrap;">${arrivalTime}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap;">Departure Date :</td>
-                    <td style="padding: 1.5px 0; font-weight: 800; color: #000; white-space: nowrap;">${departureDate}</td>
-                    <td style="padding: 1.5px 0; color: #000; font-weight: 700; white-space: nowrap; padding-left: 8px;">Time :</td>
-                    <td style="padding: 1.5px 0; font-weight: 800; color: #000; white-space: nowrap;">${departureTime}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            ` : ''}
           </div>
 
-          <!-- CHARGES TABLE (Exact structure matching photo: dashed headers, vertical line before Total column) -->
-          <table style="width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 6px; border: none; background: transparent;">
+          <!-- CHARGES TABLE (Slid left dates & middle numbers, only specified items bold) -->
+          <table style="width: 100%; border-collapse: collapse; font-size: 9.8pt; margin-bottom: 4px; border: none; background: transparent;">
             <thead>
-              <tr style="border-top: 1.5px solid #000; border-bottom: 1px dashed #000; background: transparent;">
-                <th style="padding: 5px 10px; text-align: left; font-weight: 900; color: #000; width: 46%;">
-                  SAC: 996311
+              <tr style="border-top: 1.5px dashed #000; border-bottom: 1px dashed #000; background: transparent;">
+                <th style="padding: 4px 10px; text-align: left; font-weight: 700; color: #000; width: 38%;">
+                  SAC: 996311 (Accommodation)
                 </th>
-                <th style="padding: 5px 10px; text-align: center; font-weight: 800; color: #000; width: 27%;">
+                <th style="padding: 4px 10px 4px 30px; text-align: left; font-weight: 400; color: #000; width: 42%;">
                   ${stayStartShort && stayEndShort ? `${stayStartShort} &nbsp; &nbsp; &nbsp; ${stayEndShort}` : (stayStartShort || '')}
                 </th>
-                <th style="padding: 5px 10px; text-align: right; font-weight: 900; color: #000; width: 27%; border-left: 1.5px solid #000;">
+                <th style="padding: 4px 10px; text-align: right; font-weight: 400; color: #000; width: 20%; border-left: 1.5px dashed #000;">
                   Total
                 </th>
               </tr>
@@ -3369,13 +4027,13 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
             <tbody>
               <!-- Room Tariff Gross -->
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; font-weight: 750; color: #000;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">
                   Room Tariff - ${billableDays > 1 ? `(${billableDays} Days)` : ''}
                 </td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">
                   ${grossTariff.toFixed(2)}
                 </td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">
                   ${grossTariff.toFixed(2)}
                 </td>
               </tr>
@@ -3383,183 +4041,231 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
               <!-- Discount if applied -->
               ${discountAmt > 0 ? `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; font-weight: 750; color: #000;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">
                   Less Discount @${discountPct > 0 ? discountPct.toFixed(2) : ((discountAmt / grossTariff) * 100).toFixed(2)}%
                 </td>
-                <td style="padding: 4px 10px; text-align: center; font-weight: 750; color: #000;">
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">
                   ${discountAmt.toFixed(2)}
                 </td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 800; color: #000; border-left: 1.5px solid #000;">
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">
                   - ${discountAmt.toFixed(2)}
                 </td>
               </tr>
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; font-weight: 850; color: #000;">Effective Tariff</td>
-                <td style="padding: 4px 10px; text-align: center; font-weight: 800; color: #000;">${effectiveTariff.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 850; color: #000; border-left: 1.5px solid #000;">${effectiveTariff.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">Effective Tariff</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${effectiveTariff.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${effectiveTariff.toFixed(2)}</td>
               </tr>
               ` : ''}
 
-              <!-- CGST & SGST 2.5% Each (5% Total GST) -->
-              <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">CGST @ 2.5%</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${cgst.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${cgst.toFixed(2)}</td>
-              </tr>
-              <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">SGST @ 2.5%</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${sgst.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${sgst.toFixed(2)}</td>
-              </tr>
-
-              <!-- Extra bed / room charges if present -->
+              <!-- Extra mattress / room charges if present -->
               ${extraCharges > 0 ? `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">Extra Bed &amp; Stay Extras</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${extraCharges.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${extraCharges.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">Extra Mattress Base Tariff</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${extraCharges.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${extraCharges.toFixed(2)}</td>
               </tr>
               ` : ''}
 
-              <!-- Food & Restaurant Orders if present -->
-              ${foodTotal > 0 ? `
+              <!-- Room GST -->
+              ${isIgst ? `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">Room Service &amp; Restaurant Charges</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${foodTotal.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${foodTotal.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">IGST @ 5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${igst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${igst.toFixed(2)}</td>
               </tr>
-              ` : ''}
-
-              <!-- Bar Orders if present -->
-              ${barTotal > 0 ? `
+              ` : `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">Bar Lounge &amp; Beverages</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${barTotal.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${barTotal.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">CGST @ 2.5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${cgst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${cgst.toFixed(2)}</td>
+              </tr>
+              <tr style="background: transparent;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">SGST @ 2.5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${sgst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${sgst.toFixed(2)}</td>
+              </tr>
+              `}
+
+              <!-- Room Bill Total row (Total amount and label are bold) -->
+              <tr style="background: transparent; border-top: 1px dashed #000; border-bottom: 1px dashed #000;">
+                <td style="padding: 2.5px 10px; font-weight: 700; color: #000;">Room Bill Total</td>
+                <td style="padding: 2.5px 10px 2.5px 30px; text-align: left; font-weight: 700; color: #000;">${(effectiveTariff + extraCharges).toFixed(2)}</td>
+                <td style="padding: 2.5px 10px; text-align: right; font-weight: 700; color: #000; border-left: 1.5px dashed #000;">${roomBillTotal.toFixed(2)}</td>
+              </tr>
+
+              <!-- F&B Bill Section (SAC: 996332 (Food & Beverage) is bold, and F&B Total amount is bold) -->
+              ${hasFnb ? `
+              <tr style="background: transparent;">
+                <td colspan="2" style="padding: 3.5px 10px 1.5px; font-weight: 700; color: #000;">
+                  SAC: 996332 (Food &amp; Beverage)
+                </td>
+                <td style="border-left: 1.5px dashed #000;"></td>
+              </tr>
+              <tr style="background: transparent;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">F&amp;B Gross Taxable</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${fnbGross.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${fnbGross.toFixed(2)}</td>
+              </tr>
+              ${isIgst ? `
+              <tr style="background: transparent;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">F&amp;B IGST @ 5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${fnbIgst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${fnbIgst.toFixed(2)}</td>
+              </tr>
+              ` : `
+              <tr style="background: transparent;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">F&amp;B CGST @ 2.5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${fnbCgst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${fnbCgst.toFixed(2)}</td>
+              </tr>
+              <tr style="background: transparent;">
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">F&amp;B SGST @ 2.5%</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${fnbSgst.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${fnbSgst.toFixed(2)}</td>
+              </tr>
+              `}
+              <tr style="background: transparent; border-top: 1px dashed #000; border-bottom: 1px dashed #000;">
+                <td style="padding: 2.5px 10px; font-weight: 400; color: #000;">F&amp;B Bill Total</td>
+                <td style="padding: 2.5px 10px 2.5px 30px; text-align: left; font-weight: 400; color: #000;">${fnbGross.toFixed(2)}</td>
+                <td style="padding: 2.5px 10px; text-align: right; font-weight: 700; color: #000; border-left: 1.5px dashed #000;">${fnbBillTotal.toFixed(2)}</td>
               </tr>
               ` : ''}
 
-              <!-- Card surcharge or UPI tax if present -->
+              <!-- Card POS tax or UPI tax if present -->
               ${cardSurcharge > 0 ? `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">Card POS Processing Fee (2.5%)</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${cardSurcharge.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${cardSurcharge.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">Card POS Processing Tax (2.5%)</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${cardSurcharge.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${cardSurcharge.toFixed(2)}</td>
               </tr>
               ` : ''}
 
               ${upiTax > 0 ? `
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">UPI Convenience Tax (0.4%)</td>
-                <td style="padding: 4px 10px; text-align: center; color: #000;">${upiTax.toFixed(2)}</td>
-                <td style="padding: 4px 10px; text-align: right; font-weight: 750; color: #000; border-left: 1.5px solid #000;">${upiTax.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; font-weight: 400; color: #000;">UPI Convenience Tax (0.4%)</td>
+                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">${upiTax.toFixed(2)}</td>
+                <td style="padding: 2.2px 10px; text-align: right; font-weight: 400; color: #000; border-left: 1.5px dashed #000;">${upiTax.toFixed(2)}</td>
               </tr>
               ` : ''}
 
-              <!-- Round-off row -->
+              <!-- Round-off row (Bold, not zero if roundOff is 0) -->
               <tr style="background: transparent;">
-                <td style="padding: 4px 10px; color: #000;">Round-off</td>
-                <td style="padding: 4px 10px; text-align: center;">&nbsp;</td>
-                <td style="padding: 4px 10px; text-align: right; color: #000; font-weight: 700; border-left: 1.5px solid #000;">
-                  ${roundOff !== 0 ? (roundOff > 0 ? `+${roundOff.toFixed(2)}` : roundOff.toFixed(2)) : '0.00'}
+                <td style="padding: 2.5px 10px; font-weight: 700; color: #000;">Round-off</td>
+                <td style="padding: 2.5px 10px 2.5px 30px; text-align: left; font-weight: 700; color: #000;">${invoiceTotal.toFixed(2)}</td>
+                <td style="padding: 2.5px 10px; text-align: right; font-weight: 700; color: #000; border-left: 1.5px dashed #000;">
+                  ${roundOff !== 0 ? (roundOff > 0 ? `+${roundOff.toFixed(2)}` : roundOff.toFixed(2)) : invoiceTotal.toFixed(2)}
                 </td>
               </tr>
             </tbody>
             <tfoot>
-              <tr style="border-top: 1px dashed #000; border-bottom: 1.5px solid #000; background: transparent;">
-                <td style="padding: 6px 10px; font-weight: 950; font-size: 11pt; color: #000;">
+              <tr style="border-top: 1.5px dashed #000; border-bottom: 1.5px dashed #000; background: transparent;">
+                <td style="padding: 4px 10px; font-weight: 700; font-size: 10.5pt; color: #000;">
                   Invoice Total
                 </td>
-                <td style="padding: 6px 10px; text-align: center; font-weight: 800; color: #000;">
+                <td style="padding: 4px 10px 4px 30px; text-align: left; font-weight: 400; color: #000;">
                   ${unroundedTotal.toFixed(2)}
                 </td>
-                <td style="padding: 6px 10px; text-align: right; font-weight: 950; font-size: 12.5pt; color: #000; border-left: 1.5px solid #000;">
+                <td style="padding: 4px 10px; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000; border-left: 1.5px dashed #000;">
                   ${invoiceTotal.toFixed(2)}
                 </td>
               </tr>
             </tfoot>
           </table>
 
-          <!-- INVOICE TOTAL IN WORDS -->
-          <div style="font-size: 10.5pt; font-weight: 750; color: #000; padding: 4px 0 6px;">
+          <!-- INVOICE TOTAL IN WORDS (Unbolded) -->
+          <div style="font-size: 9.8pt; font-weight: 400; color: #000; padding: 2px 0 4px;">
             (Invoice Total In words : Rs. ${escapeHtml(invoiceTotalWords)})
           </div>
 
-          <!-- Divider line across page under words (exact as in photo) -->
-          <div style="border-bottom: 1.5px solid #000; margin-bottom: 8px;"></div>
+          <!-- Divider line across page under words (dashed) -->
+          <div style="border-bottom: 1.5px dashed #000; margin-bottom: 4px;"></div>
 
-          <!-- SETTLEMENT SUMMARY BOX (Right Aligned, exact as in photo) -->
-          <div style="display: flex; justify-content: flex-end; margin-top: 4px; margin-bottom: 4px;">
-            <div style="width: 360px; font-size: 10.5pt;">
+          <!-- SETTLEMENT SUMMARY BOX (Gross Payable, Advance Received, Net Payable all bold) -->
+          <div style="display: flex; justify-content: flex-end; margin-top: 2px; margin-bottom: 2px;">
+            <div style="width: 360px; font-size: 9.8pt;">
               <table style="width: 100%; border-collapse: collapse; background: transparent;">
                 <tbody>
                   <tr>
-                    <td style="padding: 2px 0; font-weight: 750; color: #000;">Gross Payable Amount</td>
-                    <td style="padding: 2px 0; text-align: right; font-weight: 800; color: #000;">${grossPayable.toFixed(2)}</td>
+                    <td style="padding: 1.5px 0; font-weight: 700; color: #000;">Gross Payable Amount</td>
+                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${grossPayable.toFixed(2)}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 2px 0; font-weight: 750; color: #000;">Advance Received</td>
-                    <td style="padding: 2px 0; text-align: right; font-weight: 800; color: #000;">${advanceReceived.toFixed(2)}</td>
+                    <td style="padding: 1.5px 0; font-weight: 700; color: #000;">Advance Received</td>
+                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${advanceReceived.toFixed(2)}</td>
                   </tr>
-                  <tr style="border-top: 1.5px solid #000;">
-                    <td style="padding: 4px 0; font-weight: 900; font-size: 11.5pt; color: #000;">Net Payable Amount</td>
-                    <td style="padding: 4px 0; text-align: right; font-weight: 950; font-size: 12.5pt; color: #000;">${netPayable.toFixed(2)}</td>
+                  <tr style="border-top: 1.5px dashed #000;">
+                    <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">Net Payable Amount</td>
+                    <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${netPayable.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- NET PAYABLE IN WORDS -->
-          <div style="font-size: 11pt; font-weight: 800; color: #000; margin: 8px 0 16px; text-align: left;">
+          <!-- NET PAYABLE IN WORDS (Bold) -->
+          <div style="font-size: 10pt; font-weight: 700; color: #000; margin: 4px 0 6px; text-align: left;">
             (Net Payable Amount In words : Rs. ${escapeHtml(netPayableWords)})
           </div>
 
-          <!-- CHECK-IN / CHECK-OUT BY STAFF -->
-          <div style="display: flex; justify-content: flex-end; gap: 40px; font-size: 9.5pt; font-weight: 750; color: #000; margin-bottom: 24px;">
-            <div>Check-In by : <strong style="color: #000;">${escapeHtml(checkInBy)}</strong></div>
-            <div>Check-Out by : <strong style="color: #000;">${escapeHtml(checkOutBy)}</strong></div>
+          <!-- CHECK-IN / CHECK-OUT BY STAFF (Cashier names bold) -->
+          <div style="display: flex; justify-content: flex-end; gap: 40px; font-size: 9.2pt; color: #333; margin-bottom: 6px;">
+            <div><span style="font-weight: 400; color: #333;">Check-In by :</span> <strong style="color: #000; font-weight: 700;">${escapeHtml(checkInBy)}</strong></div>
+            <div><span style="font-weight: 400; color: #333;">Check-Out by :</span> <strong style="color: #000; font-weight: 700;">${escapeHtml(checkOutBy)}</strong></div>
           </div>
         </div>
 
-        <!-- FOOTER: Stamp, Bank Details, Legal, and Signatures (exact as in photo) -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 10px; margin-top: auto; font-size: 9.5pt; background: transparent;">
-          <!-- Left: Red Stamp Badge & Banking / Legal Info -->
-          <div style="width: 44%;">
-            <div style="display: inline-block; border: 1.8px solid #dc2626 !important; color: #dc2626 !important; border-radius: 50% / 50%; padding: 2px 14px; font-weight: 850; font-size: 12pt; letter-spacing: 1px; margin-bottom: 6px; transform: rotate(-5deg); font-family: 'Times New Roman', Georgia, serif; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
-              ${escapeHtml(badgeNo)}
+        <!-- FOOTER: Bank Details, Legal, and Signatures (Positioned at bottom regardless of remaining space) -->
+        <div class="tax-invoice-footer" style="margin-top: auto; padding-top: 4px; font-size: 8.8pt; background: transparent; width: 100%; flex-shrink: 0; min-height: 110px;">
+          <!-- Upper Row: Bank Details on Left & "For Hotel City Paark" on Right (aligned high at top for generous signature space) -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+            <!-- Left: Banking / Legal Info -->
+            <div style="width: 44%;">
+              <div style="color: #000; margin-bottom: 2px; font-weight: 700;">
+                <span style="font-weight: 700; color: #000;">GST No. :</span> <span style="font-family: monospace; font-size: 9.5pt; font-weight: 700; color: #000;">27AAUFJ0434H1Z7</span>
+              </div>
+              <div style="color: #000; margin-bottom: 2px; font-weight: 400;">
+                <span style="font-weight: 400; color: #333;">PAN No. :</span> <span style="font-family: monospace; font-size: 9.5pt; font-weight: 400; color: #000;">AAUFJ0434H</span>
+              </div>
+              <div style="font-size: 8.5pt; color: #000; line-height: 1.35; margin-top: 2px; font-weight: 400;">
+                <div><span style="font-weight: 400; color: #333;">Bank :</span> <span style="font-weight: 400;">HDFC Bank Ltd.</span></div>
+                <div><span style="font-weight: 400; color: #333;">A/c Name :</span> <span style="font-weight: 400;">JMG HOSPITALITY AND INFRA LLP</span></div>
+                <div><span style="font-weight: 400; color: #333;">A/c No. :</span> <span style="font-weight: 400;">50200111749594</span></div>
+                <div><span style="font-weight: 400; color: #333;">IFSC Code :</span> <span style="font-weight: 400;">HDFC0000635</span></div>
+              </div>
+              <div style="font-size: 8.2pt; color: #444; margin-top: 3px; line-height: 1.25; font-weight: 400;">
+                Subject to Solapur Jurisdiction
+              </div>
             </div>
-            <div style="font-weight: 850; color: #000; margin-bottom: 2px;">
-              GST No. : <span style="font-family: monospace; font-size: 10pt; font-weight: 850;">27AAUFJ0434H1Z7</span>
+
+            <!-- Center: Open Spacing -->
+            <div style="width: 28%;"></div>
+
+            <!-- Right: For Hotel City Paark (lowered height as requested) -->
+            <div style="width: 28%; display: flex; justify-content: flex-end; padding-top: 28px;">
+              <div style="font-size: 9.8pt; color: #000; text-align: right; width: 100%; white-space: nowrap; line-height: 1.2;">
+                <span style="font-weight: 400;">For</span> <strong style="font-weight: 700;">Hotel City Paark</strong>
+              </div>
             </div>
-            <div style="font-weight: 850; color: #000; margin-bottom: 5px;">
-              PAN No. : <span style="font-family: monospace; font-size: 10pt; font-weight: 850;">AAUFJ0434H</span>
-            </div>
-            <div style="font-size: 9pt; color: #000; line-height: 1.4; margin-top: 4px;">
-              <div><strong>Bank :</strong> HDFC Bank Ltd.</div>
-              <div><strong>A/c Name :</strong> JMG HOSPITALITY AND INFRA LLP</div>
-              <div><strong>A/c No. :</strong> 50200111749594</div>
-              <div><strong>IFSC Code :</strong> HDFC0000635</div>
-            </div>
-            <div style="font-size: 8pt; color: #000; margin-top: 6px; line-height: 1.3;">
-              Subject to Solapur Jurisdiction<br/>
+          </div>
+
+          <!-- Bottom Row: E&OE, Signature of Guest, and Authorised Signatory on the EXACT SAME LEVEL -->
+          <div style="display: flex; justify-content: space-between; align-items: baseline; width: 100%; margin-top: 8px;">
+            <!-- Left: E&OE -->
+            <div style="width: 44%; font-size: 8.8pt; color: #000; font-weight: 400; line-height: 1;">
               E&amp;OE
             </div>
-          </div>
 
-          <!-- Center: Guest Signature -->
-          <div style="text-align: center; width: 26%;">
-            <div style="border-bottom: 1.5px solid #000; width: 140px; margin: 0 auto 6px;"></div>
-            <div style="font-size: 9.5pt; font-weight: 750; color: #000;">Signature of Guest</div>
-          </div>
-
-          <!-- Right: Authorised Signatory -->
-          <div style="text-align: right; width: 30%;">
-            <div style="font-size: 10.5pt; font-weight: 900; color: #000; margin-bottom: 38px;">
-              For Hotel City Paark
+            <!-- Center: Signature of Guest -->
+            <div style="width: 28%; text-align: center; font-size: 8.8pt; color: #000; font-weight: 400; line-height: 1; white-space: nowrap;">
+              Signature of Guest
             </div>
-            <div style="border-top: 1.5px solid #000; display: inline-block; padding-top: 4px; font-size: 9.5pt; font-weight: 800; color: #000;">
-              Authorised Signatory
+
+            <!-- Right: Authorised Signatory -->
+            <div style="width: 28%; display: flex; justify-content: flex-end;">
+              <div style="width: 140px; text-align: center; font-size: 8.8pt; font-weight: 400; color: #000; white-space: nowrap; line-height: 1;">
+                Authorised Signatory
+              </div>
             </div>
           </div>
         </div>
@@ -3588,6 +4294,9 @@ export function printFinalBillA4(room, calc, settlement) {
   const exitThemeIsolation = enterPrintThemeIsolation();
 
   sheet.innerHTML = buildFinalBillA4HTML(room, calc, settlement);
+
+  // Background silent auto-save to configured system folder (no save-as popup)
+  autoSavePdfDocument(`Tax_Invoice_Room_${roomNum}_${guestName}_${Date.now()}`, sheet.innerHTML);
 
   sheet.style.display = 'block';
   sheet.classList.add('print-active');
@@ -3669,11 +4378,12 @@ export async function downloadFinalBillPDF(room, calc, settlement, options = {})
   } catch (_) {}
 
   const opt = {
-    margin: [8, 5, 5, 5],
+    margin: [3, 4, 3, 4],
     filename: filename,
     image: { type: 'jpeg', quality: 1.0 },
     html2canvas: { scale: 2.5, useCORS: true, logging: false, scrollY: 0, windowWidth: 755 },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   };
 
   try {
@@ -4357,7 +5067,7 @@ export function printPosThermalClosingSlip(analyticsData, department = 'restaura
     </div>
     ${Number(sum.roomFolioRevenue || 0) > 0 ? `
     <div class="flex-row" style="color: #666;">
-      <span>Room Folio Transfers:</span>
+      <span>Room Voucher Transfers:</span>
       <span>₹${Number(sum.roomFolioRevenue || 0).toFixed(2)}</span>
     </div>
     ` : ''}
@@ -4391,7 +5101,7 @@ export function printPosThermalClosingSlip(analyticsData, department = 'restaura
     </div>
     ${Number(pm.cardSurcharge || 0) > 0 ? `
     <div class="flex-row" style="font-size: 10px; color: #555;">
-      <span>  └ Card Surcharge (2.5%):</span>
+      <span>  └ Card POS Tax (2.5%):</span>
       <span>+₹${Number(pm.cardSurcharge).toFixed(2)}</span>
     </div>
     ` : ''}
@@ -4468,4 +5178,474 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Builds printable HTML for Accounting & Analysis Report
+ */
+export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, summary = {} }) {
+  const fromDt = filters.fromDate || filters.from_date || '';
+  const toDt = filters.toDate || filters.to_date || '';
+  const fromBill = filters.fromBillNo || filters.from_bill_no || '';
+  const toBill = filters.toBillNo || filters.to_bill_no || '';
+  const fromVoucher = filters.fromVoucherNo || filters.from_voucher_no || '';
+  const toVoucher = filters.toVoucherNo || filters.to_voucher_no || '';
+
+  const filterTags = [];
+  if (fromDt || toDt) filterTags.push(`Date: ${fromDt || 'Start'} to ${toDt || 'Present'}`);
+  if (fromBill || toBill) filterTags.push(`Bill No: ${fromBill || 'Start'} to ${toBill || 'End'}`);
+  if (fromVoucher || toVoucher) filterTags.push(`Voucher No: ${fromVoucher || 'Start'} to ${toVoucher || 'End'}`);
+  const filterDesc = filterTags.length > 0 ? filterTags.join(' &nbsp;|&nbsp; ') : 'All Recorded Checkouts & Bills';
+
+  const nowStr = new Date().toLocaleString('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  const totBase = Number(summary.total_room_rent_base || 0).toFixed(2);
+  const totMattress = Number(summary.total_extra_mattress || 0).toFixed(2);
+  const totDisc = Number(summary.total_discount || 0).toFixed(2);
+  const totCgstSgst = Number(summary.total_cgst_sgst || 0).toFixed(2);
+  const totGrand = Number(summary.total_grand || 0).toFixed(2);
+
+  const rowsHtml = records.map((r, idx) => {
+    const isEven = idx % 2 === 0;
+    const baseRent = Number(r.room_rent_base || 0).toFixed(2);
+    const mattress = Number(r.extra_mattress_pax || 0).toFixed(2);
+    const disc = Number(r.discount || 0).toFixed(2);
+    const cgstSgst = Number(r.cgst_sgst_total || 0).toFixed(2);
+    const gstNo = r.gst_no_of_customer || '-';
+
+    return `
+      <tr style="background-color: ${isEven ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 5px 6px; text-align: center; white-space: nowrap;">${escapeHtml(r.date_of_checkout || '-')}</td>
+        <td style="padding: 5px 6px; font-weight: 600; text-align: center; white-space: nowrap;">${escapeHtml(r.bill_no || '-')}</td>
+        <td style="padding: 5px 6px; text-align: center; white-space: nowrap;">${escapeHtml(r.invoice_number || '-')}</td>
+        <td style="padding: 5px 8px; font-weight: 600; text-align: left;">${escapeHtml(r.name_of_customer || '-')}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace;">₹${baseRent}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace;">₹${mattress}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace; color: #dc2626;">₹${disc}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${cgstSgst}</td>
+        <td style="padding: 5px 8px; text-align: left;">${escapeHtml(r.name_of_customer_gst || '-')}</td>
+        <td style="padding: 5px 6px; text-align: center; font-family: monospace; font-size: 8.5pt;">${escapeHtml(gstNo)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Accounting Analysis Report - Hotel City Paark</title>
+      <style>
+        @page {
+          size: A4 landscape;
+          margin: 6mm 6mm 6mm 6mm;
+        }
+        body {
+          font-family: 'Segoe UI', Arial, sans-serif;
+          color: #0f172a;
+          margin: 0;
+          padding: 8px;
+          font-size: 9pt;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .header-box {
+          border-bottom: 2px solid #0f172a;
+          padding-bottom: 8px;
+          margin-bottom: 8px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .brand-title {
+          font-size: 15pt;
+          font-weight: 850;
+          color: #0f172a;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        .brand-sub {
+          font-size: 8pt;
+          color: #475569;
+          margin-top: 2px;
+        }
+        .report-badge {
+          text-align: right;
+        }
+        .report-title {
+          font-size: 12pt;
+          font-weight: 800;
+          color: #1e3a8a;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        .report-meta {
+          font-size: 8pt;
+          color: #64748b;
+          margin-top: 3px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 6px;
+          font-size: 8.5pt;
+        }
+        th {
+          background-color: #1e293b;
+          color: #ffffff;
+          padding: 6px 6px;
+          font-weight: 700;
+          font-size: 8.5pt;
+          text-transform: uppercase;
+          letter-spacing: 0.2px;
+          border: 1px solid #0f172a;
+        }
+        td {
+          border: 1px solid #cbd5e1;
+        }
+        .total-row td {
+          background-color: #e2e8f0 !important;
+          font-weight: 800;
+          border-top: 2px solid #0f172a;
+          border-bottom: 2px solid #0f172a;
+          padding: 6px 8px;
+        }
+        .footer-signatures {
+          margin-top: 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          padding: 0 10px;
+          font-size: 8.5pt;
+        }
+        .sign-col {
+          text-align: center;
+          width: 28%;
+          border-top: 1px dashed #475569;
+          padding-top: 6px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header-box">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <img src="/hcp-logo-with-name-transparent.png" alt="Logo" style="height: 52px; width: auto; object-fit: contain;" />
+          <div>
+            <div class="brand-title">Hotel City Paark</div>
+            <div class="brand-sub">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 | Tel: 0217-2729791/92/93</div>
+            <div class="brand-sub"><strong>GSTIN : 27AAUFJ0434H1Z7</strong> | Email: hcitypark@rediffmail.com</div>
+          </div>
+        </div>
+        <div class="report-badge">
+          <div class="report-title">Accounting &amp; Analysis Audit</div>
+          <div class="report-meta"><strong>Filters:</strong> ${filterDesc}</div>
+          <div class="report-meta"><strong>Printed:</strong> ${nowStr} | Total Records: <strong>${records.length}</strong></div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 8%;">Date of checkout</th>
+            <th style="width: 7.5%;">Bill no</th>
+            <th style="width: 7.5%;">Invoice number</th>
+            <th style="width: 14%;">Name of customer</th>
+            <th style="width: 9.5%;">Room rent (base)</th>
+            <th style="width: 9.5%;">Extra mattress (PAX)</th>
+            <th style="width: 7.5%;">Discount</th>
+            <th style="width: 9%;">CGST &amp; SGST</th>
+            <th style="width: 16%;">Name Of Customer GST</th>
+            <th style="width: 11.5%;">GST No of Customer</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml || `<tr><td colspan="10" style="padding: 24px; text-align: center; color: #64748b;">No accounting checkout records match the applied criteria.</td></tr>`}
+          <tr class="total-row">
+            <td colspan="4" style="text-align: right; padding-right: 12px;">TOTAL (${records.length} Bills / Invoices):</td>
+            <td style="text-align: right; font-family: monospace;">₹${totBase}</td>
+            <td style="text-align: right; font-family: monospace;">₹${totMattress}</td>
+            <td style="text-align: right; font-family: monospace; color: #dc2626;">₹${totDisc}</td>
+            <td style="text-align: right; font-family: monospace;">₹${totCgstSgst}</td>
+            <td colspan="2" style="text-align: right; padding-right: 8px;">Net Payable: <strong>₹${totGrand}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="footer-signatures">
+        <div class="sign-col">
+          <strong>Prepared By</strong>
+          <div style="font-size: 7.5pt; color: #64748b; margin-top: 2px;">Front Desk / Accounts Cashier</div>
+        </div>
+        <div class="sign-col">
+          <strong>Verified By</strong>
+          <div style="font-size: 7.5pt; color: #64748b; margin-top: 2px;">Manager / Accounts Head</div>
+        </div>
+        <div class="sign-col">
+          <strong>For Hotel City Paark</strong>
+          <div style="font-size: 7.5pt; color: #64748b; margin-top: 2px;">Authorised Signatory</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Trigger print dialog for Accounting & Analysis Report
+ */
+export function printAccountingAnalysisReport({ records = [], filters = {}, summary = {} }) {
+  const html = buildAccountingAnalysisPrintHTML({ records, filters, summary });
+  const printWindow = window.open('', '_blank', 'width=1100,height=800');
+  if (printWindow) {
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 450);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Generate and download formatted Excel (.xlsx compatible XML) file
+ */
+export function exportAccountingAnalysisToExcel(records = [], summary = {}, filters = {}) {
+  const fromDt = filters.fromDate || filters.from_date || 'Start';
+  const toDt = filters.toDate || filters.to_date || 'Present';
+  const filename = `Accounting_Analysis_${new Date().toISOString().slice(0, 10)}.xls`;
+
+  let xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Borders/>
+   <Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Color="#000000"/>
+  </Style>
+  <Style ss:ID="Title">
+   <Font ss:FontName="Segoe UI" ss:Size="14" ss:Color="#1E3A8A" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="Subtitle">
+   <Font ss:FontName="Segoe UI" ss:Size="9" ss:Color="#475569" ss:Italic="1"/>
+  </Style>
+  <Style ss:ID="Header">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+   <Font ss:FontName="Segoe UI" ss:Size="10" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="DataString">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="DataCenter">
+   <Alignment ss:Horizontal="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="DataNumber">
+   <Alignment ss:Horizontal="Right"/>
+   <NumberFormat ss:Format="#,##0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="TotalLabel">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Font ss:Bold="1"/>
+   <Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#000000"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="TotalNumber">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <Font ss:Bold="1"/>
+   <NumberFormat ss:Format="#,##0.00"/>
+   <Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#000000"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Double" ss:Weight="3" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Accounting Analysis">
+  <Table>
+   <Column ss:Width="110"/>
+   <Column ss:Width="95"/>
+   <Column ss:Width="105"/>
+   <Column ss:Width="140"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="115"/>
+   <Column ss:Width="125"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="170"/>
+   <Column ss:Width="140"/>
+
+   <Row ss:Height="24">
+    <Cell ss:StyleID="Title"><Data ss:Type="String">HOTEL CITY PAARK - ACCOUNTING &amp; ANALYSIS REPORT</Data></Cell>
+   </Row>
+   <Row ss:Height="16">
+    <Cell ss:StyleID="Subtitle"><Data ss:Type="String">Period: ${fromDt} to ${toDt} | Generated: ${new Date().toLocaleDateString('en-IN')}</Data></Cell>
+   </Row>
+   <Row ss:Height="8"></Row>
+
+   <!-- Header Row -->
+   <Row ss:Height="22">
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Date of checkout</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Bill no</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Invoice number</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">GST No of Customer</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Name of customer</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Room rent (base)</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Extra mattress (PAX)</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Discount</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">CGST &amp; SGST</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Name Of Customer GST</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">GST No of Customer</Data></Cell>
+   </Row>
+`;
+
+  records.forEach(r => {
+    xml += `
+   <Row ss:Height="18">
+    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.date_of_checkout || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.bill_no || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.invoice_number || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.gst_no_of_customer || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_customer || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.room_rent_base || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.extra_mattress_pax || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.discount || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.cgst_sgst_total || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_customer_gst || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.gst_no_of_customer || '-')}</Data></Cell>
+   </Row>`;
+  });
+
+  xml += `
+   <!-- Total Row -->
+   <Row ss:Height="22">
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String">TOTAL</Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String">${records.length} Bills</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_room_rent_base || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_extra_mattress || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_discount || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_cgst_sgst || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 300);
+}
+
+/**
+ * Generate and download clean UTF-8 CSV with Excel BOM (\uFEFF)
+ */
+export function exportAccountingAnalysisToCsv(records = [], summary = {}) {
+  const headers = [
+    'Date of checkout',
+    'Bill no',
+    'Invoice number',
+    'GST No of Customer',
+    'Name of customer',
+    'Room rent (base)',
+    'Extra mattress (PAX)',
+    'Discount',
+    'CGST & SGST',
+    'Name Of Customer GST',
+    'GST No of Customer'
+  ];
+
+  const escapeCsv = (v) => {
+    if (v === null || v === undefined) return '""';
+    const str = String(v).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const csvRows = [
+    headers.map(escapeCsv).join(','),
+    ...records.map(r => [
+      escapeCsv(r.date_of_checkout || '-'),
+      escapeCsv(r.bill_no || '-'),
+      escapeCsv(r.invoice_number || '-'),
+      escapeCsv(r.gst_no_of_customer || '-'),
+      escapeCsv(r.name_of_customer || '-'),
+      escapeCsv(Number(r.room_rent_base || 0).toFixed(2)),
+      escapeCsv(Number(r.extra_mattress_pax || 0).toFixed(2)),
+      escapeCsv(Number(r.discount || 0).toFixed(2)),
+      escapeCsv(Number(r.cgst_sgst_total || 0).toFixed(2)),
+      escapeCsv(r.name_of_customer_gst || '-'),
+      escapeCsv(r.gst_no_of_customer || '-')
+    ].join(',')),
+    [
+      escapeCsv('TOTAL'),
+      escapeCsv(''),
+      escapeCsv(''),
+      escapeCsv(''),
+      escapeCsv(`${records.length} Bills`),
+      escapeCsv(Number(summary.total_room_rent_base || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_extra_mattress || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_discount || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_cgst_sgst || 0).toFixed(2)),
+      escapeCsv(''),
+      escapeCsv('')
+    ].join(',')
+  ];
+
+  const csvContent = '\uFEFF' + csvRows.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Accounting_Analysis_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 300);
 }

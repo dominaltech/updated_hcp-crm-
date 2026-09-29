@@ -25,6 +25,12 @@ if (fs.existsSync(envPath)) {
 
 let dbPath = path.join(__dirname, 'hotel_city_park.db');
 
+// In automated test runs (Vitest / Jest / Supertest), use an isolated database
+// so operational and production records are NEVER altered or polluted by tests
+if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+  dbPath = path.join(__dirname, 'test_hotel.db');
+}
+
 // In Netlify / Lambda serverless environment:
 // 1. Root filesystem is read-only -> Copy initial DB to /tmp
 // 2. /tmp does NOT support POSIX shared memory (mmap) -> WAL mode fails with segmentation fault / disk I/O error
@@ -712,6 +718,16 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN extra_rooms_charge REAL DEFAULT 0
 try { db.exec("ALTER TABLE bookings ADD COLUMN extra_breakfast_charge REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN extra_meal_plan TEXT DEFAULT NULL;"); } catch (e) {}
 
+// OTA Early Check-In Policy Columns (Point: OTA Max 6 hrs early -> ₹900 extra charge, customizable per room)
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_checkin_price REAL DEFAULT 900;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_checkin_max_hours INTEGER DEFAULT 6;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_checkin_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN early_checkin_charge REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN early_checkin_gst REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_checkin_price = 900 WHERE ota_early_checkin_price IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_checkin_max_hours = 6 WHERE ota_early_checkin_max_hours IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_checkin_gst_pct = 5 WHERE ota_early_checkin_gst_pct IS NULL;"); } catch (e) {}
+
 // Card Surcharge (2.5%) and UPI Tax (0.4% > ₹2000) Tracking Columns
 try { db.exec("ALTER TABLE payments ADD COLUMN upi_tax REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_cash REAL DEFAULT 0;"); } catch (e) {}
@@ -836,6 +852,45 @@ if (!defaultOta) {
 const defaultMinAdvance = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('min_checkin_advance_pct');
 if (!defaultMinAdvance) {
   db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('min_checkin_advance_pct', '50');
+}
+
+try { db.exec("ALTER TABLE expenses ADD COLUMN owner_phone TEXT DEFAULT NULL;"); } catch (e) {}
+
+// Seed Default Debit / Expense Categories & Owners Config (Point 12)
+const defaultExpenseCategories = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('expense_categories_config');
+if (!defaultExpenseCategories) {
+  const initialCategories = [
+    {
+      id: 'owner',
+      name: 'Owner Expenses',
+      purposes: ['Travel', 'Fuel Vehical', 'Personal', 'Medince', 'Other']
+    },
+    {
+      id: 'store',
+      name: 'Store Expenses',
+      purposes: ['Market', 'Milk', 'Fuel Hotel', 'Transport Expensess Store', 'Home', 'Fuel DG', 'Other']
+    },
+    {
+      id: 'maintenance',
+      name: 'Maintainance Expenses',
+      purposes: ['Purchase or material', 'AMC', 'Carpenter', 'Plumber', 'Water Heater', 'AC', 'DG', 'colouring painter', 'POP', 'Civil Work', 'Other']
+    },
+    {
+      id: 'other',
+      name: 'Other',
+      purposes: ['Other']
+    }
+  ];
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('expense_categories_config', JSON.stringify(initialCategories));
+}
+
+const defaultExpenseOwners = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('expense_owners_config');
+if (!defaultExpenseOwners) {
+  const initialOwners = [
+    { id: '1', name: 'Jaijeet Gadekar', phone: '' },
+    { id: '2', name: 'Respected Mahesh Sir', phone: '' }
+  ];
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('expense_owners_config', JSON.stringify(initialOwners));
 }
 
 // Performance Indexes for Instant Navigation & Sub-Millisecond History Lookups

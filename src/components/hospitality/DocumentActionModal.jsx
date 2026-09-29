@@ -6,7 +6,8 @@ import {
   printGuestPaymentSummary,
   downloadGuestPaymentSummaryPDF,
   printFinalBillA4,
-  downloadFinalBillPDF
+  downloadFinalBillPDF,
+  formatTaxInvoiceNumber
 } from '../../services/printService';
 
 export default function DocumentActionModal({
@@ -16,7 +17,7 @@ export default function DocumentActionModal({
   data,
   onReprintRegForm
 }) {
-  const { showToast } = useApp();
+  const { showToast, currentUser } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMsg, setProcessingMsg] = useState('');
 
@@ -61,6 +62,7 @@ export default function DocumentActionModal({
 
   const getInvoiceParams = (invData) => {
     if (!invData) return { room: null, calc: null, settlement: null };
+    const cashierName = currentUser?.full_name || currentUser?.name || currentUser?.username || 'Cashier_1';
     if (invData.room) {
       return {
         room: invData.room,
@@ -70,7 +72,7 @@ export default function DocumentActionModal({
           refundAmt: 0,
           settled_at: new Date(),
           invoiceNo: invData.room?.invoice_no,
-          checked_out_by: 'Front Desk'
+          checked_out_by: invData.room?.checked_out_by || cashierName
         }
       };
     }
@@ -94,8 +96,8 @@ export default function DocumentActionModal({
       settleAmt: room.final_settle_amount || room.total_paid || 0,
       refundAmt: room.refund_amount || 0,
       settled_at: room.actual_checkout_time || room.checkout_time || new Date(),
-      invoiceNo: room.invoice_no || (room.id ? `L${room.id}` : 'L1573'),
-      checked_out_by: room.checked_out_by || 'Front Desk'
+      invoiceNo: room.invoice_no || formatTaxInvoiceNumber(room.voucher_number || room.voucher_no || room.checkin_voucher_no || room.id),
+      checked_out_by: room.checked_out_by || cashierName
     };
     return { room, calc, settlement };
   };

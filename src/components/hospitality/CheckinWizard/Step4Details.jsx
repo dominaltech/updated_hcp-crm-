@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../../../utils/inputEnhancements';
+import ThemedDatePicker from '../../common/ThemedDatePicker';
+import ThemedSelect from '../../common/ThemedSelect';
 
 export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPreviewDoc }) {
   const [activeSide, setActiveSide] = useState('front');
@@ -589,18 +591,12 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                   </span>
                 )}
               </div>
-              <input
-                type="date"
-                className="form-input"
+              <ThemedDatePicker
                 value={draft.dob || ''}
+                max={new Date().toISOString().split('T')[0]}
                 onChange={(e) => updateDraft({ dob: e.target.value })}
-                style={{
-                  height: '36px',
-                  fontWeight: 600,
-                  width: '100%',
-                  borderColor: isUnderAge ? '#ef4444' : undefined,
-                  backgroundColor: isUnderAge ? '#fff5f5' : undefined
-                }}
+                error={isUnderAge}
+                style={{ height: '36px', width: '100%' }}
               />
             </div>
 
@@ -639,18 +635,11 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                     </span>
                   )}
                 </div>
-                <input
-                  type="date"
-                  className="form-input"
+                <ThemedDatePicker
                   value={draft.expiryDate || ''}
                   onChange={(e) => updateDraft({ expiryDate: e.target.value })}
-                  style={{
-                    height: '36px',
-                    fontWeight: 600,
-                    width: '100%',
-                    borderColor: isDocExpired ? '#ef4444' : undefined,
-                    backgroundColor: isDocExpired ? '#fff5f5' : undefined
-                  }}
+                  error={isDocExpired}
+                  style={{ height: '36px', width: '100%' }}
                 />
               </div>
             ) : (
@@ -699,19 +688,20 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                   ✓ Verified
                 </span>
               </div>
-              <select
-                className="form-input"
+              <ThemedSelect
                 value={draft.docType || 'Aadhaar Card'}
-                onChange={(e) => updateDraft({ docType: e.target.value })}
-                style={{ height: '36px', fontWeight: 750, color: '#0369a1', background: '#f8fafc' }}
-              >
-                <option value="Aadhaar Card">🪪 Aadhaar Card</option>
-                <option value="Passport">🛂 Passport</option>
-                <option value="Driving License">🚗 Driving License</option>
-                <option value="Voter ID">🗳️ Voter ID</option>
-                <option value="PAN Card">📄 PAN Card</option>
-                <option value="Government ID">🏛️ Other Govt ID</option>
-              </select>
+                onChange={(val) => updateDraft({ docType: val })}
+                options={[
+                  { value: 'Aadhaar Card', label: '🪪 Aadhaar Card' },
+                  { value: 'Passport', label: '🛂 Passport' },
+                  { value: 'Driving License', label: '🚗 Driving License' },
+                  { value: 'Voter ID', label: '🗳️ Voter ID' },
+                  { value: 'PAN Card', label: '📄 PAN Card' },
+                  { value: 'Government ID', label: '🏛️ Other Govt ID' }
+                ]}
+                colorTheme="blue"
+                style={{ height: '36px' }}
+              />
             </div>
           </div>
 
@@ -738,75 +728,155 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
             />
           </div>
 
-          {/* OPTIONAL CORPORATE COMPANY DETAILS (Hidden for BTC bookings since BTC has its own company selection) */}
-          {draft.bookingSource !== 'BTC' && (
-            <div
-              className="corporate-company-details-card"
-              style={{
-                background: '#f8fafc',
-                border: '1.5px dashed #cbd5e1',
-                borderRadius: '10px',
-                padding: '8px 12px',
-                margin: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '0.90rem' }}>🏢</span>
-                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', margin: 0 }}>
-                    Corporate Company Details (Optional)
-                  </label>
-                </div>
-                <span
-                  style={{
-                    fontSize: '0.66rem',
-                    fontWeight: 700,
-                    color: (draft.companyName || draft.gstNumber) ? '#166534' : '#64748b',
-                    background: (draft.companyName || draft.gstNumber) ? '#dcfce7' : '#ffffff',
-                    border: (draft.companyName || draft.gstNumber) ? '1px solid #86efac' : '1px solid #e2e8f0',
-                    padding: '1px 6px',
-                    borderRadius: '6px'
+          {/* CORPORATE COMPANY DETAILS (Either chosen from BTC in Stage 1 or entered from form in Stage 4) */}
+          <div
+            className="corporate-company-details-card"
+            style={{
+              background: '#f8fafc',
+              border: '1.5px dashed #cbd5e1',
+              borderRadius: '10px',
+              padding: '8px 12px',
+              margin: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.90rem' }}>🏢</span>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', margin: 0 }}>
+                  Corporate Company Details {draft.bookingSource === 'BTC' ? '(BTC Linked)' : '(Optional)'}
+                </label>
+              </div>
+              <span
+                style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 700,
+                  color: (draft.companyName || draft.company_name || draft.btcCompanyName || draft.gstNumber) ? '#166534' : '#64748b',
+                  background: (draft.companyName || draft.company_name || draft.btcCompanyName || draft.gstNumber) ? '#dcfce7' : '#ffffff',
+                  border: (draft.companyName || draft.company_name || draft.btcCompanyName || draft.gstNumber) ? '1px solid #86efac' : '1px solid #e2e8f0',
+                  padding: '1px 6px',
+                  borderRadius: '6px'
+                }}
+              >
+                {draft.bookingSource === 'BTC' ? '🏢 Selected from BTC' : ((draft.companyName || draft.company_name || draft.gstNumber) ? '✓ Will print on invoice' : 'Prints on invoice if filled')}
+              </span>
+            </div>
+
+            <div className="checkin-form-grid-2" style={{ gap: '6px 12px', margin: 0 }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                  Company Name
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Acme Corp / Tata / Self"
+                  value={draft.companyName || draft.company_name || draft.btcCompanyName || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateDraft({
+                      companyName: val,
+                      company_name: val,
+                      ...(draft.bookingSource === 'BTC' ? { btcCompanyName: val } : {})
+                    });
                   }}
-                >
-                  {(draft.companyName || draft.gstNumber) ? '✓ Will print on form' : 'Prints only if filled'}
-                </span>
+                  style={{ height: '34px', fontSize: '0.84rem' }}
+                />
               </div>
 
-              <div className="checkin-form-grid-2" style={{ gap: '6px 12px', margin: 0 }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
-                    Company Name
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. Acme Corp / Tata / Self"
-                    value={draft.companyName || draft.company_name || ''}
-                    onChange={(e) => updateDraft({ companyName: e.target.value, company_name: e.target.value })}
-                    style={{ height: '34px', fontSize: '0.84rem' }}
-                  />
-                </div>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                  GST Number
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 27AAAAA0000A1Z5"
+                  maxLength={15}
+                  value={draft.gstNumber || draft.gst_number || draft.btcCompanyGst || ''}
+                  onChange={(e) => {
+                    const val = e.target.value.toUpperCase();
+                    const isOutOfState = val.length >= 2 && !val.startsWith('27');
+                    updateDraft({
+                      gstNumber: val,
+                      gst_number: val,
+                      ...(draft.bookingSource === 'BTC' ? { btcCompanyGst: val } : {}),
+                      ...(val.length === 15 && isOutOfState ? { taxType: 'IGST', isIgst: true, is_igst: true, tax_type: 'IGST' } : {})
+                    });
+                  }}
+                  style={{ height: '34px', fontSize: '0.84rem', textTransform: 'uppercase' }}
+                />
+              </div>
+            </div>
 
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
-                    GST Number
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. 27AAAAA0000A1Z5"
-                    maxLength={15}
-                    value={draft.gstNumber || draft.gst_number || ''}
-                    onChange={(e) => updateDraft({ gstNumber: e.target.value.toUpperCase(), gst_number: e.target.value.toUpperCase() })}
-                    style={{ height: '34px', fontSize: '0.84rem', textTransform: 'uppercase' }}
-                  />
+            {/* Company Address and IGST Tax Selection (Point 22) */}
+            <div className="checkin-form-grid-2" style={{ gap: '6px 12px', margin: 0, marginTop: '4px' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                  Company Address (Optional)
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Corporate Registered Address"
+                  value={draft.companyAddress || draft.company_address || draft.btcCompanyAddress || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateDraft({
+                      companyAddress: val,
+                      company_address: val,
+                      ...(draft.bookingSource === 'BTC' ? { btcCompanyAddress: val } : {})
+                    });
+                  }}
+                  style={{ height: '34px', fontSize: '0.84rem' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.70rem', fontWeight: 750, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                  Tax Mode (GST Treatment)
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => updateDraft({ taxType: 'CGST_SGST', isIgst: false, is_igst: false, tax_type: 'CGST_SGST' })}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      borderRadius: '6px',
+                      border: (!draft.isIgst && draft.taxType !== 'IGST') ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                      background: (!draft.isIgst && draft.taxType !== 'IGST') ? '#eff6ff' : '#ffffff',
+                      color: (!draft.isIgst && draft.taxType !== 'IGST') ? '#1d4ed8' : '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    CGST+SGST
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateDraft({ taxType: 'IGST', isIgst: true, is_igst: true, tax_type: 'IGST' })}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      borderRadius: '6px',
+                      border: (draft.isIgst || draft.taxType === 'IGST') ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
+                      background: (draft.isIgst || draft.taxType === 'IGST') ? '#f5f3ff' : '#ffffff',
+                      color: (draft.isIgst || draft.taxType === 'IGST') ? '#6d28d9' : '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    IGST (Inter-State)
+                  </button>
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Bottom Right Re-Analyze Logo Button */}
           {(draft.docFront || draft.docBack) && (

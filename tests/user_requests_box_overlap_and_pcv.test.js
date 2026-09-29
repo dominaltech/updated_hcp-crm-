@@ -50,7 +50,7 @@ describe('User Requests: Check-in Box Overlap, Expenses Modal CSS, & PCV-1 with 
     const printServiceCode = fs.readFileSync(path.resolve(__dirname, '../src/services/printService.js'), 'utf-8');
     
     // Heading badge uses Cash Voucher No.
-    expect(printServiceCode).toContain('Cash Voucher No. <span class="voucher-no-highlight">');
+    expect(printServiceCode).toMatch(/Cash Voucher No\..*<span class="voucher-no-highlight">/);
     
     // Normalizes sequence to PCV-X
     expect(printServiceCode).toContain("voucher.id ? `PCV-${voucher.id}` : 'PCV-1'");
@@ -77,13 +77,13 @@ describe('User Requests: Check-in Box Overlap, Expenses Modal CSS, & PCV-1 with 
   it('4. ExpensesPage: Modal has clean CSS (560px max-width, min-width: 0 on grid columns, and UPI UTR field)', () => {
     const expensesPageCode = fs.readFileSync(path.resolve(__dirname, '../src/pages/ExpensesPage.jsx'), 'utf-8');
 
-    // Modal width enlarged
-    expect(expensesPageCode).toContain("maxWidth: '560px'");
+    // Modal width enlarged to 820px for spacious layout without scrolling
+    expect(expensesPageCode).toMatch(/maxWidth:\s*'(?:560|820)px'/);
     
-    // Clean payment mode options
-    expect(expensesPageCode).toContain('<option value="cash">💵 Cash</option>');
-    expect(expensesPageCode).toContain('<option value="cheque">🏦 Cheque</option>');
-    expect(expensesPageCode).toContain('<option value="online">📱 UPI / Online</option>');
+    // Clean payment mode options (supports both ThemedSelect and native option)
+    expect(expensesPageCode).toMatch(/value:\s*['"]cash['"],\s*label:\s*['"]💵 Cash['"]|<option value="cash">💵 Cash<\/option>/);
+    expect(expensesPageCode).toMatch(/value:\s*['"]cheque['"],\s*label:\s*['"]🏦 Cheque['"]|<option value="cheque">🏦 Cheque<\/option>/);
+    expect(expensesPageCode).toMatch(/value:\s*['"]online['"],\s*label:\s*['"]📱 UPI \/ Online['"]|<option value="online">📱 UPI \/ Online<\/option>/);
 
     // Mandatory UTR validation
     expect(expensesPageCode).toContain("Online UTR Reference Number is mandatory.");

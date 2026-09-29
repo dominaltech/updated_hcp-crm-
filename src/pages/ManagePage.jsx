@@ -4,7 +4,10 @@ import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
 import ExpensesPage from './ExpensesPage';
 import ThemedSelect from '../components/common/ThemedSelect';
+import ThemedDatePicker from '../components/common/ThemedDatePicker';
+import { ExpenseCategoriesMasterContent } from '../components/common/ExpenseCategoriesMasterModal';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../utils/inputEnhancements';
+import { printAccountingAnalysisReport, exportAccountingAnalysisToExcel, exportAccountingAnalysisToCsv } from '../services/printService';
 
 export default function ManagePage({ onPrintClosingReport }) {
   const {
@@ -34,6 +37,22 @@ export default function ManagePage({ onPrintClosingReport }) {
   const [analyticsFromDate, setAnalyticsFromDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [analyticsToDate, setAnalyticsToDate] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Accounting & Analysis state
+  const [accountingRecords, setAccountingRecords] = useState([]);
+  const [accountingSummary, setAccountingSummary] = useState({});
+  const [isLoadingAccounting, setIsLoadingAccounting] = useState(false);
+  const [accountingFromDate, setAccountingFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1); // 1st of current month
+    return d.toISOString().slice(0, 10);
+  });
+  const [accountingToDate, setAccountingToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [accountingFromBill, setAccountingFromBill] = useState('');
+  const [accountingToBill, setAccountingToBill] = useState('');
+  const [accountingFromVoucher, setAccountingFromVoucher] = useState('');
+  const [accountingToVoucher, setAccountingToVoucher] = useState('');
+  const [accountingSearch, setAccountingSearch] = useState('');
+
   // Rooms CRUD state
   const [rooms, setRooms] = useState([]);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
@@ -42,17 +61,28 @@ export default function ManagePage({ onPrintClosingReport }) {
     room_number: '',
     room_type: 'Deluxe AC',
     price: 2000,
+    price_single: '',
+    gst_pct: 5,
+    single_gst_pct: 5,
     max_adults: 2,
     max_children: 1,
     max_extra_beds: 1,
     max_discount_pct: 15,
     extra_bed_price: 500,
     extra_bed_rate: 500,
+    extra_bed_gst_pct: 5,
     breakfast_price: 250,
+    breakfast_gst_pct: 5,
     ext_grace_mins: 60,
     ext_3h_rate: 500,
+    ext_3h_gst_pct: 5,
     ext_6h_rate: 1000,
-    ext_9h_rate: 1500
+    ext_6h_gst_pct: 5,
+    ext_9h_rate: 1500,
+    ext_9h_gst_pct: 5,
+    ota_early_checkin_price: 900,
+    ota_early_checkin_max_hours: 6,
+    ota_early_checkin_gst_pct: 5
   });
 
   // Staff CRUD state
@@ -98,7 +128,7 @@ export default function ManagePage({ onPrintClosingReport }) {
     credit_limit: 50000
   });
 
-  // AI & OTA Settings
+  // AI Multi-Key Failover & OTA Settings
   const [aiKey, setAiKey] = useState('');
   const [isAiKeyConfigured, setIsAiKeyConfigured] = useState(false);
   const [aiKeyMasked, setAiKeyMasked] = useState('');
@@ -106,6 +136,14 @@ export default function ManagePage({ onPrintClosingReport }) {
   const [isTestingAi, setIsTestingAi] = useState(false);
   const [testAiResult, setTestAiResult] = useState(null);
   const [isSavingAi, setIsSavingAi] = useState(false);
+  const [aiKeySlots, setAiKeySlots] = useState([
+    { slot: 1, label: 'Key 1 (Primary)', isConfigured: false, masked: '', inputKey: '', show: false, status: null, latencyMs: null, error: null, testing: false, saving: false },
+    { slot: 2, label: 'Key 2 (Backup 1)', isConfigured: false, masked: '', inputKey: '', show: false, status: null, latencyMs: null, error: null, testing: false, saving: false },
+    { slot: 3, label: 'Key 3 (Backup 2)', isConfigured: false, masked: '', inputKey: '', show: false, status: null, latencyMs: null, error: null, testing: false, saving: false },
+    { slot: 4, label: 'Key 4 (Backup 3)', isConfigured: false, masked: '', inputKey: '', show: false, status: null, latencyMs: null, error: null, testing: false, saving: false }
+  ]);
+  const [isTestingAllKeys, setIsTestingAllKeys] = useState(false);
+  const [isSavingAllKeys, setIsSavingAllKeys] = useState(false);
   const [otaPlatforms, setOtaPlatforms] = useState([]);
   const [newOtaName, setNewOtaName] = useState('');
 
@@ -129,6 +167,18 @@ export default function ManagePage({ onPrintClosingReport }) {
 
   const [advancePolicyPct, setAdvancePolicyPct] = useState(50);
   const [isSavingAdvancePolicy, setIsSavingAdvancePolicy] = useState(false);
+
+  // Auto-Save Invoices & Receipts Directory Setting
+  const [autoSaveDirectory, setAutoSaveDirectory] = useState('');
+  const [isSavingAutoSaveDir, setIsSavingAutoSaveDir] = useState(false);
+
+  // Invoice Sequence & Financial Year Settings
+  const [invoiceSettingsForm, setInvoiceSettingsForm] = useState({
+    invoice_starting_number: 1,
+    invoice_current_seq: 1,
+    current_fy: ''
+  });
+  const [isSavingInvoiceSettings, setIsSavingInvoiceSettings] = useState(false);
 
   useEffect(() => {
     if (minCheckinAdvancePct !== undefined) {
@@ -177,7 +227,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       setAnalyticsData(normalized);
     } catch {
       // Fallback stats
-      api.getStats().then((s) => setAnalyticsData(s)).catch(() => {});
+      api.getStats().then((s) => setAnalyticsData(s)).catch(() => { });
     }
   }, [analyticsFromDate, analyticsToDate]);
 
@@ -230,20 +280,73 @@ export default function ManagePage({ onPrintClosingReport }) {
       if (keyRes) {
         setIsAiKeyConfigured(Boolean(keyRes.isConfigured || keyRes.hasKey));
         setAiKeyMasked(keyRes.masked || '');
+        if (Array.isArray(keyRes.keys) && keyRes.keys.length > 0) {
+          setAiKeySlots(prev => prev.map(s => {
+            const found = keyRes.keys.find(k => k.slot === s.slot);
+            return found ? { ...s, isConfigured: Boolean(found.isConfigured), masked: found.masked || '' } : s;
+          }));
+        } else if (keyRes.isConfigured || keyRes.hasKey) {
+          setAiKeySlots(prev => prev.map(s => s.slot === 1 ? { ...s, isConfigured: true, masked: keyRes.masked || '' } : s));
+        }
       }
       const rawList = Array.isArray(otaRes) ? otaRes : (otaRes?.platforms || []);
       const otaList = rawList.map(p => (typeof p === 'string' ? p : (p?.name || p?.platform_name || '')).trim()).filter(Boolean);
       setOtaPlatforms(otaList);
+
+      api.getAutoSaveDir().then((res) => {
+        if (res && res.auto_save_directory) {
+          setAutoSaveDirectory(res.auto_save_directory);
+        }
+      }).catch((e) => console.warn('Could not load auto-save dir:', e));
+
+      api.getInvoiceSettings().then((res) => {
+        if (res && res.success) {
+          setInvoiceSettingsForm({
+            invoice_starting_number: res.invoice_starting_number || 1,
+            invoice_current_seq: res.invoice_current_seq || 1,
+            current_fy: res.current_fy || res.invoice_fy_year || ''
+          });
+        }
+      }).catch((e) => console.warn('Could not load invoice settings:', e));
     } catch (e) {
       console.warn(e);
     }
   }, []);
+
+  const loadAccountingAnalysis = useCallback(async (overrides = {}) => {
+    try {
+      setIsLoadingAccounting(true);
+      const params = {
+        fromDate: overrides.fromDate !== undefined ? overrides.fromDate : accountingFromDate,
+        toDate: overrides.toDate !== undefined ? overrides.toDate : accountingToDate,
+        fromBillNo: overrides.fromBill !== undefined ? overrides.fromBill : accountingFromBill,
+        toBillNo: overrides.toBill !== undefined ? overrides.toBill : accountingToBill,
+        fromVoucherNo: overrides.fromVoucher !== undefined ? overrides.fromVoucher : accountingFromVoucher,
+        toVoucherNo: overrides.toVoucher !== undefined ? overrides.toVoucher : accountingToVoucher,
+        q: overrides.search !== undefined ? overrides.search : accountingSearch
+      };
+      const res = await api.getAccountingAnalysis(params);
+      if (res && res.success) {
+        setAccountingRecords(res.records || []);
+        setAccountingSummary(res.summary || {});
+      } else {
+        setAccountingRecords([]);
+        setAccountingSummary({});
+      }
+    } catch (err) {
+      console.error('Failed to load accounting analysis:', err);
+      showToast?.('Could not load accounting records: ' + (err.message || ''), 'error');
+    } finally {
+      setIsLoadingAccounting(false);
+    }
+  }, [accountingFromDate, accountingToDate, accountingFromBill, accountingToBill, accountingFromVoucher, accountingToVoucher, accountingSearch, showToast]);
 
   useEffect(() => {
     if (!isManagerUnlocked && (!currentUser || (!currentUser.can_access_manager && currentUser.role !== 'manager'))) {
       return;
     }
     if (subTab === 'analytics' || subTab === 'btc') loadAnalytics(analyticsFromDate, analyticsToDate);
+    if (subTab === 'accounting') loadAccountingAnalysis();
     if (subTab === 'rooms') {
       loadRooms();
     }
@@ -256,7 +359,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       loadSettings();
       loadCleaners();
     }
-  }, [isManagerUnlocked, currentUser, subTab, analyticsFromDate, analyticsToDate, loadAnalytics, loadRooms, loadStaff, loadCleaners, loadBtc, loadSettings]);
+  }, [isManagerUnlocked, currentUser, subTab, analyticsFromDate, analyticsToDate, loadAnalytics, loadAccountingAnalysis, loadRooms, loadStaff, loadCleaners, loadBtc, loadSettings]);
 
   // Preload staff, cleaners, and settings immediately on mount so tables are ready
   useEffect(() => {
@@ -269,22 +372,33 @@ export default function ManagePage({ onPrintClosingReport }) {
   const handleOpenRoomModal = (r = null) => {
     if (r) {
       setEditingRoom(r);
+      const roomGst = r.gst_pct !== undefined && r.gst_pct !== null ? Number(r.gst_pct) : 5;
       setRoomForm({
         room_number: r.room_number,
         room_type: r.room_type || 'Deluxe AC',
         price: r.price || 2000,
-        gst_pct: r.gst_pct !== undefined && r.gst_pct !== null ? r.gst_pct : 5,
+        price_single: r.price_single !== undefined && r.price_single !== null ? r.price_single : '',
+        gst_pct: roomGst,
+        single_gst_pct: r.single_gst_pct !== undefined && r.single_gst_pct !== null ? Number(r.single_gst_pct) : roomGst,
         max_adults: r.max_adults !== undefined && r.max_adults !== null ? r.max_adults : 2,
         max_children: r.max_children !== undefined && r.max_children !== null ? r.max_children : 1,
         max_extra_beds: r.max_extra_beds !== undefined && r.max_extra_beds !== null ? r.max_extra_beds : 1,
         max_discount_pct: r.max_discount_pct || 15,
         extra_bed_price: r.extra_bed_price || r.extra_bed_rate || 500,
         extra_bed_rate: r.extra_bed_price || r.extra_bed_rate || 500,
+        extra_bed_gst_pct: r.extra_bed_gst_pct !== undefined && r.extra_bed_gst_pct !== null ? Number(r.extra_bed_gst_pct) : roomGst,
         breakfast_price: r.breakfast_price || 250,
+        breakfast_gst_pct: r.breakfast_gst_pct !== undefined && r.breakfast_gst_pct !== null ? Number(r.breakfast_gst_pct) : 5,
         ext_grace_mins: r.ext_grace_mins || 60,
         ext_3h_rate: r.ext_3h_rate || 500,
+        ext_3h_gst_pct: r.ext_3h_gst_pct !== undefined && r.ext_3h_gst_pct !== null ? Number(r.ext_3h_gst_pct) : roomGst,
         ext_6h_rate: r.ext_6h_rate || 1000,
-        ext_9h_rate: r.ext_9h_rate || 1500
+        ext_6h_gst_pct: r.ext_6h_gst_pct !== undefined && r.ext_6h_gst_pct !== null ? Number(r.ext_6h_gst_pct) : roomGst,
+        ext_9h_rate: r.ext_9h_rate || 1500,
+        ext_9h_gst_pct: r.ext_9h_gst_pct !== undefined && r.ext_9h_gst_pct !== null ? Number(r.ext_9h_gst_pct) : roomGst,
+        ota_early_checkin_price: r.ota_early_checkin_price !== undefined && r.ota_early_checkin_price !== null ? r.ota_early_checkin_price : 900,
+        ota_early_checkin_max_hours: r.ota_early_checkin_max_hours !== undefined && r.ota_early_checkin_max_hours !== null ? r.ota_early_checkin_max_hours : 6,
+        ota_early_checkin_gst_pct: r.ota_early_checkin_gst_pct !== undefined && r.ota_early_checkin_gst_pct !== null ? Number(r.ota_early_checkin_gst_pct) : 5
       });
     } else {
       setEditingRoom(null);
@@ -292,18 +406,28 @@ export default function ManagePage({ onPrintClosingReport }) {
         room_number: '',
         room_type: 'Deluxe AC',
         price: 2000,
+        price_single: '',
         gst_pct: 5,
+        single_gst_pct: 5,
         max_adults: 2,
         max_children: 1,
         max_extra_beds: 1,
         max_discount_pct: 15,
         extra_bed_price: 500,
         extra_bed_rate: 500,
+        extra_bed_gst_pct: 5,
         breakfast_price: 250,
+        breakfast_gst_pct: 5,
         ext_grace_mins: 60,
         ext_3h_rate: 500,
+        ext_3h_gst_pct: 5,
         ext_6h_rate: 1000,
-        ext_9h_rate: 1500
+        ext_6h_gst_pct: 5,
+        ext_9h_rate: 1500,
+        ext_9h_gst_pct: 5,
+        ota_early_checkin_price: 900,
+        ota_early_checkin_max_hours: 6,
+        ota_early_checkin_gst_pct: 5
       });
     }
     setIsRoomModalOpen(true);
@@ -312,20 +436,33 @@ export default function ManagePage({ onPrintClosingReport }) {
   const handleSaveRoom = async (e) => {
     e.preventDefault();
     try {
+      const roomGst = parseFloat(roomForm.gst_pct) !== undefined && !isNaN(parseFloat(roomForm.gst_pct)) ? parseFloat(roomForm.gst_pct) : 5;
       const payload = {
         ...roomForm,
         price: Number(roomForm.price) || 0,
-        gst_pct: parseFloat(roomForm.gst_pct) !== undefined && !isNaN(parseFloat(roomForm.gst_pct)) ? parseFloat(roomForm.gst_pct) : 5,
+        price_single: roomForm.price_single !== '' && roomForm.price_single !== null && !isNaN(Number(roomForm.price_single))
+          ? Number(roomForm.price_single)
+          : null,
+        gst_pct: roomGst,
+        single_gst_pct: parseFloat(roomForm.single_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.single_gst_pct)) ? parseFloat(roomForm.single_gst_pct) : roomGst,
         max_adults: Math.max(1, Number(roomForm.max_adults) || 1),
         max_children: Number(roomForm.max_children) || 0,
         max_extra_beds: Number(roomForm.max_extra_beds) || 0,
         max_discount_pct: Number(roomForm.max_discount_pct) || 0,
         extra_bed_price: Number(roomForm.extra_bed_price) || 0,
         extra_bed_rate: Number(roomForm.extra_bed_price) || 0,
+        extra_bed_gst_pct: parseFloat(roomForm.extra_bed_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.extra_bed_gst_pct)) ? parseFloat(roomForm.extra_bed_gst_pct) : roomGst,
         breakfast_price: Number(roomForm.breakfast_price) || 0,
+        breakfast_gst_pct: parseFloat(roomForm.breakfast_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.breakfast_gst_pct)) ? parseFloat(roomForm.breakfast_gst_pct) : 5,
         ext_3h_rate: Number(roomForm.ext_3h_rate) || 0,
+        ext_3h_gst_pct: parseFloat(roomForm.ext_3h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ext_3h_gst_pct)) ? parseFloat(roomForm.ext_3h_gst_pct) : roomGst,
         ext_6h_rate: Number(roomForm.ext_6h_rate) || 0,
-        ext_9h_rate: Number(roomForm.ext_9h_rate) || 0
+        ext_6h_gst_pct: parseFloat(roomForm.ext_6h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ext_6h_gst_pct)) ? parseFloat(roomForm.ext_6h_gst_pct) : roomGst,
+        ext_9h_rate: Number(roomForm.ext_9h_rate) || 0,
+        ext_9h_gst_pct: parseFloat(roomForm.ext_9h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ext_9h_gst_pct)) ? parseFloat(roomForm.ext_9h_gst_pct) : roomGst,
+        ota_early_checkin_price: Number(roomForm.ota_early_checkin_price) !== undefined && !isNaN(Number(roomForm.ota_early_checkin_price)) ? Number(roomForm.ota_early_checkin_price) : 900,
+        ota_early_checkin_max_hours: Number(roomForm.ota_early_checkin_max_hours) !== undefined && !isNaN(Number(roomForm.ota_early_checkin_max_hours)) ? Number(roomForm.ota_early_checkin_max_hours) : 6,
+        ota_early_checkin_gst_pct: parseFloat(roomForm.ota_early_checkin_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ota_early_checkin_gst_pct)) ? parseFloat(roomForm.ota_early_checkin_gst_pct) : 5
       };
       if (editingRoom) {
         await api.updateRoom(editingRoom.id, payload);
@@ -528,7 +665,183 @@ export default function ManagePage({ onPrintClosingReport }) {
     }
   };
 
-  // Settings Handlers
+  // Clean Slate / Purge Demo Transactions Handler
+  const [isCleaningDemo, setIsCleaningDemo] = useState(false);
+  const handleCleanDemoData = async () => {
+    const confirmed = await showConfirm({
+      title: 'Purge Demo Transactions & Reset to Clean State?',
+      message: 'This will purge all demo bookings, test guests, test food/bar orders, and dummy rooms (771, 772, 881, 882).\n\nYour actual hotel rooms (101–106), staff accounts, menu items, and settings will remain safe and intact.\n\nUse this to leave the software 100% clean and ready for deployment or another computer.',
+      icon: '🧹',
+      confirmText: 'Yes, Purge Demo Data',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    setIsCleaningDemo(true);
+    try {
+      const res = await api.cleanDemoData();
+      if (res && res.success) {
+        showToast(res.message || 'All demo transactions purged! System is clean.', 'green');
+        await loadRooms();
+        await loadAnalytics();
+      } else {
+        showToast(res?.error || 'Failed to clear demo data', 'red');
+      }
+    } catch (err) {
+      showToast('Error: ' + err.message, 'red');
+    } finally {
+      setIsCleaningDemo(false);
+    }
+  };
+
+  // Multi-Key AI Handlers
+  const handleSlotInputChange = (slotNum, value) => {
+    setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, inputKey: value } : s));
+  };
+
+  const handleToggleSlotShow = (slotNum) => {
+    setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, show: !s.show } : s));
+  };
+
+  const handleSaveSlotKey = async (slotNum) => {
+    const slotObj = aiKeySlots.find(s => s.slot === slotNum);
+    const keyVal = slotObj?.inputKey ? slotObj.inputKey.trim() : '';
+    if (!keyVal) {
+      showToast(`Please enter an API Key for Slot #${slotNum}`, 'yellow');
+      return;
+    }
+    setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, saving: true } : s));
+    try {
+      const res = await api.saveAiKeySlot(slotNum, keyVal);
+      showToast(`✓ Gemini API Key #${slotNum} saved! Automatic failover active.`, 'green');
+      if (res && Array.isArray(res.keys)) {
+        setAiKeySlots(prev => prev.map(s => {
+          const found = res.keys.find(k => k.slot === s.slot);
+          return found ? { ...s, isConfigured: Boolean(found.isConfigured), masked: found.masked || '', inputKey: '', saving: false } : { ...s, saving: false };
+        }));
+      } else {
+        const maskedPreview = keyVal.length > 8 ? `${keyVal.slice(0, 4)}****${keyVal.slice(-4)}` : '********';
+        setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, isConfigured: true, masked: maskedPreview, inputKey: '', saving: false } : s));
+      }
+      loadSettings();
+    } catch (err) {
+      showToast(`Error saving Key #${slotNum}: ` + err.message, 'red');
+      setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, saving: false } : s));
+    }
+  };
+
+  const handleClearSlotKey = async (slotNum) => {
+    const confirmed = await showConfirmModal({
+      title: `Remove Key #${slotNum}?`,
+      message: `Are you sure you want to deactivate and remove the Gemini API key from Slot #${slotNum}?`,
+      icon: '🗑️',
+      confirmText: 'Yes, Remove',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.clearAiKeySlot(slotNum);
+      showToast(`Key Slot #${slotNum} removed.`, 'green');
+      loadSettings();
+    } catch (err) {
+      showToast(`Error removing Key #${slotNum}: ` + err.message, 'red');
+    }
+  };
+
+  const handleTestSlotKey = async (slotNum) => {
+    const slotObj = aiKeySlots.find(s => s.slot === slotNum);
+    const typed = slotObj?.inputKey ? slotObj.inputKey.trim() : '';
+    if (!typed && !slotObj?.isConfigured) {
+      showToast(`Enter an API key in Slot #${slotNum} first to test.`, 'yellow');
+      return;
+    }
+
+    setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? { ...s, testing: true, error: null } : s));
+    try {
+      const res = await api.testAiKey(typed, slotNum);
+      setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? {
+        ...s,
+        testing: false,
+        status: res.status,
+        latencyMs: res.latencyMs,
+        error: res.success ? null : (res.error || 'Connection Failed'),
+        quotaExceeded: Boolean(res.quotaExceeded || res.status === 429)
+      } : s));
+
+      if (res.success) {
+        showToast(`✓ Key #${slotNum} Connected Successfully! (${res.latencyMs}ms)`, 'green');
+      } else if (res.status === 429 || res.quotaExceeded) {
+        showToast(`⚠️ Key #${slotNum} Quota Exceeded (429). Auto-failover will shift to other keys.`, 'yellow');
+      } else {
+        showToast(`Key #${slotNum} error: ` + (res.error || 'Connection failed'), 'red');
+      }
+    } catch (err) {
+      setAiKeySlots(prev => prev.map(s => s.slot === slotNum ? {
+        ...s,
+        testing: false,
+        status: 500,
+        error: err.message
+      } : s));
+      showToast(`Key #${slotNum} error: ` + err.message, 'red');
+    }
+  };
+
+  const handleTestAllKeys = async () => {
+    setIsTestingAllKeys(true);
+    try {
+      const res = await api.testAllAiKeys();
+      if (res && Array.isArray(res.keys)) {
+        setAiKeySlots(prev => prev.map(s => {
+          const item = res.keys.find(k => k.slot === s.slot);
+          if (item) {
+            return {
+              ...s,
+              status: item.status,
+              latencyMs: item.latencyMs,
+              error: item.success ? null : (item.error || (item.isConfigured ? 'Failed' : null)),
+              quotaExceeded: Boolean(item.quotaExceeded || item.status === 429)
+            };
+          }
+          return s;
+        }));
+      }
+      setTestAiResult(res);
+      if (res.operationalCount > 0) {
+        showToast(`✓ ${res.operationalCount} of ${res.configuredCount} Gemini keys operational! Automatic failover active.`, 'green');
+      } else if (res.configuredCount === 0) {
+        showToast('No API keys configured yet.', 'yellow');
+      } else {
+        showToast('All configured Gemini keys returned quota/connection errors.', 'red');
+      }
+    } catch (err) {
+      showToast('Error testing keys: ' + err.message, 'red');
+    } finally {
+      setIsTestingAllKeys(false);
+    }
+  };
+
+  const handleSaveAllKeys = async () => {
+    const keysToSave = aiKeySlots.map(s => s.inputKey ? s.inputKey.trim() : '__KEEP__');
+    const hasAnyNew = aiKeySlots.some(s => s.inputKey && s.inputKey.trim());
+    if (!hasAnyNew) {
+      showToast('No new keys entered to save.', 'yellow');
+      return;
+    }
+    setIsSavingAllKeys(true);
+    try {
+      await api.saveAiKeysBulk(keysToSave);
+      showToast('✓ All configured Gemini API keys saved & activated!', 'green');
+      setAiKeySlots(prev => prev.map(s => ({ ...s, inputKey: '' })));
+      loadSettings();
+    } catch (err) {
+      showToast('Error saving keys: ' + err.message, 'red');
+    } finally {
+      setIsSavingAllKeys(false);
+    }
+  };
+
+  // Legacy single-key handlers (for backward compatibility)
   const handleSaveAiKey = async () => {
     if (!aiKey || !aiKey.trim()) {
       showToast('Please enter a valid Gemini API Key', 'yellow');
@@ -579,7 +892,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       const threshNum = parseFloat(surchargeForm.upi_tax_threshold);
 
       if (isNaN(cardNum) || cardNum < 0) {
-        showToast('Card surcharge % must be a positive number or 0.', 'red');
+        showToast('Card POS tax % must be a positive number or 0.', 'red');
         return;
       }
       if (isNaN(upiNum) || upiNum < 0) {
@@ -629,6 +942,58 @@ export default function ManagePage({ onPrintClosingReport }) {
       showToast('Error saving check-in policy: ' + err.message, 'red');
     } finally {
       setIsSavingAdvancePolicy(false);
+    }
+  };
+
+  const handleSaveAutoSaveDirectory = async () => {
+    const cleanDir = (autoSaveDirectory || '').trim();
+    if (!cleanDir) {
+      showToast('Please enter or paste a valid folder path.', 'amber');
+      return;
+    }
+    setIsSavingAutoSaveDir(true);
+    try {
+      const res = await api.saveAutoSaveDir(cleanDir);
+      if (res && res.success) {
+        showToast(`✓ Auto-save directory configured: ${cleanDir}`, 'green');
+      } else {
+        showToast('Failed to save folder path: ' + (res?.error || 'Unknown error'), 'red');
+      }
+    } catch (err) {
+      showToast('Error saving folder path: ' + err.message, 'red');
+    } finally {
+      setIsSavingAutoSaveDir(false);
+    }
+  };
+
+  const handleSaveInvoiceSettings = async () => {
+    const startNum = parseInt(invoiceSettingsForm.invoice_starting_number);
+    const seqNum = parseInt(invoiceSettingsForm.invoice_current_seq);
+    if (isNaN(startNum) || startNum < 1) {
+      showToast('Invoice starting number must be at least 1.', 'red');
+      return;
+    }
+    setIsSavingInvoiceSettings(true);
+    try {
+      const res = await api.saveInvoiceSettings({
+        invoice_starting_number: startNum,
+        invoice_current_seq: isNaN(seqNum) || seqNum < startNum ? startNum : seqNum
+      });
+      if (res && res.success) {
+        showToast('✓ Invoice numbering and financial year sequence saved successfully!', 'green');
+        setInvoiceSettingsForm(prev => ({
+          ...prev,
+          invoice_starting_number: res.invoice_starting_number || startNum,
+          invoice_current_seq: res.invoice_current_seq || seqNum,
+          current_fy: res.current_fy || res.invoice_fy_year || prev.current_fy
+        }));
+      } else {
+        showToast('Failed to save invoice settings: ' + (res?.error || 'Server error'), 'red');
+      }
+    } catch (err) {
+      showToast('Error saving invoice settings: ' + err.message, 'red');
+    } finally {
+      setIsSavingInvoiceSettings(false);
     }
   };
 
@@ -748,9 +1113,9 @@ export default function ManagePage({ onPrintClosingReport }) {
       const updated = (res && Array.isArray(res.platforms))
         ? res.platforms
         : otaPlatforms.filter(p => {
-            const n = typeof p === 'string' ? p : (p.name || p.platform_name || '');
-            return n.toLowerCase() !== platformName.toLowerCase();
-          });
+          const n = typeof p === 'string' ? p : (p.name || p.platform_name || '');
+          return n.toLowerCase() !== platformName.toLowerCase();
+        });
       setOtaPlatforms(updated);
       showToast(`Platform "${platformName}" removed.`, 'green');
     } catch (err) {
@@ -838,6 +1203,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       <div className="manager-subnav-bar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '22px' }}>
         {[
           { key: 'analytics', icon: '📊', label: 'Financial Analytics & Drawer' },
+          { key: 'accounting', icon: '📑', label: 'Accounting & Analysis' },
           { key: 'btc', icon: '🏢', label: 'Corporate BTC Companies' },
           { key: 'expenses', icon: '💸', label: 'Petty Cash & Expenses' },
           { key: 'rooms', icon: '🛏️', label: 'Rooms & Tariff' },
@@ -866,29 +1232,29 @@ export default function ManagePage({ onPrintClosingReport }) {
 
             {/* Date Range Filter Toolbar */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 10px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b' }}>From:</span>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={analyticsFromDate}
-                  onChange={(e) => {
-                    setAnalyticsFromDate(e.target.value);
-                    loadAnalytics(e.target.value, analyticsToDate);
-                  }}
-                  style={{ height: '32px', width: '136px', fontWeight: 750, fontSize: '0.84rem', border: 'none', background: 'transparent' }}
-                />
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b' }}>To:</span>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={analyticsToDate}
-                  onChange={(e) => {
-                    setAnalyticsToDate(e.target.value);
-                    loadAnalytics(analyticsFromDate, e.target.value);
-                  }}
-                  style={{ height: '32px', width: '136px', fontWeight: 750, fontSize: '0.84rem', border: 'none', background: 'transparent' }}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b' }}>From:</span>
+                  <ThemedDatePicker
+                    value={analyticsFromDate}
+                    onChange={(e) => {
+                      setAnalyticsFromDate(e.target.value);
+                      loadAnalytics(e.target.value, analyticsToDate);
+                    }}
+                    style={{ width: '145px', height: '34px', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b' }}>To:</span>
+                  <ThemedDatePicker
+                    value={analyticsToDate}
+                    onChange={(e) => {
+                      setAnalyticsToDate(e.target.value);
+                      loadAnalytics(analyticsFromDate, e.target.value);
+                    }}
+                    style={{ width: '145px', height: '34px', fontSize: '0.82rem' }}
+                  />
+                </div>
               </div>
 
               {/* Quick Presets */}
@@ -1003,11 +1369,15 @@ export default function ManagePage({ onPrintClosingReport }) {
             const hospUpiTax = Number(hospData.upi_tax || (Number(hospAdv.upi_tax) || 0) + (Number(hospBill.upi_tax) || 0) + (Number(hospBtc.upi_tax) || 0));
             const hospPrebookedTotal = Number(analyticsData?.prebookedTotal || stats.prebookedTotal || an.prebookedTotal || 0);
             const hospPrebookedCount = Number(analyticsData?.prebookedCount || stats.prebookedCount || an.prebookedCount || 0);
+            // Reconciled 100% Accurate Expenses & Drawer Outflows
             const hospRefunds = Number(exp.refunds || 0);
+            const hospStore = Number(exp.store_pantry || 0);
             const hospMaintenance = Number(exp.maintenance || 0);
             const hospOwnerDrawings = Number(exp.owner_drawings || 0);
-            const hospExpensesTotal = hospRefunds + hospMaintenance + hospOwnerDrawings;
-            const hospDrawerCash = hospCash - hospRefunds;
+            const hospOther = Number(exp.other_expenses || 0);
+            const hospExpensesTotal = Number(exp.total_expenses ?? (hospRefunds + hospStore + hospMaintenance + hospOwnerDrawings + hospOther));
+            const hospCashExpenses = Number(exp.cash_expenses ?? (an.drawer?.totalCashOutflow ?? hospExpensesTotal));
+            const hospDrawerCash = hospCash - hospCashExpenses;
 
             // 2. Restaurant Breakdown
             const restData = bd.restaurant || {};
@@ -1020,8 +1390,8 @@ export default function ManagePage({ onPrintClosingReport }) {
             const restCardSurcharge = Number(restData.card_surcharge ?? 0);
             const restUpiTax = Number(restData.upi_tax ?? 0);
             const restCount = Number(restData.count ?? (restTotal > 0 ? 1 : 0));
-            const restStorePantry = Number(exp.store_pantry || 0);
-            const restExpensesTotal = restStorePantry;
+            const restStorePantry = 0;
+            const restExpensesTotal = 0;
             const restDrawerCash = restCash;
 
             // 3. Bar Breakdown
@@ -1038,16 +1408,22 @@ export default function ManagePage({ onPrintClosingReport }) {
             const barExpensesTotal = 0;
             const barDrawerCash = barCash;
 
-            // Grand Consolidated
+            // Grand Consolidated (All 3 Departments Reconciled)
             const grandRealized = Number(analyticsData?.totalRealized || stats.grossRevenue || (hospTotal + restTotal + barTotal));
-            const grandDrawerCash = Number(analyticsData?.drawerCash || stats.cashInDrawer || (hospDrawerCash + restDrawerCash + barDrawerCash));
+            const grandCashInflow = hospCash + restCash + barCash;
+            const grandUpiInflow = hospUpi + restUpi + barUpi;
+            const grandCardInflow = hospCard + restCard + barCard;
+            const grandExpenses = hospExpensesTotal;
+            const grandCashExpenses = hospCashExpenses;
+            const grandDrawerCash = Number(analyticsData?.drawerCash ?? stats.cashInDrawer ?? (grandCashInflow - grandCashExpenses));
             const grandBase = Number(analyticsData?.netToHotel || stats.netToHotel || (hospBase + restBase + barBase));
             const grandGst = Number(analyticsData?.gstCollections || stats.gstCollections || (hospGst + restGst + barGst));
             const grandSurcharges = Number(analyticsData?.totalSurcharges || (stats.totalCardSurcharge || 0) + (stats.totalUpiTax || 0) || (hospCardSurcharge + hospUpiTax + restCardSurcharge + restUpiTax + barCardSurcharge + barUpiTax));
+            const grandNetProfit = grandRealized - grandExpenses;
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-                
+
                 {/* Grand Consolidated Overview Strip */}
                 <div style={{
                   background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -1069,22 +1445,34 @@ export default function ManagePage({ onPrintClosingReport }) {
                       {formatCurrency(grandRealized)} <span style={{ fontSize: '0.82rem', color: '#cbd5e1', fontWeight: 600 }}>Total Realized Revenue</span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '22px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>💵 Combined Drawer Cash</div>
-                      <strong style={{ fontSize: '1.15rem', color: '#4ade80' }}>{formatCurrency(grandDrawerCash)}</strong>
+                  <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>💵 Cash Flow</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#4ade80' }}>{formatCurrency(grandCashInflow)}</strong>
                     </div>
-                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>🏨 Base Price (Excl. GST)</div>
-                      <strong style={{ fontSize: '1.15rem', color: '#e2e8f0' }}>{formatCurrency(grandBase)}</strong>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>📱 UPI Flow</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#a5b4fc' }}>{formatCurrency(grandUpiInflow)}</strong>
                     </div>
-                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>🏛️ Total GST Collections</div>
-                      <strong style={{ fontSize: '1.15rem', color: '#f59e0b' }}>{formatCurrency(grandGst)}</strong>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>💳 Card Flow</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#38bdf8' }}>{formatCurrency(grandCardInflow)}</strong>
                     </div>
-                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '16px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700 }}>⚡ Total Fees &amp; Surcharges</div>
-                      <strong style={{ fontSize: '1.15rem', color: '#cbd5e1' }}>{formatCurrency(grandSurcharges)}</strong>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>💸 Total Expenses</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#f87171' }}>- {formatCurrency(grandExpenses)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>🏛️ GST Collection</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#f59e0b' }}>{formatCurrency(grandGst)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>🗄️ Net Drawer Cash</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#4ade80' }}>{formatCurrency(grandDrawerCash)}</strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>🏨 Base (Excl. GST)</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#e2e8f0' }}>{formatCurrency(grandBase)}</strong>
                     </div>
                   </div>
                 </div>
@@ -1093,7 +1481,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 {/* 1. SECTION 1: HOSPITALITY (HOTEL ROOMS ACCOMMODATION ONLY) */}
                 {/* ========================================================================= */}
                 <div style={{ background: '#f8fafc', border: '2px solid #bfdbfe', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  
+
                   {/* Section Title Banner */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #dbeafe', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1114,109 +1502,137 @@ export default function ManagePage({ onPrintClosingReport }) {
                     </span>
                   </div>
 
-                  {/* 8 Hospitality KPI Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Total Realized Revenue
+                  {/* Exactly User-Specified 8 Financial Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+                    
+                    {/* 1. Total Realization */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Total Realization
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💰</span>
                       </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(hospTotal)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Advances + Checkout Settlements</div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Net Cash in Drawer
-                      </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
-                        {formatCurrency(hospDrawerCash)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Hosp Cash In - Cash Outflows</div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Check-in Advances</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospAdv.total || 0)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
-                        Cash: {formatCurrency(hospAdv.cash || 0)}
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                        Advances + Checkout Settlements
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Checkout Settlements</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: 'var(--text-primary)', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospBill.total || 0)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
-                        Cash: {formatCurrency(hospBill.cash || 0)}
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #6366f1', padding: '16px' }}>
+                    {/* 2. Cash Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #86efac', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#4338ca', textTransform: 'uppercase' }}>Corporate BTC Settled</div>
-                        <span style={{ fontSize: '0.70rem', background: '#e0e7ff', color: '#4338ca', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
-                          Company Inflow
-                        </span>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Cash Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💵</span>
                       </div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#4338ca', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospBtc.total || 0)}
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#059669', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(hospCash)}
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 700, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span>💵 Cash: {formatCurrency(hospBtc.cash || 0)}</span>
-                        <span>📱 UPI: {formatCurrency(hospBtc.upi || 0)}</span>
+                      <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>
+                        Front Desk Cash Inflow
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #0284c7', padding: '16px' }}>
+                    {/* 3. UPI Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #c7d2fe', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Pre-Booked Collections</div>
-                        <span style={{ fontSize: '0.70rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
-                          OTA Pre-Paid
-                        </span>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#3730a3', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          UPI Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>📱</span>
                       </div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospPrebookedTotal)}
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#4f46e5', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(hospUpi)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#0369a1', fontWeight: 700 }}>
-                        {hospPrebookedCount} Pre-Paid Stay Voucher(s)
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospBase)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
-                        Base Price Only (Excl. GST &amp; Expenses)
+                      <div style={{ fontSize: '0.72rem', color: '#4338ca', fontWeight: 700 }}>
+                        Online QR &amp; UPI Inflow
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                    {/* 4. Card Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #bae6fd', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Card Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💳</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#0284c7', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(hospCard)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 700 }}>
+                        POS Machine Card Inflow
+                      </div>
+                    </div>
+
+                    {/* 5. Total Expense */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fca5a5', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Total Expense
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💸</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#dc2626', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        - {formatCurrency(hospExpensesTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#b91c1c', fontWeight: 700 }}>
+                        Petty Cash &amp; Operational Outflow
+                      </div>
+                    </div>
+
+                    {/* 6. GST Collection */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          GST Collection
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🏛️</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#b45309', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(hospGst)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 700 }}>
                         Hotel Room Standard 5% GST
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
-                        {formatCurrency(hospCardSurcharge + hospUpiTax)}
+                    {/* 7. Net Cash in Drawer */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(2, 132, 199, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Net Cash in Drawer
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🗄️</span>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Card: {formatCurrency(hospCardSurcharge)}</span>
-                        <span>UPI: {formatCurrency(hospUpiTax)}</span>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(hospDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                        Cash In ({formatCurrency(hospCash)}) &minus; Outflows ({formatCurrency(hospCashExpenses)})
                       </div>
                     </div>
+
+                    {/* 8. Net Hotel (Base , dont add gst ) */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Net Hotel (Base, No GST)
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🏨</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#172554', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(hospBase)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: 700 }}>
+                        Base Revenue (Do NOT add GST)
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Advance Financial Analytics for Hospitality (3 Cards) */}
@@ -1305,13 +1721,23 @@ export default function ManagePage({ onPrintClosingReport }) {
                             <strong style={{ color: '#0f172a' }}>{formatCurrency(hospRefunds)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                            <span>Repairs &amp; Maintenance:</span>
+                            <span>Store Expenses (Market/Milk/Fuel):</span>
+                            <strong style={{ color: '#0f172a' }}>{formatCurrency(hospStore)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                            <span>Maintainance Expenses:</span>
                             <strong style={{ color: '#0f172a' }}>{formatCurrency(hospMaintenance)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                            <span>Owner Drawings:</span>
+                            <span>Owner Expenses:</span>
                             <strong style={{ color: '#0f172a' }}>{formatCurrency(hospOwnerDrawings)}</strong>
                           </div>
+                          {hospOther > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                              <span>Other Expenses:</span>
+                              <strong style={{ color: '#0f172a' }}>{formatCurrency(hospOther)}</strong>
+                            </div>
+                          )}
                           <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontWeight: 800, color: '#334155' }}>Operating Net Profit:</span>
                             <strong style={{ fontSize: '1.15rem', fontWeight: 950, color: (hospTotal - hospExpensesTotal) >= 0 ? '#15803d' : '#dc2626' }}>
@@ -1334,7 +1760,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Tax</span>
                               <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From room debit/credit swipes</span>
                             </div>
                             <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(hospCardSurcharge)}</strong>
@@ -1360,7 +1786,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 {/* 2. SECTION 2: RESTAURANT (DINING & ROOM SERVICE POS ONLY) */}
                 {/* ========================================================================= */}
                 <div style={{ background: '#f8fafc', border: '2px solid #a7f3d0', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  
+
                   {/* Section Title Banner */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #d1fae5', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1381,93 +1807,135 @@ export default function ManagePage({ onPrintClosingReport }) {
                     </span>
                   </div>
 
-                  {/* 8 Restaurant KPI Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Total Realized Revenue
+                  {/* Exactly User-Specified 8 Financial Cards for Restaurant */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+                    
+                    {/* 1. Total Realization */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Total Realization
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🍽️</span>
                       </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(restTotal)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Direct Settled Restaurant Orders</div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>Direct Settled Restaurant Orders</div>
                     </div>
 
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Net Cash in Drawer
+                    {/* 2. Cash Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #86efac', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Cash Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💵</span>
                       </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
-                        {formatCurrency(restDrawerCash)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Rest. Cash In - Pantry Outflows</div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Inflow</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#059669', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(restCash)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>
                         Physical Counter Cash
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online UPI &amp; Card</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
-                        {formatCurrency(restUpi + restCard)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
-                        UPI: {formatCurrency(restUpi)} • Card: {formatCurrency(restCard)}
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #059669', padding: '16px' }}>
+                    {/* 3. UPI Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #c7d2fe', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>Settled Orders Count</div>
-                        <span style={{ fontSize: '0.70rem', background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
-                          F&amp;B POS
-                        </span>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#3730a3', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          UPI Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>📱</span>
                       </div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#047857', margin: '4px 0 2px' }}>
-                        {restCount} Order(s)
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#4f46e5', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(restUpi)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>
-                        Paid Food &amp; Beverage Bills
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
-                        {formatCurrency(restBase)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
-                        F&amp;B Base Price (Excl. GST)
+                      <div style={{ fontSize: '0.72rem', color: '#4338ca', fontWeight: 700 }}>
+                        Online QR &amp; UPI Inflow
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                    {/* 4. Card Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #bae6fd', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Card Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💳</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#0284c7', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(restCard)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 700 }}>
+                        POS Machine Card Inflow
+                      </div>
+                    </div>
+
+                    {/* 5. Total Expense */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fca5a5', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Total Expense
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💸</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#dc2626', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        - {formatCurrency(restExpensesTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#b91c1c', fontWeight: 700 }}>
+                        Pantry &amp; Kitchen Outflows
+                      </div>
+                    </div>
+
+                    {/* 6. GST Collection */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          GST Collection
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🏛️</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#b45309', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(restGst)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 700 }}>
                         Restaurant Standard 5% F&amp;B GST
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
-                        {formatCurrency(restCardSurcharge + restUpiTax)}
+                    {/* 7. Net Cash in Drawer */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(2, 132, 199, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Net Cash in Drawer
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🗄️</span>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Card: {formatCurrency(restCardSurcharge)}</span>
-                        <span>UPI: {formatCurrency(restUpiTax)}</span>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(restDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                        Rest. Cash In &minus; Outflows
                       </div>
                     </div>
+
+                    {/* 8. Net Hotel (Base , dont add gst ) */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Net Hotel (Base, No GST)
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🍽️</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#172554', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(restBase)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: 700 }}>
+                        F&amp;B Base Price (Do NOT add GST)
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Advance Financial Analytics for Restaurant (3 Cards) */}
@@ -1557,7 +2025,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Tax</span>
                               <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From restaurant card swipes</span>
                             </div>
                             <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(restCardSurcharge)}</strong>
@@ -1583,7 +2051,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 {/* 3. SECTION 3: BAR LOUNGE (BAR & LIQUOR POS ONLY) */}
                 {/* ========================================================================= */}
                 <div style={{ background: '#f8fafc', border: '2px solid #ddd6fe', borderRadius: '18px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  
+
                   {/* Section Title Banner */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #ede9fe', paddingBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1604,93 +2072,135 @@ export default function ManagePage({ onPrintClosingReport }) {
                     </span>
                   </div>
 
-                  {/* 8 Bar KPI Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Total Realized Revenue
+                  {/* Exactly User-Specified 8 Financial Cards for Bar */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+                    
+                    {/* 1. Total Realization */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Total Realization
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🍸</span>
                       </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(barTotal)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Direct Settled Bar Orders</div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>Direct Settled Bar Orders</div>
                     </div>
 
-                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)', color: '#ffffff', padding: '16px', border: 'none' }}>
-                      <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                        Net Cash in Drawer
+                    {/* 2. Cash Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #86efac', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Cash Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💵</span>
                       </div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, margin: '4px 0 2px' }}>
-                        {formatCurrency(barDrawerCash)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', opacity: 0.85 }}>Bar Cash In - Expenses Out</div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Inflow</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#059669', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(barCash)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>
                         Physical Counter &amp; Bar Cash
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online UPI &amp; Card</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#7c3aed', margin: '4px 0 2px' }}>
-                        {formatCurrency(barUpi + barCard)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
-                        UPI: {formatCurrency(barUpi)} • Card: {formatCurrency(barCard)}
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #7c3aed', padding: '16px' }}>
+                    {/* 3. UPI Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #c7d2fe', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase' }}>Settled Bills Count</div>
-                        <span style={{ fontSize: '0.70rem', background: '#f3e8ff', color: '#7e22ce', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
-                          Bar POS
-                        </span>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#3730a3', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          UPI Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>📱</span>
                       </div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#6d28d9', margin: '4px 0 2px' }}>
-                        {barCount} Bill(s)
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#4f46e5', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(barUpi)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#7c3aed', fontWeight: 700 }}>
-                        Paid Drink &amp; Snack Bills
-                      </div>
-                    </div>
-
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e3a8a', textTransform: 'uppercase' }}>Net to Hotel (Base Price)</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#172554', margin: '4px 0 2px' }}>
-                        {formatCurrency(barBase)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: 700 }}>
-                        Liquor Base Price (Excl. GST)
+                      <div style={{ fontSize: '0.72rem', color: '#4338ca', fontWeight: 700 }}>
+                        Online QR &amp; UPI Inflow
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #d97706', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>GST Collections</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#78350f', margin: '4px 0 2px' }}>
+                    {/* 4. Card Flow */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #bae6fd', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Card Flow
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💳</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#0284c7', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(barCard)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 700 }}>
+                        POS Machine Card Inflow
+                      </div>
+                    </div>
+
+                    {/* 5. Total Expense */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fca5a5', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Total Expense
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>💸</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#dc2626', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        - {formatCurrency(barExpensesTotal)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#b91c1c', fontWeight: 700 }}>
+                        Bar Petty Outflows
+                      </div>
+                    </div>
+
+                    {/* 6. GST Collection */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          GST Collection
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🏛️</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#b45309', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
                         {formatCurrency(barGst)}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700 }}>
+                      <div style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 700 }}>
                         Standard 5% GST on Bar
                       </div>
                     </div>
 
-                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #fde68a', padding: '16px' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase' }}>Card Fee &amp; UPI Tax</div>
-                      <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
-                        {formatCurrency(barCardSurcharge + barUpiTax)}
+                    {/* 7. Net Cash in Drawer */}
+                    <div className="folio-card" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)', color: '#ffffff', padding: '16px', border: 'none', borderRadius: '14px', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.4px', opacity: 0.95 }}>
+                          Net Cash in Drawer
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🗄️</span>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#b45309', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Card: {formatCurrency(barCardSurcharge)}</span>
-                        <span>UPI: {formatCurrency(barUpiTax)}</span>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 950, margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(barDrawerCash)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+                        Bar Cash In &minus; Outflows
                       </div>
                     </div>
+
+                    {/* 8. Net Hotel (Base , dont add gst ) */}
+                    <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #1e3a8a', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 850, color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                          Net Hotel (Base, No GST)
+                        </div>
+                        <span style={{ fontSize: '0.9rem' }}>🍸</span>
+                      </div>
+                      <div style={{ fontSize: '1.65rem', fontWeight: 950, color: '#172554', margin: '6px 0 2px', letterSpacing: '-0.5px' }}>
+                        {formatCurrency(barBase)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: 700 }}>
+                        Liquor Base Price (Do NOT add GST)
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Advance Financial Analytics for Bar (3 Cards) */}
@@ -1780,7 +2290,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div style={{ background: '#fffbeb', padding: '8px 12px', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Surcharge</span>
+                              <span style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 750, display: 'block' }}>💳 Card 2.5% POS Tax</span>
                               <span style={{ fontSize: '0.68rem', color: '#b45309' }}>From bar card swipes</span>
                             </div>
                             <strong style={{ fontSize: '1rem', color: '#b45309' }}>{formatCurrency(barCardSurcharge)}</strong>
@@ -1805,6 +2315,506 @@ export default function ManagePage({ onPrintClosingReport }) {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* Subview: Accounting & Analysis */}
+      {subTab === 'accounting' && (
+        <div className="manager-subview-panel" id="man-subview-accounting">
+          {/* Section Toolbar */}
+          <div className="section-toolbar" style={{ marginBottom: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+            <div className="toolbar-title">
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                <span>📑</span> Accounting &amp; Analysis Audit
+              </h2>
+              <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
+                Itemised revenue audit of checkout bills, base tariffs, extra PAX mattresses, discounts, CGST &amp; SGST breakdown, and customer tax IDs.
+              </p>
+            </div>
+
+            {/* Export & Print Action Buttons */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                id="btn-accounting-download-excel"
+                onClick={() => exportAccountingAnalysisToExcel(accountingRecords, accountingSummary, {
+                  fromDate: accountingFromDate,
+                  toDate: accountingToDate,
+                  fromBillNo: accountingFromBill,
+                  toBillNo: accountingToBill,
+                  fromVoucherNo: accountingFromVoucher,
+                  toVoucherNo: accountingToVoucher
+                })}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 750, fontSize: '0.84rem', padding: '8px 14px', borderRadius: '10px' }}
+                title="Download formatted Excel spreadsheet"
+              >
+                <span>📥</span> Download Excel (.xlsx)
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                id="btn-accounting-download-csv"
+                onClick={() => exportAccountingAnalysisToCsv(accountingRecords, accountingSummary)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 750, fontSize: '0.84rem', padding: '8px 14px', borderRadius: '10px' }}
+                title="Download CSV spreadsheet"
+              >
+                <span>📄</span> Download CSV
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                id="btn-accounting-print-report"
+                onClick={() => printAccountingAnalysisReport({
+                  records: accountingRecords,
+                  filters: {
+                    fromDate: accountingFromDate,
+                    toDate: accountingToDate,
+                    fromBillNo: accountingFromBill,
+                    toBillNo: accountingToBill,
+                    fromVoucherNo: accountingFromVoucher,
+                    toVoucherNo: accountingToVoucher
+                  },
+                  summary: accountingSummary
+                })}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.84rem', padding: '8px 16px', borderRadius: '10px' }}
+                title="Print clean landscape accounting report"
+              >
+                <span>🖨️</span> Print Report
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Toolbar Panel */}
+          <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '16px 18px', marginBottom: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+              <span style={{ fontSize: '0.86rem', fontWeight: 850, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔍</span> Filter &amp; Audit Range
+              </span>
+              
+              {/* Quick Presets */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const today = new Date().toISOString().slice(0, 10);
+                    setAccountingFromDate(today);
+                    setAccountingToDate(today);
+                    loadAccountingAnalysis({ fromDate: today, toDate: today });
+                  }}
+                  style={{ padding: '4px 10px', fontSize: '0.76rem', borderRadius: '8px', fontWeight: 700 }}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    const yStr = y.toISOString().slice(0, 10);
+                    setAccountingFromDate(yStr);
+                    setAccountingToDate(yStr);
+                    loadAccountingAnalysis({ fromDate: yStr, toDate: yStr });
+                  }}
+                  style={{ padding: '4px 10px', fontSize: '0.76rem', borderRadius: '8px', fontWeight: 700 }}
+                >
+                  Yesterday
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(1);
+                    const start = d.toISOString().slice(0, 10);
+                    const end = new Date().toISOString().slice(0, 10);
+                    setAccountingFromDate(start);
+                    setAccountingToDate(end);
+                    loadAccountingAnalysis({ fromDate: start, toDate: end });
+                  }}
+                  style={{ padding: '4px 10px', fontSize: '0.76rem', borderRadius: '8px', fontWeight: 700 }}
+                >
+                  This Month
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setAccountingFromDate('');
+                    setAccountingToDate('');
+                    loadAccountingAnalysis({ fromDate: '', toDate: '' });
+                  }}
+                  style={{ padding: '4px 10px', fontSize: '0.76rem', borderRadius: '8px', fontWeight: 700 }}
+                >
+                  All Time
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Inputs Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
+              {/* Filter 1: Date from to Date */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                  Checkout Date Range
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 750 }}>From:</span>
+                    <ThemedDatePicker
+                      id="filter-accounting-from-date"
+                      value={accountingFromDate}
+                      onChange={(e) => setAccountingFromDate(e.target.value)}
+                      style={{ width: '140px', height: '32px', fontSize: '0.80rem' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 750 }}>To:</span>
+                    <ThemedDatePicker
+                      id="filter-accounting-to-date"
+                      value={accountingToDate}
+                      onChange={(e) => setAccountingToDate(e.target.value)}
+                      style={{ width: '140px', height: '32px', fontSize: '0.80rem' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter 2: Bill Number to Number */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                  Bill Number Range
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                  <input
+                    type="text"
+                    id="filter-accounting-from-bill"
+                    placeholder="From Bill No (e.g. 1)"
+                    value={accountingFromBill}
+                    onChange={(e) => setAccountingFromBill(e.target.value)}
+                    style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
+                  />
+                  <span style={{ color: '#94a3b8' }}>-</span>
+                  <input
+                    type="text"
+                    id="filter-accounting-to-bill"
+                    placeholder="To Bill No"
+                    value={accountingToBill}
+                    onChange={(e) => setAccountingToBill(e.target.value)}
+                    style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
+                  />
+                </div>
+              </div>
+
+              {/* Filter 3: Voucher Number to Number */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                  Voucher Number Range
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                  <input
+                    type="text"
+                    id="filter-accounting-from-voucher"
+                    placeholder="From Voucher (e.g. 001)"
+                    value={accountingFromVoucher}
+                    onChange={(e) => setAccountingFromVoucher(e.target.value)}
+                    style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
+                  />
+                  <span style={{ color: '#94a3b8' }}>-</span>
+                  <input
+                    type="text"
+                    id="filter-accounting-to-voucher"
+                    placeholder="To Voucher"
+                    value={accountingToVoucher}
+                    onChange={(e) => setAccountingToVoucher(e.target.value)}
+                    style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
+                  />
+                </div>
+              </div>
+
+              {/* Search & Actions */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                  Keyword Search &amp; Actions
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    id="filter-accounting-search"
+                    className="form-input"
+                    placeholder="Customer, GSTIN, bill..."
+                    value={accountingSearch}
+                    onChange={(e) => setAccountingSearch(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') loadAccountingAnalysis(); }}
+                    style={{ height: '34px', fontSize: '0.82rem', flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    id="btn-accounting-apply-filter"
+                    onClick={() => loadAccountingAnalysis()}
+                    style={{ height: '34px', padding: '0 12px', borderRadius: '8px', fontWeight: 750, fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    id="btn-accounting-reset-filter"
+                    onClick={() => {
+                      const d = new Date();
+                      d.setDate(1);
+                      const start = d.toISOString().slice(0, 10);
+                      const end = new Date().toISOString().slice(0, 10);
+                      setAccountingFromDate(start);
+                      setAccountingToDate(end);
+                      setAccountingFromBill('');
+                      setAccountingToBill('');
+                      setAccountingFromVoucher('');
+                      setAccountingToVoucher('');
+                      setAccountingSearch('');
+                      loadAccountingAnalysis({
+                        fromDate: start,
+                        toDate: end,
+                        fromBill: '',
+                        toBill: '',
+                        fromVoucher: '',
+                        toVoucher: '',
+                        search: ''
+                      });
+                    }}
+                    style={{ height: '34px', padding: '0 10px', borderRadius: '8px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                    title="Reset all filters to defaults"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Total Invoices / Bills</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0f172a', margin: '4px 0 2px' }}>
+                {accountingSummary.total_records || accountingRecords.length || 0}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Filtered Bills</div>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Room Rent (Base)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_room_rent_base || 0)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Net Base Tariff</div>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase' }}>Extra Mattress (PAX)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_extra_mattress || 0)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Extra Bed Charges</div>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase' }}>Discounts Applied</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_discount || 0)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Total Deductions</div>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>CGST &amp; SGST (5%)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_cgst_sgst || 0)}
+              </div>
+              <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
+                C: {formatCurrency(accountingSummary.total_cgst || 0)} | S: {formatCurrency(accountingSummary.total_sgst || 0)}
+              </div>
+            </div>
+
+            <div style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)', color: '#ffffff', borderRadius: '12px', padding: '14px', boxShadow: '0 4px 12px rgba(30, 58, 138, 0.25)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>Net Payable Total</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_grand || 0)}
+              </div>
+              <div style={{ fontSize: '0.72rem', opacity: 0.8 }}>Inclusive of Taxes</div>
+            </div>
+          </div>
+
+          {/* Audit Table with the 10 User-Specified Columns */}
+          <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+            <div style={{ overflowX: 'auto', width: '100%' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }} id="table-accounting-analysis">
+                <thead>
+                  <tr style={{ background: '#1e293b', color: '#ffffff', textAlign: 'left' }}>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Date of checkout</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Bill no</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Invoice number</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Customer</th>
+                    <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name of customer</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Room rent (base)</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Extra mattress (PAX)</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Discount</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>CGST &amp; SGST</th>
+                    <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name Of Customer GST</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Customer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingAccounting ? (
+                    <tr>
+                      <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                        <div style={{ display: 'inline-block', width: '26px', height: '26px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '8px' }}></div>
+                        <div style={{ fontWeight: 600 }}>Loading accounting &amp; analysis records...</div>
+                      </td>
+                    </tr>
+                  ) : accountingRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📑</div>
+                        <div style={{ fontWeight: 750, fontSize: '0.96rem', color: '#334155' }}>No Accounting Records Found</div>
+                        <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>Try widening your date range or clearing the filter inputs.</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    accountingRecords.map((r, idx) => {
+                      const isEven = idx % 2 === 0;
+                      return (
+                        <tr
+                          key={r.id || idx}
+                          style={{
+                            backgroundColor: isEven ? '#ffffff' : '#f8fafc',
+                            borderBottom: '1px solid #e2e8f0',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isEven ? '#ffffff' : '#f8fafc'; }}
+                        >
+                          {/* 1. Date of checkout */}
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: '#334155' }}>
+                            {r.date_of_checkout}
+                            {!r.is_checked_out && (
+                              <span style={{ display: 'block', fontSize: '0.68rem', color: '#0284c7', fontWeight: 700 }}>Stay Active</span>
+                            )}
+                          </td>
+
+                          {/* 2. Bill no */}
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                            <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '3px 8px', borderRadius: '6px', fontWeight: 750, fontFamily: 'monospace', fontSize: '0.82rem', border: '1px solid #cbd5e1' }}>
+                              {r.bill_no || '-'}
+                            </span>
+                          </td>
+
+                          {/* 3. Invoice number */}
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: '#1e3a8a', fontWeight: 750, fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                              {r.invoice_number || '-'}
+                            </span>
+                          </td>
+
+                          {/* 4. GST No of Customer (Added after invoice number) */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 750, color: r.gst_no_of_customer && r.gst_no_of_customer !== '-' ? '#1e40af' : '#94a3b8' }}>
+                              {r.gst_no_of_customer || '-'}
+                            </span>
+                          </td>
+
+                          {/* 5. Name of customer */}
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ fontWeight: 750, color: '#0f172a' }}>{r.name_of_customer || 'Guest'}</div>
+                            {r.rooms_str && (
+                              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Room: {r.rooms_str}</span>
+                            )}
+                          </td>
+
+                          {/* 5. Room rent (base) */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a' }}>
+                            {formatCurrency(r.room_rent_base)}
+                          </td>
+
+                          {/* 6. Extra mattress (PAX) */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: r.extra_mattress_pax > 0 ? '#7c3aed' : '#64748b' }}>
+                            {formatCurrency(r.extra_mattress_pax)}
+                          </td>
+
+                          {/* 7. Discount */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: r.discount > 0 ? '#dc2626' : '#64748b' }}>
+                            {formatCurrency(r.discount)}
+                          </td>
+
+                          {/* 8. CGST & SGST */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            <div style={{ fontWeight: 750, fontFamily: 'monospace', color: '#059669' }}>
+                              {formatCurrency(r.cgst_sgst_total)}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                              C: {formatCurrency(r.cgst)} | S: {formatCurrency(r.sgst)}
+                            </div>
+                          </td>
+
+                          {/* 9. Name Of Customer GST */}
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ fontWeight: 650, color: '#0f172a' }}>
+                              {r.name_of_customer_gst || '-'}
+                            </span>
+                            {r.booking_source === 'OTA' && (
+                              <span style={{ marginLeft: '6px', fontSize: '0.66rem', background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontWeight: 750 }}>
+                                OTA
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 10. GST No of Customer */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {r.gst_no_of_customer && r.gst_no_of_customer !== '-' ? (
+                              <span style={{ fontFamily: 'monospace', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
+                                {r.gst_no_of_customer}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontWeight: 600 }}>-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+
+                {/* Summary Total Footer Row */}
+                {accountingRecords.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f1f5f9', borderTop: '2px solid #0f172a', borderBottom: '2px solid #0f172a', fontWeight: 800 }}>
+                      <td colSpan={4} style={{ padding: '12px 14px', textAlign: 'right', textTransform: 'uppercase', color: '#0f172a', fontSize: '0.86rem' }}>
+                        TOTAL ({accountingRecords.length} Bills):
+                      </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#0284c7' }}>
+                        {formatCurrency(accountingSummary.total_room_rent_base || 0)}
+                      </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#7c3aed' }}>
+                        {formatCurrency(accountingSummary.total_extra_mattress || 0)}
+                      </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#dc2626' }}>
+                        {formatCurrency(accountingSummary.total_discount || 0)}
+                      </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#059669' }}>
+                        {formatCurrency(accountingSummary.total_cgst_sgst || 0)}
+                      </td>
+                      <td colSpan={2} style={{ padding: '12px 14px', textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
+                        Net Payable: <strong>{formatCurrency(accountingSummary.total_grand || 0)}</strong>
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2009,13 +3019,15 @@ export default function ManagePage({ onPrintClosingReport }) {
               <tr>
                 <th>Room #</th>
                 <th>Type</th>
-                <th>Price (Tariff)</th>
+                <th>Price (Double/Base)</th>
+                <th>1 Adult (Single)</th>
                 <th>GST %</th>
                 <th>Max Adults</th>
                 <th>Max Child</th>
-                <th>Max Extra Bed</th>
-                <th>Extra Bed Rate</th>
+                <th>Max Extra Mattress</th>
+                <th>Extra Mattress Rate</th>
                 <th>Breakfast</th>
+                <th>OTA Early C/I</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right', width: '180px', minWidth: '160px' }}>Actions</th>
               </tr>
@@ -2026,12 +3038,23 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <td style={{ fontWeight: 800 }}>#{r.room_number}</td>
                   <td>{r.room_type}</td>
                   <td style={{ fontWeight: 800, color: '#0071e3' }}>{formatCurrency(r.price)}</td>
+                  <td style={{ fontWeight: 750, color: '#0284c7' }}>
+                    {r.price_single ? formatCurrency(r.price_single) : <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Default (Same)</span>}
+                  </td>
                   <td style={{ fontWeight: 850, color: '#10b981' }}>{r.gst_pct !== undefined && r.gst_pct !== null ? `${r.gst_pct}%` : '5%'}</td>
                   <td>👥 {r.max_adults !== undefined ? r.max_adults : 2}</td>
                   <td>🧒 {r.max_children !== undefined ? r.max_children : 1}</td>
                   <td>🛏️ {r.max_extra_beds !== undefined ? r.max_extra_beds : 1}</td>
                   <td>{formatCurrency(r.extra_bed_price || r.extra_bed_rate || 500)}</td>
                   <td>{formatCurrency(r.breakfast_price || 250)}</td>
+                  <td>
+                    <span style={{ fontWeight: 800, color: '#0369a1', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      ₹{r.ota_early_checkin_price ?? 900}
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
+                        (≤{r.ota_early_checkin_max_hours ?? 6}h)
+                      </span>
+                    </span>
+                  </td>
                   <td>
                     <span className={`status-pill ${r.status}`} style={{ fontSize: '0.72rem' }}>
                       {r.status}
@@ -2200,7 +3223,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         if (!staffSearchQuery.trim()) return true;
                         const q = staffSearchQuery.toLowerCase().trim();
                         return (s.username || '').toLowerCase().includes(q) ||
-                               (s.full_name || '').toLowerCase().includes(q);
+                          (s.full_name || '').toLowerCase().includes(q);
                       })
                       .sort((a, b) => {
                         if (a.role === 'manager' && b.role !== 'manager') return -1;
@@ -2411,7 +3434,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         if (!cleanersSearchQuery.trim()) return true;
                         const q = cleanersSearchQuery.toLowerCase().trim();
                         return (c.name || '').toLowerCase().includes(q) ||
-                               (c.phone || '').toLowerCase().includes(q);
+                          (c.phone || '').toLowerCase().includes(q);
                       })
                       .map((c) => {
                         const isActive = c.status === 'active';
@@ -2509,13 +3532,13 @@ export default function ManagePage({ onPrintClosingReport }) {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-start',
-                marginBottom: '14px',
+                marginBottom: '16px',
                 flexWrap: 'wrap',
                 gap: '12px'
               }}
             >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                     🤖 Google Gemini AI Vision Document OCR
                   </h2>
@@ -2529,196 +3552,391 @@ export default function ManagePage({ onPrintClosingReport }) {
                       padding: '3px 10px',
                       borderRadius: '12px'
                     }}
-                    title="Evergreen auto-updating model alias - permanently active"
+                    title="Multi-Key Auto-Failover: Automatically shifts to next key if quota is exceeded"
                   >
-                    gemini-flash-latest (Evergreen)
+                    4-Key Auto-Failover Engine
                   </span>
                 </div>
                 <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
-                  High-precision multi-modal document intelligence. Automatically extracts Guest Name, Father Name,
-                  DOB, Mobile Number, and Complete Residential Address from front &amp; back photos during check-in.
+                  High-precision multi-modal document intelligence. Add up to 4 API keys to prevent quota limits. If one key hits a rate limit (HTTP 429), OCR instantly shifts to the next key without interruption.
                 </p>
               </div>
 
-              {/* Status Badge */}
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
-                  background: isTestingAi
-                    ? '#fef3c7'
-                    : testAiResult && !testAiResult.success
-                    ? '#fee2e2'
-                    : aiKey
-                    ? '#ecfdf5'
-                    : '#f1f5f9',
-                  color: isTestingAi
-                    ? '#92400e'
-                    : testAiResult && !testAiResult.success
-                    ? '#991b1b'
-                    : aiKey
-                    ? '#065f46'
-                    : '#475569',
-                  border: isTestingAi
-                    ? '1.5px solid #fde68a'
-                    : testAiResult && !testAiResult.success
-                    ? '1.5px solid #fecaca'
-                    : aiKey
-                    ? '1.5px solid #a7f3d0'
-                    : '1.5px solid #cbd5e1'
-                }}
-              >
-                <span
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: isTestingAi
-                      ? '#d97706'
-                      : testAiResult && !testAiResult.success
-                      ? '#dc2626'
-                      : aiKey
-                      ? '#10b981'
-                      : '#94a3b8',
-                    display: 'inline-block'
-                  }}
-                />
-                {isTestingAi
-                  ? 'Testing API Connection...'
-                  : testAiResult && testAiResult.success
-                  ? `Connected (${testAiResult.latencyMs || 250}ms)`
-                  : testAiResult && !testAiResult.success
-                  ? 'Connection Issue'
-                  : aiKey
-                  ? 'Operational & Active'
-                  : 'API Key Required'}
-              </div>
-            </div>
-
-            {/* API Key Form Field */}
-            <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Google Gemini API Key
-                </label>
-                {isAiKeyConfigured ? (
-                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '3px 10px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    ✓ Key Configured: <code>{aiKeyMasked}</code>
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#b91c1c', background: '#fee2e2', padding: '3px 10px', borderRadius: '12px' }}>
-                    ⚠️ No API Key Configured
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <span
-                    style={{
-                      position: 'absolute',
-                      left: '14px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      fontSize: '1rem',
-                      opacity: 0.6,
-                      pointerEvents: 'none'
-                    }}
-                  >
-                    🔑
-                  </span>
-                  <input
-                    type={showAiKey ? 'text' : 'password'}
-                    className="form-input"
-                    placeholder={isAiKeyConfigured ? "Enter new Gemini API key to update (leave blank to keep active key)" : "Enter Google Gemini API Key"}
-                    value={aiKey}
-                    onChange={(e) => setAiKey(e.target.value)}
-                    style={{
-                      paddingLeft: '40px',
-                      paddingRight: '90px',
-                      fontFamily: 'SF Pro Display, ui-monospace, Menlo, Consolas, monospace',
-                      fontSize: '0.88rem',
-                      letterSpacing: showAiKey ? '0.02em' : '0.12em',
-                      height: '44px',
-                      fontWeight: 700,
-                      width: '100%',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAiKey(!showAiKey)}
-                    style={{
-                      position: 'absolute',
-                      right: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'var(--bg-surface-secondary, #f1f5f9)',
-                      border: '1px solid var(--border-light, #cbd5e1)',
-                      borderRadius: '8px',
-                      padding: '4px 10px',
-                      fontSize: '0.74rem',
-                      fontWeight: 750,
-                      color: 'var(--text-primary, #475569)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {showAiKey ? '🙈 Hide' : '👁️ Show'}
-                  </button>
-                </div>
-
-                {/* Test Connection Button */}
+              {/* Status Badge & Health Check Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="btn-secondary"
-                  disabled={isTestingAi || (!aiKey.trim() && !isAiKeyConfigured)}
-                  onClick={handleTestAiKey}
+                  disabled={isTestingAllKeys || aiKeySlots.filter(s => s.isConfigured).length === 0}
+                  onClick={handleTestAllKeys}
                   style={{
-                    height: '44px',
+                    height: '38px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
                     fontWeight: 750,
-                    whiteSpace: 'nowrap',
-                    padding: '0 18px',
+                    fontSize: '0.82rem',
+                    padding: '0 14px',
                     borderRadius: '10px',
-                    cursor: isTestingAi || (!aiKey.trim() && !isAiKeyConfigured) ? 'not-allowed' : 'pointer'
+                    background: '#f8fafc',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#334155',
+                    cursor: (isTestingAllKeys || aiKeySlots.filter(s => s.isConfigured).length === 0) ? 'not-allowed' : 'pointer'
                   }}
+                  title="Test connectivity across all configured keys simultaneously"
                 >
-                  <span>{isTestingAi ? '⏳' : '⚡'}</span>
-                  {isTestingAi ? 'Testing...' : (aiKey.trim() ? 'Test Typed Key' : 'Test Active Key')}
+                  <span>{isTestingAllKeys ? '⏳' : '⚡'}</span>
+                  {isTestingAllKeys ? 'Testing All Keys...' : 'Health Check All Keys'}
                 </button>
 
-                {/* Save API Key Button */}
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={isSavingAi || !aiKey.trim()}
-                  onClick={handleSaveAiKey}
+                <div
                   style={{
-                    height: '44px',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    gap: '8px',
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
                     fontWeight: 800,
-                    whiteSpace: 'nowrap',
-                    padding: '0 20px',
-                    borderRadius: '10px',
-                    cursor: isSavingAi || !aiKey.trim() ? 'not-allowed' : 'pointer'
+                    background: aiKeySlots.filter(s => s.isConfigured).length > 1
+                      ? '#ecfdf5'
+                      : aiKeySlots.some(s => s.isConfigured)
+                        ? '#eff6ff'
+                        : '#fef2f2',
+                    color: aiKeySlots.filter(s => s.isConfigured).length > 1
+                      ? '#065f46'
+                      : aiKeySlots.some(s => s.isConfigured)
+                        ? '#1e40af'
+                        : '#991b1b',
+                    border: `1.5px solid ${
+                      aiKeySlots.filter(s => s.isConfigured).length > 1
+                        ? '#a7f3d0'
+                        : aiKeySlots.some(s => s.isConfigured)
+                          ? '#bfdbfe'
+                          : '#fecaca'
+                    }`
                   }}
                 >
-                  <span>{isSavingAi ? '⏳' : '💾'}</span>
-                  {isSavingAi ? 'Saving...' : 'Save & Activate'}
-                </button>
+                  <span
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: aiKeySlots.filter(s => s.isConfigured).length > 1
+                        ? '#10b981'
+                        : aiKeySlots.some(s => s.isConfigured)
+                          ? '#3b82f6'
+                          : '#ef4444',
+                      display: 'inline-block'
+                    }}
+                  />
+                  {aiKeySlots.filter(s => s.isConfigured).length > 1
+                    ? `${aiKeySlots.filter(s => s.isConfigured).length}/4 Keys Configured • Auto-Failover Ready`
+                    : aiKeySlots.some(s => s.isConfigured)
+                      ? '1 Key Configured • Add Backup Keys for Failover'
+                      : 'No API Keys Configured'}
+                </div>
               </div>
             </div>
 
-            {/* Live Test Results Alert Banner */}
+            {/* Smart Failover Explanation Callout */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '12px 16px',
+                marginBottom: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontSize: '0.82rem',
+                color: '#475569'
+              }}
+            >
+              <span style={{ fontSize: '1.2rem' }}>🔄</span>
+              <div style={{ flex: 1, lineHeight: 1.45 }}>
+                <strong style={{ color: '#0f172a' }}>Multi-Key Shift Architecture:</strong> Keys are utilized in priority sequence (<strong>Key 1 ➔ Key 2 ➔ Key 3 ➔ Key 4</strong>). If any key hits a quota limit (<em>HTTP 429: limit 20 requests</em>) or server issue, OCR automatically and silently shifts to the next active key so check-in never fails.
+              </div>
+            </div>
+
+            {/* 4 API Key Slots Grid */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gap: '16px',
+                marginBottom: '16px'
+              }}
+            >
+              {aiKeySlots.map((s) => {
+                const isSlotTesting = Boolean(s.testing);
+                const isSlotSaving = Boolean(s.saving);
+
+                return (
+                  <div
+                    key={s.slot}
+                    style={{
+                      background: '#ffffff',
+                      border: s.quotaExceeded 
+                        ? '1.5px solid #fca5a5'
+                        : s.status === 200 
+                          ? '1.5px solid #86efac' 
+                          : s.isConfigured 
+                            ? '1.5px solid #bfdbfe' 
+                            : '1.5px dashed #cbd5e1',
+                      borderRadius: '14px',
+                      padding: '16px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '12px'
+                    }}
+                  >
+                    {/* Slot Header */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              borderRadius: '6px',
+                              background: s.slot === 1 ? '#dbeafe' : '#f1f5f9',
+                              color: s.slot === 1 ? '#1e40af' : '#475569',
+                              fontSize: '0.74rem',
+                              fontWeight: 900,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            #{s.slot}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>
+                            {s.slot === 1 ? 'Key 1 (Primary Key)' : `Key ${s.slot} (Backup Failover)`}
+                          </span>
+                        </div>
+
+                        {/* Status Badge */}
+                        {s.isConfigured ? (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              color: '#15803d',
+                              background: '#dcfce7',
+                              padding: '2px 8px',
+                              borderRadius: '10px'
+                            }}
+                          >
+                            ✓ Active: <code>{s.masked}</code>
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 750,
+                              color: '#94a3b8',
+                              background: '#f1f5f9',
+                              padding: '2px 8px',
+                              borderRadius: '10px'
+                            }}
+                          >
+                            Empty Slot
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Live Diagnostic Status if tested */}
+                      {s.status && (
+                        <div
+                          style={{
+                            marginBottom: '10px',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: '0.76rem',
+                            fontWeight: 750,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: s.status === 200 ? '#f0fdf4' : (s.quotaExceeded ? '#fef3c7' : '#fef2f2'),
+                            border: `1px solid ${s.status === 200 ? '#bbf7d0' : (s.quotaExceeded ? '#fde68a' : '#fecaca')}`,
+                            color: s.status === 200 ? '#166534' : (s.quotaExceeded ? '#92400e' : '#991b1b')
+                          }}
+                        >
+                          <span>{s.status === 200 ? '🟢' : (s.quotaExceeded ? '⚠️' : '❌')}</span>
+                          <span style={{ flex: 1 }}>
+                            {s.status === 200
+                              ? `Connected (${s.latencyMs}ms - 200 OK)`
+                              : (s.quotaExceeded
+                                  ? 'Quota Exceeded (HTTP 429) — Auto-shift active'
+                                  : (s.error || `Error ${s.status}`))}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Input Box */}
+                      <div style={{ position: 'relative' }}>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: '12px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            fontSize: '0.9rem',
+                            opacity: 0.6,
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          🔑
+                        </span>
+                        <input
+                          type={s.show ? 'text' : 'password'}
+                          className="form-input"
+                          placeholder={
+                            s.isConfigured
+                              ? `Enter new key to replace (leave blank to keep active)`
+                              : `Paste Gemini API Key #${s.slot} (AIza...)`
+                          }
+                          value={s.inputKey}
+                          onChange={(e) => handleSlotInputChange(s.slot, e.target.value)}
+                          style={{
+                            paddingLeft: '36px',
+                            paddingRight: '76px',
+                            fontFamily: 'SF Pro Display, ui-monospace, Menlo, Consolas, monospace',
+                            fontSize: '0.82rem',
+                            letterSpacing: s.show ? '0.02em' : '0.1em',
+                            height: '38px',
+                            fontWeight: 650,
+                            width: '100%',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSlotShow(s.slot)}
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            padding: '3px 8px',
+                            fontSize: '0.70rem',
+                            fontWeight: 750,
+                            color: '#475569',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {s.show ? '🙈 Hide' : '👁️ Show'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Slot Actions Row */}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={isSlotTesting || (!s.inputKey.trim() && !s.isConfigured)}
+                        onClick={() => handleTestSlotKey(s.slot)}
+                        style={{
+                          height: '34px',
+                          flex: 1,
+                          fontSize: '0.78rem',
+                          fontWeight: 750,
+                          borderRadius: '8px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px',
+                          cursor: (isSlotTesting || (!s.inputKey.trim() && !s.isConfigured)) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <span>{isSlotTesting ? '⏳' : '⚡'}</span>
+                        {isSlotTesting ? 'Testing...' : (s.inputKey.trim() ? 'Test Typed' : 'Test Active')}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={isSlotSaving || !s.inputKey.trim()}
+                        onClick={() => handleSaveSlotKey(s.slot)}
+                        style={{
+                          height: '34px',
+                          flex: 1,
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          borderRadius: '8px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px',
+                          cursor: (isSlotSaving || !s.inputKey.trim()) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        <span>{isSlotSaving ? '⏳' : '💾'}</span>
+                        {isSlotSaving ? 'Saving...' : 'Save Key'}
+                      </button>
+
+                      {s.isConfigured && (
+                        <button
+                          type="button"
+                          onClick={() => handleClearSlotKey(s.slot)}
+                          title={`Remove key from Slot #${s.slot}`}
+                          style={{
+                            height: '34px',
+                            width: '36px',
+                            borderRadius: '8px',
+                            background: '#fee2e2',
+                            border: '1px solid #fca5a5',
+                            color: '#b91c1c',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bulk Save Row if multiple typed */}
+            {aiKeySlots.some(s => s.inputKey && s.inputKey.trim()) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={isSavingAllKeys}
+                  onClick={handleSaveAllKeys}
+                  style={{
+                    height: '40px',
+                    padding: '0 20px',
+                    borderRadius: '10px',
+                    fontWeight: 850,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                  }}
+                >
+                  <span>{isSavingAllKeys ? '⏳' : '💾'}</span>
+                  {isSavingAllKeys ? 'Saving All Keys...' : 'Save All Entered Keys'}
+                </button>
+              </div>
+            )}
+
+            {/* Overall Health Check Summary Banner */}
             {testAiResult && (
               <div
                 style={{
@@ -2737,7 +3955,7 @@ export default function ManagePage({ onPrintClosingReport }) {
               >
                 <span style={{ fontSize: '1.1rem' }}>{testAiResult.success ? '✓' : '⚠️'}</span>
                 <span style={{ flex: 1 }}>{testAiResult.message || testAiResult.error}</span>
-                {testAiResult.latencyMs && (
+                {testAiResult.operationalCount !== undefined && (
                   <span
                     style={{
                       fontSize: '0.74rem',
@@ -2746,7 +3964,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                       borderRadius: '6px'
                     }}
                   >
-                    Latency: {testAiResult.latencyMs}ms
+                    {testAiResult.operationalCount} / {testAiResult.configuredCount} Operational
                   </span>
                 )}
               </div>
@@ -2909,7 +4127,7 @@ export default function ManagePage({ onPrintClosingReport }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span>💳</span> Card &amp; Online UPI Surcharge Rates
+                  <span>💳</span> Card &amp; Online UPI POS Tax Rates
                 </h2>
                 <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
                   Configure transaction convenience fees charged to guests across Front Desk Check-in Advance, Room Folio Checkout, Restaurant POS, and Bar Lounge billing.
@@ -2935,7 +4153,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 }}
               >
                 <span>{isSavingSurcharges ? '⏳' : '💾'}</span>
-                {isSavingSurcharges ? 'Saving...' : 'Save Surcharge Settings'}
+                {isSavingSurcharges ? 'Saving...' : 'Save Tax & Fee Settings'}
               </button>
             </div>
 
@@ -2945,7 +4163,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <span style={{ fontSize: '1.2rem' }}>💳</span>
                   <label style={{ fontSize: '0.9rem', fontWeight: 850, margin: 0 }}>
-                    Credit / Debit Card Surcharge (%)
+                    Credit / Debit Card POS Tax (%)
                   </label>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2963,7 +4181,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <span style={{ fontSize: '1.2rem', fontWeight: 900 }}>%</span>
                 </div>
                 <p style={{ fontSize: '0.76rem', margin: '8px 0 0', lineHeight: 1.4 }}>
-                  Default is 2.5%. Applied automatically whenever card is swiped at POS / EDC terminals. Set to 0% to disable card surcharge.
+                  Default is 2.5%. Applied automatically whenever card is swiped at POS / EDC terminals. Set to 0% to disable card POS tax.
                 </p>
               </div>
 
@@ -3119,6 +4337,183 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
           </div>
 
+          {/* Automatic Receipt & Tax Invoice Auto-Save Directory Card */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>📁</span> Auto-Save Folder for Invoices &amp; Receipts
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Receipts and Tax Invoices automatically save to this computer folder in the background (silent auto-save without opening any file dialog box).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                id="btn-save-auto-save-dir"
+                disabled={isSavingAutoSaveDir}
+                onClick={handleSaveAutoSaveDirectory}
+                style={{
+                  height: '42px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  padding: '0 20px',
+                  borderRadius: '10px',
+                  cursor: isSavingAutoSaveDir ? 'not-allowed' : 'pointer',
+                  background: '#059669'
+                }}
+              >
+                <span>{isSavingAutoSaveDir ? '⏳' : '💾'}</span>
+                {isSavingAutoSaveDir ? 'Saving...' : 'Save Folder Path'}
+              </button>
+            </div>
+
+            <div style={{ maxWidth: '640px', marginBottom: '14px' }}>
+              <div style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #a7f3d0', background: '#ecfdf5' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 850, margin: '0 0 8px', color: '#065f46', display: 'block' }}>
+                  📂 Paste Local Folder Path (e.g. C:\Invoices or D:\HotelCityPark\Receipts):
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    id="input-auto-save-directory"
+                    value={autoSaveDirectory}
+                    placeholder="e.g. C:\HotelCityPark\Saved_Invoices"
+                    onChange={(e) => setAutoSaveDirectory(e.target.value)}
+                    style={{ height: '44px', fontSize: '0.96rem', fontWeight: 750, background: '#ffffff', border: '1.5px solid #6ee7b7' }}
+                  />
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#047857', margin: '8px 0 0', lineHeight: 1.4 }}>
+                  ✓ System automatically creates this directory if it doesn't already exist. During checkout or checkin, Tax Invoices &amp; Money Receipts automatically save here in PDF format.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tax Invoice Numbering & Financial Year Settings Card */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>🧾</span> Tax Invoice Numbering &amp; Financial Year Settings
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Configure the starting number for customer Tax Invoices. At the financial year close (30 April night 12:00 AM midnight), the sequence automatically resets back to this starting number.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                id="btn-save-invoice-settings"
+                disabled={isSavingInvoiceSettings}
+                onClick={handleSaveInvoiceSettings}
+                style={{
+                  height: '42px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  padding: '0 20px',
+                  borderRadius: '10px',
+                  cursor: isSavingInvoiceSettings ? 'not-allowed' : 'pointer',
+                  background: '#7c3aed'
+                }}
+              >
+                <span>{isSavingInvoiceSettings ? '⏳' : '💾'}</span>
+                {isSavingInvoiceSettings ? 'Saving...' : 'Save Invoice Settings'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+              {/* Starting Number */}
+              <div className="surcharge-card" style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #d8b4fe', background: '#faf5ff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>🔢</span>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 850, margin: 0, color: '#581c87' }}>
+                    Invoice Starting Number (Reset Value)
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-input"
+                    id="input-invoice-starting-number"
+                    value={invoiceSettingsForm.invoice_starting_number}
+                    onChange={(e) => setInvoiceSettingsForm({ ...invoiceSettingsForm, invoice_starting_number: e.target.value })}
+                    style={{ height: '44px', fontSize: '1.15rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #a855f7' }}
+                  />
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#6b21a8', margin: '8px 0 0', lineHeight: 1.4 }}>
+                  Default is 1 (or 101, 500, etc.). Each new financial year starts from this exact number.
+                </p>
+              </div>
+
+              {/* Current Sequence Number */}
+              <div className="surcharge-card" style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #bae6fd', background: '#f0f9ff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 850, margin: 0, color: '#0369a1' }}>
+                    Next Invoice Sequence Number
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-input"
+                    id="input-invoice-current-seq"
+                    value={invoiceSettingsForm.invoice_current_seq}
+                    onChange={(e) => setInvoiceSettingsForm({ ...invoiceSettingsForm, invoice_current_seq: e.target.value })}
+                    style={{ height: '44px', fontSize: '1.15rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #38bdf8' }}
+                  />
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#0284c7', margin: '8px 0 0', lineHeight: 1.4 }}>
+                  The number that will be assigned to the very next check-in or tax invoice.
+                </p>
+              </div>
+
+              {/* Active Financial Year Badge */}
+              <div className="surcharge-card" style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #cbd5e1', background: '#f8fafc', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '0.80rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                  Active Financial Cycle
+                </div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0f172a', margin: '4px 0' }}>
+                  {invoiceSettingsForm.current_fy || 'Current FY'}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 750 }}>
+                  ✓ Scheduled Auto-Reset: 30 April (Midnight 12:00 AM)
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Housekeeping / Cleaner Staff Quick Card */}
           <div
             className="folio-card"
@@ -3161,6 +4556,89 @@ export default function ManagePage({ onPrintClosingReport }) {
             >
               <span>🧹</span> Manage Cleaner Staff ({cleanersList.length}) →
             </button>
+          </div>
+
+          {/* Debit / Receipt Categories, Child Purposes & Owner WhatsApp Master */}
+          <div
+            className="folio-card"
+            style={{
+              background: '#ffffff',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)'
+            }}
+          >
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '1.4rem' }}>🧾</span>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: 0 }}>
+                  Debit / Receipt Categories, Purposes &amp; Owner WhatsApp Master
+                </h2>
+              </div>
+              <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                Manage expense debit categories, child purposes, owner recipient names, and WhatsApp phone numbers for real-time debit alerts.
+              </p>
+            </div>
+
+            <ExpenseCategoriesMasterContent
+              onSaveSuccess={() => {
+                showToast('Debit / Receipt Categories & Owner WhatsApp numbers updated successfully!', 'green');
+              }}
+            />
+          </div>
+
+          {/* Fresh Deployment / Purge Demo Transactions Card */}
+          <div
+            className="folio-card"
+            style={{
+              background: '#fff',
+              border: '1.5px solid #fecaca',
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(239, 68, 68, 0.06)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>🧹</span>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#991b1b', margin: 0 }}>
+                    Clean Slate / Purge Demo Data
+                  </h2>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '10px' }}>
+                    Deployment Safe
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, lineHeight: 1.5, maxWidth: '640px' }}>
+                  Remove all demo entries, test bookings, sample guests, and temporary rooms (771, 772, 881, 882). Real hotel rooms (101–106), staff accounts, menu items, and settings are preserved. Use this before transferring or copying the software to another computer.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={isCleaningDemo}
+                onClick={handleCleanDemoData}
+                style={{
+                  height: '42px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  padding: '0 20px',
+                  borderRadius: '10px',
+                  background: '#dc2626',
+                  border: 'none',
+                  color: '#ffffff',
+                  cursor: isCleaningDemo ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 12px rgba(220, 38, 38, 0.25)'
+                }}
+              >
+                <span>{isCleaningDemo ? '⏳' : '🗑️'}</span>
+                {isCleaningDemo ? 'Purging Demo Data...' : 'Purge Demo Data & Clear Slate'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3219,13 +4697,16 @@ export default function ManagePage({ onPrintClosingReport }) {
                   boxSizing: 'border-box'
                 }}
               >
-                
+
                 {/* 1. Basic Room Info */}
                 <div style={{ background: 'var(--bg-surface-secondary, #f8fafc)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.05rem' }}>🏷️</span> ROOM IDENTIFICATION &amp; BASE TARIFF
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.05rem' }}>🏷️</span> ROOM IDENTIFICATION &amp; BASE TARIFF
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>Base &amp; GST Inputs</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
                     <div style={{ minWidth: 0 }}>
                       <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Room Number *</label>
                       <input
@@ -3250,39 +4731,89 @@ export default function ManagePage({ onPrintClosingReport }) {
                         style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                       />
                     </div>
+
+                    {/* Base Tariff (2+ Adults) with Base + GST */}
                     <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Base Tariff (₹ / Night) *</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        required
-                        value={roomForm.price}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.12rem', fontWeight: 950, color: 'var(--apple-blue, #0071e3)', border: '2px solid var(--apple-blue)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)' }}
-                      />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Room GST Rate (%) *</label>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="28"
-                          step="0.5"
-                          className="form-input"
-                          required
-                          value={roomForm.gst_pct}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => setRoomForm({ ...roomForm, gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                          style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 30px 0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                        />
-                        <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)' }}>
-                          %
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>Base Tariff (2+ Adults) *</label>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                          Total: ₹{Math.round((Number(roomForm.price) || 0) * (1 + (Number(roomForm.gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
                         </span>
                       </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            required
+                            placeholder="Base ₹"
+                            value={roomForm.price}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.08rem', fontWeight: 950, color: 'var(--apple-blue, #0071e3)', border: '2px solid var(--apple-blue)', borderRadius: '10px', padding: '0 10px', background: 'var(--bg-app, #ffffff)' }}
+                          />
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="28"
+                            step="0.5"
+                            className="form-input"
+                            required
+                            placeholder="GST %"
+                            value={roomForm.gst_pct}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 24px 0 10px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
+                          />
+                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>%</span>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Single Occupancy (1 Adult) with Base + GST */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>Single Occupancy (1 Adult)</label>
+                        {roomForm.price_single !== '' && roomForm.price_single !== null && Number(roomForm.price_single) > 0 && (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0284c7', background: '#f0f9ff', padding: '1px 6px', borderRadius: '4px' }}>
+                            Total: ₹{Math.round(Number(roomForm.price_single) * (1 + (Number(roomForm.single_gst_pct || roomForm.gst_pct || 5)) / 100)).toLocaleString('en-IN')} for 24 hours
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            placeholder="Same as base"
+                            value={roomForm.price_single}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, price_single: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 900, color: '#0284c7', border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 10px', background: 'var(--bg-app, #ffffff)' }}
+                          />
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="28"
+                            step="0.5"
+                            className="form-input"
+                            placeholder="GST %"
+                            value={roomForm.single_gst_pct}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, single_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 24px 0 10px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
+                          />
+                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>%</span>
+                        </div>
+                      </div>
+                    </div>
+
                     <div style={{ minWidth: 0 }}>
                       <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Max Discount Allowed (%)</label>
                       <input
@@ -3338,7 +4869,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Max Extra Bed 🛏️
+                        Max Extra Mattress 🛏️
                       </label>
                       <input
                         type="number"
@@ -3354,91 +4885,321 @@ export default function ManagePage({ onPrintClosingReport }) {
                   </div>
                 </div>
 
-                {/* 3. Add-on Rates */}
+                {/* 3. Add-on Rates (Base + GST Inputs) */}
                 <div style={{ background: 'rgba(168, 85, 247, 0.08)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid rgba(168, 85, 247, 0.3)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-purple, #86198f)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.05rem' }}>🛏️</span> EXTRA BED &amp; BREAKFAST RATES
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-purple, #86198f)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.05rem' }}>🛏️</span> EXTRA MATTRESS &amp; BREAKFAST RATES
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#7e22ce', background: '#f3e8ff', padding: '2px 8px', borderRadius: '6px' }}>Base + GST Split</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Extra Bed Rate (₹ / Night)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        value={roomForm.extra_bed_price}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const val = raw === '' ? '' : Number(raw);
-                          setRoomForm({ ...roomForm, extra_bed_price: val, extra_bed_rate: val });
-                        }}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '10px', padding: '0 12px', color: 'var(--text-primary)' }}
-                      />
+
+                    {/* Extra Bed Rate: Base + GST */}
+                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>
+                          🛏️ Extra Mattress Rate
+                        </label>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#7e22ce', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>
+                          Total: ₹{Math.round((Number(roomForm.extra_bed_price) || 0) * (1 + (Number(roomForm.extra_bed_gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹ for 24 hours)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.extra_bed_price}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const val = raw === '' ? '' : Number(raw);
+                              setRoomForm({ ...roomForm, extra_bed_price: val, extra_bed_rate: val });
+                            }}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1.02rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 10px', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.extra_bed_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, extra_bed_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 24px 0 10px', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Breakfast Price (₹ / Guest)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        value={roomForm.breakfast_price}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, breakfast_price: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '10px', padding: '0 12px', color: 'var(--text-primary)' }}
-                      />
+
+                    {/* Breakfast Price: Base + GST */}
+                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>
+                          🍳 Breakfast Price
+                        </label>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#b45309', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
+                          Total: ₹{Math.round((Number(roomForm.breakfast_price) || 0) * (1 + (Number(roomForm.breakfast_gst_pct) || 5) / 100)).toLocaleString('en-IN')}/guest
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹ / Guest)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.breakfast_price}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, breakfast_price: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1.02rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 10px', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.breakfast_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, breakfast_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 24px 0 10px', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* 4. Stay Extension Hourly Slabs */}
+                {/* 4. Stay Extension Hourly Slabs (Base + GST Inputs) */}
                 <div style={{ padding: '16px 18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.05rem' }}>⏱️</span> STAY EXTENSION HOURLY SLABS (₹)
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.05rem' }}>⏱️</span> STAY EXTENSION HOURLY SLABS (₹)
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>Base + GST Split</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 850, display: 'block', marginBottom: '6px' }}>1–3 Hours Rate (₹)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        value={roomForm.ext_3h_rate}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, ext_3h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px', color: '#0f172a' }}
-                      />
+
+                    {/* Slab 1: 1–3 Hours */}
+                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>1–3 Hours</label>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                          Total: ₹{Math.round((Number(roomForm.ext_3h_rate) || 0) * (1 + (Number(roomForm.ext_3h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.ext_3h_rate}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ext_3h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.ext_3h_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_3h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
+                            />
+                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', color: '#0f172a', fontWeight: 850, display: 'block', marginBottom: '6px' }}>3–6 Hours Rate (₹)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        value={roomForm.ext_6h_rate}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, ext_6h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px', color: '#0f172a' }}
-                      />
+
+                    {/* Slab 2: 3–6 Hours */}
+                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>3–6 Hours</label>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                          Total: ₹{Math.round((Number(roomForm.ext_6h_rate) || 0) * (1 + (Number(roomForm.ext_6h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.ext_6h_rate}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ext_6h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.ext_6h_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_6h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
+                            />
+                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', color: '#0f172a', fontWeight: 850, display: 'block', marginBottom: '6px' }}>6–9 Hours Rate (₹)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="form-input"
-                        value={roomForm.ext_9h_rate}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, ext_9h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '10px', padding: '0 12px', color: '#0f172a' }}
-                      />
+
+                    {/* Slab 3: 6–9 Hours */}
+                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>6–9 Hours</label>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                          Total: ₹{Math.round((Number(roomForm.ext_9h_rate) || 0) * (1 + (Number(roomForm.ext_9h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.ext_9h_rate}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ext_9h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.ext_9h_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_9h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
+                            />
+                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {/* 5. OTA Early Check-In Policy */}
+                <div style={{ padding: '16px 18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.05rem' }}>🌅</span> OTA EARLY CHECK-IN POLICY
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>OTA Bookings Only</span>
+                  </div>
+                  
+                  <div style={{ background: '#ffffff', padding: '14px 16px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '0.84rem', color: '#0f172a', fontWeight: 850 }}>
+                        Early Arrival Policy Configuration
+                      </span>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+                        Total Extra: ₹{Math.round((Number(roomForm.ota_early_checkin_price) || 0) * (1 + (Number(roomForm.ota_early_checkin_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+                      {/* Max Early Arrival Hours */}
+                      <div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>MAX EARLY HOURS</span>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            min="1"
+                            max="24"
+                            className="form-input"
+                            value={roomForm.ota_early_checkin_max_hours}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_max_hours: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 30px 0 10px', color: '#0f172a' }}
+                          />
+                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.78rem' }}>hrs</span>
+                        </div>
+                      </div>
+
+                      {/* Base Extra Rate (₹) */}
+                      <div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>EXTRA CHARGE (₹)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          className="form-input"
+                          value={roomForm.ota_early_checkin_price}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_price: e.target.value === '' ? '' : Number(e.target.value) })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
+                        />
+                      </div>
+
+                      {/* GST (%) */}
+                      <div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>GST RATE (%)</span>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="28"
+                            step="0.5"
+                            className="form-input"
+                            value={roomForm.ota_early_checkin_gst_pct}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
+                          />
+                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 650, marginTop: '10px', lineHeight: 1.4 }}>
+                      💡 If an OTA guest checks in early (up to {roomForm.ota_early_checkin_max_hours || 6} hours early), this extra charge of ₹{roomForm.ota_early_checkin_price || 900} (+GST) is applied to the booking and payable at the hotel front desk.
+                    </div>
+                  </div>
+                </div>
+
               </div>
               <div className="modal-footer" style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '2px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
                 <button

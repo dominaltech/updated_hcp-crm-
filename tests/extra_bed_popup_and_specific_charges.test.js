@@ -14,9 +14,9 @@ describe('Extra Bed Popup Modal & Specific Charges Logic', () => {
     expect(content).toContain('handleConfirmExtraBedModal');
 
     // Check popup UI elements
-    expect(content).toContain('Specific Extra Bed Charge (₹/night)');
-    expect(content).toContain('Add Extra Bed');
-    expect(content).toContain('Edit Extra Bed Charges');
+    expect(content).toContain('Specific Extra Mattress Charge (₹ for 24 hours)');
+    expect(content).toContain('Add Extra Mattress');
+    expect(content).toContain('Edit Extra Mattress Charges');
     expect(content).toContain('roomExtraBedRates');
 
     // Check quick presets
@@ -27,7 +27,7 @@ describe('Extra Bed Popup Modal & Specific Charges Logic', () => {
     expect(content).toContain('₹1,000');
 
     // Check OTA room cards have extra bed stepper
-    expect(content).toContain('Modern Extra Bed Stepper for OTA Room');
+    expect(content).toContain('Modern Extra Mattress Stepper for OTA Room');
   });
 
   it('verifies CheckinWizardModal.jsx computes extraBedCharge with custom roomExtraBedRates', () => {

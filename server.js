@@ -80,6 +80,14 @@ app.get('/api/build-frontend', (req, res) => {
 // -------------------------------------------------------------
 // MONTHLY SEQUENTIAL VOUCHER & RECEIPT NUMBERING (YYMMDD-SR, resets monthly)
 // -------------------------------------------------------------
+function getCurrentFinancialYear(dateObj = new Date()) {
+  const m = dateObj.getMonth(); // 0-indexed: 0=Jan, 3=Apr, 4=May
+  const y = dateObj.getFullYear();
+  // Financial year resets 30 April night 12:00 (1 May start)
+  const startYear = m < 4 ? y - 1 : y;
+  return `FY${startYear}-${startYear + 1}`;
+}
+
 function getNextMonthlyVoucherNumber(prefix = 'VCH', dateObj = new Date()) {
   try {
     const yyyy = dateObj.getFullYear();
@@ -87,8 +95,41 @@ function getNextMonthlyVoucherNumber(prefix = 'VCH', dateObj = new Date()) {
     const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
     const dd = String(dateObj.getDate()).padStart(2, '0');
     const yearMonth = `${yyyy}${mm}`;
-    // Format as YYMMDD (e.g. 260920-520) for all prefixes (previously: prefix === 'RCP' ? `${yy}${mm}${dd}` : `${yyyy}${mm}${dd}`)
     const dateStr = `${yy}${mm}${dd}`;
+
+    // For REG (Checkin/Invoice numbering), check if manager configured starting number and financial year sequence
+    if (prefix === 'REG') {
+      const currentFY = getCurrentFinancialYear(dateObj);
+      const startRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_starting_number'").get();
+      const seqRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_current_seq'").get();
+      const fyRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_fy_year'").get();
+
+      const startNum = startRow && !isNaN(parseInt(startRow.value)) ? parseInt(startRow.value) : 1;
+      let nextSeq = seqRow && !isNaN(parseInt(seqRow.value)) ? parseInt(seqRow.value) : startNum;
+      const storedFY = fyRow?.value;
+
+      // Auto-reset to starting number at financial year end (30 April night 12:00)
+      if (storedFY && storedFY !== currentFY) {
+        nextSeq = startNum;
+      }
+
+      // Save next sequence for subsequent invoices
+      const subsequentSeq = nextSeq + 1;
+      db.prepare(`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('invoice_current_seq', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+      `).run(String(subsequentSeq));
+
+      db.prepare(`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('invoice_fy_year', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+      `).run(currentFY);
+
+      const srPadded = String(nextSeq).padStart(3, '0');
+      return `${dateStr}-${srPadded}`;
+    }
 
     const row = db.prepare('SELECT last_seq FROM monthly_voucher_sequences WHERE prefix = ? AND year_month = ?').get(prefix, yearMonth);
     const nextSeq = (row ? row.last_seq : 0) + 1;
@@ -111,15 +152,31 @@ function getNextMonthlyVoucherNumber(prefix = 'VCH', dateObj = new Date()) {
   }
 }
 
-function getReceiptNumberWithMode(mode = 'cash', dateObj = new Date()) {
-  const baseNo = getNextMonthlyVoucherNumber('RCP', dateObj);
+function getReceiptNumberWithMode(mode = 'cash', customDb = null) {
+  const activeDb = (customDb && typeof customDb.prepare === 'function') ? customDb : db;
   const m = String(mode || 'cash').toLowerCase();
   let prefix = 'CR';
   if (m.includes('upi') || m.includes('online')) prefix = 'UPI';
   else if (m.includes('card') || m.includes('pos')) prefix = 'POS';
   else if (m.includes('cheque') || m.includes('check')) prefix = 'CHQ';
-  else if (m.includes('btc')) prefix = 'BTC';
-  return `${prefix}${baseNo}`;
+  else if (m.includes('btc') || m.includes('company')) prefix = 'BTC';
+
+  try {
+    const row = activeDb.prepare("SELECT last_seq FROM monthly_voucher_sequences WHERE prefix = ? AND year_month = 'ALL'").get('RECEIPT_' + prefix);
+    const nextSeq = (row && row.last_seq !== undefined ? row.last_seq : 0) + 1;
+
+    activeDb.prepare(`
+      INSERT INTO monthly_voucher_sequences (prefix, year_month, last_seq)
+      VALUES (?, 'ALL', ?)
+      ON CONFLICT(prefix, year_month) DO UPDATE SET last_seq = ?
+    `).run('RECEIPT_' + prefix, nextSeq, nextSeq);
+
+    const srPadded = String(nextSeq).padStart(2, '0');
+    return `${prefix}${srPadded}`;
+  } catch (err) {
+    console.error('Error generating receipt sequence for ' + prefix + ':', err);
+    return `${prefix}01`;
+  }
 }
 
 // -------------------------------------------------------------
@@ -339,6 +396,7 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       room_number, 
       room_type, 
       price, 
+      price_single,
       max_adults, 
       max_children, 
       max_discount_pct,
@@ -349,7 +407,16 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       breakfast_price,
       max_extra_beds,
       extra_bed_price,
-      gst_pct
+      gst_pct,
+      extra_bed_gst_pct,
+      breakfast_gst_pct,
+      ext_3h_gst_pct,
+      ext_6h_gst_pct,
+      ext_9h_gst_pct,
+      single_gst_pct,
+      ota_early_checkin_price,
+      ota_early_checkin_max_hours,
+      ota_early_checkin_gst_pct
     } = req.body;
     
     if (!room_number || !price) {
@@ -363,17 +430,21 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
 
     const stmt = db.prepare(`
       INSERT INTO rooms (
-        room_number, room_type, price, max_adults, max_children, max_discount_pct, 
+        room_number, room_type, price, price_single, max_adults, max_children, max_discount_pct, 
         ext_grace_mins, ext_3h_rate, ext_6h_rate, ext_9h_rate,
-        breakfast_price, max_extra_beds, extra_bed_price, gst_pct, status
+        breakfast_price, max_extra_beds, extra_bed_price, gst_pct,
+        extra_bed_gst_pct, breakfast_gst_pct, ext_3h_gst_pct, ext_6h_gst_pct, ext_9h_gst_pct, single_gst_pct,
+        ota_early_checkin_price, ota_early_checkin_max_hours, ota_early_checkin_gst_pct,
+        status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
     `);
 
     const result = stmt.run(
       room_number,
       room_type || 'Deluxe Room',
       parseFloat(price),
+      price_single !== undefined && price_single !== '' && price_single !== null ? parseFloat(price_single) : null,
       parseInt(max_adults) || 2,
       parseInt(max_children) || 1,
       parseFloat(max_discount_pct) || 15,
@@ -384,7 +455,16 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       parseFloat(breakfast_price) !== undefined && !isNaN(parseFloat(breakfast_price)) ? parseFloat(breakfast_price) : 250,
       parseInt(max_extra_beds) !== undefined && !isNaN(parseInt(max_extra_beds)) ? parseInt(max_extra_beds) : 1,
       parseFloat(extra_bed_price) !== undefined && !isNaN(parseFloat(extra_bed_price)) ? parseFloat(extra_bed_price) : 500,
-      parseFloat(gst_pct) !== undefined && !isNaN(parseFloat(gst_pct)) ? parseFloat(gst_pct) : 5
+      parseFloat(gst_pct) !== undefined && !isNaN(parseFloat(gst_pct)) ? parseFloat(gst_pct) : 5,
+      parseFloat(extra_bed_gst_pct) !== undefined && !isNaN(parseFloat(extra_bed_gst_pct)) ? parseFloat(extra_bed_gst_pct) : 5,
+      parseFloat(breakfast_gst_pct) !== undefined && !isNaN(parseFloat(breakfast_gst_pct)) ? parseFloat(breakfast_gst_pct) : 5,
+      parseFloat(ext_3h_gst_pct) !== undefined && !isNaN(parseFloat(ext_3h_gst_pct)) ? parseFloat(ext_3h_gst_pct) : 5,
+      parseFloat(ext_6h_gst_pct) !== undefined && !isNaN(parseFloat(ext_6h_gst_pct)) ? parseFloat(ext_6h_gst_pct) : 5,
+      parseFloat(ext_9h_gst_pct) !== undefined && !isNaN(parseFloat(ext_9h_gst_pct)) ? parseFloat(ext_9h_gst_pct) : 5,
+      parseFloat(single_gst_pct) !== undefined && !isNaN(parseFloat(single_gst_pct)) ? parseFloat(single_gst_pct) : (parseFloat(gst_pct) || 5),
+      parseFloat(ota_early_checkin_price) !== undefined && !isNaN(parseFloat(ota_early_checkin_price)) ? parseFloat(ota_early_checkin_price) : 900,
+      parseInt(ota_early_checkin_max_hours) !== undefined && !isNaN(parseInt(ota_early_checkin_max_hours)) ? parseInt(ota_early_checkin_max_hours) : 6,
+      parseFloat(ota_early_checkin_gst_pct) !== undefined && !isNaN(parseFloat(ota_early_checkin_gst_pct)) ? parseFloat(ota_early_checkin_gst_pct) : 5
     );
 
     res.json({ success: true, roomId: result.lastInsertRowid });
@@ -401,6 +481,7 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       room_number, 
       room_type, 
       price, 
+      price_single,
       max_adults, 
       max_children, 
       max_discount_pct, 
@@ -412,6 +493,15 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       max_extra_beds,
       extra_bed_price,
       gst_pct,
+      extra_bed_gst_pct,
+      breakfast_gst_pct,
+      ext_3h_gst_pct,
+      ext_6h_gst_pct,
+      ext_9h_gst_pct,
+      single_gst_pct,
+      ota_early_checkin_price,
+      ota_early_checkin_max_hours,
+      ota_early_checkin_gst_pct,
       status 
     } = req.body;
 
@@ -428,12 +518,17 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       }
     }
 
+    const resolvedPriceSingle = price_single !== undefined 
+      ? (price_single !== '' && price_single !== null ? parseFloat(price_single) : null)
+      : currentRoom.price_single;
+
     const stmt = db.prepare(`
       UPDATE rooms 
       SET 
         room_number = COALESCE(?, room_number),
         room_type = COALESCE(?, room_type),
         price = COALESCE(?, price),
+        price_single = ?,
         max_adults = COALESCE(?, max_adults),
         max_children = COALESCE(?, max_children),
         max_discount_pct = COALESCE(?, max_discount_pct),
@@ -445,6 +540,15 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
         max_extra_beds = COALESCE(?, max_extra_beds),
         extra_bed_price = COALESCE(?, extra_bed_price),
         gst_pct = COALESCE(?, gst_pct),
+        extra_bed_gst_pct = COALESCE(?, extra_bed_gst_pct),
+        breakfast_gst_pct = COALESCE(?, breakfast_gst_pct),
+        ext_3h_gst_pct = COALESCE(?, ext_3h_gst_pct),
+        ext_6h_gst_pct = COALESCE(?, ext_6h_gst_pct),
+        ext_9h_gst_pct = COALESCE(?, ext_9h_gst_pct),
+        single_gst_pct = COALESCE(?, single_gst_pct),
+        ota_early_checkin_price = COALESCE(?, ota_early_checkin_price),
+        ota_early_checkin_max_hours = COALESCE(?, ota_early_checkin_max_hours),
+        ota_early_checkin_gst_pct = COALESCE(?, ota_early_checkin_gst_pct),
         status = COALESCE(?, status)
       WHERE id = ?
     `);
@@ -453,6 +557,7 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       room_number,
       room_type,
       price !== undefined ? parseFloat(price) : null,
+      resolvedPriceSingle,
       max_adults !== undefined ? parseInt(max_adults) : null,
       max_children !== undefined ? parseInt(max_children) : null,
       max_discount_pct !== undefined ? parseFloat(max_discount_pct) : null,
@@ -464,6 +569,15 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       max_extra_beds !== undefined ? parseInt(max_extra_beds) : null,
       extra_bed_price !== undefined ? parseFloat(extra_bed_price) : null,
       gst_pct !== undefined ? parseFloat(gst_pct) : null,
+      extra_bed_gst_pct !== undefined ? parseFloat(extra_bed_gst_pct) : null,
+      breakfast_gst_pct !== undefined ? parseFloat(breakfast_gst_pct) : null,
+      ext_3h_gst_pct !== undefined ? parseFloat(ext_3h_gst_pct) : null,
+      ext_6h_gst_pct !== undefined ? parseFloat(ext_6h_gst_pct) : null,
+      ext_9h_gst_pct !== undefined ? parseFloat(ext_9h_gst_pct) : null,
+      single_gst_pct !== undefined ? parseFloat(single_gst_pct) : null,
+      ota_early_checkin_price !== undefined && ota_early_checkin_price !== '' && ota_early_checkin_price !== null ? parseFloat(ota_early_checkin_price) : null,
+      ota_early_checkin_max_hours !== undefined && ota_early_checkin_max_hours !== '' && ota_early_checkin_max_hours !== null ? parseInt(ota_early_checkin_max_hours) : null,
+      ota_early_checkin_gst_pct !== undefined && ota_early_checkin_gst_pct !== '' && ota_early_checkin_gst_pct !== null ? parseFloat(ota_early_checkin_gst_pct) : null,
       status,
       id
     );
@@ -596,10 +710,16 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const doc_type = b.doc_type ?? b.docType;
     const doc_front = b.doc_front ?? b.docFront;
     const doc_back = b.doc_back ?? b.docBack;
-    const guest_photo = b.guest_photo ?? b.guestPhoto;
-    const adults_male = b.adults_male ?? b.adultsMale ?? 1;
-    const adults_female = b.adults_female ?? b.adultsFemale ?? 0;
-    const adults_other = b.adults_other ?? b.adultsOther ?? 0;
+    let adults_male = parseInt(b.adults_male ?? b.adultsMale ?? 1) || 0;
+    let adults_female = parseInt(b.adults_female ?? b.adultsFemale ?? 0) || 0;
+    let adults_other = parseInt(b.adults_other ?? b.adultsOther ?? 0) || 0;
+    const cleanExtraBeds = parseInt(b.extra_beds ?? b.extraBeds ?? 0) || 0;
+    // User Requirement: "if 2 bed + 1 Extra mattress = it will be 1pax or 3 pax (we want it should be 3 pax)"
+    const roomBaseCapacity = parseInt(primaryRoom.max_adults) || 2;
+    if (cleanExtraBeds > 0 && (adults_male + adults_female + adults_other) < (roomBaseCapacity + cleanExtraBeds)) {
+      const needed = (roomBaseCapacity + cleanExtraBeds) - (adults_female + adults_other);
+      adults_male = Math.max(adults_male, needed);
+    }
     const children = b.children ?? 0;
     const approx_checkout_time = b.approx_checkout_time ?? b.approxCheckout ?? b.approx_checkout;
     const room_rate = b.room_rate ?? b.baseRate ?? b.base_rate;
@@ -663,9 +783,11 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     // 1. Insert Guest
     const cleanAltMobile = (alt_mobile || req.body.alternate_mobile || req.body.mobile_alt || '').trim();
     const cleanAadharNumber = (b.aadhar_number || b.aadharNumber || b.aadharNo || b.aadhar_no || b.id_number || b.idNumber || b.id_no || b.idNo || '').trim();
+    const cleanCompanyName = (b.company_name || b.companyName || req.body.company_name || req.body.companyName || b.btc_company_name || '').trim() || null;
+    const cleanGstNumber = (b.gst_number || b.gstNumber || req.body.gst_number || req.body.gstNumber || b.btc_gst_number || '').trim() || null;
     const guestStmt = db.prepare(`
-      INSERT INTO guests (name, father_name, mobile, alt_mobile, email, address, dob, doc_type, doc_front, doc_back, guest_photo, aadhar_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO guests (name, father_name, mobile, alt_mobile, email, address, dob, doc_type, doc_front, doc_back, guest_photo, aadhar_number, company_name, gst_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const guestResult = guestStmt.run(
       guest_name || 'Guest',
@@ -679,7 +801,9 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       doc_front || '',
       doc_back || '',
       guest_photo || '',
-      cleanAadharNumber
+      cleanAadharNumber,
+      cleanCompanyName,
+      cleanGstNumber
     );
     const guestId = guestResult.lastInsertRowid;
 
@@ -696,33 +820,38 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     let computedExtensionCharge = 0;
     if (approx_checkout_time) {
       try {
-        const cInStr = (b.checkin_time || b.checkinTime || new Date().toISOString()).split('T')[0];
-        const cOutStr = String(approx_checkout_time).split('T')[0];
-        if (cInStr && cOutStr) {
-          const dIn = new Date(cInStr);
-          const dOut = new Date(cOutStr);
-          const diffDays = Math.round((dOut - dIn) / (1000 * 60 * 60 * 24));
-          stayNights = Math.max(1, diffDays);
-        }
+        const cInStr = (b.checkin_time || b.checkinTime || new Date().toISOString());
+        const dIn = new Date(cInStr);
+        const dOut = new Date(approx_checkout_time);
+        if (!isNaN(dIn.getTime()) && !isNaN(dOut.getTime()) && dOut > dIn) {
+          const cInDate = cInStr.split('T')[0];
+          const cOutDate = String(approx_checkout_time).split('T')[0];
+          if (cInDate && cOutDate) {
+            const diffDays = Math.round((new Date(cOutDate) - new Date(cInDate)) / (1000 * 60 * 60 * 24));
+            stayNights = Math.max(1, diffDays);
+          }
 
-        const timePart = String(approx_checkout_time).includes('T') ? String(approx_checkout_time).split('T')[1]?.slice(0, 5) : null;
-        if (timePart) {
-          const [h, m] = timePart.split(':').map(Number);
-          const totalCheckoutMins = (h || 0) * 60 + (m || 0);
-          const r3h = primaryRoom.ext_3h_rate ?? 500;
-          const r6h = primaryRoom.ext_6h_rate ?? 1000;
-          const r9h = primaryRoom.ext_9h_rate ?? 1500;
+          if (!isOta) {
+            const elapsedHours = (dOut.getTime() - dIn.getTime()) / (1000 * 60 * 60);
+            const paidStayHours = stayNights * 24;
+            if (elapsedHours > paidStayHours) {
+              const extraMinutes = (elapsedHours - paidStayHours) * 60;
+              const graceMins = Number(primaryRoom.ext_grace_mins) || 60;
+              const r3h = primaryRoom.ext_3h_rate ?? 500;
+              const r6h = primaryRoom.ext_6h_rate ?? 1000;
+              const r9h = primaryRoom.ext_9h_rate ?? 1500;
 
-          // Up to 11:00 AM (660 mins): Standard / Grace (₹0)
-          if (totalCheckoutMins > 11 * 60) {
-            if (totalCheckoutMins <= 13 * 60) {
-              computedExtensionCharge = r3h;
-            } else if (totalCheckoutMins <= 16 * 60) {
-              computedExtensionCharge = r6h;
-            } else if (totalCheckoutMins <= 19 * 60) {
-              computedExtensionCharge = r9h;
-            } else {
-              computedExtensionCharge = primaryRoom.price;
+              if (extraMinutes > graceMins) {
+                if (extraMinutes <= 180) {
+                  computedExtensionCharge = r3h;
+                } else if (extraMinutes <= 360) {
+                  computedExtensionCharge = r6h;
+                } else if (extraMinutes <= 540) {
+                  computedExtensionCharge = r9h;
+                } else {
+                  computedExtensionCharge = Number(primaryRoom.price || 2000);
+                }
+              }
             }
           }
         }
@@ -734,7 +863,22 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       ? (parseFloat(req.body.extension_charge) || 0)
       : computedExtensionCharge;
     if (isOta) {
-      extCharge = 0; // For OTA bookings, early check-in or fixed stay is ₹0 extra charge
+      extCharge = 0; // For OTA bookings, extension is handled separately or included
+    }
+
+    let otaEarlyCheckinCharge = 0;
+    let otaEarlyCheckinGst = 0;
+    if (isOta && is_early_checkin) {
+      const roomEarlyPrice = (primaryRoom.ota_early_checkin_price !== undefined && primaryRoom.ota_early_checkin_price !== null)
+        ? parseFloat(primaryRoom.ota_early_checkin_price)
+        : 900;
+      const roomEarlyGstPct = (primaryRoom.ota_early_checkin_gst_pct !== undefined && primaryRoom.ota_early_checkin_gst_pct !== null)
+        ? parseFloat(primaryRoom.ota_early_checkin_gst_pct)
+        : 5;
+      otaEarlyCheckinCharge = (b.early_checkin_charge !== undefined && b.early_checkin_charge !== null)
+        ? parseFloat(b.early_checkin_charge)
+        : roomEarlyPrice;
+      otaEarlyCheckinGst = Math.round(otaEarlyCheckinCharge * (roomEarlyGstPct / 100));
     }
 
     const extraBedFee = parseFloat(extra_bed_charge) || 0;
@@ -747,7 +891,7 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
 
     let effectiveBaseRate = (parseFloat(room_rate) || combinedBaseRate) * stayNights + extCharge + extraBedFee + mealFee;
     if (manualOtaAmount !== null && manualOtaAmount >= 0) {
-      effectiveBaseRate = manualOtaAmount + extCharge + extraBedFee + mealFee;
+      effectiveBaseRate = manualOtaAmount + extCharge + extraBedFee + mealFee + otaEarlyCheckinCharge;
     }
 
     const maxDiscount = Math.min(...allRooms.map(r => r.max_discount_pct || 15));
@@ -761,8 +905,17 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const roomGstPct = primaryRoom && primaryRoom.gst_pct !== undefined && primaryRoom.gst_pct !== null
       ? (parseFloat(primaryRoom.gst_pct) || 0)
       : fallbackGstPct;
-    const tariffTax = isOta ? 0 : Math.round(netChargeBeforeTax * (roomGstPct / 100));
-    let netTotalCharge = netChargeBeforeTax + tariffTax;
+
+    // User Requirement: "In ota booking, either prebook / pay at hotel, gst is 5%, right? it will be included or excluded from entered amount (we want included with gst)"
+    const otaGstPct = roomGstPct || 5;
+    let otaBaseAmount = 0;
+    let otaGstAmount = 0;
+    if (isOta && manualOtaAmount !== null && manualOtaAmount >= 0) {
+      otaBaseAmount = Math.round((manualOtaAmount / (1 + (otaGstPct / 100))) * 100) / 100;
+      otaGstAmount = Number((manualOtaAmount - otaBaseAmount).toFixed(2));
+    }
+    const tariffTax = isOta ? otaGstAmount : Math.round(netChargeBeforeTax * (roomGstPct / 100));
+    let netTotalCharge = isOta ? effectiveBaseRate : (netChargeBeforeTax + tariffTax);
 
     let cleanIsPrepaid = 0;
     if (isOta) {
@@ -777,7 +930,7 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     if (isOta) {
       const extraRoomsFee = parseFloat(req.body.extra_rooms_charge || req.body.extraRoomsCharge) || 0;
       const extraBreakfastFee = parseFloat(req.body.extra_breakfast_charge || req.body.extraBreakfastCharge) || 0;
-      const otaExtrasFee = extraBedFee + extCharge + extraRoomsFee + extraBreakfastFee;
+      const otaExtrasFee = extraBedFee + extCharge + extraRoomsFee + extraBreakfastFee + otaEarlyCheckinCharge;
       const explicitAdvancePayment = Math.max(
         (parseFloat(split_cash) || 0) + (parseFloat(split_card) || 0) + (parseFloat(split_online) || 0) + (parseFloat(split_cheque) || 0),
         parseFloat(advance_payment) || 0
@@ -804,7 +957,7 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       throw new Error(`Advance payment (₹${totalPaid.toLocaleString('en-IN')}) cannot exceed the total bill amount (₹${netTotalCharge.toLocaleString('en-IN')}).`);
     }
 
-    const checkinTime = new Date().toISOString();
+    const checkinTime = (b.checkin_time || b.checkinTime || req.body.checkin_time || req.body.checkinTime || new Date().toISOString()).trim();
     
     const paymentStatus = isBtc ? 'pending_from_company' : (totalPaid >= netTotalCharge ? 'paid' : (totalPaid > 0 ? 'partial' : 'pending'));
     
@@ -842,12 +995,86 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const advCardSurcharge = b.card_surcharge !== undefined ? parseFloat(b.card_surcharge) : (b.cardSurcharge !== undefined ? parseFloat(b.cardSurcharge) : defaultAdvCard);
     const advUpiTax = b.upi_tax !== undefined ? parseFloat(b.upi_tax) : (b.upiTax !== undefined ? parseFloat(b.upiTax) : defaultAdvUpi);
 
-    // Generate standard voucher number and sequential receipt number (format: YYYYMMDD-SR, resets monthly)
+    // Generate standard voucher number for check-in registration
     const standardVoucherNo = getNextMonthlyVoucherNumber('REG');
-    const advanceReceiptNo = totalPaid > 0 ? getReceiptNumberWithMode(advMode) : null;
+
+    // Generate separate serial receipt numbers for each payment mode (starts from 01, 02... with prefixes CR, UPI, POS, CHQ)
+    const paymentReceipts = [];
+    const receiptNumbers = {};
+    if (totalPaid > 0) {
+      if (splitCashVal > 0) {
+        const no = getReceiptNumberWithMode('cash');
+        paymentReceipts.push({
+          receipt_no: no,
+          mode: 'cash',
+          amount: splitCashVal,
+          base_amount: splitCashVal,
+          label: 'Cash'
+        });
+        receiptNumbers.cash = no;
+      }
+      if (splitOnlineVal > 0) {
+        const no = getReceiptNumberWithMode('upi');
+        paymentReceipts.push({
+          receipt_no: no,
+          mode: 'upi',
+          amount: splitOnlineVal + advUpiTax,
+          base_amount: splitOnlineVal,
+          label: 'Online UPI',
+          utr_number: online_utr,
+          upi_tax: advUpiTax
+        });
+        receiptNumbers.upi = no;
+      }
+      if (splitCardVal > 0) {
+        const no = getReceiptNumberWithMode('card');
+        paymentReceipts.push({
+          receipt_no: no,
+          mode: 'card',
+          amount: splitCardVal + advCardSurcharge,
+          base_amount: splitCardVal,
+          label: 'Card POS',
+          card_surcharge: advCardSurcharge
+        });
+        receiptNumbers.card = no;
+      }
+      if (splitChequeVal > 0) {
+        const no = getReceiptNumberWithMode('cheque');
+        paymentReceipts.push({
+          receipt_no: no,
+          mode: 'cheque',
+          amount: splitChequeVal,
+          base_amount: splitChequeVal,
+          label: 'Cheque',
+          cheque_no: advChequeNo,
+          bank_name: advChequeBank
+        });
+        receiptNumbers.cheque = no;
+      }
+      if (paymentReceipts.length === 0) {
+        const no = getReceiptNumberWithMode(advMode);
+        paymentReceipts.push({
+          receipt_no: no,
+          mode: advMode,
+          amount: totalPaid,
+          base_amount: totalPaid,
+          label: advMode === 'upi' ? 'Online UPI' : (advMode === 'card' ? 'Card POS' : (advMode === 'cheque' ? 'Cheque' : 'Cash'))
+        });
+        receiptNumbers[advMode] = no;
+      }
+    }
+    const advanceReceiptNo = paymentReceipts.length > 0 ? paymentReceipts.map(p => p.receipt_no).join(', ') : null;
     const cleanMemberDocsJson = typeof b.member_documents === 'string'
       ? b.member_documents
       : JSON.stringify(b.member_documents || b.memberDocuments || b.member_documents_json || []);
+
+    const cleanTaxType = (b.tax_type || (b.is_igst || b.isIgst ? 'igst' : 'cgst_sgst')).toLowerCase();
+    const cleanIsIgst = (cleanTaxType === 'igst' || b.is_igst || b.isIgst) ? 1 : 0;
+    let cleanCompanyAddress = (b.company_address || b.companyAddress || b.btcCompanyAddress || b.btc_company_address || '').trim() || null;
+    if (!cleanCompanyAddress && cleanBtcCompanyId) {
+      const comp = db.prepare('SELECT address FROM btc_companies WHERE id = ?').get(cleanBtcCompanyId);
+      if (comp && comp.address) cleanCompanyAddress = comp.address.trim();
+    }
 
     // 4. Insert Bookings for each allocated room
     const bookingStmt = db.prepare(`
@@ -860,10 +1087,12 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
         btc_company_id, btc_company_name, btc_approval_ref, advance_payment, advance_payment_mode,
         advance_receipt_no, advance_cheque_no, advance_cheque_bank, advance_cheque_status, alt_mobile,
         advance_cheque_photo, cheque_photo, advance_utr_number, member_documents_json, voucher_number,
-        is_early_checkin, original_checkin_time, early_checkin_time, advance_card_surcharge, advance_upi_tax,
+        is_early_checkin, original_checkin_time, early_checkin_time, early_checkin_charge, early_checkin_gst,
+        advance_card_surcharge, advance_upi_tax,
         ota_booked_adults, ota_booked_children, ota_booked_extra_beds, extra_adults, extra_children,
-        extra_rooms_charge, extra_breakfast_charge, extra_meal_plan
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        extra_rooms_charge, extra_breakfast_charge, extra_meal_plan,
+        company_name, gst_number, company_address, tax_type, is_igst
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const bookingIds = [];
@@ -930,6 +1159,8 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
         is_early_checkin,
         original_checkin_time,
         early_checkin_time,
+        idx === 0 ? otaEarlyCheckinCharge : 0,
+        idx === 0 ? otaEarlyCheckinGst : 0,
         idx === 0 ? advCardSurcharge : 0,
         idx === 0 ? advUpiTax : 0,
         idx === 0 ? ota_booked_adults : null,
@@ -939,7 +1170,12 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
         idx === 0 ? extra_children : 0,
         idx === 0 ? extra_rooms_charge : 0,
         idx === 0 ? extra_breakfast_charge : 0,
-        idx === 0 ? extra_meal_plan : null
+        idx === 0 ? extra_meal_plan : null,
+        cleanCompanyName,
+        cleanGstNumber,
+        cleanCompanyAddress,
+        cleanTaxType,
+        cleanIsIgst
       );
 
       const bId = result.lastInsertRowid;
@@ -954,38 +1190,42 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     });
 
     // 6. Record in Centralized Accounting Payments Ledger if advance payment made
-    if (totalPaid > 0 && advanceReceiptNo) {
-      db.prepare(`
+    if (totalPaid > 0 && paymentReceipts.length > 0) {
+      const pmtStmt = db.prepare(`
         INSERT INTO payments (
           receipt_no, booking_id, room_id, department, payment_type, payment_mode,
           amount, cheque_no, bank_name, cheque_date, cheque_status, realized_at,
           btc_company_id, btc_company_name, cashier_name, notes, cheque_photo, utr_number,
           card_surcharge, upi_tax, split_cash, split_card, split_online, split_cheque
         ) VALUES (?, ?, ?, 'hospitality', 'advance', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        advanceReceiptNo,
-        bookingIds[0],
-        primaryRoom.id,
-        advMode,
-        totalPaid,
-        advChequeNo,
-        advChequeBank,
-        advChequeDate,
-        advChequeStatus,
-        advChequeStatus === 'realized' ? checkinTime : null,
-        cleanBtcCompanyId,
-        cleanBtcCompanyName,
-        cleanCheckedInBy,
-        `paid while checkin : checkin${advCardSurcharge > 0 ? ` (+₹${advCardSurcharge} Card fee)` : ''}${advUpiTax > 0 ? ` (+₹${advUpiTax} UPI tax)` : ''}`,
-        advChequePhoto,
-        online_utr,
-        advCardSurcharge,
-        advUpiTax,
-        splitCashVal,
-        splitCardVal,
-        splitOnlineVal,
-        splitChequeVal
-      );
+      `);
+
+      paymentReceipts.forEach(pr => {
+        pmtStmt.run(
+          pr.receipt_no,
+          bookingIds[0],
+          primaryRoom.id,
+          pr.mode,
+          pr.amount,
+          pr.mode === 'cheque' ? (pr.cheque_no || advChequeNo) : null,
+          pr.mode === 'cheque' ? (pr.bank_name || advChequeBank) : null,
+          pr.mode === 'cheque' ? advChequeDate : null,
+          pr.mode === 'cheque' ? advChequeStatus : 'realized',
+          pr.mode === 'cheque' && advChequeStatus === 'pending' ? null : checkinTime,
+          cleanBtcCompanyId,
+          cleanBtcCompanyName,
+          cleanCheckedInBy,
+          `paid while checkin : ${pr.label}${pr.card_surcharge ? ` (+₹${pr.card_surcharge} Card fee)` : ''}${pr.upi_tax ? ` (+₹${pr.upi_tax} UPI tax)` : ''}`,
+          pr.mode === 'cheque' ? advChequePhoto : null,
+          pr.mode === 'upi' ? online_utr : null,
+          pr.card_surcharge || 0,
+          pr.upi_tax || 0,
+          pr.mode === 'cash' ? pr.amount : 0,
+          pr.mode === 'card' ? pr.base_amount : 0,
+          pr.mode === 'upi' ? pr.base_amount : 0,
+          pr.mode === 'cheque' ? pr.amount : 0
+        );
+      });
     }
 
     return {
@@ -1012,6 +1252,11 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       totalPaid,
       paymentStatus,
       advanceReceiptNo,
+      advance_receipt_no: advanceReceiptNo,
+      receiptNumbers,
+      receipt_numbers: receiptNumbers,
+      receipts: paymentReceipts,
+      paymentReceipts,
       voucherNumber: standardVoucherNo,
       voucher_number: standardVoucherNo,
       memberDocuments: JSON.parse(cleanMemberDocsJson || '[]'),
@@ -1223,11 +1468,14 @@ function calculateActualStayAndExtension({
   meal_plan = 'without_breakfast',
   extra_bed_charge = 0,
   adults_male = 1,
-  adults_female = 0
+  adults_female = 0,
+  booking_source = null,
+  is_ota = false
 }) {
   const dIn = new Date(checkin_time || Date.now());
   const dOut = new Date(actual_checkout_time || Date.now());
   const dExpected = approx_checkout_time ? new Date(approx_checkout_time) : null;
+  const isOtaBooking = is_ota || (room && (room.booking_source === 'OTA' || room.source === 'OTA')) || (booking_source === 'OTA');
 
   // Expected nights booked
   let expectedNights = 1;
@@ -1235,11 +1483,6 @@ function calculateActualStayAndExtension({
     const diffDays = Math.round((dExpected - dIn) / (1000 * 60 * 60 * 24));
     expectedNights = Math.max(1, diffDays);
   }
-
-  // Elapsed stay
-  const elapsedMs = Math.max(0, dOut.getTime() - dIn.getTime());
-  const elapsedHours = elapsedMs / (1000 * 60 * 60);
-  const elapsedMins = elapsedMs / (1000 * 60);
 
   const graceMins = room.ext_grace_mins !== undefined && room.ext_grace_mins !== null ? Number(room.ext_grace_mins) : 60;
   const r3h = room.ext_3h_rate !== undefined && room.ext_3h_rate !== null ? Number(room.ext_3h_rate) : 500;
@@ -1254,33 +1497,75 @@ function calculateActualStayAndExtension({
   let chargedDays = 1;
   let isEarlyCheckout = false;
 
-  // Rule 1: Short stay (< 24 hrs) - minimum 1 day rent
-  if (elapsedHours < 24) {
-    completedDays = 0;
-    chargedDays = 1;
-    extraHours = Math.floor(elapsedHours);
-    extraMins = Math.floor(elapsedMins % 60);
-    extensionCharge = 0; // Covered by 1 day minimum rent
-  } else {
-    completedDays = Math.floor(elapsedHours / 24);
-    chargedDays = completedDays;
-    extraHours = Math.floor(elapsedHours % 24);
-    extraMins = Math.floor(elapsedMins % 60);
-    const extraTotalMins = extraHours * 60 + extraMins;
+  if (isOtaBooking) {
+    // Point 10: All OTA bookings complete their day at 10:00 AM of the departure date regardless of check-in time
+    const otaCutoff = dExpected ? new Date(dExpected) : new Date(dIn);
+    otaCutoff.setHours(10, 0, 0, 0);
 
-    if (extraTotalMins <= graceMins) {
-      extensionCharge = 0;
-    } else if (extraTotalMins <= 180) {
-      extensionCharge = r3h;
-    } else if (extraTotalMins <= 360) {
-      extensionCharge = r6h;
-    } else if (extraTotalMins <= 540) {
-      extensionCharge = r9h;
-    } else {
-      // Past 9 hours counts as a full day
-      chargedDays = completedDays + 1;
-      extensionCharge = 0;
+    const diffToExpectedMs = dOut.getTime() - otaCutoff.getTime();
+    if (diffToExpectedMs <= 0) {
+      // Checked out at or before expected 10:00 AM
+      const calendarDays = Math.max(1, Math.round((dOut - dIn) / (1000 * 60 * 60 * 24)));
+      completedDays = calendarDays;
+      chargedDays = Math.min(expectedNights, calendarDays);
       extraHours = 0;
+      extraMins = 0;
+      extensionCharge = 0;
+    } else {
+      // Past 10:00 AM on departure date
+      completedDays = expectedNights;
+      chargedDays = expectedNights;
+      const extraTotalMins = Math.floor(diffToExpectedMs / (1000 * 60));
+      extraHours = Math.floor(extraTotalMins / 60);
+      extraMins = extraTotalMins % 60;
+
+      if (extraTotalMins <= graceMins) {
+        extensionCharge = 0;
+      } else if (extraTotalMins <= 180) {
+        extensionCharge = r3h;
+      } else if (extraTotalMins <= 360) {
+        extensionCharge = r6h;
+      } else if (extraTotalMins <= 540) {
+        extensionCharge = r9h;
+      } else {
+        chargedDays = expectedNights + 1;
+        extensionCharge = 0;
+        extraHours = 0;
+      }
+    }
+  } else {
+    // Point 10: Standard bookings: 1 day is strictly 24 hours from checkin_time
+    const elapsedMs = Math.max(0, dOut.getTime() - dIn.getTime());
+    const elapsedHours = elapsedMs / (1000 * 60 * 60);
+    const elapsedMins = elapsedMs / (1000 * 60);
+
+    if (elapsedHours < 24) {
+      completedDays = 0;
+      chargedDays = 1;
+      extraHours = Math.floor(elapsedHours);
+      extraMins = Math.floor(elapsedMins % 60);
+      extensionCharge = 0; // Covered by 1 day minimum rent
+    } else {
+      completedDays = Math.floor(elapsedHours / 24);
+      chargedDays = completedDays;
+      extraHours = Math.floor(elapsedHours % 24);
+      extraMins = Math.floor(elapsedMins % 60);
+      const extraTotalMins = extraHours * 60 + extraMins;
+
+      if (extraTotalMins <= graceMins) {
+        extensionCharge = 0;
+      } else if (extraTotalMins <= 180) {
+        extensionCharge = r3h;
+      } else if (extraTotalMins <= 360) {
+        extensionCharge = r6h;
+      } else if (extraTotalMins <= 540) {
+        extensionCharge = r9h;
+      } else {
+        // Past 9 hours counts as a full day
+        chargedDays = completedDays + 1;
+        extensionCharge = 0;
+        extraHours = 0;
+      }
     }
   }
 
@@ -1291,18 +1576,25 @@ function calculateActualStayAndExtension({
   const dailyBedFee = Number(extra_bed_charge) || 0;
 
   // Recalculated total room charge for actual stay
-  const recalculatedRoomCharge = (chargedDays * unitDailyRate) + extensionCharge + (chargedDays * dailyMealFee) + (chargedDays * dailyBedFee);
+  let recalculatedRoomCharge = (chargedDays * unitDailyRate) + extensionCharge + (chargedDays * dailyMealFee) + (chargedDays * dailyBedFee);
 
   // Original room charge (if provided or fallback to expectedNights * unitDailyRate)
-  const originalCharge = total_room_charge !== null && total_room_charge !== undefined
-    ? Number(total_room_charge)
-    : (expectedNights * unitDailyRate + (expectedNights * dailyMealFee) + (expectedNights * dailyBedFee));
+  const declaredNightsCharge = (expectedNights * unitDailyRate) + (expectedNights * dailyMealFee) + (expectedNights * dailyBedFee);
+  const originalCharge = Math.max(Number(total_room_charge) || 0, declaredNightsCharge);
 
   // Determine early checkout
   if (expectedNights > 1 && (chargedDays < expectedNights || (chargedDays === expectedNights && extensionCharge === 0 && dOut < dExpected))) {
     if (recalculatedRoomCharge < originalCharge) {
       isEarlyCheckout = true;
     }
+  }
+
+  // If not early checkout and stay is within expected checkout (not overstaying), do not add extra hours penalty
+  if (!isEarlyCheckout && dExpected && dOut <= dExpected && chargedDays >= expectedNights) {
+    extensionCharge = 0;
+    extraHours = 0;
+    extraMins = 0;
+    recalculatedRoomCharge = (chargedDays * unitDailyRate) + (chargedDays * dailyMealFee) + (chargedDays * dailyBedFee);
   }
 
   // Human readable stay duration
@@ -1329,6 +1621,62 @@ function calculateActualStayAndExtension({
     differenceRefundDue: Math.max(0, Math.round(originalCharge - recalculatedRoomCharge)),
     stayDurationStr
   };
+}
+
+/**
+ * Synchronizes pending F&B room charges from Supabase room_charges_inbox into local SQLite.
+ * Ensures orders are stored with booking_id so folio calculations and checkout reconciliation are 100% accurate.
+ */
+async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bookingId, guestName) {
+  if (!supabaseService || !roomNumber) return [];
+  try {
+    const pending = await supabaseService.fetchPendingRoomCharges(roomNumber);
+    if (!pending || pending.length === 0) return [];
+    
+    const importedIds = [];
+    for (const cc of pending) {
+      const totalAmt = parseFloat(cc.grand_total) || 0;
+      if (totalAmt <= 0) continue;
+      const orderNum = cc.bill_no || `CLD-${cc.id}`;
+      const itemsJson = cc.items_summary ? JSON.stringify([{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }]) : '[]';
+      const subtotalAmt = parseFloat(cc.subtotal) || Math.round(totalAmt / 1.05);
+      const taxAmt = parseFloat(cc.gst) || (totalAmt - subtotalAmt);
+      const cashierName = cc.cashier_name || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
+      const createdAt = cc.created_at ? cc.created_at.replace('T', ' ').substring(0, 19) : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+      if (cc.department === 'bar') {
+        const existing = dbInstance.prepare('SELECT id FROM bar_orders WHERE order_number = ?').get(orderNum);
+        if (!existing) {
+          dbInstance.prepare(`
+            INSERT INTO bar_orders (
+              order_number, room_id, customer_name, order_type,
+              items_json, subtotal, tax, discount, total,
+              payment_mode, is_paid, status, cashier_name,
+              booking_id, created_at
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName || 'In-House Guest', itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+          importedIds.push(cc.id);
+        }
+      } else {
+        const existing = dbInstance.prepare('SELECT id FROM restaurant_orders WHERE order_number = ?').get(orderNum);
+        if (!existing) {
+          dbInstance.prepare(`
+            INSERT INTO restaurant_orders (
+              order_number, room_id, customer_name, order_type,
+              items_json, subtotal, tax, discount, total,
+              payment_mode, is_paid, status, cashier_name,
+              booking_id, created_at
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName || 'In-House Guest', itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+          importedIds.push(cc.id);
+        }
+      }
+    }
+    return importedIds;
+  } catch (err) {
+    console.warn(`[Supabase] importCloudRoomChargesToSqlite notice for Room ${roomNumber}:`, err.message);
+    return [];
+  }
 }
 
 // 9. GET OCCUPIED ROOM FOLIO (Consolidated Room + Restaurant + Bar for all linked rooms)
@@ -1362,6 +1710,11 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
         b.is_early_checkin,
         b.original_checkin_time,
         b.early_checkin_time,
+        b.early_checkin_charge,
+        b.early_checkin_gst,
+        r.ota_early_checkin_price,
+        r.ota_early_checkin_max_hours,
+        r.ota_early_checkin_gst_pct,
         b.manual_entry,
         b.doc_proofs_json,
         b.meal_plan,
@@ -1405,6 +1758,13 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
         g.doc_front,
         g.doc_back,
         g.guest_photo,
+        b.company_name,
+        b.gst_number,
+        b.company_address,
+        b.tax_type,
+        b.is_igst,
+        g.company_name as guest_company_name,
+        g.gst_number as guest_gst_number,
         c.gst_number as btc_gst_number,
         c.address as btc_address,
         c.pan_number as btc_pan_number,
@@ -1472,6 +1832,8 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
         b.is_early_checkin,
         b.original_checkin_time,
         b.early_checkin_time,
+        b.early_checkin_charge,
+        b.early_checkin_gst,
         b.checkin_time,
         b.approx_checkout_time
       FROM rooms r 
@@ -1501,6 +1863,8 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const groupChildren = groupBookings.reduce((sum, gb) => sum + (gb.children || 0), 0);
     const groupExtraBeds = groupBookings.reduce((sum, gb) => sum + (gb.extra_beds || 0), 0);
     const groupExtraBedCharge = groupBookings.reduce((sum, gb) => sum + (gb.extra_bed_charge || 0), 0);
+    const groupEarlyCheckinCharge = groupBookings.reduce((sum, gb) => sum + (gb.early_checkin_charge || 0), 0);
+    const groupEarlyCheckinGst = groupBookings.reduce((sum, gb) => sum + (gb.early_checkin_gst || 0), 0);
     const groupOtaBookedAdults = groupBookings.reduce((sum, gb) => sum + (gb.ota_booked_adults || 0), 0);
     const groupOtaBookedChildren = groupBookings.reduce((sum, gb) => sum + (gb.ota_booked_children || 0), 0);
     const groupOtaBookedExtraBeds = groupBookings.reduce((sum, gb) => sum + (gb.ota_booked_extra_beds || 0), 0);
@@ -1518,6 +1882,8 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     room.split_cash = combinedSplitCash;
     room.split_card = combinedSplitCard;
     room.split_online = combinedSplitOnline;
+    room.early_checkin_charge = groupEarlyCheckinCharge;
+    room.early_checkin_gst = groupEarlyCheckinGst;
     room.adults_male = isCombined ? groupAdultsMale : (room.adults_male !== undefined && room.adults_male !== null ? room.adults_male : 1);
     room.adults_female = isCombined ? groupAdultsFemale : (room.adults_female || 0);
     room.adults_other = isCombined ? groupAdultsOther : (room.adults_other || 0);
@@ -1552,6 +1918,17 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       return localStr < min ? localStr : min;
     }, '2099-01-01 00:00:00');
     const validCheckinLocal = minCheckinLocal === '2099-01-01 00:00:00' ? '2000-01-01 00:00:00' : minCheckinLocal;
+
+    // Ensure all pending cloud charges for this room group are persisted in SQLite before querying
+    try {
+      const allRoomNums = room.all_group_room_numbers || [room.room_number];
+      for (const rNum of allRoomNums) {
+        const gb = groupBookings.find(g => g.room_number === rNum) || { booking_id: room.booking_id, room_id: room.id };
+        await importCloudRoomChargesToSqlite(db, rNum, gb.room_id, gb.booking_id, room.guest_name);
+      }
+    } catch (cErr) {
+      console.warn('[Supabase] Failed to persist cloud room charges for folio:', cErr.message);
+    }
 
     const restaurantOrders = db.prepare(`
       SELECT ro.*, r.room_number 
@@ -1653,7 +2030,7 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       room.is_prepaid === '1'
     );
     const otaBillAmount = parseFloat(room.ota_bill_amount) || 0;
-    const hotelExtrasCharge = groupExtraBedCharge + groupExtraRoomsCharge + groupExtraBreakfastCharge;
+    const hotelExtrasCharge = groupExtraBedCharge + groupExtraRoomsCharge + groupExtraBreakfastCharge + (isOta ? groupEarlyCheckinCharge : 0);
 
     // Dynamic Early Checkout Recalculation (enforces 1-day min, calculates extra hours via room extension rates)
     let stayCalc = { isEarlyCheckout: false, recalculatedRoomCharge: combinedTotalRoomCharge, extensionCharge: 0, chargedDays: 1, extraHours: 0 };
@@ -1672,10 +2049,59 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       });
     }
 
+    const nowDays = stayCalc.chargedDays || 1;
+    const nowExtraHours = stayCalc.extraHours || 0;
+    const nowExtensionCharge = stayCalc.extensionCharge || 0;
+    const effectiveGstPct = roomGstPct !== undefined && roomGstPct !== null ? roomGstPct : 5;
+
+    const hasBreakfast = room.meal_plan === 'with_breakfast' || room.meal_plan === 'breakfast';
+    const breakfastPax = hasBreakfast ? Math.max(1, (groupAdultsMale || 0) + (groupAdultsFemale || 0)) : 0;
+    const breakfastDailyRate = hasBreakfast ? (room.breakfast_price || 250) : 0;
+
+    // Itemized Now
+    const nowBaseRoomTariff = nowDays * combinedBaseRate;
+    const nowBaseRoomTariffGst = Math.round((nowBaseRoomTariff * effectiveGstPct) / 100);
+    const nowExtraMattressCost = nowDays * groupExtraBedCharge;
+    const nowExtraMattressGst = Math.round((nowExtraMattressCost * effectiveGstPct) / 100);
+    const nowBreakfastCost = nowDays * breakfastPax * breakfastDailyRate;
+    const nowBreakfastGst = Math.round((nowBreakfastCost * effectiveGstPct) / 100);
+    const nowExtensionGst = Math.round((nowExtensionCharge * effectiveGstPct) / 100);
+
+    const nowPreTaxGross = nowBaseRoomTariff + nowExtraMattressCost + nowBreakfastCost + nowExtensionCharge;
+    const nowDiscountAmount = combinedDiscountPct > 0
+      ? Math.round((nowPreTaxGross * combinedDiscountPct) / 100)
+      : (combinedDiscountAmount || 0);
+    const nowGrossGst = Math.round((nowPreTaxGross * effectiveGstPct) / 100);
+    const nowGrossTotal = nowPreTaxGross + nowGrossGst;
+
+    const nowRoomPreTax = nowPreTaxGross - nowDiscountAmount;
+    const nowRoomGst = Math.round((nowRoomPreTax * effectiveGstPct) / 100);
+    const nowRoomChargeCalc = nowRoomPreTax + nowRoomGst;
+    const nowDiscountTotal = Math.max(0, nowGrossTotal - nowRoomChargeCalc);
+    const nowDiscountGst = Math.max(0, nowDiscountTotal - nowDiscountAmount);
+
+    const nowRoomCharge = isOtaPrepaid
+      ? Math.max(hotelExtrasCharge, effectivePaid)
+      : (isOtaPayAtHotel
+          ? otaBillAmount + hotelExtrasCharge
+          : nowRoomChargeCalc);
+
     // Running totals tailored by booking source & prepaid status
     let effectiveRoomCharge = combinedTotalRoomCharge;
+    let effectiveDiscountAmount = combinedDiscountAmount;
+    let effectivePreTaxRoomCharge = Math.round(combinedTotalRoomCharge / gstFactor);
+
+    const hasDiscount = Boolean(combinedDiscountPct > 0 || (combinedDiscountAmount > 0 && Math.abs(nowRoomCharge - stayCalc.recalculatedRoomCharge) > 5));
     if (stayCalc.isEarlyCheckout && !isOtaPrepaid && !isOtaPayAtHotel) {
-      effectiveRoomCharge = stayCalc.recalculatedRoomCharge;
+      if (hasDiscount && nowRoomCharge !== undefined && nowRoomCharge !== null) {
+        effectiveRoomCharge = nowRoomCharge;
+        effectiveDiscountAmount = nowDiscountAmount;
+        effectivePreTaxRoomCharge = nowRoomPreTax;
+      } else {
+        effectiveRoomCharge = stayCalc.recalculatedRoomCharge;
+        effectiveDiscountAmount = combinedDiscountAmount;
+        effectivePreTaxRoomCharge = Math.round(stayCalc.recalculatedRoomCharge / gstFactor);
+      }
     }
 
     let effectiveGrandTotal = effectiveRoomCharge + foodTotal + barTotal;
@@ -1702,11 +2128,13 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     // Pre-tax room charge (taxable amount before GST)
     const combinedPreTaxRoomCharge = (isOtaPrepaid || isOtaPayAtHotel)
       ? effectiveRoomCharge
-      : Math.round(effectiveRoomCharge / gstFactor);
+      : (stayCalc.isEarlyCheckout ? effectivePreTaxRoomCharge : Math.round(effectiveRoomCharge / gstFactor));
 
     // Running totals
     const grandTotal = effectiveGrandTotal;
-    const roomGrossTariff = combinedPreTaxRoomCharge + combinedDiscountAmount;
+    const roomGrossTariff = (stayCalc.isEarlyCheckout && !isOtaPrepaid && !isOtaPayAtHotel)
+      ? nowPreTaxGross
+      : (combinedPreTaxRoomCharge + effectiveDiscountAmount);
     const grossTariff = roomGrossTariff;
     const balanceDue = effectiveBalanceDue;
 
@@ -1717,56 +2145,270 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       ORDER BY checkin_time DESC
     `).all(...groupBookings.map(b => b.booking_id));
 
-    res.json({
-      success: true,
-      folio: {
-        room,
-        restaurantOrders,
-        barOrders,
-        visitors: visitors || [],
-        payments: payments || [],
-        summary: {
-          grossTariff: roomGrossTariff,
-          roomGrossTariff,
-          roomTaxable: combinedPreTaxRoomCharge,
-          stayTaxable: combinedPreTaxRoomCharge,
-          stayTax: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
-          discountAmount: combinedDiscountAmount,
-          discountPct: combinedDiscountPct,
-          roomCharge: effectiveRoomCharge,
-          hotelExtrasCharge,
-          otaBillAmount,
-          isOtaPrepaid,
-          isOtaPayAtHotel,
-          cardSurcharge: combinedCardSurcharge,
-          upiTax: combinedUpiTax,
-          foodTotal,
-          barTotal,
-          fnbTotal: foodTotal + barTotal,
-          grandTotal,
-          netTotalCharge: grandTotal,
-          initialPaid: effectivePaid,
-          advancePaid: effectivePaid,
-          balanceDue,
-          isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
-          chargedDays: stayCalc.chargedDays || 1,
-          completedDays: stayCalc.completedDays || 0,
-          earlyStayDays: stayCalc.chargedDays || 1,
-          earlyStayHours: stayCalc.extraHours || 0,
-          earlyExtensionCharge: stayCalc.extensionCharge || 0,
-          stayDurationStr: stayCalc.stayDurationStr || '',
-          expectedNights: stayCalc.expectedNights || 1,
-          originalRoomCharge: combinedTotalRoomCharge,
-          recalculatedRoomCharge: stayCalc.isEarlyCheckout ? stayCalc.recalculatedRoomCharge : effectiveRoomCharge,
-          taxAmount: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
-          totalGst: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
-          refundAmount,
-          visitorsCount: (visitors || []).length
-        }
-      }
-    });
+          // Itemized Declared
+          const decDays = stayCalc.expectedNights || 1;
+          const decBaseRoomTariff = decDays * combinedBaseRate;
+          const decBaseRoomTariffGst = Math.round((decBaseRoomTariff * effectiveGstPct) / 100);
+          const decExtraMattressCost = decDays * groupExtraBedCharge;
+          const decExtraMattressGst = Math.round((decExtraMattressCost * effectiveGstPct) / 100);
+          const decBreakfastCost = decDays * breakfastPax * breakfastDailyRate;
+          const decBreakfastGst = Math.round((decBreakfastCost * effectiveGstPct) / 100);
+          const decPreTaxGross = decBaseRoomTariff + decExtraMattressCost + decBreakfastCost;
+          const decGrossGst = Math.round((decPreTaxGross * effectiveGstPct) / 100);
+          const decGrossTotal = decPreTaxGross + decGrossGst;
+
+          const decDiscountAmount = combinedDiscountPct > 0
+            ? Math.round((decPreTaxGross * combinedDiscountPct) / 100)
+            : (nowDays > 0 ? Math.round(((combinedDiscountAmount || 0) / nowDays) * decDays) : (combinedDiscountAmount || 0));
+
+          const decRoomPreTax = decPreTaxGross - decDiscountAmount;
+          const decRoomGst = Math.round((decRoomPreTax * effectiveGstPct) / 100);
+          const decRoomChargeCalc = decRoomPreTax + decRoomGst;
+          const decDiscountTotal = Math.max(0, decGrossTotal - decRoomChargeCalc);
+          const decDiscountGst = Math.max(0, decDiscountTotal - decDiscountAmount);
+
+          const decRoomCharge = isOtaPrepaid
+            ? Math.max(hotelExtrasCharge, effectivePaid)
+            : (isOtaPayAtHotel
+                ? otaBillAmount + hotelExtrasCharge
+                : decRoomChargeCalc);
+
+          // F&B
+          const fnbCombinedTotal = foodTotal + barTotal;
+          const fnbTaxable = Math.round(fnbCombinedTotal / 1.05);
+          const fnbGst = fnbCombinedTotal - fnbTaxable;
+
+          const nowGrandTotal = nowRoomCharge + fnbCombinedTotal;
+          const decGrandTotal = decRoomCharge + fnbCombinedTotal;
+
+          return res.json({
+            success: true,
+            folio: {
+              room,
+              restaurantOrders,
+              barOrders,
+              visitors: visitors || [],
+              payments: payments || [],
+              summary: {
+                grossTariff: roomGrossTariff,
+                roomGrossTariff,
+                roomTaxable: combinedPreTaxRoomCharge,
+                stayTaxable: combinedPreTaxRoomCharge,
+                stayTax: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
+                discountAmount: effectiveDiscountAmount,
+                discountPct: combinedDiscountPct,
+                roomCharge: effectiveRoomCharge,
+                hotelExtrasCharge,
+                earlyCheckinCharge: groupEarlyCheckinCharge,
+                earlyCheckinGst: groupEarlyCheckinGst,
+                otaBillAmount,
+                isOtaPrepaid,
+                isOtaPayAtHotel,
+                cardSurcharge: combinedCardSurcharge,
+                upiTax: combinedUpiTax,
+                foodTotal,
+                barTotal,
+                fnbTotal: fnbCombinedTotal,
+                grandTotal,
+                netTotalCharge: grandTotal,
+                initialPaid: effectivePaid,
+                advancePaid: effectivePaid,
+                balanceDue,
+                isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
+                chargedDays: stayCalc.chargedDays || 1,
+                completedDays: stayCalc.completedDays || 0,
+                earlyStayDays: stayCalc.chargedDays || 1,
+                earlyStayHours: stayCalc.extraHours || 0,
+                earlyExtensionCharge: stayCalc.extensionCharge || 0,
+                stayDurationStr: stayCalc.stayDurationStr || '',
+                expectedNights: stayCalc.expectedNights || 1,
+                recalculatedRoomCharge: stayCalc.isEarlyCheckout
+                  ? (hasDiscount ? (nowRoomCharge ?? stayCalc.recalculatedRoomCharge) : stayCalc.recalculatedRoomCharge)
+                  : effectiveRoomCharge,
+                taxAmount: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
+                totalGst: Math.max(0, effectiveRoomCharge - combinedPreTaxRoomCharge),
+                refundAmount,
+                visitorsCount: (visitors || []).length,
+                stayCalcNow: {
+                  isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
+                  roomCharge: nowRoomCharge,
+                  baseRoomTariff: nowBaseRoomTariff,
+                  baseRoomTariffGst: nowBaseRoomTariffGst,
+                  baseRoomTotal: nowBaseRoomTariff + nowBaseRoomTariffGst,
+                  dailyBaseRate: combinedBaseRate,
+                  extraMattressCost: nowExtraMattressCost,
+                  extraMattressGst: nowExtraMattressGst,
+                  extraMattressTotal: nowExtraMattressCost + nowExtraMattressGst,
+                  extraMattressBeds: groupExtraBeds,
+                  extraMattressDaily: groupExtraBedCharge,
+                  breakfastCost: nowBreakfastCost,
+                  breakfastGst: nowBreakfastGst,
+                  breakfastTotal: nowBreakfastCost + nowBreakfastGst,
+                  breakfastPax,
+                  breakfastDailyRate,
+                  extensionCharge: nowExtensionCharge,
+                  extensionGst: nowExtensionGst,
+                  extensionTotal: nowExtensionCharge + nowExtensionGst,
+                  extensionHours: nowExtraHours,
+                  discountAmount: nowDiscountAmount,
+                  discountGst: nowDiscountGst,
+                  discountTotal: nowDiscountTotal,
+                  roomSubtotalPreTax: nowRoomPreTax,
+                  roomGst: nowRoomGst,
+                  gstPct: effectiveGstPct,
+                  fnbTaxable,
+                  fnbGst,
+                  fnbTotal: fnbCombinedTotal,
+                  grandTotal: nowGrandTotal,
+                  paid: effectivePaid,
+                  balanceDue: Math.max(0, nowGrandTotal - effectivePaid),
+                  refundDue: Math.max(0, effectivePaid - nowGrandTotal),
+                  stayDurationStr: stayCalc.stayDurationStr || '',
+                  chargedDays: nowDays,
+                  extraHours: nowExtraHours
+                },
+                stayCalcDeclared: {
+                  roomCharge: decRoomCharge,
+                  baseRoomTariff: decBaseRoomTariff,
+                  baseRoomTariffGst: decBaseRoomTariffGst,
+                  baseRoomTotal: decBaseRoomTariff + decBaseRoomTariffGst,
+                  dailyBaseRate: combinedBaseRate,
+                  extraMattressCost: decExtraMattressCost,
+                  extraMattressGst: decExtraMattressGst,
+                  extraMattressTotal: decExtraMattressCost + decExtraMattressGst,
+                  extraMattressBeds: groupExtraBeds,
+                  extraMattressDaily: groupExtraBedCharge,
+                  breakfastCost: decBreakfastCost,
+                  breakfastGst: decBreakfastGst,
+                  breakfastTotal: decBreakfastCost + decBreakfastGst,
+                  breakfastPax,
+                  breakfastDailyRate,
+                  extensionCharge: 0,
+                  extensionGst: 0,
+                  extensionTotal: 0,
+                  discountAmount: decDiscountAmount,
+                  discountGst: decDiscountGst,
+                  discountTotal: decDiscountTotal,
+                  roomSubtotalPreTax: decRoomPreTax,
+                  roomGst: decRoomGst,
+                  gstPct: effectiveGstPct,
+                  fnbTaxable,
+                  fnbGst,
+                  fnbTotal: fnbCombinedTotal,
+                  grandTotal: decGrandTotal,
+                  paid: effectivePaid,
+                  balanceDue: Math.max(0, decGrandTotal - effectivePaid),
+                  refundDue: Math.max(0, effectivePaid - decGrandTotal),
+                  expectedNights: decDays
+                }
+              }
+            }
+          });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==========================================================================
+// IN-STAY ADVANCE PAYMENT API (Points 4 & 17)
+// Allows cashiers to record advance payments for active bookings anytime
+// ==========================================================================
+app.post('/api/rooms/:id/payments', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = db.prepare('SELECT current_booking_id, room_number FROM rooms WHERE id = ?').get(id);
+    if (!room || !room.current_booking_id) {
+      return res.status(404).json({ success: false, error: 'No active booking found for this room' });
+    }
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(room.current_booking_id);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+
+    const {
+      amount,
+      payment_mode = 'cash',
+      utr_number = null,
+      cheque_no = null,
+      bank_name = null,
+      cheque_photo = null,
+      split_cash = 0,
+      split_card = 0,
+      split_online = 0,
+      split_cheque = 0,
+      card_surcharge = 0,
+      upi_tax = 0,
+      notes = 'In-stay advance payment',
+      cashier_name = null
+    } = req.body;
+
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid payment amount is required' });
+    }
+
+    const cleanMode = String(payment_mode || 'cash').toLowerCase();
+    const receiptNo = getReceiptNumberWithMode(cleanMode);
+    const cleanCashier = (cashier_name || req.user?.username || req.user?.name || 'Front Desk Cashier').trim();
+
+    // Insert into payments ledger table
+    const result = db.prepare(`
+      INSERT INTO payments (
+        receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+        amount, cheque_no, bank_name, cheque_date, cheque_status, realized_at,
+        cashier_name, notes, utr_number, card_surcharge, upi_tax,
+        split_cash, split_card, split_online, split_cheque, cheque_photo
+      ) VALUES (?, ?, ?, 'hospitality', 'advance', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      receiptNo,
+      booking.id,
+      id,
+      cleanMode,
+      numAmount,
+      cheque_no || null,
+      bank_name || null,
+      new Date().toISOString().split('T')[0],
+      cleanMode === 'cheque' ? 'pending' : 'realized',
+      cleanMode === 'cheque' ? null : new Date().toISOString(),
+      cleanCashier,
+      notes,
+      utr_number || null,
+      parseFloat(card_surcharge) || 0,
+      parseFloat(upi_tax) || 0,
+      parseFloat(split_cash) || 0,
+      parseFloat(split_card) || 0,
+      parseFloat(split_online) || 0,
+      parseFloat(split_cheque) || 0,
+      cheque_photo || null
+    );
+
+    // Update booking paid aggregates
+    const newTotalPaid = (Number(booking.total_paid) || 0) + numAmount;
+    const newSplitCash = (Number(booking.split_cash) || 0) + (parseFloat(split_cash) || (cleanMode === 'cash' ? numAmount : 0));
+    const newSplitCard = (Number(booking.split_card) || 0) + (parseFloat(split_card) || (cleanMode === 'card' ? numAmount : 0));
+    const newSplitOnline = (Number(booking.split_online) || 0) + (parseFloat(split_online) || (cleanMode === 'upi' || cleanMode === 'online' ? numAmount : 0));
+
+    db.prepare(`
+      UPDATE bookings
+      SET total_paid = ?,
+          split_cash = ?,
+          split_card = ?,
+          split_online = ?
+      WHERE id = ?
+    `).run(newTotalPaid, newSplitCash, newSplitCard, newSplitOnline, booking.id);
+
+    const paymentRow = db.prepare('SELECT * FROM payments WHERE id = ?').get(result.lastInsertRowid);
+
+    res.json({
+      success: true,
+      payment: paymentRow,
+      receipt_no: receiptNo,
+      total_paid: newTotalPaid,
+      message: `Advance payment of ₹${numAmount.toLocaleString('en-IN')} recorded successfully with Receipt #${receiptNo}`
+    });
+  } catch (err) {
+    console.error('In-stay payment error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1875,8 +2517,34 @@ app.delete('/api/visitors/:id', requireAuth, requireRole('manager', 'hospitality
 });
 
 // 10. CHECKOUT ROOM (Settle balance or process refund, log into payments ledger, mark all linked rooms as needs_cleaning)
-app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
-  const transaction = db.transaction(() => {
+app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(id);
+    if (!room || room.status !== 'occupied' || !room.current_booking_id) {
+      return res.status(400).json({ success: false, error: 'Room is not currently occupied' });
+    }
+
+    const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
+    if (!primaryBooking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    // Sync any pending cloud room charges from Supabase into SQLite before checkout transaction
+    try {
+      const activeGroupBookings = db.prepare(`
+        SELECT b.id as booking_id, b.room_id, r.room_number, r.price 
+        FROM bookings b
+        JOIN rooms r ON b.room_id = r.id
+        WHERE b.guest_id = ? AND b.status = 'active' AND b.checkin_time = ?
+      `).all(primaryBooking.guest_id, primaryBooking.checkin_time);
+
+      for (const gb of activeGroupBookings) {
+        await importCloudRoomChargesToSqlite(db, gb.room_number, gb.room_id, gb.booking_id, primaryBooking.guest_name);
+      }
+    } catch (syncErr) {
+      console.warn('[Supabase] Pre-checkout cloud charge sync notice:', syncErr.message);
+    }
+
+    const transaction = db.transaction(() => {
     const { id } = req.params;
     const b = req.body || {};
     const split_cash = parseFloat(b.split_cash ?? b.splitCash) || 0;
@@ -1988,8 +2656,25 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       }
     }
 
-    const totalGroupBill = currentGroupRoomCharge + restUnpaid + barUnpaid;
-    const maxBalanceDue = Math.max(0, totalGroupBill - currentGroupTotalPaid);
+    const clientFood = parseFloat(b.food_total ?? b.foodTotal ?? b.food);
+    const clientBar = parseFloat(b.bar_total ?? b.barTotal ?? b.bar);
+    const clientFnb = parseFloat(b.fnb_total ?? b.fnbTotal ?? b.fnb);
+    let effectiveRestUnpaid = restUnpaid;
+    let effectiveBarUnpaid = barUnpaid;
+    if (!isNaN(clientFood) && clientFood > effectiveRestUnpaid) {
+      effectiveRestUnpaid = clientFood;
+    }
+    if (!isNaN(clientBar) && clientBar > effectiveBarUnpaid) {
+      effectiveBarUnpaid = clientBar;
+    }
+    if (!isNaN(clientFnb) && (effectiveRestUnpaid + effectiveBarUnpaid) < clientFnb) {
+      effectiveRestUnpaid = clientFnb - effectiveBarUnpaid;
+    }
+
+    const totalGroupBill = currentGroupRoomCharge + effectiveRestUnpaid + effectiveBarUnpaid;
+    const computedMaxBalanceDue = Math.max(0, totalGroupBill - currentGroupTotalPaid);
+    const clientBalanceDue = parseFloat(b.balance_due ?? b.balanceDue ?? b.remaining_balance ?? b.remainingBalance);
+    const maxBalanceDue = Math.max(computedMaxBalanceDue, !isNaN(clientBalanceDue) ? clientBalanceDue : 0);
 
     if (netSettle > maxBalanceDue + 1.0) {
       throw new Error(`Settlement payment (₹${netSettle.toFixed(2)}) cannot exceed balance due (₹${maxBalanceDue.toFixed(2)})`);
@@ -2000,8 +2685,14 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     // Generate settlement receipt or refund voucher number (format: YYYYMMDD-SR, resets monthly)
     const isBtcBooking = primaryBooking.booking_source === 'BTC' || primaryBooking.btc_company_id !== null || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending);
     const isCompanyPaysLater = isBtcBooking && (netSettle === 0 || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending));
-    const finalReceiptNo = (!isCompanyPaysLater && netSettle > 0) ? getReceiptNumberWithMode(settleMode) : null;
-    const refundVoucherNo = `DEB-${getNextMonthlyVoucherNumber('DEB')}`;
+    // User requirement: on receipt, refund, should be voucher no same as in checkin form (e.g. 260924-002)
+    const refundVoucherNo = primaryBooking.voucher_number ? String(primaryBooking.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : `DEB-${getNextMonthlyVoucherNumber('DEB')}`;
+    const baseVoucher = primaryBooking.voucher_number ? String(primaryBooking.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : `RCP-${500 + primaryBooking.id}`;
+    let finalReceiptNo = baseVoucher;
+    const existingPmt = db.prepare('SELECT id FROM payments WHERE receipt_no = ?').get(finalReceiptNo);
+    if (existingPmt) {
+      finalReceiptNo = `${baseVoucher}-1`;
+    }
 
     const isCheque = settleMode === 'cheque';
     const sChequeNo = isCheque ? (cheque_no || null) : null;
@@ -2116,37 +2807,69 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     const checkedOutRooms = activeGroupBookings.map(gb => gb.room_number);
 
     // Record Settlement Payment in Payments Ledger
+    const settleReceipts = [];
+    const settleReceiptNumbers = {};
     if (netSettle > 0) {
+      if (settleSplitCash > 0) {
+        const no = getReceiptNumberWithMode('cash');
+        settleReceipts.push({ receipt_no: no, mode: 'cash', amount: settleSplitCash, base_amount: settleSplitCash, label: 'Cash' });
+        settleReceiptNumbers.cash = no;
+      }
+      if (settleSplitOnline > 0) {
+        const no = getReceiptNumberWithMode('upi');
+        settleReceipts.push({ receipt_no: no, mode: 'upi', amount: settleSplitOnline + finalUpiTax, base_amount: settleSplitOnline, label: 'Online UPI', utr_number: online_utr, upi_tax: finalUpiTax });
+        settleReceiptNumbers.upi = no;
+      }
+      if (settleSplitCard > 0) {
+        const no = getReceiptNumberWithMode('card');
+        settleReceipts.push({ receipt_no: no, mode: 'card', amount: settleSplitCard + finalCardSurcharge, base_amount: settleSplitCard, label: 'Card POS', card_surcharge: finalCardSurcharge });
+        settleReceiptNumbers.card = no;
+      }
+      if (settleSplitCheque > 0) {
+        const no = getReceiptNumberWithMode('cheque');
+        settleReceipts.push({ receipt_no: no, mode: 'cheque', amount: settleSplitCheque, base_amount: settleSplitCheque, label: 'Cheque', cheque_no: sChequeNo, bank_name: sChequeBank });
+        settleReceiptNumbers.cheque = no;
+      }
+      if (settleReceipts.length === 0) {
+        const no = getReceiptNumberWithMode(settleMode);
+        settleReceipts.push({ receipt_no: no, mode: settleMode, amount: netSettle, base_amount: netSettle, label: settleMode === 'upi' ? 'Online UPI' : (settleMode === 'card' ? 'Card POS' : (settleMode === 'cheque' ? 'Cheque' : 'Cash')) });
+        settleReceiptNumbers[settleMode] = no;
+      }
+
       const cStatus = isCheque ? 'pending' : 'realized';
-      db.prepare(`
+      const settleStmt = db.prepare(`
         INSERT INTO payments (
           receipt_no, booking_id, room_id, department, payment_type, payment_mode,
           amount, cheque_no, bank_name, cheque_date, cheque_status, realized_at,
           cashier_name, notes, cheque_photo, utr_number,
           card_surcharge, upi_tax, split_cash, split_card, split_online, split_cheque
         ) VALUES (?, ?, ?, 'hospitality', 'bill_settlement', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        finalReceiptNo,
-        primaryBooking.id,
-        primaryBooking.room_id,
-        settleMode,
-        netSettle,
-        sChequeNo,
-        sChequeBank,
-        sChequeDate,
-        cStatus,
-        cStatus === 'realized' ? checkoutTime : null,
-        cleanCheckedOutBy,
-        `Checkout bill settlement for Room ${checkedOutRooms.join(', ')} (${primaryBooking.guest_name})${finalCardSurcharge > 0 ? ` (+₹${finalCardSurcharge} Card fee)` : ''}${finalUpiTax > 0 ? ` (+₹${finalUpiTax} UPI tax)` : ''}`,
-        sChequePhoto,
-        online_utr,
-        finalCardSurcharge,
-        finalUpiTax,
-        settleSplitCash,
-        settleSplitCard,
-        settleSplitOnline,
-        settleSplitCheque
-      );
+      `);
+
+      settleReceipts.forEach(sr => {
+        settleStmt.run(
+          sr.receipt_no,
+          primaryBooking.id,
+          primaryBooking.room_id,
+          sr.mode,
+          sr.amount,
+          sr.mode === 'cheque' ? sChequeNo : null,
+          sr.mode === 'cheque' ? sChequeBank : null,
+          sr.mode === 'cheque' ? sChequeDate : null,
+          cStatus,
+          cStatus === 'realized' ? checkoutTime : null,
+          cleanCheckedOutBy,
+          `Checkout bill settlement for Room ${checkedOutRooms.join(', ')} (${primaryBooking.guest_name}): ${sr.label}${sr.card_surcharge ? ` (+₹${sr.card_surcharge} Card fee)` : ''}${sr.upi_tax ? ` (+₹${sr.upi_tax} UPI tax)` : ''}`,
+          sr.mode === 'cheque' ? sChequePhoto : null,
+          sr.mode === 'upi' ? online_utr : null,
+          sr.card_surcharge || 0,
+          sr.upi_tax || 0,
+          sr.mode === 'cash' ? sr.amount : 0,
+          sr.mode === 'card' ? sr.base_amount : 0,
+          sr.mode === 'upi' ? sr.base_amount : 0,
+          sr.mode === 'cheque' ? sr.amount : 0
+        );
+      });
     }
 
     // Record Refund in Expenses & Payments Ledger if refund was given
@@ -2193,8 +2916,10 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       checked_out_by: cleanCheckedOutBy,
       checkedOutBy: cleanCheckedOutBy,
       netSettle, 
-      netRefund,
-      finalReceiptNo,
+      finalReceiptNo: settleReceipts.map(r => r.receipt_no).join(', ') || finalReceiptNo,
+      receiptNumbers: settleReceiptNumbers,
+      receipt_numbers: settleReceiptNumbers,
+      receipts: settleReceipts,
       refundVoucherNo,
       refund_voucher_no: refundVoucherNo,
       refund_mode: return_mode,
@@ -2203,8 +2928,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     };
   });
 
-  try {
-    const result = transaction();
+  const result = transaction();
 
     // Non-blocking background sync: Remove checked-out rooms from Supabase cloud
     try {
@@ -5218,34 +5942,97 @@ app.get('/api/scanner/latest', (req, res) => {
 // -------------------------------------------------------------
 // AI VISION OCR & SETTINGS (GEMINI 2.5 FLASH)
 // -------------------------------------------------------------
-function getGeminiApiKey() {
-  // 1. Check database for actively saved user key
+function getGeminiApiKeys() {
+  const keys = ['', '', '', ''];
+
+  // 1. Try to read multiple keys from system_settings (key: 'gemini_api_keys')
   try {
-    const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('gemini_api_key');
+    const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('gemini_api_keys');
     if (row && row.value) {
-      const decrypted = secretManager.decryptSecret(row.value);
-      if (decrypted && !decrypted.startsWith('AIzaSyTest')) {
-        return decrypted;
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) {
+        for (let i = 0; i < 4; i++) {
+          if (parsed[i]) {
+            const dec = secretManager.decryptSecret(parsed[i]);
+            if (dec && !dec.startsWith('AIzaSyTest')) {
+              keys[i] = dec.trim();
+            }
+          }
+        }
       }
     }
   } catch (e) {}
 
-  // 2. Check process.env.GEMINI_API_KEY from .env
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
-    return process.env.GEMINI_API_KEY.trim();
+  // 2. Check individual system_settings keys: 'gemini_api_key_1', 'gemini_api_key_2', etc.
+  for (let i = 0; i < 4; i++) {
+    if (!keys[i]) {
+      try {
+        const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(`gemini_api_key_${i + 1}`);
+        if (row && row.value) {
+          const dec = secretManager.decryptSecret(row.value);
+          if (dec && !dec.startsWith('AIzaSyTest')) {
+            keys[i] = dec.trim();
+          }
+        }
+      } catch (e) {}
+    }
   }
 
-  return '';
+  // 3. Fallback for Slot 0 (Key 1): legacy 'gemini_api_key'
+  if (!keys[0]) {
+    try {
+      const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('gemini_api_key');
+      if (row && row.value) {
+        const dec = secretManager.decryptSecret(row.value);
+        if (dec && !dec.startsWith('AIzaSyTest')) {
+          keys[0] = dec.trim();
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 4. Fallback to process.env and .env:
+  const envVars = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_2,
+    process.env.GEMINI_API_KEY_3,
+    process.env.GEMINI_API_KEY_4
+  ];
+  for (let i = 0; i < 4; i++) {
+    if (!keys[i] && envVars[i] && envVars[i].trim() && !envVars[i].startsWith('AIzaSyTest')) {
+      keys[i] = envVars[i].trim();
+    }
+  }
+
+  return keys;
 }
 
-// GET AI API Key Setting — NEVER returns the raw key to the frontend
+function getGeminiApiKey() {
+  const all = getGeminiApiKeys();
+  return all.find(k => k && k.length > 0) || '';
+}
+
+// GET AI API Key Setting — Supports up to 4 configured keys with failover metadata
 app.get('/api/settings/ai-key', requireAuth, requireRole('manager'), (req, res) => {
   try {
-    const key = getGeminiApiKey();
-    const isConfigured = Boolean(key && key.length > 0);
-    const masked = isConfigured ? secretManager.maskSecret(key) : '';
+    const keys = getGeminiApiKeys();
+    const keysInfo = keys.map((k, idx) => ({
+      slot: idx + 1,
+      isConfigured: Boolean(k && k.length > 0),
+      masked: k ? secretManager.maskSecret(k) : ''
+    }));
+    const isConfigured = keysInfo.some(k => k.isConfigured);
+    const primaryMasked = keysInfo[0].masked || (keysInfo.find(k => k.isConfigured)?.masked || '');
+
     // SECURITY: Never return the raw API key to the frontend
-    res.json({ success: true, isConfigured, masked, hasKey: isConfigured });
+    res.json({
+      success: true,
+      isConfigured,
+      hasKey: isConfigured,
+      masked: primaryMasked,
+      keys: keysInfo,
+      activeCount: keysInfo.filter(k => k.isConfigured).length
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -5431,125 +6218,503 @@ app.post(['/api/settings/checkin-policy', '/api/checkin-policy'], requireAuth, r
   }
 });
 
-// SAVE AI API Key Setting (stored encrypted with AES-256-GCM and persisted in .env)
-app.post('/api/settings/ai-key', requireAuth, requireRole('manager'), (req, res) => {
+// -------------------------------------------------------------
+// INVOICE NUMBERING & FINANCIAL YEAR SEQUENCE SETTINGS
+// -------------------------------------------------------------
+app.get(['/api/settings/invoice-sequence', '/api/invoice-settings'], (req, res) => {
   try {
-    const rawKey = req.body.key || req.body.apiKey;
-    if (!rawKey || typeof rawKey !== 'string' || !rawKey.trim()) {
-      return res.status(400).json({ success: false, error: 'API key cannot be empty.' });
-    }
-    const cleanKey = rawKey.trim();
-    const encryptedKey = secretManager.encryptSecret(cleanKey);
-    db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run('gemini_api_key', encryptedKey);
-    
-    // Also permanently update process.env and .env file so key is NEVER lost or erased!
-    process.env.GEMINI_API_KEY = cleanKey;
-    try {
-      const envFilePath = path.join(__dirname, '.env');
-      let envData = '';
-      if (fs.existsSync(envFilePath)) {
-        envData = fs.readFileSync(envFilePath, 'utf8');
-      }
-      if (envData.includes('GEMINI_API_KEY=')) {
-        envData = envData.replace(/GEMINI_API_KEY=.*/g, `GEMINI_API_KEY=${cleanKey}`);
-      } else {
-        envData += `\nGEMINI_API_KEY=${cleanKey}\n`;
-      }
-      fs.writeFileSync(envFilePath, envData.trim() + '\n', 'utf8');
-    } catch (envErr) {
-      console.warn('Could not write to .env file:', envErr.message);
-    }
+    const currentFY = getCurrentFinancialYear();
+    const startRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_starting_number'").get();
+    const seqRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_current_seq'").get();
+    const fyRow = db.prepare("SELECT value FROM system_settings WHERE key = 'invoice_fy_year'").get();
 
-    res.json({ success: true, message: 'Google Gemini AI Vision API Key updated and permanently stored!' });
+    const startNum = startRow && !isNaN(parseInt(startRow.value)) ? parseInt(startRow.value) : 1;
+    let currentSeq = seqRow && !isNaN(parseInt(seqRow.value)) ? parseInt(seqRow.value) : startNum;
+    const storedFY = fyRow?.value || currentFY;
+
+    res.json({
+      success: true,
+      invoice_starting_number: startNum,
+      invoice_current_seq: currentSeq,
+      invoice_fy_year: storedFY,
+      current_fy: currentFY
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// TEST AI API Key Connectivity (Gemini Vision)
-app.post(['/api/settings/ai-key/test', '/api/settings/test-gemini'], requireAuth, requireRole('manager'), (req, res) => {
-  let responded = false;
-  const sendResponse = (status, payload) => {
-    if (responded || res.headersSent) return;
-    responded = true;
-    res.status(status).json(payload);
-  };
-
+app.post(['/api/settings/invoice-sequence', '/api/invoice-settings'], requireAuth, requireRole('manager'), (req, res) => {
   try {
-    const rawKey = req.body.key || req.body.apiKey;
-    const keyToTest = (rawKey && rawKey.trim()) ? rawKey.trim() : getGeminiApiKey();
-    if (!keyToTest) {
-      return sendResponse(400, { success: false, error: 'No API key provided to test.' });
+    const { invoice_starting_number, invoice_current_seq } = req.body;
+    const startNum = parseInt(invoice_starting_number);
+    const seqNum = parseInt(invoice_current_seq);
+
+    if (isNaN(startNum) || startNum < 1) {
+      return res.status(400).json({ success: false, error: 'Invoice starting number must be at least 1.' });
     }
 
-    const startTime = Date.now();
-    const postData = JSON.stringify({
-      contents: [{ parts: [{ text: 'Respond with JSON: {"status": "ok"}' }] }],
-      generationConfig: { response_mime_type: 'application/json' }
+    const upsertStmt = db.prepare(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `);
+
+    upsertStmt.run('invoice_starting_number', String(startNum));
+    const finalSeq = !isNaN(seqNum) && seqNum >= 1 ? seqNum : startNum;
+    upsertStmt.run('invoice_current_seq', String(finalSeq));
+    const currentFY = getCurrentFinancialYear();
+    upsertStmt.run('invoice_fy_year', currentFY);
+
+    res.json({
+      success: true,
+      message: 'Invoice sequence settings updated successfully.',
+      invoice_starting_number: startNum,
+      invoice_current_seq: finalSeq,
+      invoice_fy_year: currentFY
     });
-
-    const testOptions = {
-      hostname: 'generativelanguage.googleapis.com',
-      path: `/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(keyToTest)}`,
-      method: 'POST',
-      family: 4,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    const testReq = https.request(testOptions, (apiRes) => {
-      let data = '';
-      apiRes.on('data', chunk => data += chunk);
-      apiRes.on('end', () => {
-        const latencyMs = Date.now() - startTime;
-        if (apiRes.statusCode === 200) {
-          return sendResponse(200, {
-            success: true,
-            status: 200,
-            latencyMs,
-            model: 'gemini-3.6-flash',
-            message: `✓ Google Gemini Vision Connected Successfully! (${latencyMs}ms - 200 OK)`
-          });
-        } else {
-          try {
-            const errJson = JSON.parse(data);
-            return sendResponse(200, {
-              success: false,
-              status: apiRes.statusCode,
-              latencyMs,
-              error: errJson.error ? errJson.error.message : ('Google API Error: ' + apiRes.statusCode)
-            });
-          } catch (e) {
-            return sendResponse(200, {
-              success: false,
-              status: apiRes.statusCode,
-              latencyMs,
-              error: 'Google API Error: ' + apiRes.statusCode
-            });
-          }
-        }
-      });
-    });
-
-    testReq.on('error', (err) => {
-      sendResponse(200, { success: false, error: 'Network Error: ' + err.message });
-    });
-
-    testReq.setTimeout(8000, () => {
-      testReq.destroy();
-      sendResponse(200, { success: false, error: 'Connection test timed out after 8s.' });
-    });
-
-    testReq.write(postData);
-    testReq.end();
   } catch (err) {
-    sendResponse(500, { success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// AI OCR Document Details Analysis (Front + Back ID extraction)
+// -------------------------------------------------------------
+// RECEIPT NUMBER SEQUENCING ENDPOINTS (CR01, UPI01, POS01...)
+// -------------------------------------------------------------
+app.post(['/api/receipts/next-numbers', '/api/receipt-numbers'], requireAuth, (req, res) => {
+  try {
+    const modes = Array.isArray(req.body.modes) ? req.body.modes : [req.body.mode || 'cash'];
+    const numbers = {};
+    modes.forEach(m => {
+      numbers[m] = getReceiptNumberWithMode(m);
+    });
+    res.json({ success: true, receiptNumbers: numbers, receipt_numbers: numbers });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// AUTO-SAVE FOLDER SETTING & SILENT PDF DISK SAVE ENDPOINTS
+// -------------------------------------------------------------
+app.get(['/api/settings/auto-save-dir', '/api/auto-save-dir'], (req, res) => {
+  try {
+    const row = db.prepare("SELECT value FROM system_settings WHERE key = 'auto_save_directory'").get();
+    const defaultDir = path.join(os.homedir(), 'HotelCityPark_Saved_Receipts');
+    const autoSaveDir = row && row.value && row.value.trim() ? row.value.trim() : defaultDir;
+    res.json({
+      success: true,
+      auto_save_directory: autoSaveDir,
+      is_custom: Boolean(row && row.value && row.value.trim())
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post(['/api/settings/auto-save-dir', '/api/auto-save-dir'], requireAuth, requireRole('manager'), (req, res) => {
+  try {
+    const { auto_save_directory } = req.body;
+    const cleanDir = (auto_save_directory || '').trim();
+    if (!cleanDir) {
+      return res.status(400).json({ success: false, error: 'Directory path cannot be empty.' });
+    }
+
+    // Attempt to ensure directory exists / create if needed
+    try {
+      if (!fs.existsSync(cleanDir)) {
+        fs.mkdirSync(cleanDir, { recursive: true });
+      }
+      // Test write permission
+      const testFile = path.join(cleanDir, '.test_write_hcp.tmp');
+      fs.writeFileSync(testFile, 'write_test');
+      fs.unlinkSync(testFile);
+    } catch (fsErr) {
+      return res.status(400).json({ success: false, error: `Cannot write to folder "${cleanDir}": ${fsErr.message}` });
+    }
+
+    db.prepare(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('auto_save_directory', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(cleanDir);
+
+    res.json({
+      success: true,
+      auto_save_directory: cleanDir,
+      message: `Auto-save directory successfully set to "${cleanDir}"`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post(['/api/save-invoice-pdf', '/api/auto-save-receipt'], async (req, res) => {
+  try {
+    const { filename, pdfBase64, htmlContent, folder } = req.body;
+    if (!filename) {
+      return res.status(400).json({ success: false, error: 'Filename is required' });
+    }
+
+    // Determine target directory
+    let targetDir = folder;
+    if (!targetDir) {
+      const row = db.prepare("SELECT value FROM system_settings WHERE key = 'auto_save_directory'").get();
+      targetDir = row && row.value && row.value.trim() ? row.value.trim() : path.join(os.homedir(), 'HotelCityPark_Saved_Receipts');
+    }
+
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const safeFilename = filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const targetPath = path.join(targetDir, safeFilename);
+
+    if (pdfBase64) {
+      const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      fs.writeFileSync(targetPath, buffer);
+    } else if (htmlContent) {
+      const htmlPath = targetPath.endsWith('.html') ? targetPath : targetPath.replace(/\.pdf$/i, '.html');
+      fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+    } else {
+      return res.status(400).json({ success: false, error: 'No pdfBase64 or htmlContent provided to save' });
+    }
+
+    res.json({
+      success: true,
+      filePath: targetPath,
+      filename: safeFilename,
+      directory: targetDir,
+      message: `File saved automatically to ${targetPath}`
+    });
+  } catch (err) {
+    console.error('Auto-save invoice error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SAVE AI API Key Setting — Supports up to 4 configured keys with failover support
+app.post('/api/settings/ai-key', requireAuth, requireRole('manager'), (req, res) => {
+  try {
+    const currentKeys = getGeminiApiKeys(); // array of 4 strings [key0, key1, key2, key3]
+    let updated = false;
+
+    // Option A: Clear a specific slot
+    if (req.body.slot && (req.body.clear || req.body.action === 'clear')) {
+      const s = parseInt(req.body.slot, 10);
+      if (s >= 1 && s <= 4) {
+        currentKeys[s - 1] = '';
+        updated = true;
+      }
+    } 
+    // Option B: Update a single specific slot
+    else if (req.body.slot && typeof req.body.key === 'string') {
+      const s = parseInt(req.body.slot, 10);
+      if (s >= 1 && s <= 4) {
+        currentKeys[s - 1] = req.body.key.trim();
+        updated = true;
+      }
+    } 
+    // Option C: Bulk update array of 4 keys [k1, k2, k3, k4]
+    else if (Array.isArray(req.body.keys)) {
+      for (let i = 0; i < 4; i++) {
+        if (req.body.keys[i] !== undefined && req.body.keys[i] !== '__KEEP__') {
+          currentKeys[i] = typeof req.body.keys[i] === 'string' ? req.body.keys[i].trim() : '';
+          updated = true;
+        }
+      }
+    } 
+    // Option D: Legacy single key payload { key: '...' } or { apiKey: '...' } -> Updates Slot 1
+    else {
+      const rawKey = req.body.key || req.body.apiKey;
+      if (rawKey && typeof rawKey === 'string' && rawKey.trim()) {
+        currentKeys[0] = rawKey.trim();
+        updated = true;
+      }
+    }
+
+    if (!updated) {
+      return res.status(400).json({ success: false, error: 'No valid API key or slot provided.' });
+    }
+
+    // Encrypt all 4 keys and store in database
+    const encryptedArray = currentKeys.map(k => k ? secretManager.encryptSecret(k) : '');
+    db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run('gemini_api_keys', JSON.stringify(encryptedArray));
+
+    // Save each slot in system_settings for convenience
+    for (let i = 0; i < 4; i++) {
+      db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+        .run(`gemini_api_key_${i + 1}`, encryptedArray[i]);
+    }
+
+    // Also update legacy 'gemini_api_key' with Key 1 (or first active key)
+    const firstActive = currentKeys.find(k => k && k.length > 0) || currentKeys[0] || '';
+    const encryptedPrimary = firstActive ? secretManager.encryptSecret(firstActive) : '';
+    db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run('gemini_api_key', encryptedPrimary);
+
+    // Update process.env for all 4 slots
+    process.env.GEMINI_API_KEY = currentKeys[0] || '';
+    process.env.GEMINI_API_KEY_2 = currentKeys[1] || '';
+    process.env.GEMINI_API_KEY_3 = currentKeys[2] || '';
+    process.env.GEMINI_API_KEY_4 = currentKeys[3] || '';
+
+    // Persist all 4 keys to .env file so keys are NEVER lost
+    try {
+      const envFilePath = path.join(__dirname, '.env');
+      let envData = fs.existsSync(envFilePath) ? fs.readFileSync(envFilePath, 'utf8') : '';
+      
+      const setEnvVar = (varName, val) => {
+        if (envData.includes(`${varName}=`)) {
+          envData = envData.replace(new RegExp(`${varName}=.*`, 'g'), `${varName}=${val}`);
+        } else {
+          envData += `\n${varName}=${val}\n`;
+        }
+      };
+
+      setEnvVar('GEMINI_API_KEY', currentKeys[0] || '');
+      setEnvVar('GEMINI_API_KEY_2', currentKeys[1] || '');
+      setEnvVar('GEMINI_API_KEY_3', currentKeys[2] || '');
+      setEnvVar('GEMINI_API_KEY_4', currentKeys[3] || '');
+
+      fs.writeFileSync(envFilePath, envData.trim() + '\n', 'utf8');
+    } catch (envErr) {
+      console.warn('Could not write to .env file:', envErr.message);
+    }
+
+    // Return sanitized status (never raw secrets)
+    const keysInfo = currentKeys.map((k, idx) => ({
+      slot: idx + 1,
+      isConfigured: Boolean(k && k.length > 0),
+      masked: k ? secretManager.maskSecret(k) : ''
+    }));
+
+    res.json({
+      success: true,
+      message: '✓ Google Gemini AI Vision API Keys saved with automatic failover!',
+      keys: keysInfo,
+      isConfigured: keysInfo.some(k => k.isConfigured),
+      hasKey: keysInfo.some(k => k.isConfigured),
+      masked: keysInfo[0].masked || (keysInfo.find(k => k.isConfigured)?.masked || ''),
+      activeCount: keysInfo.filter(k => k.isConfigured).length
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Clean Slate / Purge Demo Transactions Endpoint
+const { cleanDemoData } = require('./services/dbCleanService');
+app.post('/api/settings/clean-demo-data', requireAuth, requireRole('manager'), async (req, res) => {
+  try {
+    const stats = cleanDemoData(db);
+    // Clear Supabase cloud occupancies as well
+    try {
+      const occs = await supabaseService.fetchActiveOccupancies();
+      for (const o of occs) {
+        await supabaseService.removeActiveOccupancy(o.room_number);
+      }
+    } catch (sErr) {
+      console.warn('[Supabase] Notice clearing cloud occupancies:', sErr.message);
+    }
+    res.json({
+      success: true,
+      message: '✓ All demo transactions and test rooms have been permanently purged! Database is now 100% clean and ready.',
+      stats
+    });
+  } catch (err) {
+    console.error('Error cleaning demo data:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Helper: Test single key connectivity and quota against Google Gemini API with smart model fallback
+async function testSingleGeminiKey(keyToTest, requestedModel = null) {
+  if (!keyToTest || !keyToTest.trim()) {
+    return { success: false, status: 400, error: 'No API key provided.' };
+  }
+
+  const cleanKey = keyToTest.trim();
+  const modelsToTry = requestedModel
+    ? [requestedModel]
+    : ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.5-flash'];
+
+  let lastResult = null;
+
+  for (const model of modelsToTry) {
+    const res = await new Promise((resolve) => {
+      const startTime = Date.now();
+      const postData = JSON.stringify({
+        contents: [{ parts: [{ text: 'Respond with JSON: {"status": "ok"}' }] }],
+        generationConfig: { response_mime_type: 'application/json' }
+      });
+
+      const testOptions = {
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`,
+        method: 'POST',
+        family: 4,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      const testReq = https.request(testOptions, (apiRes) => {
+        let data = '';
+        apiRes.on('data', chunk => data += chunk);
+        apiRes.on('end', () => {
+          const latencyMs = Date.now() - startTime;
+          if (apiRes.statusCode === 200) {
+            resolve({
+              success: true,
+              status: 200,
+              latencyMs,
+              model,
+              message: `✓ Connected Successfully (${latencyMs}ms - 200 OK)`
+            });
+          } else {
+            let errSnippet = `Google API Error: ${apiRes.statusCode}`;
+            try {
+              const errJson = JSON.parse(data);
+              if (errJson.error && errJson.error.message) {
+                errSnippet = errJson.error.message;
+              }
+            } catch (e) {}
+
+            const isQuota = apiRes.statusCode === 429;
+            resolve({
+              success: false,
+              status: apiRes.statusCode,
+              latencyMs,
+              model,
+              quotaExceeded: isQuota,
+              error: isQuota
+                ? `⚠️ Quota Exceeded (HTTP 429): Rate limit reached for ${model}.`
+                : errSnippet
+            });
+          }
+        });
+      });
+
+      testReq.on('error', (err) => {
+        resolve({
+          success: false,
+          status: 500,
+          latencyMs: Date.now() - startTime,
+          error: 'Network Error: ' + err.message
+        });
+      });
+
+      testReq.setTimeout(8000, () => {
+        testReq.destroy();
+        resolve({
+          success: false,
+          status: 504,
+          latencyMs: 8000,
+          error: 'Connection test timed out after 8s.'
+        });
+      });
+
+      testReq.write(postData);
+      testReq.end();
+    });
+
+    if (res.success) {
+      return res;
+    }
+
+    lastResult = res;
+
+    // If the key itself is invalid (HTTP 400 API_KEY_INVALID), stop early
+    if (res.status === 400 && res.error && (res.error.includes('API_KEY_INVALID') || res.error.includes('API key not valid'))) {
+      return res;
+    }
+  }
+
+  return lastResult || { success: false, status: 500, error: 'Connection test failed across all candidate models.' };
+}
+
+// TEST AI API Key Connectivity — Supports testing single key or all configured keys
+app.post(['/api/settings/ai-key/test', '/api/settings/test-gemini'], requireAuth, requireRole('manager'), async (req, res) => {
+  try {
+    const rawKey = req.body.key || req.body.apiKey;
+    const requestedSlot = req.body.slot ? parseInt(req.body.slot, 10) : null;
+    const testAll = Boolean(req.body.testAll || (!rawKey && !requestedSlot));
+
+    const allKeys = getGeminiApiKeys();
+
+    // Case 1: Test a typed key directly (not yet saved)
+    if (rawKey && rawKey.trim()) {
+      const result = await testSingleGeminiKey(rawKey.trim());
+      return res.json({
+        ...result,
+        slot: requestedSlot || 1,
+        masked: secretManager.maskSecret(rawKey.trim())
+      });
+    }
+
+    // Case 2: Test a specific saved slot
+    if (requestedSlot && requestedSlot >= 1 && requestedSlot <= 4) {
+      const slotKey = allKeys[requestedSlot - 1];
+      if (!slotKey) {
+        return res.status(400).json({ success: false, error: `Key Slot #${requestedSlot} is not configured yet.` });
+      }
+      const result = await testSingleGeminiKey(slotKey);
+      return res.json({
+        ...result,
+        slot: requestedSlot,
+        masked: secretManager.maskSecret(slotKey)
+      });
+    }
+
+    // Case 3: Test all configured slots simultaneously
+    const results = [];
+    for (let i = 0; i < 4; i++) {
+      const k = allKeys[i];
+      if (k && k.trim()) {
+        const testRes = await testSingleGeminiKey(k.trim());
+        results.push({
+          slot: i + 1,
+          isConfigured: true,
+          masked: secretManager.maskSecret(k),
+          ...testRes
+        });
+      } else {
+        results.push({
+          slot: i + 1,
+          isConfigured: false,
+          masked: '',
+          success: false,
+          status: null,
+          message: 'Not Configured'
+        });
+      }
+    }
+
+    const operationalCount = results.filter(r => r.isConfigured && r.success).length;
+    const configuredCount = results.filter(r => r.isConfigured).length;
+    const atLeastOneOperational = operationalCount > 0;
+
+    res.json({
+      success: atLeastOneOperational,
+      results,
+      keys: results,
+      configuredCount,
+      operationalCount,
+      activeFailoverReady: operationalCount > 1,
+      message: atLeastOneOperational
+        ? `✓ ${operationalCount} of ${configuredCount} API keys operational! Auto-failover active.`
+        : (configuredCount === 0 ? 'No API keys configured yet.' : 'All configured API keys returned errors.')
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// AI OCR Document Details Analysis with Automatic Multi-Key Failover
 app.post('/api/ocr/analyze-id', requireAuth, requireRole('manager', 'hospitality'), async (req, res) => {
   let responded = false;
   const sendResponse = (status, payload) => {
@@ -5633,14 +6798,14 @@ Return ONLY a valid JSON object matching this exact structure:
       }
     });
 
-    const activeApiKey = getGeminiApiKey();
-    const candidateModels = [
-      'gemini-3.6-flash',
-      'gemini-flash-latest',
-      'gemini-3.5-flash',
-      'gemini-2.5-flash',
-      'gemini-flash-lite-latest'
-    ];
+    // Gather all configured API keys with their slot numbers
+    const configuredKeys = getGeminiApiKeys();
+    const activeKeySlots = [];
+    configuredKeys.forEach((k, idx) => {
+      if (k && k.trim() && !k.startsWith('AIzaSyTest')) {
+        activeKeySlots.push({ slot: idx + 1, key: k.trim() });
+      }
+    });
 
     function executeSmartFallback(reason = 'Local Optical Extraction') {
       console.log(`[OCR] Using Local Optical Fallback (${reason}) for ${docType || 'ID'}`);
@@ -5671,109 +6836,199 @@ Return ONLY a valid JSON object matching this exact structure:
         pincode: '',
         idType: docType || 'Government ID',
         idNumber: '',
-        expiryDate: ''
+        expiryDate: '',
+        failoverHistory
       });
     }
 
-    function tryModelList(idx) {
-      if (idx >= candidateModels.length) {
-        return executeSmartFallback('Fast Local Optical Engine');
-      }
-      const currentModel = candidateModels[idx];
-      const options = {
-        hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/${currentModel}:generateContent?key=${encodeURIComponent(activeApiKey)}`,
-        method: 'POST',
-        family: 4,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(requestBody)
-        }
-      };
+    if (activeKeySlots.length === 0) {
+      console.warn('[OCR] No Gemini API Key configured. Using Local Optical Fallback engine...');
+      return executeSmartFallback('Local Optical Fallback (Offline Mode)');
+    }
 
-      const apiReq = https.request(options, (apiRes) => {
-        let data = '';
-        apiRes.on('data', chunk => data += chunk);
-        apiRes.on('end', () => {
-          if (apiRes.statusCode === 200) {
-            try {
-              const json = JSON.parse(data);
-              let rawText = '';
-              if (json.candidates && json.candidates[0] && json.candidates[0].content) {
-                const partsList = json.candidates[0].content.parts || [];
-                for (const p of partsList) {
-                  if (p.text) {
-                    rawText += p.text;
+    const candidateModels = [
+      'gemini-flash-lite-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3.6-flash',
+      'gemini-flash-latest',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash'
+    ];
+
+    let lastErrorStatus = 500;
+    let lastErrorMessage = 'AI OCR document parsing failed.';
+    let lastErrorCode = 'AI_EXTRACTION_FAILED';
+    const failoverHistory = [];
+
+    // Multi-Key Failover Executor: Tries keys in sequence (Slot 1 -> Slot 2 -> Slot 3 -> Slot 4)
+    function executeWithKeyFailover(keyIndex) {
+      if (keyIndex >= activeKeySlots.length) {
+        console.warn(`[OCR Failover] All ${activeKeySlots.length} configured Gemini API keys failed (${lastErrorMessage}). Seamlessly switching to Local Optical Fallback...`);
+        return executeSmartFallback(lastErrorStatus === 429 ? 'Fast Local Optical Engine (Quota Limit Fallback)' : 'Fast Local Optical Engine');
+      }
+
+      const { slot: currentSlot, key: currentKey } = activeKeySlots[keyIndex];
+      console.log(`[OCR Failover] Attempting extraction with Key Slot #${currentSlot} (${keyIndex + 1}/${activeKeySlots.length})...`);
+
+      function tryModel(modelIdx) {
+        if (modelIdx >= candidateModels.length) {
+          console.warn(`[OCR Failover] Key Slot #${currentSlot}: all models exhausted (${lastErrorMessage}). Automatically shifting to next key...`);
+          failoverHistory.push(`Slot #${currentSlot}: all models exhausted -> shifting to next key.`);
+          return executeWithKeyFailover(keyIndex + 1);
+        }
+
+        const currentModel = candidateModels[modelIdx];
+        const options = {
+          hostname: 'generativelanguage.googleapis.com',
+          path: `/v1beta/models/${currentModel}:generateContent?key=${encodeURIComponent(currentKey)}`,
+          method: 'POST',
+          family: 4,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(requestBody)
+          }
+        };
+
+        const apiReq = https.request(options, (apiRes) => {
+          let data = '';
+          apiRes.on('data', chunk => data += chunk);
+          apiRes.on('end', () => {
+            if (apiRes.statusCode === 200) {
+              try {
+                const json = JSON.parse(data);
+                let rawText = '';
+                if (json.candidates && json.candidates[0] && json.candidates[0].content) {
+                  const partsList = json.candidates[0].content.parts || [];
+                  for (const p of partsList) {
+                    if (p.text) {
+                      rawText += p.text;
+                    }
                   }
                 }
-              }
 
-              if (rawText) {
-                let cleanJson = rawText.trim();
-                if (cleanJson.startsWith('```')) {
-                  cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+                if (rawText) {
+                  let cleanJson = rawText.trim();
+                  if (cleanJson.startsWith('```')) {
+                    cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+                  }
+                  const firstBrace = cleanJson.indexOf('{');
+                  const lastBrace = cleanJson.lastIndexOf('}');
+                  if (firstBrace !== -1 && lastBrace !== -1) {
+                    cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+                  }
+                  const parsed = JSON.parse(cleanJson);
+                  if (parsed) {
+                    if (keyIndex > 0) {
+                      console.log(`[OCR Failover] SUCCESS! Document extracted after auto-shift to Key Slot #${currentSlot}!`);
+                    } else {
+                      console.log(`[OCR] Successfully extracted details using Key Slot #${currentSlot} (${currentModel}):`, parsed.guestName || parsed.name);
+                    }
+                    return sendResponse(200, {
+                      success: true,
+                      modelUsed: currentModel,
+                      keySlotUsed: currentSlot,
+                      failoverOccurred: keyIndex > 0,
+                      failoverNote: keyIndex > 0 ? `Automatically shifted from previous key to Backup Key Slot #${currentSlot}` : null,
+                      extracted: {
+                        name: parsed.guestName || parsed.name || '',
+                        guestName: parsed.guestName || parsed.name || '',
+                        fatherName: parsed.fatherName || '',
+                        dob: parsed.dob || '',
+                        gender: parsed.gender || '',
+                        mobile: parsed.mobile || '',
+                        address: parsed.address || '',
+                        pincode: parsed.pincode || '',
+                        docNumber: parsed.idNumber || parsed.docNumber || '',
+                        idNumber: parsed.idNumber || parsed.docNumber || '',
+                        idType: parsed.idType || docType || 'Government ID',
+                        expiryDate: parsed.expiryDate || ''
+                      },
+                      ...parsed
+                    });
+                  }
                 }
-                const firstBrace = cleanJson.indexOf('{');
-                const lastBrace = cleanJson.lastIndexOf('}');
-                if (firstBrace !== -1 && lastBrace !== -1) {
-                  cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
-                }
-                const parsed = JSON.parse(cleanJson);
-                if (parsed) {
-                  console.log(`[OCR] Successfully extracted details using ${currentModel}:`, parsed.guestName || parsed.name);
-                  return sendResponse(200, {
-                    success: true,
-                    modelUsed: currentModel,
-                    extracted: {
-                      name: parsed.guestName || parsed.name || '',
-                      guestName: parsed.guestName || parsed.name || '',
-                      fatherName: parsed.fatherName || '',
-                      dob: parsed.dob || '',
-                      gender: parsed.gender || '',
-                      mobile: parsed.mobile || '',
-                      address: parsed.address || '',
-                      pincode: parsed.pincode || '',
-                      docNumber: parsed.idNumber || parsed.docNumber || '',
-                      idNumber: parsed.idNumber || parsed.docNumber || '',
-                      idType: parsed.idType || docType || 'Government ID',
-                      expiryDate: parsed.expiryDate || ''
-                    },
-                    ...parsed
-                  });
-                }
+              } catch (e) {
+                console.warn(`[OCR Slot #${currentSlot} / ${currentModel}] JSON parse error (${e.message}), trying next model...`);
+                lastErrorStatus = 500;
+                lastErrorCode = 'PARSE_ERROR';
+                lastErrorMessage = `AI returned malformed JSON (${e.message}).`;
+                return tryModel(modelIdx + 1);
               }
-            } catch (e) {
-              console.warn(`[${currentModel}] JSON parse error (${e.message}), trying fallback...`);
-              return tryModelList(idx + 1);
             }
-          }
-          if (apiRes.statusCode === 503 || apiRes.statusCode === 429 || apiRes.statusCode === 404) {
-            console.warn(`[${currentModel}] status ${apiRes.statusCode}, trying fallback model...`);
-            return tryModelList(idx + 1);
-          }
-          console.warn(`[${currentModel}] unexpected status ${apiRes.statusCode}, trying next model...`);
-          return tryModelList(idx + 1);
+
+            // Extract Google error message if present
+            let errSnippet = '';
+            try {
+              const errJson = JSON.parse(data);
+              errSnippet = errJson?.error?.message || '';
+            } catch (_) {}
+
+            // RATE LIMIT / QUOTA EXCEEDED (HTTP 429) -> Try next candidate model on this key first
+            if (apiRes.statusCode === 429) {
+              console.warn(`[OCR Failover] Key Slot #${currentSlot} / ${currentModel} hit HTTP 429 (Quota Exceeded). Trying next model on this key...`);
+              lastErrorStatus = 429;
+              lastErrorCode = 'RATE_LIMIT_EXCEEDED';
+              lastErrorMessage = errSnippet || 'Google Gemini API Quota Exceeded (HTTP 429)';
+              failoverHistory.push(`Slot #${currentSlot} (${currentModel}): Quota Exceeded (HTTP 429).`);
+              return tryModel(modelIdx + 1);
+            }
+
+            // UNAUTHORIZED / FORBIDDEN (HTTP 401 / 403) -> INSTANT FAILOVER TO NEXT KEY!
+            if (apiRes.statusCode === 401 || apiRes.statusCode === 403) {
+              console.warn(`[OCR Failover] Key Slot #${currentSlot} returned HTTP ${apiRes.statusCode} (Invalid/Unauthorized). Instantly shifting to next API key...`);
+              lastErrorStatus = apiRes.statusCode;
+              lastErrorCode = 'UNAUTHORIZED';
+              lastErrorMessage = errSnippet || `Gemini API Key in Slot #${currentSlot} is invalid or expired (HTTP ${apiRes.statusCode})`;
+              failoverHistory.push(`Slot #${currentSlot}: Unauthorized (HTTP ${apiRes.statusCode}) -> shifted.`);
+              return executeWithKeyFailover(keyIndex + 1);
+            }
+
+            if (apiRes.statusCode === 503) {
+              console.warn(`[OCR Failover] Key Slot #${currentSlot} returned HTTP 503 (Overloaded). Trying next model/key...`);
+              lastErrorStatus = 503;
+              lastErrorCode = 'SERVICE_UNAVAILABLE';
+              lastErrorMessage = 'AI Vision Service Temporarily Overloaded (HTTP 503)';
+              return tryModel(modelIdx + 1);
+            }
+
+            console.warn(`[OCR Slot #${currentSlot} / ${currentModel}] status ${apiRes.statusCode} (${errSnippet}), trying next model...`);
+            lastErrorStatus = apiRes.statusCode || 500;
+            lastErrorCode = 'UPSTREAM_ERROR';
+            lastErrorMessage = errSnippet || `Google Gemini API returned status ${apiRes.statusCode}.`;
+            return tryModel(modelIdx + 1);
+          });
         });
-      });
 
-      apiReq.on('error', (err) => {
-        console.warn(`[${currentModel}] error ${err.message}, trying fallback...`);
-        tryModelList(idx + 1);
-      });
+        apiReq.on('error', (err) => {
+          console.warn(`[OCR Failover] Key Slot #${currentSlot} network error (${err.message}), shifting to next key...`);
+          lastErrorStatus = 504;
+          lastErrorCode = 'NETWORK_ERROR';
+          lastErrorMessage = `Network connection error: ${err.message}`;
+          failoverHistory.push(`Slot #${currentSlot}: Network error (${err.message}) -> shifted.`);
+          return executeWithKeyFailover(keyIndex + 1);
+        });
 
-      apiReq.setTimeout(5000, () => {
-        apiReq.destroy();
-        tryModelList(idx + 1);
-      });
+        apiReq.setTimeout(8000, () => {
+          apiReq.destroy();
+          console.warn(`[OCR Failover] Key Slot #${currentSlot} timed out after 8s, shifting to next key...`);
+          lastErrorStatus = 504;
+          lastErrorCode = 'TIMEOUT';
+          lastErrorMessage = 'AI OCR request timed out after 8 seconds.';
+          failoverHistory.push(`Slot #${currentSlot}: Timeout -> shifted.`);
+          return executeWithKeyFailover(keyIndex + 1);
+        });
 
-      apiReq.write(requestBody);
-      apiReq.end();
+        apiReq.write(requestBody);
+        apiReq.end();
+      }
+
+      tryModel(0);
     }
 
-    tryModelList(0);
+    executeWithKeyFailover(0);
   } catch (err) {
     console.error('AI ID analysis handler error:', err);
-    sendResponse(500, { success: false, error: err.message });
+    sendResponse(500, { success: false, error: err.message, statusCode: 500 });
   }
 });
 
@@ -6409,6 +7664,326 @@ app.get('/api/hospitality/history', (req, res) => {
     res.json({ success: true, count: historyList.length, history: historyList, records: historyList });
   } catch (err) {
     console.error('History fetch error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================================================
+// 17B. MANAGER ACCOUNTING & ANALYSIS REPORT
+// ==========================================================================
+app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const {
+      fromDate,
+      from_date,
+      toDate,
+      to_date,
+      fromBillNo,
+      from_bill_no,
+      toBillNo,
+      to_bill_no,
+      fromVoucherNo,
+      from_voucher_no,
+      toVoucherNo,
+      to_voucher_no,
+      q,
+      search,
+      limit = 500
+    } = req.query;
+
+    const startDate = fromDate || from_date;
+    const endDate = toDate || to_date;
+    const startBill = fromBillNo || from_bill_no;
+    const endBill = toBillNo || to_bill_no;
+    const startVoucher = fromVoucherNo || from_voucher_no;
+    const endVoucher = toVoucherNo || to_voucher_no;
+    const searchQuery = (q || search || '').trim();
+
+    let sql = `
+      SELECT 
+        b.id as booking_id,
+        b.room_id,
+        r.room_number,
+        r.room_type,
+        b.guest_id,
+        g.name as guest_name,
+        g.mobile as guest_mobile,
+        g.company_name as guest_company_name,
+        g.gst_number as guest_gst_number,
+        b.checkin_time,
+        b.approx_checkout_time,
+        b.actual_checkout_time,
+        b.room_rate,
+        b.discount_pct,
+        b.discount_amount,
+        b.total_room_charge,
+        b.total_paid,
+        b.booking_source,
+        b.ota_platform,
+        b.ota_booking_id,
+        b.company_name as booking_company_name,
+        b.gst_number as booking_gst_number,
+        b.btc_company_id,
+        b.btc_company_name,
+        c.company_name as btc_ref_company_name,
+        c.gst_number as btc_gst_number,
+        b.voucher_number,
+        b.advance_receipt_no,
+        b.final_receipt_no,
+        b.extra_beds,
+        b.extra_bed_charge,
+        b.adults_male,
+        b.adults_female,
+        b.children,
+        b.status as booking_status,
+        b.is_igst,
+        b.tax_type,
+        b.created_at
+      FROM bookings b
+      JOIN guests g ON b.guest_id = g.id
+      JOIN rooms r ON b.room_id = r.id
+      LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    // Filter by checkout date (or fallback to checkin date)
+    if (startDate) {
+      sql += ` AND DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time)) >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ` AND DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time)) <= ?`;
+      params.push(endDate);
+    }
+
+    if (searchQuery) {
+      const s = `%${searchQuery}%`;
+      sql += ` AND (
+        g.name LIKE ? OR 
+        g.mobile LIKE ? OR 
+        r.room_number LIKE ? OR 
+        b.voucher_number LIKE ? OR 
+        b.final_receipt_no LIKE ? OR 
+        b.advance_receipt_no LIKE ? OR 
+        b.company_name LIKE ? OR 
+        b.gst_number LIKE ? OR 
+        g.company_name LIKE ? OR 
+        g.gst_number LIKE ? OR 
+        b.ota_platform LIKE ? OR 
+        b.btc_company_name LIKE ?
+      )`;
+      for (let i = 0; i < 12; i++) params.push(s);
+    }
+
+    sql += ` ORDER BY COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time) DESC, b.id DESC`;
+    if (limit && parseInt(limit) > 0) {
+      sql += ` LIMIT ?`;
+      params.push(parseInt(limit));
+    }
+
+    const rows = db.prepare(sql).all(...params);
+
+    // Group multi-room bookings by voucher number / stay session so each Bill = 1 row
+    const billMap = new Map();
+
+    rows.forEach(row => {
+      const cleanVoucher = row.voucher_number ? String(row.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : `BK-${row.booking_id}`;
+      const groupKey = row.voucher_number ? `v_${cleanVoucher}` : `b_${row.booking_id}`;
+
+      // Calculate stay days
+      const checkinDate = row.checkin_time ? new Date(row.checkin_time) : new Date();
+      const checkoutDate = row.actual_checkout_time ? new Date(row.actual_checkout_time) : (row.approx_checkout_time ? new Date(row.approx_checkout_time) : new Date());
+      const stayDays = Math.max(1, Math.round(Math.max(0, checkoutDate.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // Base room rent calculation
+      const extraMattressRow = Number(row.extra_bed_charge > 0 ? row.extra_bed_charge : ((row.extra_beds || 0) * 500));
+      const discountRow = Number(row.discount_amount || 0);
+      
+      let baseRentRow = 0;
+      if (row.room_rate && row.room_rate > 0) {
+        baseRentRow = Number(row.room_rate) * stayDays;
+      } else if (row.total_room_charge > 0) {
+        const taxablePortion = Math.round((row.total_room_charge / 1.05) * 100) / 100;
+        baseRentRow = Math.max(0, taxablePortion - extraMattressRow + discountRow);
+      }
+
+      if (!billMap.has(groupKey)) {
+        // Name Of Customer GST resolution:
+        // "if choosed ota then its name / or insert comapany name & gst number in form then it will show here , if not any simply name of customer willl appear here"
+        const isOta = (row.booking_source || '').toUpperCase() === 'OTA' || Boolean(row.ota_platform);
+        let nameOfCustomerGst = '';
+        if (isOta) {
+          nameOfCustomerGst = row.ota_platform || 'OTA';
+        } else if (row.booking_company_name && row.booking_company_name.trim()) {
+          nameOfCustomerGst = row.booking_company_name.trim();
+        } else if (row.btc_company_name && row.btc_company_name.trim()) {
+          nameOfCustomerGst = row.btc_company_name.trim();
+        } else if (row.guest_company_name && row.guest_company_name.trim()) {
+          nameOfCustomerGst = row.guest_company_name.trim();
+        } else {
+          nameOfCustomerGst = row.guest_name || 'Guest';
+        }
+
+        // GST No of Customer resolution:
+        // "if ota choosed there gst number, if inserted in form then it will appear here , if not anything then nothingwill here just give '-'"
+        let gstNoOfCustomer = '';
+        if (isOta) {
+          gstNoOfCustomer = row.booking_gst_number || row.guest_gst_number || '';
+          if (!gstNoOfCustomer) {
+            if (/makemytrip|mmt|goibibo/i.test(row.ota_platform || '')) {
+              gstNoOfCustomer = '27AABCM6906E1ZW';
+            } else if (/booking\.?com/i.test(row.ota_platform || '')) {
+              gstNoOfCustomer = '27AAGCB6887F1Z8';
+            } else if (/agoda/i.test(row.ota_platform || '')) {
+              gstNoOfCustomer = '9919SGP29004OS2';
+            }
+          }
+        } else {
+          gstNoOfCustomer = row.booking_gst_number || row.guest_gst_number || row.btc_gst_number || '';
+        }
+        gstNoOfCustomer = (gstNoOfCustomer && gstNoOfCustomer.trim()) ? gstNoOfCustomer.trim() : '-';
+
+        // Bill No & Invoice No resolution:
+        const billNo = cleanVoucher;
+        const invoiceNo = row.final_receipt_no ? String(row.final_receipt_no).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : cleanVoucher;
+
+        // Date of checkout
+        const rawCheckout = row.actual_checkout_time || row.approx_checkout_time || row.checkin_time;
+        const checkoutDt = rawCheckout ? new Date(rawCheckout) : new Date();
+        const d = String(checkoutDt.getDate()).padStart(2, '0');
+        const m = String(checkoutDt.getMonth() + 1).padStart(2, '0');
+        const y = checkoutDt.getFullYear();
+        const formattedDate = `${d}-${m}-${y}`;
+
+        billMap.set(groupKey, {
+          id: row.booking_id,
+          booking_ids: [row.booking_id],
+          checkout_date_raw: rawCheckout,
+          date_of_checkout: formattedDate,
+          is_checked_out: Boolean(row.actual_checkout_time),
+          bill_no: billNo,
+          invoice_number: invoiceNo,
+          name_of_customer: row.guest_name || 'Guest',
+          room_rent_base: baseRentRow,
+          extra_mattress_pax: extraMattressRow,
+          discount: discountRow,
+          name_of_customer_gst: nameOfCustomerGst,
+          gst_no_of_customer: gstNoOfCustomer,
+          rooms: [row.room_number],
+          room_type: row.room_type,
+          booking_source: row.booking_source,
+          ota_platform: row.ota_platform,
+          total_room_charge: row.total_room_charge || 0,
+          total_paid: row.total_paid || 0,
+          payment_status: row.booking_status
+        });
+      } else {
+        const item = billMap.get(groupKey);
+        item.booking_ids.push(row.booking_id);
+        if (!item.rooms.includes(row.room_number)) {
+          item.rooms.push(row.room_number);
+        }
+        item.room_rent_base += baseRentRow;
+        item.extra_mattress_pax += extraMattressRow;
+        item.discount += discountRow;
+        item.total_room_charge += (row.total_room_charge || 0);
+        item.total_paid += (row.total_paid || 0);
+      }
+    });
+
+    let records = Array.from(billMap.values());
+
+    // Calculate CGST & SGST for each bill item
+    records.forEach(item => {
+      const taxable = Math.max(0, item.room_rent_base + item.extra_mattress_pax - item.discount);
+      const totalGst = Number((taxable * 0.05).toFixed(2));
+      const cgst = Number((totalGst / 2).toFixed(2));
+      const sgst = Number((totalGst - cgst).toFixed(2));
+      
+      item.taxable_amount = taxable;
+      item.cgst = cgst;
+      item.sgst = sgst;
+      item.cgst_sgst_total = totalGst;
+      item.grand_total = Number((taxable + totalGst).toFixed(2));
+      item.rooms_str = item.rooms.join(', ');
+    });
+
+    // Helper to match number / voucher range
+    const filterByNumberRange = (val, from, to) => {
+      if (!from && !to) return true;
+      if (!val) return false;
+      const strVal = String(val).trim();
+      
+      const valDigits = strVal.match(/(\d+)$/);
+      const valNum = valDigits ? parseInt(valDigits[1], 10) : null;
+      
+      const fromStr = from ? String(from).trim() : null;
+      const toStr = to ? String(to).trim() : null;
+      
+      const fromNum = fromStr && /^\d+$/.test(fromStr) ? parseInt(fromStr, 10) : null;
+      const toNum = toStr && /^\d+$/.test(toStr) ? parseInt(toStr, 10) : null;
+      
+      if (valNum !== null && (fromNum !== null || toNum !== null)) {
+        if (fromNum !== null && valNum < fromNum) return false;
+        if (toNum !== null && valNum > toNum) return false;
+        return true;
+      }
+      
+      if (fromStr && strVal.localeCompare(fromStr) < 0) return false;
+      if (toStr && strVal.localeCompare(toStr) > 0) return false;
+      return true;
+    };
+
+    // Apply Bill No range filter if provided
+    if (startBill || endBill) {
+      records = records.filter(item => filterByNumberRange(item.bill_no, startBill, endBill));
+    }
+
+    // Apply Voucher No range filter if provided
+    if (startVoucher || endVoucher) {
+      records = records.filter(item => filterByNumberRange(item.invoice_number, startVoucher, endVoucher) || filterByNumberRange(item.bill_no, startVoucher, endVoucher));
+    }
+
+    // Calculate Summary Totals
+    const summary = records.reduce((acc, it) => {
+      acc.total_records += 1;
+      acc.total_room_rent_base += it.room_rent_base;
+      acc.total_extra_mattress += it.extra_mattress_pax;
+      acc.total_discount += it.discount;
+      acc.total_cgst += it.cgst;
+      acc.total_sgst += it.sgst;
+      acc.total_cgst_sgst += it.cgst_sgst_total;
+      acc.total_grand += it.grand_total;
+      return acc;
+    }, {
+      total_records: 0,
+      total_room_rent_base: 0,
+      total_extra_mattress: 0,
+      total_discount: 0,
+      total_cgst: 0,
+      total_sgst: 0,
+      total_cgst_sgst: 0,
+      total_grand: 0
+    });
+
+    summary.total_room_rent_base = Number(summary.total_room_rent_base.toFixed(2));
+    summary.total_extra_mattress = Number(summary.total_extra_mattress.toFixed(2));
+    summary.total_discount = Number(summary.total_discount.toFixed(2));
+    summary.total_cgst = Number(summary.total_cgst.toFixed(2));
+    summary.total_sgst = Number(summary.total_sgst.toFixed(2));
+    summary.total_cgst_sgst = Number(summary.total_cgst_sgst.toFixed(2));
+    summary.total_grand = Number(summary.total_grand.toFixed(2));
+
+    res.json({
+      success: true,
+      count: records.length,
+      records,
+      summary
+    });
+  } catch (err) {
+    console.error('Accounting analysis fetch error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -7135,7 +8710,7 @@ app.put('/api/cheques/:id/status', requireAuth, requireRole('manager', 'hospital
 // ==========================================================================
 app.get('/api/expenses', (req, res) => {
   try {
-    const { category, startDate, endDate, date } = req.query;
+    const { category, purpose, startDate, endDate, date } = req.query;
     let query = 'SELECT * FROM expenses';
     const params = [];
     const conditions = [];
@@ -7145,16 +8720,21 @@ app.get('/api/expenses', (req, res) => {
       params.push(category);
     }
 
+    if (purpose && purpose !== 'all') {
+      conditions.push('(purpose_child = ? OR purpose_category = ? OR purpose_details LIKE ?)');
+      params.push(purpose, purpose, `%${purpose}%`);
+    }
+
     if (date) {
       conditions.push("DATE(created_at, 'localtime') = ?");
       params.push(date);
     } else {
       if (startDate) {
-        conditions.push('created_at >= ?');
+        conditions.push("DATE(created_at, 'localtime') >= ?");
         params.push(startDate);
       }
       if (endDate) {
-        conditions.push('created_at <= ?');
+        conditions.push("DATE(created_at, 'localtime') <= ?");
         params.push(endDate);
       }
     }
@@ -7174,6 +8754,77 @@ app.get('/api/expenses', (req, res) => {
   }
 });
 
+// Point 12: Get & Update Debit / Expense Categories & Owners Config
+app.get('/api/expense-categories-config', (req, res) => {
+  try {
+    const catRow = db.prepare("SELECT value FROM system_settings WHERE key = 'expense_categories_config'").get();
+    const ownerRow = db.prepare("SELECT value FROM system_settings WHERE key = 'expense_owners_config'").get();
+
+    const fallbackCategories = [
+      {
+        id: 'owner',
+        name: 'Owner Expenses',
+        purposes: ['Travel', 'Fuel Vehical', 'Personal', 'Medince', 'Other']
+      },
+      {
+        id: 'store',
+        name: 'Store Expenses',
+        purposes: ['Market', 'Milk', 'Fuel Hotel', 'Transport Expensess Store', 'Home', 'Fuel DG', 'Other']
+      },
+      {
+        id: 'maintenance',
+        name: 'Maintainance Expenses',
+        purposes: ['Purchase or material', 'AMC', 'Carpenter', 'Plumber', 'Water Heater', 'AC', 'DG', 'colouring painter', 'POP', 'Civil Work', 'Other']
+      },
+      {
+        id: 'other',
+        name: 'Other',
+        purposes: ['Other']
+      }
+    ];
+
+    const fallbackOwners = [
+      { id: '1', name: 'Jaijeet Gadekar', phone: '' },
+      { id: '2', name: 'Respected Mahesh Sir', phone: '' }
+    ];
+
+    let categories = fallbackCategories;
+    if (catRow && catRow.value) {
+      try { categories = JSON.parse(catRow.value); } catch (e) {}
+    }
+
+    let owners = fallbackOwners;
+    if (ownerRow && ownerRow.value) {
+      try { owners = JSON.parse(ownerRow.value); } catch (e) {}
+    }
+
+    res.json({ success: true, categories, owners });
+  } catch (err) {
+    console.error('Error fetching expense categories config:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/expense-categories-config', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { categories, owners } = req.body;
+    if (Array.isArray(categories)) {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('expense_categories_config', ?, CURRENT_TIMESTAMP)").run(
+        JSON.stringify(categories)
+      );
+    }
+    if (Array.isArray(owners)) {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('expense_owners_config', ?, CURRENT_TIMESTAMP)").run(
+        JSON.stringify(owners)
+      );
+    }
+    res.json({ success: true, message: 'Debit categories and owners updated successfully' });
+  } catch (err) {
+    console.error('Error updating expense categories config:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   try {
     const {
@@ -7183,6 +8834,10 @@ app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (r
       payment_mode,
       debit_account,
       purpose_details,
+      purpose_category,
+      purpose_child,
+      owner_name,
+      owner_phone,
       title,
       notes,
       room_id,
@@ -7190,31 +8845,42 @@ app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (r
       cashier_name,
       logged_by,
       cheque_no,
-      bank_name
+      bank_name,
+      cheque_photo,
+      bill_scan_photo
     } = req.body;
 
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) {
       return res.status(400).json({ success: false, error: 'Valid expense amount is required' });
     }
-    const cleanPaidTo = (paid_to || req.body.paidTo || 'Bearer / Vendor').trim();
-    const cleanPurpose = (purpose_details || req.body.description || title || notes || 'General Expense').trim();
+    const cleanPaidTo = (paid_to || req.body.paidTo || (owner_name ? owner_name : 'Bearer / Vendor')).trim();
+    const cleanPurpose = (purpose_details || req.body.description || purpose_child || title || notes || 'General Expense').trim();
 
-    const validCategories = ['owner', 'refund', 'store', 'maintenance', 'other', 'Diesel/Fuel', 'Laundry', 'Supplies', 'Utilities'];
-    const cleanCategory = (category || 'other').trim();
+    const cleanCategory = (category || purpose_category || 'other').trim();
 
     const voucherNo = getNextPettyCashVoucherNumber();
-    const cleanCashier = (cashier_name || req.body.cashier || logged_by || 'Front Desk').trim();
-    const cleanDebitAc = (debit_account || req.body.debitAccount || (cleanCategory.toLowerCase() === 'owner' ? 'Owner Drawings A/c' : (cleanCategory.toLowerCase() === 'refund' ? 'Guest Refund A/c' : (cleanCategory.toLowerCase() === 'store' ? 'Store & Pantry A/c' : (cleanCategory.toLowerCase() === 'maintenance' ? 'Repairs & Maintenance A/c' : 'General Expenses A/c'))))).trim();
-    const cleanMode = (payment_mode || req.body.paymentMode || 'cash').toLowerCase();
+    const cleanCashier = (cashier_name || req.body.cashier || logged_by || req.user?.username || 'Front Desk').trim();
+    const cleanDebitAc = (debit_account || req.body.debitAccount || (cleanCategory.toLowerCase() === 'owner' ? `Owner: ${owner_name || cleanPaidTo}` : (cleanCategory.toLowerCase() === 'refund' ? 'Guest Refund' : (cleanCategory.toLowerCase() === 'store' ? 'Store Expenses' : (cleanCategory.toLowerCase() === 'maintenance' ? 'Maintainance Expenses' : 'General Expenses A/c'))))).trim();
+    
+    // Point 13: Only cash in expenses (refunds can also be cheque)
+    const cleanMode = cleanCategory === 'refund'
+      ? (payment_mode || 'cash').toLowerCase()
+      : 'cash';
     const cleanChequeNo = (cheque_no || req.body.chequeNo || req.body.cheque_number || req.body.utr_number || req.body.utr || '').trim();
     const cleanBankName = (bank_name || req.body.bankName || req.body.bank || '').trim();
+    const cleanChequePhoto = cheque_photo || req.body.chequePhoto || null;
+    const cleanBillPhoto = bill_scan_photo || req.body.billScanPhoto || null;
+    const cleanOwner = owner_name || (cleanCategory === 'owner' ? cleanPaidTo : null);
+    const cleanOwnerPhone = (owner_phone || req.body.ownerPhone || '').trim();
 
     const result = db.prepare(`
       INSERT INTO expenses (
         voucher_no, category, paid_to, amount, payment_mode, debit_account,
-        purpose_details, room_id, booking_id, cashier_name, cheque_no, bank_name
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        purpose_details, purpose_category, purpose_child, owner_name, owner_phone,
+        original_amount, actual_used_amount, returned_amount, bill_scan_photo,
+        cheque_photo, room_id, booking_id, cashier_name, cheque_no, bank_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       voucherNo,
       cleanCategory,
@@ -7223,6 +8889,15 @@ app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (r
       cleanMode,
       cleanDebitAc,
       cleanPurpose,
+      purpose_category || cleanCategory,
+      purpose_child || null,
+      cleanOwner,
+      cleanOwnerPhone || null,
+      numAmount,
+      numAmount,
+      0,
+      cleanBillPhoto,
+      cleanChequePhoto,
       room_id || null,
       booking_id || null,
       cleanCashier,
@@ -7241,6 +8916,59 @@ app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (r
     });
   } catch (err) {
     console.error('Expense create error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Point 13: Adjust Expense with actual used amount, remainder returned amount & scanned bill copy
+app.post('/api/expenses/:id/adjust', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const expense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(id);
+    if (!expense) {
+      return res.status(404).json({ success: false, error: 'Expense voucher not found' });
+    }
+
+    const { actual_used_amount, returned_amount, bill_scan_photo, notes } = req.body;
+    const actualUsed = parseFloat(actual_used_amount);
+    const returned = parseFloat(returned_amount) || 0;
+
+    if (isNaN(actualUsed) || actualUsed < 0) {
+      return res.status(400).json({ success: false, error: 'Valid actual used amount is required' });
+    }
+
+    const originalAmount = expense.original_amount !== null && expense.original_amount !== undefined
+      ? expense.original_amount
+      : expense.amount;
+
+    db.prepare(`
+      UPDATE expenses
+      SET original_amount = ?,
+          amount = ?,
+          actual_used_amount = ?,
+          returned_amount = ?,
+          bill_scan_photo = COALESCE(?, bill_scan_photo),
+          purpose_details = CASE WHEN ? THEN purpose_details || ' [Adj: ' || ? || ']' ELSE purpose_details END
+      WHERE id = ?
+    `).run(
+      originalAmount,
+      actualUsed,
+      actualUsed,
+      returned,
+      bill_scan_photo || null,
+      notes ? 1 : 0,
+      notes || '',
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM expenses WHERE id = ?').get(id);
+    res.json({
+      success: true,
+      expense: updated,
+      message: `Expense adjusted: Original ₹${originalAmount}, Used ₹${actualUsed}, Returned ₹${returned}`
+    });
+  } catch (err) {
+    console.error('Expense adjustment error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -7610,16 +9338,18 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
 
     const activeBtcCount = db.prepare('SELECT COUNT(*) as cnt FROM btc_companies WHERE is_active = 1').get().cnt;
 
-    // 7. Expenses by Category
+    // 7. Expenses by Category (100% accurate: uses COALESCE(actual_used_amount, amount) for adjusted vouchers)
     const expStats = db.prepare(`
       SELECT 
-        COALESCE(SUM(amount), 0) as total_expenses,
-        COALESCE(SUM(CASE WHEN payment_mode = 'cash' THEN amount ELSE 0 END), 0) as cash_expenses,
-        COALESCE(SUM(CASE WHEN category = 'owner' THEN amount ELSE 0 END), 0) as owner_drawings,
-        COALESCE(SUM(CASE WHEN category = 'refund' THEN amount ELSE 0 END), 0) as refunds,
-        COALESCE(SUM(CASE WHEN category = 'store' THEN amount ELSE 0 END), 0) as store_pantry,
-        COALESCE(SUM(CASE WHEN category = 'maintenance' THEN amount ELSE 0 END), 0) as maintenance,
-        COALESCE(SUM(CASE WHEN category = 'other' THEN amount ELSE 0 END), 0) as other_expenses
+        COALESCE(SUM(COALESCE(actual_used_amount, amount)), 0) as total_expenses,
+        COALESCE(SUM(CASE WHEN LOWER(payment_mode) = 'cash' THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as cash_expenses,
+        COALESCE(SUM(CASE WHEN LOWER(category) IN ('owner', 'owner expenses', 'owner drawings', 'owner withdrawal') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as owner_drawings,
+        COALESCE(SUM(CASE WHEN LOWER(category) IN ('refund', 'guest refund', 'refunds') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as refunds,
+        COALESCE(SUM(CASE WHEN LOWER(category) IN ('store', 'store expenses', 'store / pantry', 'store_pantry') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as store_pantry,
+        COALESCE(SUM(CASE WHEN LOWER(category) IN ('maintenance', 'maintainance expenses', 'maintenance expenses', 'repairs & maintenance', 'repairs') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as maintenance,
+        COALESCE(SUM(CASE WHEN LOWER(category) NOT IN ('owner', 'owner expenses', 'owner drawings', 'owner withdrawal', 'refund', 'guest refund', 'refunds', 'store', 'store expenses', 'store / pantry', 'store_pantry', 'maintenance', 'maintainance expenses', 'maintenance expenses', 'repairs & maintenance', 'repairs') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as other_expenses,
+        COALESCE(SUM(CASE WHEN LOWER(payment_mode) IN ('online', 'upi', 'bank_transfer', 'card') THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as online_expenses,
+        COALESCE(SUM(CASE WHEN LOWER(payment_mode) = 'cheque' THEN COALESCE(actual_used_amount, amount) ELSE 0 END), 0) as cheque_expenses
       FROM expenses 
       ${dateFilterExp}
     `).get(...dateParams);
@@ -7630,7 +9360,10 @@ app.get(['/api/manager/analytics', '/api/stats/analytics'], requireAuth, require
         id, 
         voucher_no, 
         category, 
-        amount, 
+        COALESCE(actual_used_amount, amount) as amount,
+        original_amount,
+        actual_used_amount,
+        returned_amount,
         payment_mode, 
         paid_to, 
         purpose_details, 

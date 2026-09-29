@@ -9082,7 +9082,7 @@ body.dark-theme .manager-subnav-btn.active {
 
 @page {
   size: A4 portrait;
-  margin: 8mm 6mm 8mm 6mm !important;
+  margin: 4mm 6mm 4mm 6mm !important;
 }
 
 @media print {
@@ -9147,7 +9147,7 @@ body.dark-theme .manager-subnav-btn.active {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    max-height: 265mm !important;
+    max-height: 288mm !important;
     box-sizing: border-box !important;
     padding: 0 !important;
     margin: 0 auto !important;
@@ -9160,8 +9160,50 @@ body.dark-theme .manager-subnav-btn.active {
     page-break-after: avoid !important;
   }
 
-  /* Half-A4 Receipt & Voucher Card (fits exactly 126mm each, leaving >25mm bottom safety buffer) */
-  .half-a4-receipt-card,
+  #print-money-receipt-sheet.print-active.multi-page {
+    display: block !important;
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-inside: auto !important;
+    page-break-after: auto !important;
+  }
+
+  .split-receipt-page {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 288mm !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    margin: 0 auto 15mm !important;
+    page-break-inside: avoid !important;
+  }
+
+  .split-receipt-page:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Half-A4 Receipt Card (fits exactly 136mm each, utilizing full A4 height without bottom blank space or page-2 overflow) */
+  .half-a4-receipt-card {
+    width: 100% !important;
+    height: 136mm !important;
+    max-height: 137mm !important;
+    border: 1.5px solid #000000 !important;
+    border-radius: 4px !important;
+    padding: 10px 16px !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    background: #ffffff !important;
+    page-break-inside: avoid !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
   .half-a4-voucher-card {
     width: 100% !important;
     height: 126mm !important;
@@ -9180,17 +9222,23 @@ body.dark-theme .manager-subnav-btn.active {
   }
 
   .two-per-a4-perforation {
-    height: 7mm !important;
-    margin: 1mm 0 !important;
+    height: 10mm !important;
+    margin: 3.5mm 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    font-size: 8pt !important;
-    font-weight: 850 !important;
-    color: #475569 !important;
-    letter-spacing: 0.08em !important;
-    text-align: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
     user-select: none !important;
+  }
+
+  .two-per-a4-perforation .perforation-dotted-line,
+  .two-per-a4-perforation > div {
+    width: 100% !important;
+    border-top: 1.5px dotted #000000 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Highlights on Date & Receipt / Voucher Number */
@@ -9208,19 +9256,33 @@ body.dark-theme .manager-subnav-btn.active {
   }
 
   .voucher-no-highlight {
-    border: 1.5px solid #b91c1c !important;
-    background-color: #fee2e2 !important;
-    color: #b91c1c !important;
-    font-size: 11pt !important;
+    border: 1.5px solid #000000 !important;
+    background-color: #f8fafc !important;
+    color: #000000 !important;
+    font-size: 10.5pt !important;
     font-weight: 950 !important;
     padding: 1px 8px !important;
     border-radius: 4px !important;
     display: inline-block !important;
     letter-spacing: 0.04em !important;
     margin-left: 4px !important;
+    white-space: nowrap !important;
   }
 
-  .receipt-date-highlight,
+  .receipt-date-highlight {
+    border: none !important;
+    background-color: transparent !important;
+    color: #000000 !important;
+    font-size: 9pt !important;
+    font-weight: 850 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    display: inline-block !important;
+    letter-spacing: 0.02em !important;
+    min-width: auto !important;
+    text-align: right !important;
+  }
+
   .voucher-date-highlight {
     border: 1.5px solid #000000 !important;
     background-color: #fef08a !important;
@@ -9236,10 +9298,10 @@ body.dark-theme .manager-subnav-btn.active {
   }
 
   .receipt-brand-logo-img {
-    height: 54px !important;
-    max-height: 54px !important;
+    height: 74px !important;
+    max-height: 80px !important;
     width: auto !important;
-    max-width: 195px !important;
+    max-width: 220px !important;
     object-fit: contain !important;
     display: block !important;
   }
@@ -9286,17 +9348,18 @@ body.dark-theme .manager-subnav-btn.active {
   .receipt-brand {
     display: flex !important;
     flex-direction: column !important;
-    align-items: flex-end !important;
+    align-items: flex-start !important;
     gap: 1px !important;
+    text-align: left !important;
   }
 
   .receipt-address-text {
     font-size: 7pt !important;
-    line-height: 1.2 !important;
+    line-height: 1.25 !important;
     color: #111111 !important;
     font-weight: 700 !important;
     margin-top: 1px !important;
-    text-align: right !important;
+    text-align: left !important;
   }
 
   .receipt-doc-title {
@@ -9317,7 +9380,19 @@ body.dark-theme .manager-subnav-btn.active {
     align-items: center !important;
   }
 
-  .receipt-copy-tag,
+  .receipt-copy-tag {
+    font-size: 8pt !important;
+    font-weight: 850 !important;
+    border: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    display: block !important;
+    background: transparent !important;
+    letter-spacing: 1.5px !important;
+    color: #000000 !important;
+    text-transform: uppercase !important;
+  }
+
   .voucher-copy-tag {
     font-size: 7.5pt !important;
     font-weight: 900 !important;
@@ -9333,7 +9408,7 @@ body.dark-theme .manager-subnav-btn.active {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    gap: 3px !important;
+    gap: 6px !important;
     position: relative !important;
     z-index: 1 !important;
   }
@@ -9341,8 +9416,8 @@ body.dark-theme .manager-subnav-btn.active {
   .receipt-line-row {
     display: flex !important;
     align-items: flex-end !important;
-    font-size: 9.5pt !important;
-    gap: 6px !important;
+    font-size: 12.5pt !important;
+    gap: 8px !important;
     width: 100% !important;
   }
 
@@ -9350,21 +9425,22 @@ body.dark-theme .manager-subnav-btn.active {
     font-weight: 850 !important;
     white-space: nowrap !important;
     color: #000000 !important;
-    font-size: 9.5pt !important;
+    font-size: 12.5pt !important;
   }
 
   .receipt-fill-line {
     flex: 1 !important;
-    border-bottom: 1px solid #000000 !important;
-    padding: 0 4px !important;
-    font-weight: 850 !important;
+    border-bottom: 1.5px solid #000000 !important;
+    padding: 0 6px !important;
+    font-weight: 900 !important;
     color: #000000 !important;
-    font-size: 9.5pt !important;
-    min-height: 16px !important;
+    font-size: 12.5pt !important;
+    min-height: 24px !important;
+    line-height: 24px !important;
   }
 
   .receipt-underlined-date {
-    border-bottom: 1px solid #000000 !important;
+    border-bottom: 1.5px solid #000000 !important;
     min-width: 85px !important;
     text-align: center !important;
     display: inline-block !important;
@@ -9373,27 +9449,27 @@ body.dark-theme .manager-subnav-btn.active {
   }
 
   .receipt-table-section {
-    margin: 3px 0 !important;
+    margin: 4px 0 !important;
   }
 
   .receipt-mini-table {
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 9pt !important;
+    font-size: 12pt !important;
     border: 1.5px solid #000000 !important;
   }
 
   .receipt-mini-table th,
   .receipt-mini-table td {
     border: 1px solid #000000 !important;
-    padding: 2px 6px !important;
-    height: 17px !important;
+    padding: 6px 10px !important;
+    height: 26px !important;
   }
 
   .receipt-mini-table th {
     background: #f1f5f9 !important;
     font-weight: 950 !important;
-    font-size: 9pt !important;
+    font-size: 12.5pt !important;
     text-align: left !important;
   }
 
@@ -9401,7 +9477,7 @@ body.dark-theme .manager-subnav-btn.active {
     display: flex !important;
     justify-content: space-between !important;
     align-items: flex-end !important;
-    padding-top: 2px !important;
+    padding-top: 4px !important;
   }
 
   .receipt-amount-badge-box {
@@ -9411,51 +9487,50 @@ body.dark-theme .manager-subnav-btn.active {
 
   .receipt-rs-box {
     border: 1.5px solid #000000 !important;
-    padding: 2px 10px !important;
-    font-size: 11.5pt !important;
+    padding: 4px 14px !important;
+    font-size: 13pt !important;
     font-weight: 950 !important;
     border-radius: 4px !important;
     background: #f8fafc !important;
   }
 
   .receipt-disclaimer {
-    font-size: 7pt !important;
+    font-size: 7.5pt !important;
     font-style: italic !important;
-    margin-top: 1px !important;
+    margin-top: 2px !important;
     color: #111111 !important;
     font-weight: 700 !important;
   }
 
   .receipt-signature-box {
     text-align: right !important;
-    min-width: 175px !important;
+    min-width: 190px !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: flex-end !important;
   }
 
   .receipt-cashier-name {
-    font-size: 8.5pt !important;
-    font-weight: 850 !important;
+    font-size: 10.5pt !important;
+    font-weight: 900 !important;
     color: #0f172a !important;
     margin-bottom: 2px !important;
     text-align: center !important;
-    width: 175px !important;
+    width: 190px !important;
   }
 
   .receipt-sig-line {
     border-bottom: 1.5px solid #000000 !important;
-    width: 175px !important;
+    width: 190px !important;
     margin-bottom: 3px !important;
   }
 
   .receipt-sig-label {
-    font-size: 9.5pt !important;
-    font-weight: 900 !important;
-    color: #1e3a8a !important;
-    line-height: 1.2 !important;
+    font-size: 11pt !important;
+    font-weight: 950 !important;
+    color: #000000 !important;
     text-align: center !important;
-    width: 175px !important;
+    width: 190px !important;
   }
 
   /* Petty Cash Voucher Typography & Layout */
@@ -12496,7 +12571,7 @@ html.dark-theme .btn-folio-visitors-action {
   border-radius: var(--radius-xl) !important;
 }
 
-/* 12. Strict Black-on-White Print Protection (Theme-Independent Pure White) */
+/* 12. Strict White Background Print Protection with Full Color Fidelity */
 @media print {
   html,
   html[data-theme="dark"],
@@ -12510,19 +12585,30 @@ html.dark-theme .btn-folio-visitors-action {
   [data-theme="dark"] body,
   #root,
   #hotel-app-screen,
-  #hotel-app-print,
-  #hotel-app-print * {
+  #hotel-app-print {
     color-scheme: light !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
-    color: #000000 !important;
     box-shadow: none !important;
     text-shadow: none !important;
-    filter: none !important;
+  }
+
+  /* Force browser print engine to preserve full color graphics, tints, watermarks & logos */
+  #hotel-app-print,
+  #hotel-app-print *,
+  #print-registration-sheet,
+  #print-registration-sheet *,
+  #print-payment-summary-sheet,
+  #print-payment-summary-sheet *,
+  #print-money-receipt-sheet,
+  #print-money-receipt-sheet *,
+  #print-petty-cash-sheet,
+  #print-petty-cash-sheet * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .printable-full-a4-sheet:only-child,
-  .registration-page-1:only-child,
   #print-payment-summary-sheet,
   #print-payment-summary-sheet.print-active {
     min-height: auto !important;
@@ -12547,9 +12633,41 @@ html.dark-theme .btn-folio-visitors-action {
     break-after: auto !important;
   }
 
-  #print-registration-sheet.print-active .full-a4-registration-card {
+  #print-registration-sheet.print-active .full-a4-registration-card,
+  #print-registration-sheet.print-active .registration-page-1,
+  .full-a4-registration-card,
+  .registration-page-1 {
+    width: 100% !important;
+    height: 276mm !important;
+    min-height: 276mm !important;
+    max-height: 278mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    position: relative !important;
+  }
+
+  .registration-footer-row {
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  #print-registration-sheet.print-active .tax-invoice-a4-sheet {
+    height: 268mm !important;
+    min-height: 268mm !important;
+    max-height: 270mm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+  }
+
+  #print-registration-sheet.print-active .tax-invoice-a4-sheet .tax-invoice-footer {
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
   }
 
   #print-registration-sheet.print-active .annexure-sheet {

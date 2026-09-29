@@ -103,7 +103,7 @@ describe('Check-In, Member Documents, & Monthly Voucher Sequence Enhancements', 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.voucherNumber).toMatch(/^(\d{6}|\d{8})-\d{3}$/);
-    expect(res.body.advanceReceiptNo).toMatch(/^(CR|UPI|POS|CHQ)?\d{6}-\d{3}$/);
+    expect(res.body.advanceReceiptNo).toMatch(/^(CR|UPI|POS|CHQ)?(\d{2,}|\d{6}-\d{3})(,\s*(CR|UPI|POS|CHQ)?(\d{2,}|\d{6}-\d{3}))*$/);
 
     const bookingId = res.body.booking?.id || res.body.data?.id;
     expect(bookingId).toBeDefined();

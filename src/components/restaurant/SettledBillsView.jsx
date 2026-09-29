@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import BillEditModal from './BillEditModal';
+import ThemedDatePicker from '../common/ThemedDatePicker';
 
 export default function SettledBillsView({ onPrintBill, onResettle, department = 'restaurant' }) {
   const { showToast, showConfirm } = useApp();
@@ -110,22 +111,18 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>From:</span>
-            <input
-              type="date"
-              className="form-input form-input-sm"
+            <ThemedDatePicker
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              style={{ width: '140px' }}
+              style={{ width: '150px', height: '34px', fontSize: '0.80rem' }}
             />
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>To:</span>
-            <input
-              type="date"
-              className="form-input form-input-sm"
+            <ThemedDatePicker
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              style={{ width: '140px' }}
+              style={{ width: '150px', height: '34px', fontSize: '0.80rem' }}
             />
           </div>
           <input

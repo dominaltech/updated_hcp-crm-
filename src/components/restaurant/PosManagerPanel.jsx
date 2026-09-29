@@ -4,6 +4,8 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { printFullMenuA4, printThermalBillSlip, printPosThermalClosingSlip } from '../../services/printService';
 import { blockNumericKeys, sanitizeNameInput } from '../../utils/inputEnhancements';
+import ThemedDatePicker from '../common/ThemedDatePicker';
+import ThemedSelect from '../common/ThemedSelect';
 
 export default function PosManagerPanel({ department = 'restaurant', onMenuChanged, onTablesChanged }) {
   const {
@@ -808,24 +810,22 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
               {/* Date Inputs */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>
                 <span>From:</span>
-                <input
-                  type="date"
+                <ThemedDatePicker
                   value={analyticsFromDate}
                   onChange={(e) => {
                     setAnalyticsFromDate(e.target.value);
                     loadAnalytics(e.target.value, analyticsToDate);
                   }}
-                  style={{ padding: '6px 10px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '0.82rem', fontWeight: 700, background: '#f8fafc' }}
+                  style={{ width: '150px', height: '34px', fontSize: '0.80rem' }}
                 />
                 <span>To:</span>
-                <input
-                  type="date"
+                <ThemedDatePicker
                   value={analyticsToDate}
                   onChange={(e) => {
                     setAnalyticsToDate(e.target.value);
                     loadAnalytics(analyticsFromDate, e.target.value);
                   }}
-                  style={{ padding: '6px 10px', borderRadius: '8px', border: '1.5px solid #cbd5e1', fontSize: '0.82rem', fontWeight: 700, background: '#f8fafc' }}
+                  style={{ width: '150px', height: '34px', fontSize: '0.80rem' }}
                 />
               </div>
 
@@ -2232,19 +2232,18 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                   Category
                 </label>
-                <select
-                  className="form-select"
+                <ThemedSelect
                   value={newItemCategory}
-                  onChange={(e) => setNewItemCategory(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.86rem', borderRadius: '10px' }}
-                >
-                  {categories.map((c) => (
-                    <option key={c.id || c.name} value={c.name}>{c.name}</option>
-                  ))}
-                  <option value="Main Course">Main Course</option>
-                  <option value="Starters">Starters</option>
-                  <option value="Desserts">Desserts</option>
-                </select>
+                  onChange={(val) => setNewItemCategory(val)}
+                  options={[
+                    ...categories.map((c) => ({ value: c.name, label: c.name })),
+                    { value: 'Main Course', label: 'Main Course' },
+                    { value: 'Starters', label: 'Starters' },
+                    { value: 'Desserts', label: 'Desserts' }
+                  ]}
+                  colorTheme="blue"
+                  style={{ width: '100%', height: '40px' }}
+                />
               </div>
 
               <div>
@@ -2376,16 +2375,13 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                   Category
                 </label>
-                <select
-                  className="form-select"
+                <ThemedSelect
                   value={editingItem.category || ''}
-                  onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.88rem', borderRadius: '10px' }}
-                >
-                  {categories.map((c) => (
-                    <option key={c.id || c.name} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditingItem({ ...editingItem, category: val })}
+                  options={categories.map((c) => ({ value: c.name, label: c.name }))}
+                  colorTheme="blue"
+                  style={{ width: '100%', height: '40px' }}
+                />
               </div>
 
               {department !== 'bar' && (
@@ -2670,30 +2666,25 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                   {department === 'bar' ? 'Bar Section / Service Type' : 'Restaurant Section / Service Type'}
                 </label>
-                <select
-                  className="form-select"
+                <ThemedSelect
                   value={editingTable ? editingTable.table_type : newTableType}
-                  onChange={(e) => {
-                    if (editingTable) setEditingTable({ ...editingTable, table_type: e.target.value });
-                    else setNewTableType(e.target.value);
+                  onChange={(val) => {
+                    if (editingTable) setEditingTable({ ...editingTable, table_type: val });
+                    else setNewTableType(val);
                   }}
-                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.86rem', borderRadius: '10px' }}
-                >
-                  {department === 'bar' ? (
-                    <>
-                      <option value="table">🍸 Bar Table / High Top</option>
-                      <option value="counter">🍷 Bar Counter Seat</option>
-                      <option value="lounge">🛋️ Lounge Sofa / VIP Area</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="dine_in">🍽️ Dine-in Table</option>
-                      <option value="family">👨‍👩‍👧 Family Section</option>
-                      <option value="ac_hall">❄️ AC Dining Hall</option>
-                      <option value="garden">🌿 Garden / Rooftop</option>
-                    </>
-                  )}
-                </select>
+                  options={department === 'bar' ? [
+                    { value: 'table', label: '🍸 Bar Table / High Top' },
+                    { value: 'counter', label: '🍷 Bar Counter Seat' },
+                    { value: 'lounge', label: '🛋️ Lounge Sofa / VIP Area' }
+                  ] : [
+                    { value: 'dine_in', label: '🍽️ Dine-in Table' },
+                    { value: 'family', label: '👨‍👩‍👧 Family Section' },
+                    { value: 'ac_hall', label: '❄️ AC Dining Hall' },
+                    { value: 'garden', label: '🌿 Garden / Rooftop' }
+                  ]}
+                  colorTheme="blue"
+                  style={{ width: '100%', height: '40px' }}
+                />
               </div>
 
               <div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../../services/api';
 import { useApp } from '../../../context/AppContext';
+import { useHospitality } from '../../../context/HospitalityContext';
 import Step1Source from './Step1Source';
 import Step2FrontScan from './Step2FrontScan';
 import Step3BackScan from './Step3BackScan';
@@ -12,6 +13,7 @@ import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
 import { printGuestRegistrationA4, printCashReceipt, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
+import { getLocalIsoDateTime } from '../../../utils/formatters';
 
 export default function CheckinWizardModal({
   isOpen,
@@ -21,6 +23,9 @@ export default function CheckinWizardModal({
   onCheckinSuccess
 }) {
   const { showToast, currentUser, surchargeSettings, minCheckinAdvancePct } = useApp();
+  const hospitalityCtx = useHospitality();
+  const contextRooms = hospitalityCtx?.rooms || [];
+
   const cardPct = surchargeSettings?.card_surcharge_pct !== undefined ? Number(surchargeSettings.card_surcharge_pct) : 2.5;
   const upiPct = surchargeSettings?.upi_tax_pct !== undefined ? Number(surchargeSettings.upi_tax_pct) : 0.4;
   const upiThresh = surchargeSettings?.upi_tax_threshold !== undefined ? Number(surchargeSettings.upi_tax_threshold) : 2000;
@@ -46,9 +51,14 @@ export default function CheckinWizardModal({
     }
   }, [currentStep, maxReachedStep]);
 
-  // Multi-room state & available inventory
+  // Multi-room state & available inventory (Instant from context)
   const [additionalRoomsList, setAdditionalRoomsList] = useState(additionalRooms || []);
-  const [readyRooms, setReadyRooms] = useState([]);
+  const [readyRooms, setReadyRooms] = useState(() => {
+    if (contextRooms && contextRooms.length > 0 && room) {
+      return contextRooms.filter((r) => r.status === 'ready' && r.id !== room.id);
+    }
+    return [];
+  });
 
   useEffect(() => {
     setAdditionalRoomsList(additionalRooms || []);
@@ -56,14 +66,18 @@ export default function CheckinWizardModal({
 
   useEffect(() => {
     if (isOpen && room) {
-      api.getRooms()
-        .then((res) => {
-          const list = Array.isArray(res) ? res : (res?.rooms || []);
-          setReadyRooms(list.filter((r) => r.status === 'ready' && r.id !== room.id));
-        })
-        .catch((e) => console.warn('Could not fetch ready rooms:', e));
+      if (contextRooms && contextRooms.length > 0) {
+        setReadyRooms(contextRooms.filter((r) => r.status === 'ready' && r.id !== room.id));
+      } else {
+        api.getRooms()
+          .then((res) => {
+            const list = Array.isArray(res) ? res : (res?.rooms || []);
+            setReadyRooms(list.filter((r) => r.status === 'ready' && r.id !== room.id));
+          })
+          .catch((e) => console.warn('Could not fetch ready rooms:', e));
+      }
     }
-  }, [isOpen, room]);
+  }, [isOpen, room, contextRooms]);
 
   const [roomGstPct, setRoomGstPct] = useState(5);
 
@@ -126,7 +140,7 @@ export default function CheckinWizardModal({
     extraChildren: 0,
     extraBeds: 0,
     roomExtraBeds: {},
-    checkinTime: new Date().toISOString(),
+    checkinTime: getLocalIsoDateTime(new Date()),
     approxCheckout: '',
     checkoutDate: '',
     checkoutTime: '',
@@ -177,7 +191,7 @@ export default function CheckinWizardModal({
           otaBookedExtraBeds: 0,
           extraAdults: 0,
           extraChildren: 0,
-          checkinTime: new Date().toISOString(),
+          checkinTime: getLocalIsoDateTime(new Date()),
           approxCheckout: '',
           checkoutDate: '',
           checkoutTime: '',
@@ -230,9 +244,19 @@ export default function CheckinWizardModal({
   // Calculate Total Net Due for Step 6 & 7 (aggregates all allocated rooms)
   const isOta = draft.bookingSource === 'OTA';
   const isBtc = draft.bookingSource === 'BTC';
+  const isOtaPrepaid = isOta && (
+    draft.isPrepaid === true ||
+    draft.isPrepaid === 1 ||
+    draft.isPrepaid === '1' ||
+    draft.rateType === 'prepaid' ||
+    draft.rate_type === 'prepaid' ||
+    draft.otaIsPrepaid === true
+  );
   const allSelectedRooms = [room, ...(additionalRoomsList || [])];
   const combinedRoomsTariff = allSelectedRooms.reduce((sum, r) => sum + (Number(r.price) || 2000), 0);
-  const basePrice = draft.baseRate !== undefined ? Number(draft.baseRate) : combinedRoomsTariff;
+  const basePrice = (draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
+    ? Number(draft.baseRate)
+    : combinedRoomsTariff;
   const discountPct = Math.min(Number(draft.discountPct) || 0, room.max_discount_pct || 15);
   const extraBeds = draft.roomExtraBeds !== undefined && Object.keys(draft.roomExtraBeds).length > 0
     ? allSelectedRooms.reduce((sum, r) => {
@@ -308,18 +332,31 @@ export default function CheckinWizardModal({
     : (draft.mealPlan === 'with_breakfast' ? totalGuests * breakfastRate * nights : 0);
   const effectiveDiscountPct = isOta ? 0 : discountPct;
 
+  const otaEarlyCheckinPrice = room?.ota_early_checkin_price !== undefined && room?.ota_early_checkin_price !== null
+    ? Number(room.ota_early_checkin_price)
+    : 900;
+  const otaEarlyCheckinCharge = (isOta && draft.isEarlyCheckin) ? otaEarlyCheckinPrice : 0;
+
+  const otaPackageAmt = Number(draft.otaManualAmount) || (basePrice * nights);
+  const otaGstRate = Number(roomGstPct) || 5;
+  // User Requirement: In OTA booking (prebook / pay at hotel), 5% GST is included in entered amount
+  const otaBaseTariff = Math.round((otaPackageAmt / (1 + otaGstRate / 100)) * 100) / 100;
+  const otaGstTariff = Number((otaPackageAmt - otaBaseTariff).toFixed(2));
+
   let totalBaseRate = (basePrice * nights) + extensionCharge + mealTotalCharge + extraBedCharge;
   if (isOta && draft.otaManualAmount) {
-    totalBaseRate = (Number(draft.otaManualAmount) || 0) + extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge;
+    totalBaseRate = otaBaseTariff + extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge + otaEarlyCheckinCharge;
   }
 
   const discountAmount = isOta ? 0 : Math.round((totalBaseRate * effectiveDiscountPct) / 100);
   const netChargeBeforeTax = Math.round(totalBaseRate - discountAmount);
-  const isOtaPrepaid = isOta && draft.isPrepaid === true;
-  const gstAmount = isOta ? 0 : Math.round(netChargeBeforeTax * (roomGstPct / 100));
-  let totalDue = netChargeBeforeTax + gstAmount;
+  const effectiveGstPct = (draft.gstPct !== undefined && draft.gstPct !== '' && !isNaN(Number(draft.gstPct))) ? Number(draft.gstPct) : (Number(roomGstPct) || 5);
+  const gstAmount = isOta ? otaGstTariff : Math.round(netChargeBeforeTax * (effectiveGstPct / 100));
+  let totalDue = isOta
+    ? (otaPackageAmt + extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge + otaEarlyCheckinCharge)
+    : (netChargeBeforeTax + gstAmount);
   if (isOta && isOtaPrepaid) {
-    totalDue = Math.max(0, extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge);
+    totalDue = Math.max(0, extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge + otaEarlyCheckinCharge);
   }
 
   // Step Nav validation
@@ -435,6 +472,63 @@ export default function CheckinWizardModal({
     }
   };
 
+  // Stage 1 to 7 Keyboard Navigation:
+  // - ESC: Go one stage back (e.g. Stage 7->6->5->4->3->2->1) or close on stage 1.
+  // - Shift + Enter: Reverse of Enter (navigate backwards / previous stage).
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleWizardKeyDown = (e) => {
+      // 1. ESC: Close lightbox if open; otherwise retreat one stage or close if at Stage 1
+      if (e.key === 'Escape') {
+        if (lightboxImage) {
+          e.preventDefault();
+          e.stopPropagation();
+          setLightboxImage(null);
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentStep > 1) {
+          handlePrev();
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      // 2. Shift + Enter: Reverse of Enter (navigate backwards / previous stage)
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentStep > 1) {
+          handlePrev();
+        }
+        return;
+      }
+
+      // 3. Ctrl + Enter (or Cmd + Enter): Universal Fast-Forward / Complete Check-in
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (currentStep === 7) {
+          const completeBtn = document.getElementById('btn-complete-checkin-direct') || document.querySelector('.btn-complete-checkin');
+          if (completeBtn) {
+            completeBtn.click();
+          } else {
+            handleNext();
+          }
+        } else {
+          handleNext();
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleWizardKeyDown, true);
+    return () => window.removeEventListener('keydown', handleWizardKeyDown, true);
+  }, [isOpen, currentStep, lightboxImage, onClose, handleNext, handlePrev]);
+
   const handleManualEntry = () => {
     if (!draft.bookingSource) {
       showToast('Please select a Booking Source / Channel first to proceed.', 'red');
@@ -518,8 +612,26 @@ export default function CheckinWizardModal({
         doc_back: draft.docBack,
         guestPhoto: draft.guestPhoto,
         guest_photo: draft.guestPhoto,
-        adultsMale: draft.adultsMale,
-        adults_male: draft.adultsMale,
+        adultsMale: (() => {
+          const male = Number(draft.adultsMale) || 0;
+          const female = Number(draft.adultsFemale) || 0;
+          const beds = isOta ? ((Number(draft.otaBookedExtraBeds) || 0) + (Number(draft.extraAdults) || 0)) : extraBeds;
+          const baseCap = Number(room.max_adults) || 2;
+          if (beds > 0 && (male + female) < (baseCap + beds)) {
+            return Math.max(male, (baseCap + beds) - female);
+          }
+          return male;
+        })(),
+        adults_male: (() => {
+          const male = Number(draft.adultsMale) || 0;
+          const female = Number(draft.adultsFemale) || 0;
+          const beds = isOta ? ((Number(draft.otaBookedExtraBeds) || 0) + (Number(draft.extraAdults) || 0)) : extraBeds;
+          const baseCap = Number(room.max_adults) || 2;
+          if (beds > 0 && (male + female) < (baseCap + beds)) {
+            return Math.max(male, (baseCap + beds) - female);
+          }
+          return male;
+        })(),
         adultsFemale: draft.adultsFemale,
         adults_female: draft.adultsFemale,
         children: draft.children,
@@ -541,6 +653,9 @@ export default function CheckinWizardModal({
         room_rate: basePrice,
         discountPct: effectiveDiscountPct,
         discount_pct: effectiveDiscountPct,
+        gstPct: effectiveGstPct,
+        gst_pct: effectiveGstPct,
+        room_gst_pct: effectiveGstPct,
         netCharge: (isOta && isOtaPrepaid) ? allowedTotalCharge : totalDue,
         total_room_charge: (isOta && isOtaPrepaid) ? allowedTotalCharge : totalDue,
         extensionCharge: extensionCharge,
@@ -585,6 +700,8 @@ export default function CheckinWizardModal({
         original_checkin_time: isOta ? draft.originalCheckinTime : null,
         earlyCheckinTime: isOta ? draft.earlyCheckinTime : null,
         early_checkin_time: isOta ? draft.earlyCheckinTime : null,
+        earlyCheckinCharge: isOta ? otaEarlyCheckinCharge : 0,
+        early_checkin_charge: isOta ? otaEarlyCheckinCharge : 0,
         btcCompanyId: draft.bookingSource === 'BTC' ? draft.btcCompanyId : null,
         btc_company_id: draft.bookingSource === 'BTC' ? draft.btcCompanyId : null,
         btcCompanyName: draft.bookingSource === 'BTC' ? draft.btcCompanyName : null,
@@ -594,6 +711,12 @@ export default function CheckinWizardModal({
         company_name: (draft.companyName || draft.company_name || '').trim(),
         gstNumber: (draft.gstNumber || draft.gst_number || '').trim(),
         gst_number: (draft.gstNumber || draft.gst_number || '').trim(),
+        companyAddress: (draft.companyAddress || draft.company_address || '').trim(),
+        company_address: (draft.companyAddress || draft.company_address || '').trim(),
+        taxType: draft.taxType || (draft.isIgst ? 'IGST' : 'CGST_SGST'),
+        tax_type: draft.taxType || (draft.isIgst ? 'IGST' : 'CGST_SGST'),
+        isIgst: Boolean(draft.isIgst || draft.is_igst),
+        is_igst: Boolean(draft.isIgst || draft.is_igst) ? 1 : 0,
         splitCash: draft.splitCash,
         split_cash: draft.splitCash,
         splitOnline: draft.splitOnline,
@@ -714,6 +837,8 @@ export default function CheckinWizardModal({
           original_checkin_time: isOta ? draft.originalCheckinTime : null,
           earlyCheckinTime: isOta ? draft.earlyCheckinTime : null,
           early_checkin_time: isOta ? draft.earlyCheckinTime : null,
+          earlyCheckinCharge: isOta ? otaEarlyCheckinCharge : 0,
+          early_checkin_charge: isOta ? otaEarlyCheckinCharge : 0,
           btcCompanyId: draft.btcCompanyId || null,
           btcCompanyName: draft.btcCompanyName || '',
           btcCompanyAddress: draft.btcCompanyAddress || draft.address || '',
@@ -752,15 +877,120 @@ export default function CheckinWizardModal({
           checkedInBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
         };
 
-        // 1. Print paper registration card for signing IMMEDIATELY (Zero delay preview)
-        printGuestRegistrationA4(regData, { includePhotos: false });
+        // 1. If advance payment made, print separate payment receipts for each payment method paid
+        const splitCashVal = Number(draft.splitCash) || 0;
+        const splitOnlineVal = Number(draft.splitOnline) || 0;
+        const splitCardVal = Number(draft.splitCard) || 0;
+        const splitChequeVal = Number(draft.splitCheque) || 0;
+        const totalPaidAmt = splitCashVal + splitOnlineVal + splitCardVal + splitChequeVal;
 
-        // 2. Defer heavy PDF digital archive export so it doesn't freeze the main thread or print preview
-        setTimeout(() => {
-          downloadGuestRegistrationPDF(regData).catch(err => {
-            console.warn('Auto PDF download notice:', err);
-          });
-        }, 2000);
+        const cardSurchargeVal = (splitCardVal > 0 && cardPct > 0) ? Math.round((splitCardVal * cardPct) / 100) : 0;
+        const upiTaxVal = (splitOnlineVal > upiThresh && upiPct > 0) ? Math.round((splitOnlineVal * upiPct) / 100) : 0;
+        const cardAndUpiFees = {
+          cardSurcharge: cardSurchargeVal,
+          upiTax: upiTaxVal
+        };
+
+        try {
+          if (totalPaidAmt > 0) {
+            const advReceipts = [];
+            const voucherNo = res.booking?.voucher_number || res.voucher_number || res.voucherNumber || regData.voucher_number || `REG-${Date.now().toString().slice(-4)}`;
+            const cashierName = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
+            const guestName = draft.guestName || draft.name || 'Valued Guest';
+            const roomNums = [room?.room_number, ...(additionalRoomsList || []).map(r => r.room_number)].filter(Boolean).join(', ') || String(room?.room_number || '-');
+
+            const cashReceiptNo = res.receipt_numbers?.cash || res.receiptNumbers?.cash || res.receipts?.find(r => r.mode === 'cash')?.receipt_no || 'CR01';
+            const upiReceiptNo = res.receipt_numbers?.upi || res.receiptNumbers?.upi || res.receipts?.find(r => r.mode === 'upi')?.receipt_no || 'UPI01';
+            const cardReceiptNo = res.receipt_numbers?.card || res.receiptNumbers?.card || res.receipts?.find(r => r.mode === 'card')?.receipt_no || 'POS01';
+            const chqReceiptNo = res.receipt_numbers?.cheque || res.receiptNumbers?.cheque || res.receipts?.find(r => r.mode === 'cheque')?.receipt_no || 'CHQ01';
+
+            if (splitCashVal > 0) {
+              advReceipts.push({
+                voucher_number: voucherNo,
+                receipt_no: cashReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitCashVal,
+                base_amount: splitCashVal,
+                payment_mode: 'Cash',
+                mode: 'cash',
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Check-In Advance Payment (Cash)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitOnlineVal > 0) {
+              advReceipts.push({
+                voucher_number: voucherNo,
+                receipt_no: upiReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitOnlineVal + (cardAndUpiFees?.upiTax || 0),
+                base_amount: splitOnlineVal,
+                payment_mode: 'Online UPI',
+                mode: 'upi',
+                utr_number: draft.onlineUtr || draft.utrNumber,
+                upi_tax: cardAndUpiFees?.upiTax || 0,
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Check-In Advance Payment (UPI)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitCardVal > 0) {
+              advReceipts.push({
+                voucher_number: voucherNo,
+                receipt_no: cardReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitCardVal + (cardAndUpiFees?.cardSurcharge || 0),
+                base_amount: splitCardVal,
+                payment_mode: 'Card POS',
+                mode: 'card',
+                card_surcharge: cardAndUpiFees?.cardSurcharge || 0,
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Check-In Advance Payment (Card POS)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+            if (splitChequeVal > 0) {
+              advReceipts.push({
+                voucher_number: voucherNo,
+                receipt_no: chqReceiptNo,
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: splitChequeVal,
+                base_amount: splitChequeVal,
+                payment_mode: 'Cheque',
+                mode: 'cheque',
+                cheque_no: draft.advanceChequeNo,
+                bank_name: draft.advanceChequeBank,
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Check-In Advance Payment (Cheque)`,
+                cashier_name: cashierName,
+                is_split: true
+              });
+            }
+
+            if (advReceipts.length > 0) {
+              printCashReceipt(advReceipts);
+            }
+          } else {
+            // If 0 advance (e.g. BTC or pay later), print paper registration card
+            printGuestRegistrationA4(regData, { includePhotos: false });
+          }
+
+          // 2. Defer heavy PDF digital archive export so it doesn't freeze the main thread or print preview
+          setTimeout(() => {
+            downloadGuestRegistrationPDF(regData).catch(err => {
+              console.warn('Auto PDF download notice:', err);
+            });
+          }, 2000);
+        } catch (printErr) {
+          console.warn('Auto receipt print notice:', printErr);
+        }
 
         onClose();
         if (onCheckinSuccess) onCheckinSuccess(res.booking || res);
@@ -1096,7 +1326,7 @@ export default function CheckinWizardModal({
                   availableRooms={readyRooms}
                   draft={draft}
                   updateDraft={updateDraft}
-                  roomGstPct={roomGstPct}
+                  roomGstPct={effectiveGstPct}
                 />
               )}
 

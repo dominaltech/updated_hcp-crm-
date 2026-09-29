@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatTaxInvoiceNumber } from '../../utils/formatters';
 import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary } from '../../services/printService';
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
@@ -16,6 +16,20 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState('all');
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  // Long-press (Click & Hold) Refs
+  const longPressTimerRef = useRef(null);
+  const isLongPressTriggeredRef = useRef(false);
+  const pressStartPosRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
 
   // Stay Detail & Payment History Modal State
   const [detailBooking, setDetailBooking] = useState(null);
@@ -184,7 +198,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
             refundAmt: 0,
             settled_at: new Date(),
             invoiceNo: `L${targetCopy.id}`,
-            checked_out_by: (settleBtcCashier || 'Front Desk / Accounts').trim()
+            checked_out_by: (settleBtcCashier || (currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1')).trim()
           });
         } catch (printErr) {
           console.warn('Error releasing Tax Invoice:', printErr);
@@ -230,6 +244,72 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     } finally {
       setIsDetailLoading(false);
     }
+  };
+
+  const startLongPress = (id, clientX, clientY) => {
+    cancelLongPress();
+    isLongPressTriggeredRef.current = false;
+    pressStartPosRef.current = { x: clientX, y: clientY };
+
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      setIsSelectionMode(true);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          navigator.vibrate(40);
+        } catch (_) {}
+      }
+    }, 450);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handlePointerDown = (e, id) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    startLongPress(id, e.clientX || 0, e.clientY || 0);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!longPressTimerRef.current) return;
+    const dx = Math.abs((e.clientX || 0) - pressStartPosRef.current.x);
+    const dy = Math.abs((e.clientY || 0) - pressStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      cancelLongPress();
+    }
+  };
+
+  const handlePointerUp = () => {
+    cancelLongPress();
+  };
+
+  const handleRowClick = (id) => {
+    if (isLongPressTriggeredRef.current) {
+      isLongPressTriggeredRef.current = false;
+      return;
+    }
+
+    if (isSelectionMode) {
+      handleToggleSelect(id);
+      return;
+    }
+
+    handleOpenDetail(id);
+  };
+
+  const handleExitSelection = () => {
+    cancelLongPress();
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
   };
 
   const handleSelectAll = (checked) => {
@@ -292,6 +372,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
       if (res && res.success) {
         showToast(`${count} records deleted.`, 'green');
         setSelectedIds(new Set());
+        setIsSelectionMode(false);
         loadHistory(true);
       }
     } catch (err) {
@@ -405,35 +486,72 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {selectedIds.size > 0 && (
-              <button
-                type="button"
-                className="btn-refresh-history"
-                onClick={handleDeleteSelected}
-                style={{
-                  color: '#dc2626',
-                  borderColor: '#fca5a5',
-                  background: '#fee2e2',
-                  fontWeight: 800
-                }}
-                title="Delete Selected Records"
-              >
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
+            {isSelectionMode ? (
+              <>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 12px',
+                    borderRadius: '8px',
+                    background: selectedIds.size > 0 ? '#eff6ff' : '#f8fafc',
+                    border: `1.5px solid ${selectedIds.size > 0 ? '#bfdbfe' : '#e2e8f0'}`,
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    color: selectedIds.size > 0 ? '#1d4ed8' : '#64748b'
+                  }}
                 >
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  <line x1="10" y1="11" x2="10" y2="17" />
-                  <line x1="14" y1="11" x2="14" y2="17" />
-                </svg>
-                <span>Delete Selected ({selectedIds.size})</span>
-              </button>
-            )}
+                  <span>{selectedIds.size > 0 ? '✓' : '☐'}</span>
+                  <span>{selectedIds.size} Selected</span>
+                </div>
+
+                {selectedIds.size > 0 && (
+                  <button
+                    type="button"
+                    className="btn-refresh-history"
+                    onClick={handleDeleteSelected}
+                    style={{
+                      color: '#dc2626',
+                      borderColor: '#fca5a5',
+                      background: '#fee2e2',
+                      fontWeight: 800
+                    }}
+                    title="Delete Selected Records"
+                  >
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                    <span>Delete Selected ({selectedIds.size})</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="btn-refresh-history"
+                  onClick={handleExitSelection}
+                  style={{
+                    color: '#334155',
+                    borderColor: '#cbd5e1',
+                    background: '#ffffff',
+                    fontWeight: 800
+                  }}
+                  title="Exit Selection Mode"
+                >
+                  ✕ Done
+                </button>
+              </>
+            ) : null}
 
             <button
               type="button"
@@ -493,6 +611,14 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               </span>
             </>
           )}
+          {isSelectionMode && (
+            <>
+              <span className="stats-sep">•</span>
+              <span style={{ color: '#2563eb', fontWeight: 800 }}>
+                ✓ Selection Active
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -501,15 +627,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         <table className="history-data-table">
           <thead>
             <tr>
-              <th style={{ width: '44px', textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  title="Select / Deselect All Rows"
-                  style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#dc2626' }}
-                />
-              </th>
+              {isSelectionMode && (
+                <th style={{ width: '44px', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredRecords.length > 0 && selectedIds.size === filteredRecords.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    title="Select / Deselect All Rows"
+                    style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#dc2626' }}
+                  />
+                </th>
+              )}
               <th style={{ width: '90px' }}>Booking #</th>
               <th style={{ width: '120px' }}>Room(s)</th>
               <th>Guest Details</th>
@@ -537,7 +665,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 <img
                   src={r.guest_photo}
                   alt={r.guest_name}
-                  onClick={() => {
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setLightboxImg(r.guest_photo);
                     setLightboxTitle(`${r.guest_name} - Guest Photo`);
                   }}
@@ -553,6 +683,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 />
               ) : (
                 <div
+                  onPointerDown={(e) => e.stopPropagation()}
                   style={{
                     width: '38px',
                     height: '38px',
@@ -577,22 +708,44 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               return (
                 <tr
                   key={r.id}
-                  onClick={() => handleOpenDetail(r.id)}
-                  style={{ cursor: 'pointer' }}
+                  onPointerDown={(e) => handlePointerDown(e, r.id)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  onClick={() => handleRowClick(r.id)}
+                  onContextMenu={(e) => {
+                    if (isLongPressTriggeredRef.current) e.preventDefault();
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    backgroundColor: isSelected ? '#fef2f2' : undefined,
+                    transition: 'background-color 0.15s ease',
+                    userSelect: isSelectionMode ? 'none' : 'auto'
+                  }}
+                  title={isSelectionMode ? (isSelected ? 'Click to deselect' : 'Click to select') : 'Click to view details (Click & hold to select)'}
                 >
-                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleToggleSelect(r.id)}
-                      style={{
-                        width: '17px',
-                        height: '17px',
-                        cursor: 'pointer',
-                        accentColor: '#dc2626'
+                  {isSelectionMode && (
+                    <td
+                      style={{ textAlign: 'center' }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleSelect(r.id);
                       }}
-                    />
-                  </td>
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelect(r.id)}
+                        style={{
+                          width: '17px',
+                          height: '17px',
+                          cursor: 'pointer',
+                          accentColor: '#dc2626'
+                        }}
+                      />
+                    </td>
+                  )}
                   <td style={{ fontWeight: 800, color: '#64748b', fontSize: '0.82rem' }}>
                     #{r.id}
                   </td>
@@ -717,6 +870,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     <div style={{ marginTop: '3px' }}>
                       {isBtcPending ? (
                         <span
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenSettleBtc(r);
@@ -740,6 +894,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         </span>
                       ) : (
                         <span
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (onChangePaymentStatus) onChangePaymentStatus(r);
@@ -781,7 +936,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       )}
                     </div>
                   </td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td style={{ textAlign: 'center' }} onPointerDown={(e) => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
                       {isBtcPending && (
                         <button
@@ -857,8 +1012,8 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                   settleAmt: r.final_settle_amount || r.total_paid || 0,
                                   refundAmt: r.refund_amount || 0,
                                   settled_at: r.actual_checkout_time || r.checkout_time || new Date(),
-                                  invoiceNo: r.invoice_no || (r.id ? `L${r.id}` : 'L1573'),
-                                  checked_out_by: r.checked_out_by || 'Front Desk'
+                                  invoiceNo: r.invoice_no || formatTaxInvoiceNumber(r.voucher_number || r.voucher_no || r.checkin_voucher_no || r.id),
+                                  checked_out_by: r.checked_out_by || (currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1')
                                 }
                               }
                             });
@@ -1423,12 +1578,18 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                         <button
                                           type="button"
                                           className="filter-chip"
-                                          onClick={() =>
+                                          onClick={() => {
+                                            const pMode = (p.payment_mode || '').toLowerCase();
+                                            const serialNo = (p.receipt_no && !p.receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(p.receipt_no))
+                                              ? p.receipt_no
+                                              : (pMode.includes('upi') ? 'UPI01' : pMode.includes('card') ? 'POS01' : pMode.includes('cheque') ? 'CHQ01' : 'CR01');
                                             printCashReceipt({
-                                              receipt_no: p.receipt_no || `RCP-${p.id}`,
+                                              receipt_no: serialNo,
+                                              voucher_number: detailBooking.voucher_number || detailBooking.voucherNumber,
                                               receipt_date: p.created_at,
                                               guest_name: detailBooking.guest_name,
                                               amount: p.amount,
+                                              base_amount: p.amount,
                                               payment_mode: p.payment_mode,
                                               split_cash: p.split_cash,
                                               split_online: p.split_online,
@@ -1440,8 +1601,8 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                               room_numbers: detailBooking.room_number,
                                               particulars: `Stay Payment - Room ${detailBooking.room_number}`,
                                               cashier_name: p.cashier_name || p.cashier || detailBooking.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
-                                            })
-                                          }
+                                            });
+                                          }}
                                           style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
                                           title="Print Official Cash Receipt (2-on-A4)"
                                         >
@@ -1482,12 +1643,18 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                   <button
                                     type="button"
                                     className="filter-chip"
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const sMode = (detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'Cash').toLowerCase();
+                                      const serialNo = (detailBooking.advance_receipt_no && !detailBooking.advance_receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(detailBooking.advance_receipt_no))
+                                        ? detailBooking.advance_receipt_no
+                                        : (sMode.includes('upi') ? 'UPI01' : sMode.includes('card') ? 'POS01' : sMode.includes('cheque') ? 'CHQ01' : 'CR01');
                                       printCashReceipt({
-                                        receipt_no: `RCP-${detailBooking.id}`,
+                                        receipt_no: serialNo,
+                                        voucher_number: detailBooking.voucher_number || detailBooking.voucherNumber,
                                         receipt_date: detailBooking.checkout_time || detailBooking.checkin_time,
                                         guest_name: detailBooking.guest_name,
                                         amount: detailBooking.total_paid || detailBooking.total_room_charge || 0,
+                                        base_amount: detailBooking.total_paid || detailBooking.total_room_charge || 0,
                                         payment_mode: detailBooking.final_payment_mode || 'Cash',
                                         split_cash: detailBooking.split_cash || detailBooking.final_split_cash,
                                         split_online: detailBooking.split_online || detailBooking.final_split_online,
@@ -1499,8 +1666,8 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                         room_numbers: detailBooking.room_number,
                                         particulars: `Stay Settlement - Room ${detailBooking.room_number}`,
                                         cashier_name: detailBooking.checked_out_by || detailBooking.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
-                                      })
-                                    }
+                                      });
+                                    }}
                                     style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
                                     title="Print Official Cash Receipt (2-on-A4)"
                                   >
@@ -1614,8 +1781,8 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                   settleAmt: detailBooking.final_settle_amount || 0,
                                   refundAmt: detailBooking.refund_amount || 0,
                                   settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
-                                  invoiceNo: detailBooking.invoice_no || (detailBooking.id ? `L${detailBooking.id}` : 'L1573'),
-                                  checked_out_by: detailBooking.checked_out_by || 'Front Desk'
+                                  invoiceNo: detailBooking.invoice_no || formatTaxInvoiceNumber(detailBooking.voucher_number || detailBooking.voucher_no || detailBooking.checkin_voucher_no || detailBooking.id),
+                                  checked_out_by: detailBooking.checked_out_by || (currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1')
                                 }
                               }
                             });

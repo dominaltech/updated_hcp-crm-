@@ -3,6 +3,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { printThermalBillSlip } from '../../services/printService';
+import ThemedSelect from '../common/ThemedSelect';
 
 export default function TableSettleModal({ isOpen, session, onClose, onSettleSuccess, department = 'restaurant' }) {
   const { showToast, currentUser, surchargeSettings } = useApp();
@@ -482,29 +483,20 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       <span>⚠️</span> No occupied rooms currently checked in
                     </div>
                   ) : (
-                    <select
+                    <ThemedSelect
                       value={selectedRoomId}
-                      onChange={(e) => setSelectedRoomId(e.target.value)}
-                      style={{
-                        height: '42px',
-                        minWidth: '280px',
-                        padding: '0 14px',
-                        borderRadius: '10px',
-                        border: '2px solid var(--apple-blue, #0071e3)',
-                        background: 'var(--bg-app, #ffffff)',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.94rem',
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="">-- Select In-House Guest Room --</option>
-                      {occupiedRooms.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          Room #{r.room_number} • {r.guest_name || 'In-House Guest'} ({r.room_type || 'Room'})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setSelectedRoomId(val)}
+                      placeholder="-- Select In-House Guest Room --"
+                      options={[
+                        { value: '', label: '-- Select In-House Guest Room --' },
+                        ...occupiedRooms.map((r) => ({
+                          value: r.id,
+                          label: `Room #${r.room_number} • ${r.guest_name || 'In-House Guest'} (${r.room_type || 'Room'})`
+                        }))
+                      ]}
+                      colorTheme="blue"
+                      style={{ height: '42px', minWidth: '280px' }}
+                    />
                   )}
                 </div>
               </div>

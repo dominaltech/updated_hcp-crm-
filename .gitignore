@@ -16,3 +16,7 @@ scratch_gen.mjs
 release/runtime/
 release-electron/
 runtime/
+test_hotel.db
+qa-selenium.zip
+qa-selenium/
+propmpt.txt

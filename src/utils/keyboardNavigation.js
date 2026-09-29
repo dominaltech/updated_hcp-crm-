@@ -15,38 +15,57 @@ export function getActiveModal() {
   if (typeof document === 'undefined') return null;
 
   const selector = [
+    '[role="dialog"]',
+    '.modal-overlay',
     '.modal-overlay.active',
-    '.modal-overlay[style*="display: flex"]',
-    '.modal-overlay[style*="display: block"]',
-    '.custom-confirm-overlay.active',
-    '#custom-confirm-modal',
+    '.modal-backdrop',
     '.modal-backdrop-fixed',
+    '.custom-confirm-overlay',
+    '#custom-confirm-modal',
     '#rest-settle-modal',
     '#checkin-modal-overlay',
     '#folio-settlement-modal-overlay',
-    '#image-lightbox-modal'
+    '#image-lightbox-modal',
+    '.app-modal-overlay',
+    '.dialog-overlay'
   ].join(', ');
 
-  const overlays = Array.from(document.querySelectorAll(selector)).filter((el) => {
+  const standardOverlays = Array.from(document.querySelectorAll(selector)).filter((el) => {
     const style = window.getComputedStyle(el);
     return (
       style.display !== 'none' &&
       style.visibility !== 'hidden' &&
       parseFloat(style.opacity || '1') > 0 &&
-      el.offsetParent !== null
+      el.offsetWidth > 0 &&
+      el.offsetHeight > 0
     );
   });
 
-  if (overlays.length === 0) return null;
+  // Also check for any high z-index fixed containers (modals without standard class names)
+  const fixedOverlays = Array.from(document.querySelectorAll('body > div, #root > div')).filter((el) => {
+    const style = window.getComputedStyle(el);
+    const z = parseInt(style.zIndex, 10) || 0;
+    return (
+      (style.position === 'fixed' || style.position === 'absolute') &&
+      z >= 100 &&
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      el.offsetWidth > 100 &&
+      el.offsetHeight > 100
+    );
+  });
+
+  const combined = Array.from(new Set([...standardOverlays, ...fixedOverlays]));
+  if (combined.length === 0) return null;
 
   // Return the one with highest z-index or the last one in the DOM
-  overlays.sort((a, b) => {
+  combined.sort((a, b) => {
     const za = parseInt(window.getComputedStyle(a).zIndex, 10) || 0;
     const zb = parseInt(window.getComputedStyle(b).zIndex, 10) || 0;
     return zb - za;
   });
 
-  return overlays[0];
+  return combined[0];
 }
 
 // Find scrollable container inside a modal or view
@@ -138,6 +157,30 @@ function navigateGrid(items, currentEl, direction) {
   return bestTarget;
 }
 
+// Helper to detect if currently focused element is an input with an active autocomplete dropdown
+function isAutocompleteActive(activeEl, activeModal) {
+  // Check if activeModal or document has an open autocomplete dropdown
+  const hasDropdownVisible = Boolean(
+    activeModal?.querySelector('.autocomplete-dropdown:not([style*="display: none"]), .btc-suggestion-item') ||
+    document.querySelector('.autocomplete-dropdown:not([style*="display: none"]), .btc-suggestion-item')
+  );
+
+  if (!hasDropdownVisible) return false;
+
+  // If dropdown is visible, check if focus is within autocomplete or on body/unfocused
+  if (!activeEl || activeEl === document.body) return true;
+
+  if (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') {
+    return true;
+  }
+
+  if (activeEl.closest?.('[data-autocomplete-container], .autocomplete-container, .autocomplete-dropdown')) {
+    return true;
+  }
+
+  return false;
+}
+
 export function initGlobalKeyboardNavigation() {
   if (typeof window === 'undefined') return;
 
@@ -154,6 +197,23 @@ export function initGlobalKeyboardNavigation() {
       // CASE 1: MODAL IS OPEN ("buoon s should work on current page not previous page")
       // =========================================================================
       if (activeModal) {
+        // If an autocomplete dropdown is active, let the input handle ArrowDown, ArrowUp, Enter, Escape!
+        if (isAutocompleteActive(activeEl, activeModal)) {
+          if (['ArrowDown', 'ArrowUp', 'Enter', 'NumpadEnter', 'Escape', 'Tab'].includes(e.key)) {
+            // Direct failsafe for Enter: click the currently highlighted item immediately
+            if ((e.key === 'Enter' || e.key === 'NumpadEnter') && !e.shiftKey) {
+              const highlighted = activeModal.querySelector('.btc-suggestion-item.active-highlight, .btc-suggestion-item');
+              if (highlighted) {
+                e.preventDefault();
+                highlighted.click();
+                return;
+              }
+            }
+            // Do NOT call e.stopPropagation() or preventDefault! Allow event to reach the input's onKeyDown!
+            return;
+          }
+        }
+
         // Prevent background listeners on previous pages from receiving this event
         e.stopPropagation();
 
@@ -162,6 +222,11 @@ export function initGlobalKeyboardNavigation() {
 
         // --- UP / DOWN: SCROLL THE POPUP ("if popup is opening should scroll") ---
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          // If active element is an input with an active autocomplete dropdown, let input handle navigation!
+          if (isAutocompleteActive(activeEl, activeModal)) {
+            return;
+          }
+
           // In native select or textarea with multiple lines, allow standard behavior
           if (activeEl && activeEl.tagName === 'SELECT') return;
           if (activeEl && activeEl.tagName === 'TEXTAREA') return;
@@ -201,6 +266,16 @@ export function initGlobalKeyboardNavigation() {
 
         // --- ENTER: FORM ADVANCE OR CONFIRM / SUBMIT ---
         if (e.key === 'Enter' && !e.shiftKey) {
+          // If active element is an input with an active autocomplete dropdown, let input select the item!
+          if (isAutocompleteActive(activeEl, activeModal)) {
+            const highlighted = activeModal.querySelector('.btc-suggestion-item.active-highlight, .btc-suggestion-item');
+            if (highlighted) {
+              e.preventDefault();
+              highlighted.click();
+            }
+            return;
+          }
+
           // If a button is focused, trigger it
           if (activeEl && activeEl.tagName === 'BUTTON') {
             e.preventDefault();
@@ -270,6 +345,13 @@ export function initGlobalKeyboardNavigation() {
         // --- SHIFT + ENTER: FORM BACKWARD OR CANCEL / CLOSE ---
         if (e.key === 'Enter' && e.shiftKey) {
           e.preventDefault();
+          // In check-in wizard or multi-stage modals, prioritize stepping back one stage
+          const wizardBackBtn = activeModal.querySelector('#btn-checkin-top-back, #btn-side-checkin-prev');
+          if (wizardBackBtn) {
+            wizardBackBtn.click();
+            return;
+          }
+
           if (isInputFocused && modalFocusables.length > 0) {
             const currentIdx = modalFocusables.indexOf(activeEl);
             if (currentIdx > 0) {
@@ -282,7 +364,7 @@ export function initGlobalKeyboardNavigation() {
 
           // Trigger cancel / close button if at the start
           const cancelBtn = activeModal.querySelector(
-            '.btn-custom-cancel, .universal-back-btn, .modal-close-btn, #btn-side-checkin-prev, #btn-dining-settle-back'
+            '.btn-custom-cancel, .universal-back-btn, .modal-close-btn, #btn-dining-settle-back'
           );
           if (cancelBtn) {
             cancelBtn.click();
@@ -293,36 +375,62 @@ export function initGlobalKeyboardNavigation() {
         // --- LEFT / RIGHT: SWITCH BUTTON OPTIONS / PILLS / TABS IN MODAL ---
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           // If in a text input and text is not at boundary, permit text editing
-          if (isInputFocused && activeEl.tagName === 'INPUT' && activeEl.type === 'text') {
+          if (isInputFocused && activeEl.tagName === 'INPUT' && (activeEl.type === 'text' || !activeEl.type)) {
             const len = activeEl.value?.length || 0;
             if (activeEl.selectionStart !== activeEl.selectionEnd) return;
             if (e.key === 'ArrowLeft' && activeEl.selectionStart > 0) return;
             if (e.key === 'ArrowRight' && activeEl.selectionStart < len) return;
           }
 
-          // Find option buttons / pills / radio groups in the modal (e.g. Cash / Online / Card / Split)
-          const optionPills = Array.from(
-            activeModal.querySelectorAll('.pill-tab, .payment-mode-pill, .btn-custom-cancel, .btn-custom-ok, button.step-tab')
-          ).filter((el) => window.getComputedStyle(el).display !== 'none');
+          // Find option buttons / pills / radio groups / tabs in the modal
+          const tabs = Array.from(
+            activeModal.querySelectorAll(
+              '[role="tab"], .pill-tab, .payment-mode-pill, button.step-tab, .tab-btn, .modern-channel-card, .channel-card, .doc-option-card, .ota-chip, .meal-plan-card, .filter-chip, .btn-custom-cancel, .btn-custom-ok'
+            )
+          ).filter((el) => window.getComputedStyle(el).display !== 'none' && !el.disabled);
 
-          if (optionPills.length > 1 && optionPills.includes(activeEl)) {
+          if (tabs.length > 1) {
             e.preventDefault();
-            const curr = optionPills.indexOf(activeEl);
+            let curr = tabs.indexOf(activeEl);
+            if (curr === -1) {
+              // Try to find the currently active tab
+              curr = tabs.findIndex(t => t.classList.contains('active') || t.classList.contains('selected') || t.getAttribute('aria-selected') === 'true');
+            }
+            if (curr === -1) curr = 0;
             const nextIdx =
               e.key === 'ArrowRight'
-                ? (curr + 1) % optionPills.length
-                : (curr - 1 + optionPills.length) % optionPills.length;
-            optionPills[nextIdx].focus();
-            optionPills[nextIdx].click();
+                ? (curr + 1) % tabs.length
+                : (curr - 1 + tabs.length) % tabs.length;
+            tabs[nextIdx].focus();
+            tabs[nextIdx].click();
             return;
           }
         }
 
-        // --- ESCAPE: CLOSE TOPMOST MODAL CLEANLY ---
+        // --- ESCAPE: STEP BACK ONE STAGE IN WIZARD OR CLOSE TOPMOST MODAL ---
         if (e.key === 'Escape') {
+          // If in an active autocomplete dropdown, let input dismiss dropdown without closing modal!
+          if (isAutocompleteActive(activeEl, activeModal)) {
+            return;
+          }
+
           e.preventDefault();
+          // Check for active image lightbox first
+          const lightboxClose = document.querySelector('#image-lightbox-modal .modal-close-btn, .lightbox-close-btn');
+          if (lightboxClose) {
+            lightboxClose.click();
+            return;
+          }
+
+          // In checkin wizard, prioritize stepping back one stage (#btn-checkin-top-back or #btn-side-checkin-prev)
+          const wizardBackBtn = activeModal.querySelector('#btn-checkin-top-back, #btn-side-checkin-prev');
+          if (wizardBackBtn) {
+            wizardBackBtn.click();
+            return;
+          }
+
           const closeBtn = activeModal.querySelector(
-            '.modal-close-btn, .universal-close-btn, .btn-custom-cancel, .universal-back-btn'
+            '.universal-back-btn, .modal-close-btn, .universal-close-btn, .btn-custom-cancel'
           );
           if (closeBtn) {
             closeBtn.click();

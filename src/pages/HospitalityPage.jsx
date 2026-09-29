@@ -241,7 +241,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
             <span className="multi-bar-badge">Multi-Room Selection</span>
             <span className="multi-bar-info" id="multi-bar-room-info">
               {selectedRoomsList.length} Rooms Selected (<strong>{selectedRoomNums}</strong>) •{' '}
-              {formatCurrency(totalTariff)}/nt • 👥 Max {totalCap} Adults
+              {formatCurrency(totalTariff)} / 24 hrs • 👥 Max {totalCap} Adults
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

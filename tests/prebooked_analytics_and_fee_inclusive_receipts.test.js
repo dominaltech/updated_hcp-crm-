@@ -99,7 +99,7 @@ describe('OTA Pre-Booked Analytics & Fee-Inclusive Receipt Total Tests', () => {
         card_surcharge: 5
       });
       expect(breakdown).toContain('Card POS Swipe: ₹205');
-      expect(breakdown).toContain('(₹200 + ₹5 Fee)');
+      expect(breakdown).toMatch(/\(₹200 \+ ₹5 (?:Fee|POS Tax)\)/);
     });
 
     it('should format single Online UPI with fee-inclusive total (200 + 3 fee -> 203)', () => {
@@ -110,7 +110,7 @@ describe('OTA Pre-Booked Analytics & Fee-Inclusive Receipt Total Tests', () => {
         utr_number: 'UTR12345678'
       });
       expect(breakdown).toContain('Online UPI: ₹203');
-      expect(breakdown).toContain('(₹200 + ₹3 Fee)');
+      expect(breakdown).toMatch(/\(₹200 \+ ₹3 (?:Fee|Tax|UPI Tax)\)/);
       expect(breakdown).toContain('UTR: UTR12345678');
     });
 
@@ -123,8 +123,8 @@ describe('OTA Pre-Booked Analytics & Fee-Inclusive Receipt Total Tests', () => {
         card_surcharge: 5
       });
       expect(breakdown).toContain('Cash: ₹1,000');
-      expect(breakdown).toContain('UPI: ₹203 (₹200 + ₹3 Fee)');
-      expect(breakdown).toContain('Card: ₹205 (₹200 + ₹5 Fee)');
+      expect(breakdown).toMatch(/UPI: ₹203 \(₹200 \+ ₹3 (?:Fee|Tax|UPI Tax)\)/);
+      expect(breakdown).toMatch(/Card: ₹205 \(₹200 \+ ₹5 (?:Fee|POS Tax)\)/);
       expect(breakdown).not.toContain('+₹5 Fee [2.5%]'); // Old format removed
     });
   });

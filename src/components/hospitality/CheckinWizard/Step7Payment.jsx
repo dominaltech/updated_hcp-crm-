@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { formatCurrency } from '../../../utils/formatters';
 import { useApp } from '../../../context/AppContext';
+import ThemedDatePicker from '../../common/ThemedDatePicker';
 
 export default function Step7Payment({
   draft,
@@ -32,57 +33,53 @@ export default function Step7Payment({
     return 'splitCash';
   });
 
-  // Overpayment prevention and strict single-payment method enforcement (prevents split payment)
+  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque
   const handleAmountChange = (field, value) => {
     setSelectedMethod(field);
     let val = Math.max(0, Number(value) || 0);
-    if (val > totalDue) {
-      val = totalDue;
+
+    const otherPayments =
+      (field === 'splitCash' ? 0 : splitCash) +
+      (field === 'splitOnline' ? 0 : splitOnline) +
+      (field === 'splitCard' ? 0 : splitCard) +
+      (field === 'splitCheque' ? 0 : splitCheque);
+
+    if (totalDue > 0 && (otherPayments + val) > totalDue) {
+      val = Math.max(0, totalDue - otherPayments);
     }
 
-    // Only allow input in ONE payment method at a time; zero out all other methods
     updateDraft({
-      splitCash: field === 'splitCash' ? val : 0,
-      splitOnline: field === 'splitOnline' ? val : 0,
-      splitCard: field === 'splitCard' ? val : 0,
-      splitCheque: field === 'splitCheque' ? val : 0
+      [field]: val
     });
   };
 
-  // Allows clicking anywhere on the div card to select and focus that payment method
+  // Allows clicking anywhere on the div card to focus that payment method without zeroing out others
   const selectPaymentMethod = (field, inputRef) => {
     setSelectedMethod(field);
     if (inputRef && inputRef.current) {
       inputRef.current.focus();
     }
+  };
 
-    const currentActiveField =
-      splitCash > 0 ? 'splitCash' :
-      splitOnline > 0 ? 'splitOnline' :
-      splitCard > 0 ? 'splitCard' :
-      splitCheque > 0 ? 'splitCheque' : null;
-
-    // If another payment method already held the amount, seamlessly transfer it to this chosen method
-    if (currentActiveField && currentActiveField !== field) {
-      const currentPaid = splitCash + splitOnline + splitCard + splitCheque;
-      updateDraft({
-        splitCash: field === 'splitCash' ? currentPaid : 0,
-        splitOnline: field === 'splitOnline' ? currentPaid : 0,
-        splitCard: field === 'splitCard' ? currentPaid : 0,
-        splitCheque: field === 'splitCheque' ? currentPaid : 0
-      });
-      setTimeout(() => {
-        try {
-          inputRef?.current?.select?.();
-        } catch (e) {}
-      }, 50);
-    }
+  const fillRemaining = (field, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setSelectedMethod(field);
+    const otherPayments =
+      (field === 'splitCash' ? 0 : splitCash) +
+      (field === 'splitOnline' ? 0 : splitOnline) +
+      (field === 'splitCard' ? 0 : splitCard) +
+      (field === 'splitCheque' ? 0 : splitCheque);
+    const rem = Math.max(0, totalDue - otherPayments);
+    updateDraft({
+      [field]: rem
+    });
   };
 
   const isCashActive = splitCash > 0 || (totalPaid === 0 && selectedMethod === 'splitCash');
   const isOnlineActive = splitOnline > 0 || (totalPaid === 0 && selectedMethod === 'splitOnline');
   const isCardActive = splitCard > 0 || (totalPaid === 0 && selectedMethod === 'splitCard');
   const isChequeActive = splitCheque > 0 || (totalPaid === 0 && selectedMethod === 'splitCheque');
+  const activeMethodsCount = [splitCash > 0, splitOnline > 0, splitCard > 0, splitCheque > 0].filter(Boolean).length;
 
   const bookingSource = String(draft?.bookingSource || draft?.booking_source || '').toUpperCase();
   const isBtc = bookingSource === 'BTC';
@@ -260,9 +257,21 @@ export default function Step7Payment({
           >
             <div className="paybox-header">
               <div className="paybox-icon">💵</div>
-              <div className="paybox-info">
-                <div className="paybox-name">Cash</div>
-                <div className="paybox-desc">Direct Cash Collection</div>
+              <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div>
+                  <div className="paybox-name">Cash</div>
+                  <div className="paybox-desc">Direct Cash Collection</div>
+                </div>
+                {balanceDue > 0 && splitCash < totalDue && (
+                  <button
+                    type="button"
+                    onClick={(e) => fillRemaining('splitCash', e)}
+                    style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                    title="Fill remaining balance into Cash"
+                  >
+                    + Fill ₹{balanceDue}
+                  </button>
+                )}
               </div>
             </div>
             <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -290,9 +299,21 @@ export default function Step7Payment({
           >
             <div className="paybox-header">
               <div className="paybox-icon">📱</div>
-              <div className="paybox-info">
-                <div className="paybox-name">UPI / Online</div>
-                <div className="paybox-desc">GPay, PhonePe, QR</div>
+              <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div>
+                  <div className="paybox-name">UPI / Online</div>
+                  <div className="paybox-desc">GPay, PhonePe, QR</div>
+                </div>
+                {balanceDue > 0 && splitOnline < totalDue && (
+                  <button
+                    type="button"
+                    onClick={(e) => fillRemaining('splitOnline', e)}
+                    style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                    title="Fill remaining balance into UPI"
+                  >
+                    + Fill ₹{balanceDue}
+                  </button>
+                )}
               </div>
             </div>
             <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -330,9 +351,21 @@ export default function Step7Payment({
           >
             <div className="paybox-header">
               <div className="paybox-icon">💳</div>
-              <div className="paybox-info">
-                <div className="paybox-name">Card</div>
-                <div className="paybox-desc">Debit / Credit POS</div>
+              <div className="paybox-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div>
+                  <div className="paybox-name">Card</div>
+                  <div className="paybox-desc">Debit / Credit POS</div>
+                </div>
+                {balanceDue > 0 && splitCard < totalDue && (
+                  <button
+                    type="button"
+                    onClick={(e) => fillRemaining('splitCard', e)}
+                    style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                    title="Fill remaining balance into Card"
+                  >
+                    + Fill ₹{balanceDue}
+                  </button>
+                )}
               </div>
             </div>
             <div className="paybox-input-group" onClick={(e) => e.stopPropagation()}>
@@ -492,12 +525,10 @@ export default function Step7Payment({
                 <label style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)', marginBottom: '4px', display: 'block' }}>
                   Cheque Date *
                 </label>
-                <input
-                  type="date"
-                  className="form-input"
+                <ThemedDatePicker
                   value={draft.chequeDate || ''}
                   onChange={(e) => updateDraft({ chequeDate: e.target.value })}
-                  style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                  style={{ height: '38px' }}
                 />
               </div>
             </div>
@@ -575,6 +606,11 @@ export default function Step7Payment({
               <strong style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>
                 {formatCurrency(totalPaid)}
               </strong>
+              {activeMethodsCount > 1 && (
+                <span style={{ marginLeft: '8px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '10px', fontSize: '0.74rem', fontWeight: 800 }}>
+                  ✂️ Split ({activeMethodsCount} methods)
+                </span>
+              )}
             </div>
             {totalExtraFees > 0 && (
               <>

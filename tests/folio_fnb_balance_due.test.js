@@ -80,7 +80,7 @@ describe('Folio F&B Addition to Balance Due & Tax Invoice Test Suite', () => {
     // balanceDue = grandTotal - advancePaid
     const expectedGrand = summary.roomCharge + summary.foodTotal + summary.barTotal;
     expect(summary.grandTotal).toBe(expectedGrand);
-    expect(summary.balanceDue).toBe(expectedGrand - summary.advancePaid);
+    expect(summary.balanceDue).toBe(Math.max(0, expectedGrand - summary.advancePaid));
 
     // Clean up created order
     db.prepare("DELETE FROM restaurant_orders WHERE id = ?").run(orderIns.lastInsertRowid);

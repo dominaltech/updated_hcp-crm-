@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
+import ThemedSelect from './ThemedSelect';
 
 export default function ManagerLockModal({ isOpen, onClose, targetDepartment = 'hospitality' }) {
   const { unlockManager } = useApp();
@@ -210,36 +211,22 @@ export default function ManagerLockModal({ isOpen, onClose, targetDepartment = '
             >
               Name
             </label>
-            <select
+            <ThemedSelect
               id="manager-lock-select-name"
               value={selectedUsername}
-              onChange={(e) => {
-                setSelectedUsername(e.target.value);
+              onChange={(val) => {
+                setSelectedUsername(val);
                 setPassword('');
                 setErrorMsg('');
                 setTimeout(() => inputRef.current?.focus(), 50);
               }}
-              style={{
-                width: '100%',
-                height: '42px',
-                padding: '0 12px',
-                borderRadius: '10px',
-                border: '1.5px solid var(--border-color, #e2e8f0)',
-                background: 'var(--bg-app, #f8fafc)',
-                fontSize: '0.92rem',
-                fontWeight: 600,
-                color: 'var(--text-primary, #0f172a)',
-                outline: 'none',
-                boxSizing: 'border-box',
-                cursor: 'pointer'
-              }}
-            >
-              {managerList.map((m) => (
-                <option key={m.id} value={m.username}>
-                  {m.full_name && m.full_name !== m.username ? `${m.full_name} (${m.username})` : (m.full_name || m.username)}
-                </option>
-              ))}
-            </select>
+              options={managerList.map((m) => ({
+                value: m.username,
+                label: m.full_name && m.full_name !== m.username ? `${m.full_name} (${m.username})` : (m.full_name || m.username)
+              }))}
+              colorTheme="blue"
+              style={{ width: '100%', height: '42px' }}
+            />
           </div>
 
           {/* Password Input */}
