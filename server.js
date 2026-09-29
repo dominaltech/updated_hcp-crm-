@@ -2349,6 +2349,11 @@ app.post('/api/rooms/:id/payments', requireAuth, (req, res) => {
     }
 
     const cleanMode = String(payment_mode || 'cash').toLowerCase();
+    const isBtcBooking = String(booking.booking_source || '').toUpperCase() === 'BTC' || Boolean(booking.btc_company_id) || Boolean(booking.btc_company_name);
+    if (!isBtcBooking && (parseFloat(split_cheque) > 0 || cleanMode === 'cheque')) {
+      return res.status(400).json({ success: false, error: 'Cheque payment option is only allowed for corporate BTC bookings.' });
+    }
+
     const receiptNo = getReceiptNumberWithMode(cleanMode);
     const cleanCashier = (cashier_name || req.user?.username || req.user?.name || 'Front Desk Cashier').trim();
 

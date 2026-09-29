@@ -431,10 +431,15 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
   const handleSaveAddPayment = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    const isBtcBooking = String(folioData?.bookingSource || folioData?.room?.booking_source || '').toUpperCase() === 'BTC' ||
+      Boolean(folioData?.btcCompanyName) ||
+      Boolean(folioData?.room?.btc_company_name) ||
+      Boolean(folioData?.room?.is_btc);
+
     const splitCash = parseFloat(addPaySplitCash) || 0;
     const splitOnline = parseFloat(addPaySplitOnline) || 0;
     const splitCard = parseFloat(addPaySplitCard) || 0;
-    const splitCheque = parseFloat(addPaySplitCheque) || 0;
+    const splitCheque = isBtcBooking ? (parseFloat(addPaySplitCheque) || 0) : 0;
     const totalAmt = splitCash + splitOnline + splitCard + splitCheque;
 
     if (!totalAmt || totalAmt <= 0) {
@@ -445,7 +450,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       showToast('UTR / Reference Number is mandatory for UPI payments.', 'red');
       return;
     }
-    if (splitCheque > 0 && !addPayChequeNo.trim()) {
+    if (splitCheque > 0 && isBtcBooking && !addPayChequeNo.trim()) {
       showToast('Cheque Number is mandatory for Cheque payments.', 'red');
       return;
     }
@@ -454,7 +459,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     if (splitCash > 0) activeMethods.push({ mode: 'cash', label: 'Cash', amount: splitCash });
     if (splitOnline > 0) activeMethods.push({ mode: 'upi', label: 'Online UPI', amount: splitOnline });
     if (splitCard > 0) activeMethods.push({ mode: 'card', label: 'Card POS', amount: splitCard });
-    if (splitCheque > 0) activeMethods.push({ mode: 'cheque', label: 'Cheque', amount: splitCheque });
+    if (isBtcBooking && splitCheque > 0) activeMethods.push({ mode: 'cheque', label: 'Cheque', amount: splitCheque });
 
     const primaryMode = activeMethods.length === 1 ? activeMethods[0].mode : 'split';
 
@@ -469,13 +474,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         split_cash: splitCash,
         split_online: splitOnline,
         split_card: splitCard,
-        split_cheque: splitCheque,
+        split_cheque: isBtcBooking ? splitCheque : 0,
         notes: addPayNotes.trim() || 'In-Stay Advance Payment',
         particulars: `Room #${folioData?.roomNumber || roomId} - In-Stay Advance Payment`,
         utr_number: addPayUtr.trim(),
         card_digits: addPayCardDigits.trim(),
-        cheque_no: addPayChequeNo.trim(),
-        cheque_photo: addPayChequePhoto,
+        cheque_no: isBtcBooking ? addPayChequeNo.trim() : '',
+        cheque_photo: isBtcBooking ? addPayChequePhoto : null,
         cashier_name: cashierName,
         guest_name: folioData?.guestName
       });
@@ -743,6 +748,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     .filter(Boolean);
   const isMultiGroup = Boolean(folioData.is_combined || groupRoomsList.length > 1);
   const isOtaBooking = (folioData.bookingSource || folioData.room?.booking_source) === 'OTA';
+  const isBtcBooking = String(folioData.bookingSource || folioData.room?.booking_source || '').toUpperCase() === 'BTC' ||
+    Boolean(folioData.btcCompanyName) ||
+    Boolean(folioData.room?.btc_company_name) ||
+    Boolean(folioData.room?.is_btc);
   const isOtaPayAtHotel = isOtaBooking && (
     folioData.isOtaPayAtHotel === true ||
     folioData.summary?.isOtaPayAtHotel === true ||
@@ -943,6 +952,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       setAddPaySplitOnline('');
       setAddPaySplitCard(due > 0 ? String(due) : '');
       setAddPaySplitCheque('');
+    } else if (presetMode === 'cheque' && isBtcBooking) {
+      setAddPaySplitCash('');
+      setAddPaySplitOnline('');
+      setAddPaySplitCard('');
+      setAddPaySplitCheque(due > 0 ? String(due) : '');
     } else {
       setAddPaySplitCash(due > 0 ? String(due) : '');
       setAddPaySplitOnline('');
@@ -1046,9 +1060,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           <button
             type="button"
             className="filter-chip btn-folio-action-chip"
-            onClick={() => setIsAddPaymentOpen(true)}
+            onClick={() => openAddPaymentModal()}
             style={{ fontWeight: 850, background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0' }}
-            title="Record In-Stay Advance Payment (Cash / UPI / Card / Cheque) (Points 4 & 17)"
+            title={`Record In-Stay Advance Payment (${isBtcBooking ? 'Cash / UPI / Card / Cheque' : 'Cash / UPI / Card'})`}
           >
             💳 + Add Payment
           </button>
@@ -2992,7 +3006,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 className="filter-chip"
                 onClick={() => openAddPaymentModal()}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, background: '#ecfdf5', color: '#047857', borderColor: '#a7f3d0', padding: '6px 14px', fontSize: '0.84rem' }}
-                title="Record an in-stay advance payment (Cash / UPI / Card / Cheque)"
+                title={`Record an in-stay advance payment (${isBtcBooking ? 'Cash / UPI / Card / Cheque' : 'Cash / UPI / Card'})`}
               >
                 💳 + Add Payment
               </button>
@@ -3270,7 +3284,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         const splitCashVal = parseFloat(addPaySplitCash) || 0;
         const splitOnlineVal = parseFloat(addPaySplitOnline) || 0;
         const splitCardVal = parseFloat(addPaySplitCard) || 0;
-        const splitChequeVal = parseFloat(addPaySplitCheque) || 0;
+        const splitChequeVal = isBtcBooking ? (parseFloat(addPaySplitCheque) || 0) : 0;
         const totalAddPayment = splitCashVal + splitOnlineVal + splitCardVal + splitChequeVal;
         const targetDue = folioDueAmount > 0 ? folioDueAmount : 0;
         const remainingToFill = Math.max(0, targetDue - totalAddPayment);
@@ -3278,16 +3292,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
         const fillRemainingAddPay = (method, e) => {
           if (e && e.stopPropagation) e.stopPropagation();
+          if (method === 'cheque' && !isBtcBooking) return;
           const currentMethodVal = method === 'cash' ? splitCashVal : (method === 'online' ? splitOnlineVal : (method === 'card' ? splitCardVal : splitChequeVal));
           const otherTotal = totalAddPayment - currentMethodVal;
           const needed = targetDue > 0 ? Math.max(0, targetDue - otherTotal) : 0;
           if (method === 'cash') setAddPaySplitCash(needed > 0 ? String(needed) : '');
           else if (method === 'online') setAddPaySplitOnline(needed > 0 ? String(needed) : '');
           else if (method === 'card') setAddPaySplitCard(needed > 0 ? String(needed) : '');
-          else if (method === 'cheque') setAddPaySplitCheque(needed > 0 ? String(needed) : '');
+          else if (method === 'cheque' && isBtcBooking) setAddPaySplitCheque(needed > 0 ? String(needed) : '');
         };
 
-        const activeMethodsCount = [splitCashVal > 0, splitOnlineVal > 0, splitCardVal > 0, splitChequeVal > 0].filter(Boolean).length;
+        const activeMethodsCount = [splitCashVal > 0, splitOnlineVal > 0, splitCardVal > 0, (isBtcBooking && splitChequeVal > 0)].filter(Boolean).length;
 
         return (
           <div
@@ -3394,6 +3409,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   >
                     100% Card (₹{folioDueAmount})
                   </button>
+                  {isBtcBooking && (
+                    <button
+                      type="button"
+                      className="filter-chip"
+                      onClick={() => {
+                        setAddPaySplitCash('');
+                        setAddPaySplitOnline('');
+                        setAddPaySplitCard('');
+                        setAddPaySplitCheque(String(folioDueAmount));
+                      }}
+                      style={{ fontSize: '0.74rem', padding: '3px 8px', fontWeight: 800 }}
+                    >
+                      100% Cheque (₹{folioDueAmount})
+                    </button>
+                  )}
                   {totalAddPayment > 0 && (
                     <button
                       type="button"
@@ -3554,64 +3584,66 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       )}
                     </div>
 
-                    {/* Cheque Box */}
-                    <div
-                      className={`pay-method-box ${splitChequeVal > 0 ? 'active' : ''}`}
-                      style={{ border: splitChequeVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitChequeVal > 0 ? '#f0f9ff' : '#ffffff' }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
-                          <span>📑</span> Cheque
+                    {/* Cheque Box (ONLY FOR CORPORATE BTC BOOKINGS) */}
+                    {isBtcBooking && (
+                      <div
+                        className={`pay-method-box ${splitChequeVal > 0 ? 'active' : ''}`}
+                        style={{ border: splitChequeVal > 0 ? '2px solid #0284c7' : '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px', background: splitChequeVal > 0 ? '#f0f9ff' : '#ffffff' }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                            <span>📑</span> Cheque (BTC Only)
+                          </div>
+                          {remainingToFill > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => fillRemainingAddPay('cheque', e)}
+                              style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
+                              title="Fill remaining balance into Cheque"
+                            >
+                              + Fill ₹{remainingToFill}
+                            </button>
+                          )}
                         </div>
-                        {remainingToFill > 0 && (
-                          <button
-                            type="button"
-                            onClick={(e) => fillRemainingAddPay('cheque', e)}
-                            style={{ fontSize: '0.72rem', padding: '2px 7px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}
-                            title="Fill remaining balance into Cheque"
-                          >
-                            + Fill ₹{remainingToFill}
-                          </button>
+                        <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="0"
+                            value={addPaySplitCheque}
+                            onChange={(e) => setAddPaySplitCheque(e.target.value)}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                          />
+                        </div>
+                        {splitChequeVal > 0 && (
+                          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Cheque Number *"
+                              value={addPayChequeNo}
+                              onChange={(e) => setAddPayChequeNo(e.target.value)}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 10px', fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #0284c7' }}
+                            />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => setAddPayChequePhoto(ev.target.result);
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              style={{ fontSize: '0.76rem' }}
+                            />
+                          </div>
                         )}
                       </div>
-                      <div className="paybox-input-group" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '10px', fontWeight: 900, color: '#0284c7' }}>₹</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="0"
-                          value={addPaySplitCheque}
-                          onChange={(e) => setAddPaySplitCheque(e.target.value)}
-                          style={{ width: '100%', boxSizing: 'border-box', height: '38px', paddingLeft: '26px', paddingRight: '10px', fontSize: '1rem', fontWeight: 800, borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                        />
-                      </div>
-                      {splitChequeVal > 0 && (
-                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Cheque Number *"
-                            value={addPayChequeNo}
-                            onChange={(e) => setAddPayChequeNo(e.target.value)}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '34px', padding: '0 10px', fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #0284c7' }}
-                          />
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (ev) => setAddPayChequePhoto(ev.target.result);
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                            style={{ fontSize: '0.76rem' }}
-                          />
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -3639,7 +3671,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
                       <span style={{ color: '#64748b' }}>Receipts to Print:</span>
                       <span style={{ fontWeight: 800, color: activeMethodsCount > 1 ? '#0284c7' : '#16a34a' }}>
-                        {activeMethodsCount > 1 ? `⚡ ${activeMethodsCount} Distinct Receipts (Separate A4 per method)` : `✓ 1 Receipt (${splitCashVal > 0 ? 'Cash' : (splitOnlineVal > 0 ? 'UPI' : (splitCardVal > 0 ? 'Card' : 'Cheque'))})`}
+                        {activeMethodsCount > 1 ? `⚡ ${activeMethodsCount} Distinct Receipts (Separate A4 per method)` : `✓ 1 Receipt (${splitCashVal > 0 ? 'Cash' : (splitOnlineVal > 0 ? 'UPI' : (splitCardVal > 0 ? 'Card' : (isBtcBooking && splitChequeVal > 0 ? 'Cheque' : 'Cash')))})`}
                       </span>
                     </div>
                   )}

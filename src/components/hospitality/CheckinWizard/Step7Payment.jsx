@@ -26,15 +26,19 @@ export default function Step7Payment({
   const totalPaid = splitCash + splitOnline + splitCard + splitCheque;
   const balanceDue = Math.max(0, totalDue - totalPaid);
 
+  const bookingSource = String(draft?.bookingSource || draft?.booking_source || '').toUpperCase();
+  const isBtc = bookingSource === 'BTC';
+
   const [selectedMethod, setSelectedMethod] = useState(() => {
     if (splitOnline > 0) return 'splitOnline';
     if (splitCard > 0) return 'splitCard';
-    if (splitCheque > 0) return 'splitCheque';
+    if (splitCheque > 0 && isBtc) return 'splitCheque';
     return 'splitCash';
   });
 
-  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque
+  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque (BTC only)
   const handleAmountChange = (field, value) => {
+    if (field === 'splitCheque' && !isBtc) return;
     setSelectedMethod(field);
     let val = Math.max(0, Number(value) || 0);
 
@@ -55,6 +59,7 @@ export default function Step7Payment({
 
   // Allows clicking anywhere on the div card to focus that payment method without zeroing out others
   const selectPaymentMethod = (field, inputRef) => {
+    if (field === 'splitCheque' && !isBtc) return;
     setSelectedMethod(field);
     if (inputRef && inputRef.current) {
       inputRef.current.focus();
@@ -63,6 +68,7 @@ export default function Step7Payment({
 
   const fillRemaining = (field, e) => {
     if (e && e.stopPropagation) e.stopPropagation();
+    if (field === 'splitCheque' && !isBtc) return;
     setSelectedMethod(field);
     const otherPayments =
       (field === 'splitCash' ? 0 : splitCash) +
@@ -75,14 +81,26 @@ export default function Step7Payment({
     });
   };
 
+  React.useEffect(() => {
+    if (!isBtc && splitCheque > 0) {
+      updateDraft({
+        splitCheque: 0,
+        chequeNo: '',
+        chequeBank: '',
+        chequeDate: '',
+        chequeScan: null
+      });
+      if (selectedMethod === 'splitCheque') {
+        setSelectedMethod('splitCash');
+      }
+    }
+  }, [isBtc, splitCheque]);
+
   const isCashActive = splitCash > 0 || (totalPaid === 0 && selectedMethod === 'splitCash');
   const isOnlineActive = splitOnline > 0 || (totalPaid === 0 && selectedMethod === 'splitOnline');
   const isCardActive = splitCard > 0 || (totalPaid === 0 && selectedMethod === 'splitCard');
-  const isChequeActive = splitCheque > 0 || (totalPaid === 0 && selectedMethod === 'splitCheque');
-  const activeMethodsCount = [splitCash > 0, splitOnline > 0, splitCard > 0, splitCheque > 0].filter(Boolean).length;
-
-  const bookingSource = String(draft?.bookingSource || draft?.booking_source || '').toUpperCase();
-  const isBtc = bookingSource === 'BTC';
+  const isChequeActive = isBtc && (splitCheque > 0 || (totalPaid === 0 && selectedMethod === 'splitCheque'));
+  const activeMethodsCount = [splitCash > 0, splitOnline > 0, splitCard > 0, (isBtc && splitCheque > 0)].filter(Boolean).length;
 
   const handleChequeUpload = (e) => {
     const file = e.target.files[0];

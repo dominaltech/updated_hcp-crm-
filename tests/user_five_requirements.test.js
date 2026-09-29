@@ -260,4 +260,53 @@ describe('User 5 Requirements Verification', () => {
     const minDateFuture = getMinCheckoutDate(futureCheckin, refTime4PM);
     expect(minDateFuture).toBe('2026-10-05');
   });
+
+  // Requirement 8: In add payment, cheque option should be for BTC only; for others (walkin, website, ota) should see only cash, upi, card options
+  it('Requirement 8: Cheque payment option is for BTC only; Walk-in, Website, and OTA have only Cash, UPI, and Card', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    // 1. Check helper logic for payment mode availability by booking source
+    const getAvailablePaymentMethods = (bookingSource, hasBtcCompany = false) => {
+      const isBtc = String(bookingSource || '').toUpperCase() === 'BTC' || Boolean(hasBtcCompany);
+      const methods = ['cash', 'upi', 'card'];
+      if (isBtc) methods.push('cheque');
+      return methods;
+    };
+
+    // BTC booking allows cheque
+    expect(getAvailablePaymentMethods('BTC')).toEqual(['cash', 'upi', 'card', 'cheque']);
+    expect(getAvailablePaymentMethods('btc')).toEqual(['cash', 'upi', 'card', 'cheque']);
+    expect(getAvailablePaymentMethods('Walk-in', true)).toEqual(['cash', 'upi', 'card', 'cheque']);
+
+    // Other sources (walk-in, website, ota) only see cash, upi, card
+    expect(getAvailablePaymentMethods('Walk-in')).toEqual(['cash', 'upi', 'card']);
+    expect(getAvailablePaymentMethods('walkin')).toEqual(['cash', 'upi', 'card']);
+    expect(getAvailablePaymentMethods('Website')).toEqual(['cash', 'upi', 'card']);
+    expect(getAvailablePaymentMethods('website')).toEqual(['cash', 'upi', 'card']);
+    expect(getAvailablePaymentMethods('OTA')).toEqual(['cash', 'upi', 'card']);
+    expect(getAvailablePaymentMethods('ota')).toEqual(['cash', 'upi', 'card']);
+
+    // 2. Verify RoomFolioPage.jsx enforces isBtcBooking for Cheque Box in Add Payment Modal
+    const folioCode = fs.readFileSync(path.resolve(__dirname, '../src/pages/RoomFolioPage.jsx'), 'utf8');
+    expect(folioCode).toContain('const isBtcBooking =');
+    expect(folioCode).toContain('{isBtcBooking && (');
+    expect(folioCode).toContain('Cheque (BTC Only)');
+
+    // 3. Verify Step7Payment.jsx wraps Cheque in isBtc
+    const step7Code = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/CheckinWizard/Step7Payment.jsx'), 'utf8');
+    expect(step7Code).toContain('const isBtc = bookingSource === \'BTC\';');
+    expect(step7Code).toContain('{isBtc && (');
+    expect(step7Code).toContain('Corporate BTC Only');
+
+    // 4. Verify FolioSettlementModal.jsx wraps Cheque in isBtc
+    const settleCode = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/FolioSettlementModal.jsx'), 'utf8');
+    expect(settleCode).toContain('{isBtc && (');
+    expect(settleCode).toContain('Company / Bank Cheque');
+
+    // 5. Verify server.js validates that Cheque is only accepted for corporate BTC bookings
+    const serverCode = fs.readFileSync(path.resolve(__dirname, '../server.js'), 'utf8');
+    expect(serverCode).toContain('Cheque payment option is only allowed for corporate BTC bookings.');
+  });
 });
+

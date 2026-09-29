@@ -97,8 +97,9 @@ export default function FolioSettlementModal({
   const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
   const isCompanyPayingLater = isBtc && btcCheckoutMode === 'company_later';
 
-  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque
+  // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque (BTC only)
   const handleAmountChange = (field, value) => {
+    if (field === 'cheque' && !isBtc) return;
     setSelectedMethod(field);
     let val = Math.max(0, Number(value) || 0);
 
@@ -115,10 +116,11 @@ export default function FolioSettlementModal({
     if (field === 'cash') setSplitCash(val);
     else if (field === 'online') setSplitOnline(val);
     else if (field === 'card') setSplitCard(val);
-    else if (field === 'cheque') setSplitCheque(val);
+    else if (field === 'cheque' && isBtc) setSplitCheque(val);
   };
 
   const selectPaymentMethod = (field, inputRef) => {
+    if (field === 'cheque' && !isBtc) return;
     setSelectedMethod(field);
     if (inputRef && inputRef.current) {
       inputRef.current.focus();
@@ -127,6 +129,7 @@ export default function FolioSettlementModal({
 
   const fillRemaining = (field, e) => {
     if (e && e.stopPropagation) e.stopPropagation();
+    if (field === 'cheque' && !isBtc) return;
     setSelectedMethod(field);
     const otherPayments =
       (field === 'cash' ? 0 : splitCash) +
@@ -137,10 +140,19 @@ export default function FolioSettlementModal({
     if (field === 'cash') setSplitCash(rem);
     else if (field === 'online') setSplitOnline(rem);
     else if (field === 'card') setSplitCard(rem);
-    else if (field === 'cheque') setSplitCheque(rem);
+    else if (field === 'cheque' && isBtc) setSplitCheque(rem);
   };
 
+  useEffect(() => {
+    if (!isBtc && splitCheque > 0) {
+      setSplitCheque(0);
+      setChequeNo('');
+      setChequeBank('');
+    }
+  }, [isBtc, splitCheque]);
+
   const quickFill = (mode) => {
+    if (mode === 'cheque' && !isBtc) return;
     setSelectedMethod(mode);
     if (mode === 'cash') {
       setSplitCash(balanceDue);
@@ -169,7 +181,7 @@ export default function FolioSettlementModal({
   const isCashActive = splitCash > 0 || (totalSettled === 0 && selectedMethod === 'cash');
   const isOnlineActive = splitOnline > 0 || (totalSettled === 0 && selectedMethod === 'online');
   const isCardActive = splitCard > 0 || (totalSettled === 0 && selectedMethod === 'card');
-  const isChequeActive = splitCheque > 0 || (totalSettled === 0 && selectedMethod === 'cheque');
+  const isChequeActive = isBtc && (splitCheque > 0 || (totalSettled === 0 && selectedMethod === 'cheque'));
 
   const cardSurcharge = (splitCard > 0 && cardPct > 0) ? Math.round((splitCard * cardPct) / 100) : 0;
   const cardTotalSwipe = splitCard + cardSurcharge;
