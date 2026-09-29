@@ -45,6 +45,27 @@ const CHANNELS = [
   }
 ];
 
+export function to12Hour(time24) {
+  if (!time24) return { hour: '11', minute: '00', ampm: 'AM', display: '11:00 AM' };
+  const parts = String(time24).split(':');
+  let h = parseInt(parts[0], 10);
+  const m = parts[1] ? parts[1].padStart(2, '0').slice(0, 2) : '00';
+  if (isNaN(h)) h = 11;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  const h12Str = String(h12).padStart(2, '0');
+  return { hour: h12Str, minute: m, ampm, display: `${h12Str}:${m} ${ampm}` };
+}
+
+export function to24Hour(h12, m, ampm) {
+  let h = parseInt(h12, 10);
+  if (isNaN(h)) h = 11;
+  if (ampm === 'PM' && h < 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${String(m || '00').padStart(2, '0')}`;
+}
+
 export default function Step1Source({
   room,
   additionalRooms = [],
@@ -94,6 +115,21 @@ export default function Step1Source({
     schedMins <= earlyMins
   );
 
+  const todayStr = getLocalIsoDate(new Date());
+
+  const currentCheckoutDate = draft.checkoutDate || (draft.approxCheckout ? draft.approxCheckout.split('T')[0] : '');
+  const currentCheckoutTime = draft.checkoutTime || (draft.approxCheckout && draft.approxCheckout.includes('T') ? draft.approxCheckout.split('T')[1]?.slice(0, 5) : '');
+
+  const checkinDateStr = draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr;
+  const minCheckoutDate = getMinCheckoutDate(checkinDateStr);
+  let nights = 1;
+  if (checkinDateStr && currentCheckoutDate) {
+    const dIn = new Date(checkinDateStr);
+    const dOut = new Date(currentCheckoutDate);
+    const diffDays = Math.round((dOut - dIn) / (1000 * 60 * 60 * 24));
+    nights = Math.max(1, diffDays);
+  }
+
   const isOtaStep1PlatformDone = Boolean(draft.otaPlatform);
   const isOtaStep2PaymentDone = isOtaStep1PlatformDone && (draft.isPrepaid !== null && draft.isPrepaid !== undefined);
   const isOtaStep3BillDone = isOtaStep2PaymentDone && Boolean(draft.otaManualAmount && Number(draft.otaManualAmount) > 0);
@@ -112,21 +148,6 @@ export default function Step1Source({
   const ext3hRate = Number(room?.ext_3h_rate ?? 500);
   const ext6hRate = Number(room?.ext_6h_rate ?? 1000);
   const ext9hRate = Number(room?.ext_9h_rate ?? 1500);
-
-  const todayStr = getLocalIsoDate(new Date());
-
-  const currentCheckoutDate = draft.checkoutDate || (draft.approxCheckout ? draft.approxCheckout.split('T')[0] : '');
-  const currentCheckoutTime = draft.checkoutTime || (draft.approxCheckout && draft.approxCheckout.includes('T') ? draft.approxCheckout.split('T')[1]?.slice(0, 5) : '');
-
-  const checkinDateStr = draft.checkinTime ? draft.checkinTime.split('T')[0] : todayStr;
-  const minCheckoutDate = getMinCheckoutDate(checkinDateStr);
-  let nights = 1;
-  if (checkinDateStr && currentCheckoutDate) {
-    const dIn = new Date(checkinDateStr);
-    const dOut = new Date(currentCheckoutDate);
-    const diffDays = Math.round((dOut - dIn) / (1000 * 60 * 60 * 24));
-    nights = Math.max(1, diffDays);
-  }
 
   const calculateExtension = (timeStr, targetDate = currentCheckoutDate, source = draft.bookingSource) => {
     if (source === 'OTA') return { charge: 0, label: 'Standard Rate (₹0)', isExtended: false };
@@ -169,27 +190,6 @@ export default function Step1Source({
     } else {
       return { charge: baseRoomRate, label: `Extended >9 Hours (+₹${baseRoomRate.toLocaleString('en-IN')})`, isExtended: true };
     }
-  };
-
-  const to12Hour = (time24) => {
-    if (!time24) return { hour: '11', minute: '00', ampm: 'AM', display: '11:00 AM' };
-    const parts = String(time24).split(':');
-    let h = parseInt(parts[0], 10);
-    const m = parts[1] ? parts[1].padStart(2, '0').slice(0, 2) : '00';
-    if (isNaN(h)) h = 11;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    let h12 = h % 12;
-    if (h12 === 0) h12 = 12;
-    const h12Str = String(h12).padStart(2, '0');
-    return { hour: h12Str, minute: m, ampm, display: `${h12Str}:${m} ${ampm}` };
-  };
-
-  const to24Hour = (h12, m, ampm) => {
-    let h = parseInt(h12, 10);
-    if (isNaN(h)) h = 11;
-    if (ampm === 'PM' && h < 12) h += 12;
-    if (ampm === 'AM' && h === 12) h = 0;
-    return `${String(h).padStart(2, '0')}:${String(m || '00').padStart(2, '0')}`;
   };
 
   const QUICK_CHECKOUT_TIMES = [
