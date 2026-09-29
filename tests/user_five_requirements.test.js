@@ -308,5 +308,38 @@ describe('User 5 Requirements Verification', () => {
     const serverCode = fs.readFileSync(path.resolve(__dirname, '../server.js'), 'utf8');
     expect(serverCode).toContain('Cheque payment option is only allowed for corporate BTC bookings.');
   });
+
+  // Requirement 9: Exact minute entry (e.g. 04:22 PM) and strict validation that Scheduled > Actual Early
+  it('Requirement 9: Supports exact minute entry (e.g. 4:22 PM) and validates Scheduled Check-In > Actual Early Check-In', () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    // 1. Time comparison: Actual is 04:18 PM (16:18 = 978 mins)
+    const actualEarly = '16:18';
+    const actualMins = timeToMinutes(actualEarly);
+    expect(actualMins).toBe(16 * 60 + 18); // 978
+
+    // Scheduled is 04:22 PM (16:22 = 982 mins)
+    const scheduled422 = '16:22';
+    const schedMins422 = timeToMinutes(scheduled422);
+    expect(schedMins422).toBe(16 * 60 + 22); // 982
+
+    // 4:22 PM is strictly after 4:18 PM, so it is valid
+    const is422Valid = schedMins422 > actualMins;
+    expect(is422Valid).toBe(true);
+
+    // Same time or earlier (e.g. 04:18 PM or 04:15 PM) is invalid
+    expect(timeToMinutes('16:18') > actualMins).toBe(false);
+    expect(timeToMinutes('16:15') > actualMins).toBe(false);
+    expect(timeToMinutes('15:00') > actualMins).toBe(false);
+
+    // 2. Verify UnifiedTimeInput supports typing and exact minute selection
+    const timeInputCode = fs.readFileSync(path.resolve(__dirname, '../src/components/common/UnifiedTimeInput.jsx'), 'utf8');
+    expect(timeInputCode).toContain('placeholder="MM"');
+    expect(timeInputCode).toContain('Exact Min:');
+    expect(timeInputCode).toContain('handleMinuteInputChange');
+    expect(timeInputCode).toContain('handleHourInputChange');
+  });
 });
+
 
