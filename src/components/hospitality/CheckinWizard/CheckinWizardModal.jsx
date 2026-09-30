@@ -580,6 +580,15 @@ export default function CheckinWizardModal({
   };
 
   const handleSubmitCheckin = async () => {
+    if (isOta && isOtaPrepaid && totalDue === 0) {
+      draft.splitCash = 0;
+      draft.splitOnline = 0;
+      draft.splitCard = 0;
+      draft.splitCheque = 0;
+      draft.onlineUtr = '';
+      draft.utrNumber = '';
+    }
+
     const totalPaid =
       (Number(draft.splitCash) || 0) +
       (Number(draft.splitOnline) || 0) +
@@ -750,6 +759,8 @@ export default function CheckinWizardModal({
         split_cash: draft.splitCash,
         splitOnline: draft.splitOnline,
         split_online: draft.splitOnline,
+        advancePaymentMode: (isOta && isOtaPrepaid && totalDue === 0) ? 'prepaid' : undefined,
+        advance_payment_mode: (isOta && isOtaPrepaid && totalDue === 0) ? 'prepaid' : undefined,
         onlineUtr: (draft.onlineUtr || draft.utrNumber || '').trim(),
         online_utr: (draft.onlineUtr || draft.utrNumber || '').trim(),
         utrNumber: (draft.onlineUtr || draft.utrNumber || '').trim(),

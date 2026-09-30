@@ -3282,7 +3282,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       <FolioSettlementModal
         isOpen={isSettlementOpen}
         room={folioData?.room || folioData}
-        folioData={folioData}
+        folioData={folioData ? {
+          ...folioData,
+          balanceDue: folioDueAmount,
+          isOtaPrepaid,
+          foodTotal,
+          barTotal,
+          fnbTotal
+        } : folioData}
         onClose={() => setIsSettlementOpen(false)}
         onCheckoutSuccess={(res) => {
           setIsSettlementOpen(false);

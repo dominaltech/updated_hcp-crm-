@@ -2752,7 +2752,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       const bSettle = idx === 0 ? netSettle : 0;
       const bRefund = idx === 0 ? netRefund : 0;
       const isSettlingNow = netSettle > 0 && settleMode !== 'btc';
-      const updatedPaymentStatus = isSettlingNow
+      const isOtaPrepaidBooking = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
+      const isPrepaidSettled = isOtaPrepaidBooking && (netSettle >= maxBalanceDue || maxBalanceDue <= 0.5);
+      const updatedPaymentStatus = isSettlingNow || isPrepaidSettled
         ? 'settled'
         : (isCompanyPaysLater 
             ? 'pending_from_company' 

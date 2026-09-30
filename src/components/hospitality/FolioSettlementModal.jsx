@@ -44,32 +44,75 @@ export default function FolioSettlementModal({
   const stayDurationStr = folioData?.stayDurationStr || folioData?.summary?.stayDurationStr || '';
   const expectedNights = folioData?.expectedNights ?? folioData?.summary?.expectedNights ?? 1;
 
-  const summaryRefund = folioData?.summary?.refundAmount || folioData?.refundAmount || 0;
-  const balanceDue = folioData ? Math.max(0, folioData.stayCalcNow?.balanceDue ?? folioData.balanceDue ?? 0) : 0;
-  const isRefund = (folioData && (folioData.stayCalcNow?.refundDue > 0 || folioData.balanceDue < 0 || summaryRefund > 0)) || false;
-  const refundAmount = isRefund ? (folioData.stayCalcNow?.refundDue > 0 ? folioData.stayCalcNow.refundDue : (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue))) : 0;
+  const bookingSource = String(folioData?.bookingSource || room?.booking_source || folioData?.source || room?.source || '').toUpperCase();
+  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
+  const isOta = bookingSource === 'OTA';
+  const isOtaPrepaid = isOta && Boolean(
+    folioData?.isOtaPrepaid === true ||
+    folioData?.isPrepaid === true ||
+    folioData?.is_prepaid === 1 ||
+    folioData?.is_prepaid === '1' ||
+    folioData?.is_prepaid === true ||
+    room?.is_prepaid === 1 ||
+    room?.is_prepaid === '1' ||
+    room?.is_prepaid === true ||
+    folioData?.rateType === 'prepaid' ||
+    room?.rate_type === 'prepaid'
+  );
 
-  const effectiveFoodTotal = Number(folioData?.foodTotal || 0);
-  const effectiveBarTotal = Number(folioData?.barTotal || 0);
+  const pendingRestaurantOrders = (folioData?.restaurantOrders || [])
+    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered' || o.is_paid === 0);
+  const pendingBarOrders = (folioData?.barOrders || [])
+    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered' || o.is_paid === 0);
+  const fnbPendingTotal = pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
+                          pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+  const effectiveFoodTotal = Number(folioData?.foodTotal ?? pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0));
+  const effectiveBarTotal = Number(folioData?.barTotal ?? pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0));
   const effectiveFnbTotal = effectiveFoodTotal + effectiveBarTotal;
-  const effectiveRoomTariff = Number(
-    folioData?.roomGrossTariff ||
-    folioData?.roomTaxable ||
-    folioData?.stayTaxable ||
-    (folioData?.grossTariff && effectiveFnbTotal > 0 ? Math.max(0, Number(folioData?.grossTariff || 0) - effectiveFnbTotal) : folioData?.grossTariff) ||
-    0
-  );
-  const effectiveStayTax = Number(
-    folioData?.stayTax ||
-    folioData?.totalGst ||
-    folioData?.taxAmount ||
-    folioData?.summary?.taxAmount ||
-    Math.max(0, (folioData?.roomCharge || 0) - effectiveRoomTariff)
-  );
+
+  const otaEarlyFeeVal = (isOta && (folioData?.isEarlyCheckin || room?.is_early_checkin))
+    ? Number(folioData?.earlyCheckinCharge !== undefined && folioData?.earlyCheckinCharge !== null ? folioData.earlyCheckinCharge : (room?.ota_early_checkin_price || 900))
+    : 0;
+  const hotelExtrasChargeVal = Number(folioData?.extraBedCharge || room?.extra_bed_charge || 0) +
+                               Number(folioData?.extra_rooms_charge || 0) +
+                               Number(folioData?.extra_breakfast_charge || 0) +
+                               otaEarlyFeeVal;
+  const extensionChargeVal = Number(folioData?.stayCalcNow?.extensionCharge || folioData?.earlyExtensionCharge || 0);
+
   const effectiveAdvancePaid = Number(folioData?.advancePaid || 0);
 
-  const bookingSource = String(folioData?.bookingSource || room?.booking_source || '').toUpperCase();
-  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
+  // For OTA Prepaid stays:
+  // - Room Tariff is 100% covered by OTA voucher
+  // - If no extend, no restaurant, no bar bill, and no extra mattress: balanceDue is strictly 0
+  // - If F&B bill exists (or extension/extras): balanceDue is ONLY that unpaid amount!
+  const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal) - effectiveAdvancePaid);
+  const balanceDue = isOtaPrepaid
+    ? otaPrepaidBalanceDue
+    : (folioData ? Math.max(0, folioData.stayCalcNow?.balanceDue ?? folioData.balanceDue ?? 0) : 0);
+
+  const summaryRefund = folioData?.summary?.refundAmount || folioData?.refundAmount || 0;
+  const isRefund = !isOtaPrepaid && ((folioData && (folioData.stayCalcNow?.refundDue > 0 || folioData.balanceDue < 0 || summaryRefund > 0)) || false);
+  const refundAmount = isRefund ? (folioData.stayCalcNow?.refundDue > 0 ? folioData.stayCalcNow.refundDue : (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue))) : 0;
+
+  const effectiveRoomTariff = isOtaPrepaid
+    ? 0
+    : Number(
+        folioData?.roomGrossTariff ||
+        folioData?.roomTaxable ||
+        folioData?.stayTaxable ||
+        (folioData?.grossTariff && effectiveFnbTotal > 0 ? Math.max(0, Number(folioData?.grossTariff || 0) - effectiveFnbTotal) : folioData?.grossTariff) ||
+        0
+      );
+  const effectiveStayTax = isOtaPrepaid
+    ? 0
+    : Number(
+        folioData?.stayTax ||
+        folioData?.totalGst ||
+        folioData?.taxAmount ||
+        folioData?.summary?.taxAmount ||
+        Math.max(0, (folioData?.roomCharge || 0) - effectiveRoomTariff)
+      );
 
   useEffect(() => {
     if (isOpen && folioData) {
@@ -564,11 +607,11 @@ export default function FolioSettlementModal({
           <div className="folio-settlement-summary-bar">
             <div>
               <span className="sub-label">Room Tariff:</span>
-              <strong>{formatCurrency(effectiveRoomTariff)}</strong>
+              <strong>{isOtaPrepaid ? 'Covered (OTA)' : formatCurrency(effectiveRoomTariff)}</strong>
             </div>
             <div>
-              <span className="sub-label">Tax (5%):</span>
-              <strong>{formatCurrency(effectiveStayTax)}</strong>
+              <span className="sub-label">{isOtaPrepaid ? 'Extras / Ext:' : 'Tax (5%):'}</span>
+              <strong>{isOtaPrepaid ? formatCurrency(hotelExtrasChargeVal + extensionChargeVal) : formatCurrency(effectiveStayTax)}</strong>
             </div>
             <div>
               <span className="sub-label">Food:</span>
@@ -605,9 +648,15 @@ export default function FolioSettlementModal({
             flexWrap: 'wrap',
             gap: '8px'
           }}>
-            <span>
-              💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: isRefund ? '#15803d' : (balanceDue > 0 ? '#b91c1c' : '#15803d') }}>{isRefund ? `Refund: ${formatCurrency(refundAmount)}` : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
-            </span>
+            {isOtaPrepaid ? (
+              <span>
+                💡 <strong>Prepaid Reconciliation:</strong> Room Stay Covered by {folioData.otaPlatform || 'OTA'} Voucher + {formatCurrency(hotelExtrasChargeVal + extensionChargeVal)} (Extras/Ext) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Desk Advance) = <strong style={{ color: balanceDue > 0 ? '#b91c1c' : '#15803d' }}>{balanceDue === 0 ? '₹0.00 Fully Settled' : `${formatCurrency(balanceDue)} Remaining Due (${effectiveFnbTotal > 0 ? 'F&B' : 'Extras'})`}</strong>
+              </span>
+            ) : (
+              <span>
+                💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: isRefund ? '#15803d' : (balanceDue > 0 ? '#b91c1c' : '#15803d') }}>{isRefund ? `Refund: ${formatCurrency(refundAmount)}` : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
+              </span>
+            )}
             {effectiveFnbTotal > 0 && (
               <span style={{ fontWeight: 750, color: '#d97706' }}>
                 ✓ Includes {formatCurrency(effectiveFnbTotal)} Restaurant &amp; Bar Orders
@@ -682,10 +731,12 @@ export default function FolioSettlementModal({
             >
               <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
               <h4 style={{ margin: '0 0 6px', fontSize: '1.22rem', fontWeight: 850, color: '#16a34a' }}>
-                Room Bill Fully Paid &amp; Settled in Advance
+                {isOtaPrepaid ? 'Pre-Paid Stay — Fully Settled (₹0.00 Due)' : 'Room Bill Fully Paid &amp; Settled in Advance'}
               </h4>
               <p style={{ margin: '0 0 16px', fontSize: '0.90rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '580px', marginInline: 'auto' }}>
-                All room tariff, food &amp; beverage orders, and applicable taxes for Room #{room.room_number} have been 100% covered by advance payments ({formatCurrency(folioData.advancePaid || 0)}). There is no outstanding balance due.
+                {isOtaPrepaid
+                  ? `Room #${room.room_number} stay is 100% pre-paid via ${folioData.otaPlatform || 'OTA'} Voucher (${folioData.otaVoucherNo || folioData.otaBookingId || 'Covered'}). There are no stay extensions, restaurant bills, or bar bills due.`
+                  : `All room tariff, food & beverage orders, and applicable taxes for Room #${room.room_number} have been 100% covered by advance payments (${formatCurrency(folioData.advancePaid || 0)}). There is no outstanding balance due.`}
               </p>
               <div
                 style={{
@@ -701,7 +752,7 @@ export default function FolioSettlementModal({
                   fontWeight: 750
                 }}
               >
-                <span>ℹ️</span> Click <strong>"Finalize Checkout &amp; Print Bill"</strong> below to complete checkout, release Room #{room.room_number}, and print the final invoice.
+                <span>ℹ️</span> Click <strong>"Complete Checkout (₹0.00 Due)"</strong> below to complete checkout, release Room #{room.room_number}, and print the final invoice.
               </div>
             </div>
           )}
@@ -793,7 +844,7 @@ export default function FolioSettlementModal({
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                     <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Payment Method:
+                      {isOtaPrepaid ? `Collect Pending Balance (${effectiveFnbTotal > 0 ? 'F&B Bill' : 'Extras'}):` : 'Payment Method:'}
                     </label>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button type="button" className="btn-quick-fill" onClick={() => quickFill('cash')}>
@@ -1328,12 +1379,18 @@ export default function FolioSettlementModal({
                 fontSize: '1rem',
                 fontWeight: 800,
                 borderRadius: 'var(--radius-md)',
-                background: isCompanyPayingLater ? '#2563eb' : undefined
+                background: isCompanyPayingLater ? '#2563eb' : ((isOtaPrepaid && balanceDue === 0) ? '#16a34a' : undefined)
               }}
             >
               🖨️ {isSubmitting
                 ? 'Finalizing...'
-                : (isCompanyPayingLater ? 'Checkout (Pending BTC — ₹0 Paid)' : 'Finalize Checkout & Print Bill')}
+                : (isCompanyPayingLater
+                    ? 'Checkout (Pending BTC — ₹0 Paid)'
+                    : (isOtaPrepaid && balanceDue === 0
+                        ? 'Complete Checkout (Pre-Paid — ₹0 Due)'
+                        : (isOtaPrepaid && balanceDue > 0
+                            ? `Settle F&B & Checkout (${formatCurrency(balanceDue)})`
+                            : 'Finalize Checkout & Print Bill')))}
             </button>
           </div>
         </div>

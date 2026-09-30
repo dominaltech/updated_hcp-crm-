@@ -28,6 +28,17 @@ export default function Step7Payment({
 
   const bookingSource = String(draft?.bookingSource || draft?.booking_source || '').toUpperCase();
   const isBtc = bookingSource === 'BTC';
+  const isOta = bookingSource === 'OTA';
+  const isPrepaid = Boolean(
+    draft?.isPrepaid === true ||
+    draft?.isPrepaid === 1 ||
+    draft?.isPrepaid === '1' ||
+    draft?.rateType === 'prepaid' ||
+    draft?.rate_type === 'prepaid' ||
+    draft?.otaIsPrepaid === true
+  );
+  const isOtaPrepaid = isOta && isPrepaid;
+  const isPrepaidZeroExtras = isOtaPrepaid && totalDue === 0;
 
   const [selectedMethod, setSelectedMethod] = useState(() => {
     if (splitOnline > 0) return 'splitOnline';
@@ -118,8 +129,7 @@ export default function Step7Payment({
   const upiThresh = surchargeSettings?.upi_tax_threshold !== undefined ? Number(surchargeSettings.upi_tax_threshold) : 2000;
 
   const minAdvancePct = Number(minCheckinAdvancePct !== undefined ? minCheckinAdvancePct : 50);
-  const isOta = draft.bookingSource === 'OTA';
-  const isMinAdvanceEnforced = !isBtc && minAdvancePct > 0 && totalDue > 0;
+  const isMinAdvanceEnforced = !isBtc && !isOtaPrepaid && minAdvancePct > 0 && totalDue > 0;
   const minRequiredAdvance = isMinAdvanceEnforced ? Math.ceil((totalDue * minAdvancePct) / 100) : 0;
   const isAdvanceSufficient = !isMinAdvanceEnforced || totalPaid >= minRequiredAdvance;
 
@@ -134,11 +144,118 @@ export default function Step7Payment({
   const totalExtraFees = cardSurcharge + upiTax;
   const totalCollectFromGuest = totalPaid + totalExtraFees;
 
+  const otaVoucherTotal = Number(draft.otaManualAmount || draft.otaBillAmount || 0);
+
   return (
     <div className="checkin-step-content" id="checkin-step-7">
       <h2 className="checkin-step-heading">Payment &amp; Advance Collection</h2>
 
       <div className="payment-step-container">
+        {/* Dedicated Prepaid Booking Status Card when no extra person/mattress added */}
+        {isPrepaidZeroExtras && (
+          <div
+            id="checkin-prepaid-status-card"
+            style={{
+              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(16, 185, 129, 0.14) 100%)',
+              border: '2px solid #22c55e',
+              borderRadius: '16px',
+              padding: '22px 26px',
+              marginBottom: '18px',
+              boxShadow: '0 4px 16px rgba(34, 197, 94, 0.14)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem', color: '#ffffff', boxShadow: '0 2px 8px rgba(22, 163, 74, 0.35)' }}>
+                  ✓
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#15803d', letterSpacing: '-0.01em' }}>
+                      PREPAID BOOKING
+                    </span>
+                    <span style={{ background: '#dcfce7', color: '#166534', border: '1.5px solid #86efac', padding: '2px 10px', borderRadius: '12px', fontSize: '0.80rem', fontWeight: 800 }}>
+                      {draft.otaPlatform || 'OTA Channel'}
+                    </span>
+                    <span style={{ background: '#bbf7d0', color: '#14532d', padding: '2px 8px', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 800 }}>
+                      100% Voucher Covered
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.88rem', color: '#166534', fontWeight: 650, marginTop: '3px' }}>
+                    Entire stay room tariff is fully pre-paid. No extra person or mattress added — <strong>₹0.00 advance required at front desk</strong>.
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Desk Collection</div>
+                <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#15803d' }}>₹0.00</div>
+              </div>
+            </div>
+
+            {/* Itemized Snapshot */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Voucher / Booking ID</div>
+                <strong style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>{draft.otaVoucherNo || draft.ota_booking_id || 'N/A'}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Pre-Paid Voucher Amount</div>
+                <strong style={{ fontSize: '1.05rem', color: '#15803d' }}>{formatCurrency(otaVoucherTotal)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Extra Person / Mattress</div>
+                <strong style={{ fontSize: '0.95rem', color: '#16a34a' }}>None Added (₹0.00)</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Payment Mode</div>
+                <strong style={{ fontSize: '0.95rem', color: '#15803d' }}>PREPAID (Voucher)</strong>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed rgba(34, 197, 94, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', fontSize: '0.84rem', color: '#166534', fontWeight: 700 }}>
+              <span>👉 Click <strong>"Complete Check-In (Pre-Paid) &amp; Print Reg Card"</strong> below to check in the guest directly.</span>
+              <span style={{ background: 'rgba(34, 197, 94, 0.2)', padding: '3px 10px', borderRadius: '10px' }}>✓ Ready for Instant Check-In</span>
+            </div>
+          </div>
+        )}
+
+        {/* Prepaid Banner when extra person/mattress IS added */}
+        {isOtaPrepaid && !isPrepaidZeroExtras && (
+          <div
+            id="checkin-prepaid-extras-banner"
+            style={{
+              background: 'rgba(234, 179, 8, 0.12)',
+              border: '1.5px solid #eab308',
+              borderRadius: '12px',
+              padding: '12px 18px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>ℹ️</span>
+                <strong style={{ fontSize: '0.95rem', color: '#854d0e' }}>
+                  Pre-Paid OTA Stay ({draft.otaPlatform || 'OTA Channel'}) — Extras Added
+                </strong>
+                <span style={{ background: '#fef08a', color: '#713f12', padding: '2px 8px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  Voucher: {formatCurrency(otaVoucherTotal)}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.84rem', color: '#854d0e', marginTop: '2px' }}>
+                Room tariff is pre-paid. Please collect <strong>{formatCurrency(totalDue)}</strong> at desk for extra person/mattress or early check-in.
+              </div>
+            </div>
+            <div style={{ fontSize: '0.92rem', fontWeight: 850, color: '#854d0e' }}>
+              Desk Due: <strong>{formatCurrency(totalDue)}</strong>
+            </div>
+          </div>
+        )}
+
         {/* Check-In Advance Payment Policy Status Banner */}
         {isMinAdvanceEnforced && (
           <div
@@ -179,84 +296,87 @@ export default function Step7Payment({
           </div>
         )}
 
-        {/* Quick Fill & Mode Selector Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-            Payment Method:
-          </span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {isMinAdvanceEnforced && minAdvancePct < 100 && minRequiredAdvance > 0 && (
-              <>
-                <button
-                  type="button"
-                  className="btn-quick-fill"
-                  onClick={() => {
-                    updateDraft({ splitCash: minRequiredAdvance, splitOnline: 0, splitCard: 0, splitCheque: 0 });
-                    setSelectedMethod('splitCash');
-                  }}
-                  title={`Pay minimum required advance (${minAdvancePct}%) in Cash`}
-                >
-                  {minAdvancePct}% Min (Cash)
-                </button>
-                <button
-                  type="button"
-                  className="btn-quick-fill"
-                  onClick={() => {
-                    updateDraft({ splitCash: 0, splitOnline: minRequiredAdvance, splitCard: 0, splitCheque: 0 });
-                    setSelectedMethod('splitOnline');
-                  }}
-                  title={`Pay minimum required advance (${minAdvancePct}%) via UPI`}
-                >
-                  {minAdvancePct}% Min (UPI)
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="btn-quick-fill"
-              onClick={() => {
-                updateDraft({ splitCash: totalDue, splitOnline: 0, splitCard: 0, splitCheque: 0 });
-                setSelectedMethod('splitCash');
-              }}
-            >
-              100% Cash
-            </button>
-            <button
-              type="button"
-              className="btn-quick-fill"
-              onClick={() => {
-                updateDraft({ splitCash: 0, splitOnline: totalDue, splitCard: 0, splitCheque: 0 });
-                setSelectedMethod('splitOnline');
-              }}
-            >
-              100% UPI
-            </button>
-            <button
-              type="button"
-              className="btn-quick-fill"
-              onClick={() => {
-                updateDraft({ splitCash: 0, splitOnline: 0, splitCard: totalDue, splitCheque: 0 });
-                setSelectedMethod('splitCard');
-              }}
-            >
-              100% Card
-            </button>
-            {totalPaid > 0 && (
+        {/* Quick Fill & Mode Selector Header (Hidden when prepaid and 0 extras) */}
+        {!isPrepaidZeroExtras && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Payment Method:
+            </span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {isMinAdvanceEnforced && minAdvancePct < 100 && minRequiredAdvance > 0 && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-quick-fill"
+                    onClick={() => {
+                      updateDraft({ splitCash: minRequiredAdvance, splitOnline: 0, splitCard: 0, splitCheque: 0 });
+                      setSelectedMethod('splitCash');
+                    }}
+                    title={`Pay minimum required advance (${minAdvancePct}%) in Cash`}
+                  >
+                    {minAdvancePct}% Min (Cash)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-quick-fill"
+                    onClick={() => {
+                      updateDraft({ splitCash: 0, splitOnline: minRequiredAdvance, splitCard: 0, splitCheque: 0 });
+                      setSelectedMethod('splitOnline');
+                    }}
+                    title={`Pay minimum required advance (${minAdvancePct}%) via UPI`}
+                  >
+                    {minAdvancePct}% Min (UPI)
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 className="btn-quick-fill"
                 onClick={() => {
-                  updateDraft({ splitCash: 0, splitOnline: 0, splitCard: 0, splitCheque: 0, onlineUtr: '' });
+                  updateDraft({ splitCash: totalDue, splitOnline: 0, splitCard: 0, splitCheque: 0 });
+                  setSelectedMethod('splitCash');
                 }}
-                style={{ color: '#dc2626', borderColor: '#fca5a5' }}
               >
-                Clear
+                100% Cash
               </button>
-            )}
+              <button
+                type="button"
+                className="btn-quick-fill"
+                onClick={() => {
+                  updateDraft({ splitCash: 0, splitOnline: totalDue, splitCard: 0, splitCheque: 0 });
+                  setSelectedMethod('splitOnline');
+                }}
+              >
+                100% UPI
+              </button>
+              <button
+                type="button"
+                className="btn-quick-fill"
+                onClick={() => {
+                  updateDraft({ splitCash: 0, splitOnline: 0, splitCard: totalDue, splitCheque: 0 });
+                  setSelectedMethod('splitCard');
+                }}
+              >
+                100% Card
+              </button>
+              {totalPaid > 0 && (
+                <button
+                  type="button"
+                  className="btn-quick-fill"
+                  onClick={() => {
+                    updateDraft({ splitCash: 0, splitOnline: 0, splitCard: 0, splitCheque: 0, onlineUtr: '' });
+                  }}
+                  style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Unified Multi-Mode Payment Grid */}
+        {/* Unified Multi-Mode Payment Grid (Only when totalDue > 0 or not prepaid zero extras) */}
+        {!isPrepaidZeroExtras && (
         <div
           className="unified-pay-grid"
           style={{
@@ -444,6 +564,7 @@ export default function Step7Payment({
             </div>
           )}
         </div>
+        )}
 
         {/* Mandatory Online Payment UTR / Ref ID Panel */}
         {splitOnline > 0 && (
@@ -610,21 +731,21 @@ export default function Step7Payment({
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Total Payable:{' '}
+                {isPrepaidZeroExtras ? 'Voucher Covered: ' : 'Total Payable: '}
               </span>
-              <strong style={{ fontSize: '1.25rem', color: 'var(--apple-blue)' }}>
-                {formatCurrency(totalDue)}
+              <strong style={{ fontSize: '1.25rem', color: isPrepaidZeroExtras ? '#15803d' : 'var(--apple-blue)' }}>
+                {isPrepaidZeroExtras ? formatCurrency(otaVoucherTotal) : formatCurrency(totalDue)}
               </strong>
             </div>
             <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                Advance Paid:{' '}
+                {isPrepaidZeroExtras ? 'Desk Advance Due: ' : 'Advance Paid: '}
               </span>
-              <strong style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>
-                {formatCurrency(totalPaid)}
+              <strong style={{ fontSize: '1.25rem', color: isPrepaidZeroExtras ? '#15803d' : 'var(--text-primary)' }}>
+                {isPrepaidZeroExtras ? '₹0.00' : formatCurrency(totalPaid)}
               </strong>
-              {activeMethodsCount > 1 && (
+              {!isPrepaidZeroExtras && activeMethodsCount > 1 && (
                 <span style={{ marginLeft: '8px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '10px', fontSize: '0.74rem', fontWeight: 800 }}>
                   ✂️ Split ({activeMethodsCount} methods)
                 </span>
@@ -651,16 +772,18 @@ export default function Step7Payment({
           <div
             className="balance-alert"
             style={{
-              background: balanceDue === 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-              color: balanceDue === 0 ? '#16a34a' : '#ef4444',
-              border: `1.5px solid ${balanceDue === 0 ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+              background: (balanceDue === 0 || isPrepaidZeroExtras) ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+              color: (balanceDue === 0 || isPrepaidZeroExtras) ? '#16a34a' : '#ef4444',
+              border: `1.5px solid ${(balanceDue === 0 || isPrepaidZeroExtras) ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
               fontSize: '0.96rem',
               fontWeight: 900,
               padding: '8px 18px',
               borderRadius: '10px'
             }}
           >
-            {balanceDue === 0 ? '✓ Fully Paid (₹0.00)' : `Balance Due at Checkout: ${formatCurrency(balanceDue)}`}
+            {isPrepaidZeroExtras
+              ? '✓ 100% Pre-Paid (₹0.00 Desk Due)'
+              : (balanceDue === 0 ? '✓ Fully Paid (₹0.00)' : `Balance Due at Checkout: ${formatCurrency(balanceDue)}`)}
           </div>
         </div>
 
@@ -723,7 +846,7 @@ export default function Step7Payment({
               ) : (
                 <>
                   <span style={{ fontSize: '1.2rem' }}>✅</span>
-                  <span>Complete Check-In &amp; Print Reg Card</span>
+                  <span>{isPrepaidZeroExtras ? 'Complete Check-In (Pre-Paid) & Print Reg Card' : 'Complete Check-In & Print Reg Card'}</span>
                 </>
               )}
             </button>
