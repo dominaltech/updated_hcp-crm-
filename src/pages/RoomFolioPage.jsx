@@ -3129,13 +3129,40 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                               ? p.receipt_no
                               : (singleMode.includes('upi') ? 'UPI01' : singleMode.includes('card') ? 'POS01' : singleMode.includes('cheque') ? 'CHQ01' : 'CR01');
 
+                            const cardFee = Number(p.card_surcharge || p.cardSurcharge || 0);
+                            const upiFee = Number(p.upi_tax || p.upiTax || 0);
+                            const rawAmt = Number(p.amount) || 0;
+                            let baseAmt = Number(p.base_amount);
+                            if (!baseAmt || isNaN(baseAmt)) {
+                              if (Number(p.split_card) > 0 && (singleMode.includes('card') || singleMode.includes('pos'))) {
+                                baseAmt = Number(p.split_card);
+                              } else if (Number(p.split_online) > 0 && (singleMode.includes('upi') || singleMode.includes('online'))) {
+                                baseAmt = Number(p.split_online);
+                              } else if (cardFee > 0 && rawAmt > cardFee) {
+                                baseAmt = rawAmt - cardFee;
+                              } else if (upiFee > 0 && rawAmt > upiFee) {
+                                baseAmt = rawAmt - upiFee;
+                              } else {
+                                baseAmt = rawAmt;
+                              }
+                            } else if (baseAmt === rawAmt && cardFee > 0 && rawAmt > cardFee) {
+                              baseAmt = rawAmt - cardFee;
+                            } else if (baseAmt === rawAmt && upiFee > 0 && rawAmt > upiFee) {
+                              baseAmt = rawAmt - upiFee;
+                            }
+                            const entireAmt = rawAmt > 0 && rawAmt >= (baseAmt + cardFee + upiFee)
+                              ? rawAmt
+                              : (baseAmt + cardFee + upiFee);
+
                             printCashReceipt({
                               receipt_no: singleReceiptNo,
                               voucher_number: baseVoucher,
                               receipt_date: p.created_at,
                               guest_name: folioData.guestName,
-                              amount: p.amount,
-                              base_amount: p.amount,
+                              amount: entireAmt,
+                              base_amount: baseAmt,
+                              card_surcharge: cardFee,
+                              upi_tax: upiFee,
                               payment_mode: p.payment_mode,
                               split_cash: p.split_cash,
                               split_online: p.split_online,

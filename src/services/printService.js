@@ -781,17 +781,75 @@ export function getActiveCashierName() {
  */
 export function normalizeReceiptData(receipt) {
   if (!receipt) return null;
-  const baseAmount = Number(receipt.base_amount !== undefined ? receipt.base_amount : (receipt.amount !== undefined ? receipt.amount : (receipt.total !== undefined ? receipt.total : receipt.advance_amount))) || 0;
   const modeLower = String(receipt.payment_mode || receipt.paymentMode || receipt.mode || (receipt.split_online > 0 ? 'upi' : receipt.split_card > 0 ? 'card' : receipt.split_cheque > 0 ? 'cheque' : 'cash')).toLowerCase();
+  const rawAmount = Number(receipt.amount !== undefined ? receipt.amount : (receipt.total !== undefined ? receipt.total : (receipt.advance_amount !== undefined ? receipt.advance_amount : 0))) || 0;
 
-  const cardSurcharge = Number(receipt.card_surcharge || receipt.cardSurcharge) || (modeLower.includes('card') ? Math.round(baseAmount * 0.025) : 0);
-  const upiTax = Number(receipt.upi_tax || receipt.upiTax) || (modeLower.includes('upi') || modeLower.includes('online') ? (baseAmount > 2000 ? Math.round(baseAmount * 0.004) : 0) : 0);
+  const hasExplicitCardSurcharge = receipt.card_surcharge !== undefined || receipt.cardSurcharge !== undefined;
+  const hasExplicitUpiTax = receipt.upi_tax !== undefined || receipt.upiTax !== undefined;
 
-  let finalTotalAmount = baseAmount;
-  if (modeLower.includes('card') && cardSurcharge > 0) {
-    finalTotalAmount = baseAmount + cardSurcharge;
-  } else if ((modeLower.includes('upi') || modeLower.includes('online')) && upiTax > 0) {
-    finalTotalAmount = baseAmount + upiTax;
+  let cardSurcharge = Number(receipt.card_surcharge !== undefined ? receipt.card_surcharge : receipt.cardSurcharge) || 0;
+  let upiTax = Number(receipt.upi_tax !== undefined ? receipt.upi_tax : receipt.upiTax) || 0;
+
+  let baseAmount = 0;
+  let finalTotalAmount = rawAmount;
+
+  if (modeLower.includes('card') || modeLower.includes('pos')) {
+    if (receipt.split_card > 0) {
+      baseAmount = Number(receipt.split_card);
+      if (!hasExplicitCardSurcharge) {
+        cardSurcharge = rawAmount > baseAmount ? rawAmount - baseAmount : Math.round(baseAmount * 0.025);
+      }
+      finalTotalAmount = Math.max(rawAmount, baseAmount + cardSurcharge);
+    } else if (receipt.base_amount !== undefined && receipt.base_amount !== null && Number(receipt.base_amount) > 0) {
+      baseAmount = Number(receipt.base_amount);
+      if (!hasExplicitCardSurcharge) {
+        cardSurcharge = rawAmount > baseAmount ? rawAmount - baseAmount : Math.round(baseAmount * 0.025);
+      }
+      if (rawAmount === baseAmount) {
+        finalTotalAmount = baseAmount + cardSurcharge;
+      } else {
+        finalTotalAmount = Math.max(rawAmount, baseAmount + cardSurcharge);
+      }
+    } else if (hasExplicitCardSurcharge && cardSurcharge > 0 && rawAmount > cardSurcharge) {
+      baseAmount = rawAmount - cardSurcharge;
+      finalTotalAmount = rawAmount;
+    } else {
+      baseAmount = rawAmount;
+      if (!hasExplicitCardSurcharge && baseAmount > 0) {
+        cardSurcharge = Math.round(baseAmount * 0.025);
+      }
+      finalTotalAmount = baseAmount + cardSurcharge;
+    }
+  } else if (modeLower.includes('upi') || modeLower.includes('online')) {
+    if (receipt.split_online > 0) {
+      baseAmount = Number(receipt.split_online);
+      if (!hasExplicitUpiTax) {
+        upiTax = rawAmount > baseAmount ? rawAmount - baseAmount : (baseAmount > 2000 ? Math.round(baseAmount * 0.004) : 0);
+      }
+      finalTotalAmount = Math.max(rawAmount, baseAmount + upiTax);
+    } else if (receipt.base_amount !== undefined && receipt.base_amount !== null && Number(receipt.base_amount) > 0) {
+      baseAmount = Number(receipt.base_amount);
+      if (!hasExplicitUpiTax) {
+        upiTax = rawAmount > baseAmount ? rawAmount - baseAmount : (baseAmount > 2000 ? Math.round(baseAmount * 0.004) : 0);
+      }
+      if (rawAmount === baseAmount && upiTax > 0) {
+        finalTotalAmount = baseAmount + upiTax;
+      } else {
+        finalTotalAmount = Math.max(rawAmount, baseAmount + upiTax);
+      }
+    } else if (hasExplicitUpiTax && upiTax > 0 && rawAmount > upiTax) {
+      baseAmount = rawAmount - upiTax;
+      finalTotalAmount = rawAmount;
+    } else {
+      baseAmount = rawAmount;
+      if (!hasExplicitUpiTax && baseAmount > 2000) {
+        upiTax = Math.round(baseAmount * 0.004);
+      }
+      finalTotalAmount = baseAmount + upiTax;
+    }
+  } else {
+    baseAmount = receipt.base_amount !== undefined ? Number(receipt.base_amount) : rawAmount;
+    finalTotalAmount = rawAmount || baseAmount;
   }
 
   // Resolve cashier name: dynamically pick active cashier instead of generic 'Front Desk Cashier'
@@ -831,6 +889,7 @@ export function normalizeReceiptData(receipt) {
     upi_tax: upiTax,
     room_numbers: cleanRoom,
     particulars: particularsText,
+    payment_stage: receipt.payment_stage,
     cashier_name: cashierName,
     is_split: Boolean(receipt.is_split || receipt.isSplit)
   };
@@ -847,57 +906,44 @@ export function printCashReceipt(receiptOrList) {
 }
 
 export function buildMoneyReceiptHTML(receipt) {
-  let cashierName = receipt.cashier_name || receipt.cashier || receipt.collected_by || receipt.staff_name || receipt.logged_by || receipt.created_by || receipt.checked_in_by;
+  const norm = normalizeReceiptData(receipt) || receipt;
+  let cashierName = norm.cashier_name || norm.cashier || norm.collected_by || norm.staff_name || norm.logged_by || norm.created_by || norm.checked_in_by;
   if (!cashierName || cashierName.trim() === '' || cashierName === 'Front Desk Cashier' || cashierName === 'Front Desk') {
     const activeStaff = getActiveCashierName();
     cashierName = activeStaff || (cashierName && cashierName !== 'Front Desk Cashier' ? cashierName : 'Cashier');
   }
-  const formattedDateTimeStr = formatReceiptDateTime(receipt.receipt_date || receipt.created_at || receipt.date);
-  const formattedDate = formattedDateTimeStr;
+  const formattedDateTimeStr = formatReceiptDateTime(norm.receipt_date || norm.created_at || norm.date);
 
-  const rawMode = String(receipt.payment_mode || receipt.paymentMode || receipt.mode || (receipt.split_online > 0 ? 'upi' : receipt.split_card > 0 ? 'card' : receipt.split_cheque > 0 ? 'cheque' : 'cash')).toLowerCase();
-  const utr = (receipt.utr_number || receipt.online_utr || receipt.onlineUtr || receipt.utr || '').trim();
-  const chqNo = (receipt.cheque_no || receipt.chequeNo || '').trim();
-  const bankName = (receipt.bank_name || receipt.chequeBank || receipt.bank || '').trim();
+  const rawMode = String(norm.payment_mode || norm.paymentMode || norm.mode || (norm.split_online > 0 ? 'upi' : norm.split_card > 0 ? 'card' : norm.split_cheque > 0 ? 'cheque' : 'cash')).toLowerCase();
+  const utr = (norm.utr_number || norm.online_utr || norm.onlineUtr || norm.utr || '').trim();
+  const chqNo = (norm.cheque_no || norm.chequeNo || '').trim();
+  const bankName = (norm.bank_name || norm.chequeBank || norm.bank || '').trim();
 
-  const baseAmt = receipt.base_amount !== undefined ? Number(receipt.base_amount) : (Number(receipt.amount) || 0);
+  const baseAmt = norm.base_amount !== undefined ? Number(norm.base_amount) : (Number(norm.amount) || 0);
+  const cardSurcharge = Number(norm.card_surcharge) || 0;
+  const upiTax = Number(norm.upi_tax) || 0;
+  const finalDisplayAmount = Number(norm.amount) || (baseAmt + cardSurcharge + upiTax);
 
-  // Dynamic Card surcharge & UPI tax calculation
-  let cardSurcharge = Number(receipt.card_surcharge || receipt.cardSurcharge) || 0;
-  if (!cardSurcharge && (rawMode.includes('card') || rawMode.includes('pos'))) {
-    cardSurcharge = baseAmt > 0 ? Math.round(baseAmt * 0.025) : 0;
-  }
-  let upiTax = Number(receipt.upi_tax !== undefined ? receipt.upi_tax : receipt.upiTax) || 0;
-  if (!upiTax && (rawMode.includes('upi') || rawMode.includes('online'))) {
-    upiTax = baseAmt > 2000 ? Math.round(baseAmt * 0.004) : 0;
-  }
-
-  let finalDisplayAmount = baseAmt;
   let dynamicModeLabel = 'by Cash';
   let dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
   if (rawMode.includes('upi') || rawMode.includes('online')) {
     dynamicModeLabel = 'by Online UPI';
-    finalDisplayAmount = baseAmt + upiTax;
     const feeInfo = upiTax > 0 ? ` (+₹${upiTax} Fee)` : '';
     dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
   } else if (rawMode.includes('card') || rawMode.includes('pos')) {
     dynamicModeLabel = 'by Card POS';
-    finalDisplayAmount = baseAmt + cardSurcharge;
     const feeInfo = cardSurcharge > 0 ? ` (+₹${cardSurcharge} Fee)` : '';
     dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
   } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
     dynamicModeLabel = 'by Cheque';
-    finalDisplayAmount = baseAmt;
     dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else if (rawMode.includes('btc') || rawMode.includes('company')) {
     dynamicModeLabel = 'by Corporate (BTC)';
-    finalDisplayAmount = baseAmt;
     dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else {
     // Cash: Strictly single mode
     dynamicModeLabel = 'by Cash';
-    finalDisplayAmount = baseAmt;
     dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   }
 
@@ -945,25 +991,60 @@ export function buildMoneyReceiptHTML(receipt) {
     row2ModeDetail = 'Payment Mode: Cash';
   }
 
-  const tableRows = [
-    {
-      title: row1Title,
-      amt: finalDisplayAmount
-    },
-    {
-      title: row2ModeDetail,
-      amt: null
-    }
-  ];
+  let tableRows = [];
+  if (cardSurcharge > 0) {
+    tableRows = [
+      {
+        title: `${row1Title} (Base Amount)`,
+        amt: baseAmt
+      },
+      {
+        title: `Payment Mode: Card POS [Fee: ₹${cardSurcharge}] (Card Charge)`,
+        amt: cardSurcharge
+      },
+      {
+        title: `Total Amount Charged to Card (Entire Amount)`,
+        amt: finalDisplayAmount,
+        isTotal: true
+      }
+    ];
+  } else if (upiTax > 0) {
+    tableRows = [
+      {
+        title: `${row1Title} (Base Amount)`,
+        amt: baseAmt
+      },
+      {
+        title: utr ? `Payment Mode: Online UPI (UTR: ${utr}) (Processing Fee)` : `Payment Mode: Online UPI (Processing Fee)`,
+        amt: upiTax
+      },
+      {
+        title: `Total Amount Paid via UPI (Entire Amount)`,
+        amt: finalDisplayAmount,
+        isTotal: true
+      }
+    ];
+  } else {
+    tableRows = [
+      {
+        title: row1Title,
+        amt: finalDisplayAmount
+      },
+      {
+        title: row2ModeDetail,
+        amt: null
+      }
+    ];
+  }
 
   const tableRowsHtml = tableRows
     .map(
       (r) => `
-      <tr>
-        <td style="padding: 7px 10px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; vertical-align: middle;">
-          <div style="font-weight: 850; font-size: 12pt; color: #000000; line-height: 1.35;">${escapeHtml(r.title)}</div>
+      <tr style="${r.isTotal ? 'background-color: #f8fafc;' : ''}">
+        <td style="padding: 5px 10px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; vertical-align: middle;">
+          <div style="font-weight: 850; font-size: 11.5pt; color: #000000; line-height: 1.3;">${escapeHtml(r.title)}</div>
         </td>
-        <td style="padding: 7px 10px; border-bottom: 1.5px solid #000; text-align: right; font-size: 12.5pt; font-weight: ${r.amt !== null ? '950' : 'normal'}; vertical-align: middle; white-space: nowrap;">
+        <td style="padding: 5px 10px; border-bottom: 1.5px solid #000; text-align: right; font-size: 12pt; font-weight: ${r.amt !== null ? '950' : 'normal'}; vertical-align: middle; white-space: nowrap;">
           ${r.amt !== null ? `₹ ${parseFloat(r.amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '&nbsp;'}
         </td>
       </tr>
@@ -1055,13 +1136,13 @@ export function buildMoneyReceiptHTML(receipt) {
           <span class="receipt-fill-line" style="font-size: 12.5pt; font-style: italic; font-weight: 900;">${escapeHtml(amtWords)}</span>
         </div>
 
-        <div class="receipt-line-row" style="font-size: 12.5pt;">
-          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">${escapeHtml(dynamicModeLabel)}</span>
-          <span class="receipt-fill-line" style="font-size: 13pt; font-weight: 950;">${escapeHtml(dynamicModeValue)}</span>
-          <span class="receipt-lbl" style="margin-left: 12px; font-size: 12.5pt; font-weight: 850;">Room No.</span>
-          <span class="receipt-fill-line" style="max-width: 80px; text-align: center; font-size: 13pt; font-weight: 950;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
-          <span class="receipt-lbl" style="margin-left: 12px; font-size: 12.5pt; font-weight: 850; white-space: nowrap;">Voucher No:</span>
-          <span class="receipt-fill-line" style="max-width: 140px; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 13pt;">${escapeHtml(displayVoucherNo)}</span>
+        <div class="receipt-line-row" style="font-size: 12.5pt; display: flex; align-items: flex-end; gap: 6px; width: 100%; white-space: nowrap;">
+          <span class="receipt-lbl" style="font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">${escapeHtml(dynamicModeLabel)}</span>
+          <span class="receipt-fill-line" style="font-size: 12pt; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; line-height: 24px;">${escapeHtml(dynamicModeValue)}</span>
+          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">Room No.</span>
+          <span class="receipt-fill-line" style="width: 55px; max-width: 65px; flex: none; text-align: center; font-size: 12.5pt; font-weight: 950; white-space: nowrap; line-height: 24px;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
+          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">Voucher No:</span>
+          <span class="receipt-fill-line" style="width: 125px; max-width: 135px; flex: none; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 11pt; white-space: nowrap; line-height: 24px;">${escapeHtml(displayVoucherNo)}</span>
         </div>
 
         <!-- Multi-Row Ruled Table Grid (Using both rows: Row 1 = Paid while checking/living/checkout, Row 2 = Mode & UTR) -->

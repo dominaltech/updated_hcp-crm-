@@ -9431,12 +9431,15 @@ body.dark-theme .manager-subnav-btn.active {
   .receipt-fill-line {
     flex: 1 !important;
     border-bottom: 1.5px solid #000000 !important;
-    padding: 0 6px !important;
+    padding: 0 4px !important;
     font-weight: 900 !important;
     color: #000000 !important;
     font-size: 12.5pt !important;
     min-height: 24px !important;
     line-height: 24px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   .receipt-underlined-date {
