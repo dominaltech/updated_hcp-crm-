@@ -1165,7 +1165,7 @@ body.modal-open {
 
 #checkin-modal-overlay .modal-body {
   flex: 1;
-  padding: 10px 40px 14px !important;
+  padding: 10px 64px 14px !important;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -1310,6 +1310,9 @@ body.modal-open {
 /* --------------------------------------------------------------------------
    WIZARD MIDDLE-VERTICAL SIDE NAVIGATION BUTTONS (ONLY SHAPES, EXACT SAME LEVEL)
    -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+   WIZARD MIDDLE-VERTICAL SIDE NAVIGATION BUTTONS (ONLY SHAPES, EXACT SAME LEVEL)
+   -------------------------------------------------------------------------- */
 .wizard-side-custom-arrow {
   position: absolute;
   top: 50%;
@@ -1318,78 +1321,425 @@ body.modal-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent !important;
-  border: none !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(0, 0, 0, 0.1) !important;
+  border-radius: 50% !important;
+  width: 42px !important;
+  height: 42px !important;
   padding: 0 !important;
   margin: 0 !important;
   outline: none !important;
   cursor: pointer;
   user-select: none;
-  transition: opacity 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  color: #334155;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .wizard-side-custom-arrow.nav-prev {
-  left: 16px;
-}
-
-.wizard-side-custom-arrow.nav-prev:hover,
-.wizard-side-custom-arrow.nav-prev:active {
-  transform: translateY(-50%) !important;
+  left: 12px;
 }
 
 .wizard-side-custom-arrow.nav-next {
-  right: 16px;
+  right: 12px;
 }
 
-.wizard-side-custom-arrow.nav-next:hover,
-.wizard-side-custom-arrow.nav-next:active {
-  transform: translateY(-50%) !important;
+.wizard-side-custom-arrow:hover {
+  transform: translateY(-50%) scale(1.1) !important;
+  background: var(--apple-blue, #0284c7) !important;
+  border-color: var(--apple-blue, #0284c7) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.45) !important;
 }
 
-.wizard-side-custom-arrow {
-  color: #64748b;
+.wizard-side-custom-arrow:active {
+  transform: translateY(-50%) scale(0.95) !important;
 }
 
 .custom-arrow-icon {
-  width: 54px;
-  height: 48px;
+  width: 20px;
+  height: 20px;
   display: block;
   pointer-events: none;
-  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.18));
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s ease, color 0.22s ease;
-}
-
-.wizard-side-custom-arrow:hover .custom-arrow-icon {
-  filter: drop-shadow(0 6px 18px rgba(0, 113, 227, 0.45)) brightness(1.15);
-  transform: scale(1.08);
-}
-
-.wizard-side-custom-arrow:active .custom-arrow-icon {
-  transform: scale(0.96);
-}
-
-.wizard-side-custom-arrow:hover .custom-arrow-icon path {
-  fill: var(--apple-blue);
+  stroke: currentColor;
+  stroke-width: 2.5;
+  transition: all 0.2s ease;
 }
 
 [data-theme="dark"] .wizard-side-custom-arrow,
 body.dark-theme .wizard-side-custom-arrow {
-  color: rgba(255, 255, 255, 0.65);
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #f1f5f9 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
 }
 
-[data-theme="dark"] .custom-arrow-icon,
-body.dark-theme .custom-arrow-icon {
-  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.7));
+[data-theme="dark"] .wizard-side-custom-arrow:hover,
+body.dark-theme .wizard-side-custom-arrow:hover {
+  background: var(--apple-blue, #0284c7) !important;
+  border-color: var(--apple-blue, #0284c7) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 24px rgba(56, 189, 248, 0.5) !important;
 }
 
-[data-theme="dark"] .wizard-side-custom-arrow:hover .custom-arrow-icon,
-body.dark-theme .wizard-side-custom-arrow:hover .custom-arrow-icon {
-  filter: drop-shadow(0 6px 20px rgba(56, 189, 248, 0.55));
+/* --------------------------------------------------------------------------
+   STAGE 6 STAY CHARGES & PAYMENT SUMMARY CARD (HIGH-CONTRAST LIGHT & DARK)
+   -------------------------------------------------------------------------- */
+.stay-payment-summary-card {
+  margin-top: 22px;
+  background: #ffffff;
+  border: 2px solid #0284c7;
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 30px rgba(2, 132, 199, 0.12);
+  box-sizing: border-box;
+  transition: all var(--transition-fast);
 }
 
-[data-theme="dark"] .wizard-side-custom-arrow:hover .custom-arrow-icon path,
-body.dark-theme .wizard-side-custom-arrow:hover .custom-arrow-icon path {
-  fill: var(--apple-blue);
+.stay-payment-summary-card .summary-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1.5px solid #e2e8f0;
+  padding-bottom: 12px;
+}
+
+.stay-payment-summary-card .summary-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+}
+
+.stay-payment-summary-card .summary-card-title {
+  margin: 0 !important;
+  font-size: 1.05rem !important;
+  font-weight: 900 !important;
+  color: #0f172a !important;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stay-payment-summary-card .summary-card-subtitle {
+  margin: 2px 0 0 !important;
+  font-size: 0.78rem !important;
+  color: #64748b !important;
+  font-weight: 650 !important;
+}
+
+.stay-payment-summary-card .summary-card-badge {
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.stay-payment-summary-card .summary-itemized-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.stay-payment-summary-card .summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  transition: all var(--transition-fast);
+}
+
+.stay-payment-summary-card .summary-row-room {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+}
+
+.stay-payment-summary-card .summary-row-mattress {
+  background: #faf5ff;
+  border: 1.5px solid #d8b4fe;
+}
+
+.stay-payment-summary-card .summary-row-breakfast {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+}
+
+.stay-payment-summary-card .summary-row-extension {
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+}
+
+.stay-payment-summary-card .summary-row-label {
+  font-weight: 850;
+  font-size: 0.90rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stay-payment-summary-card .summary-row-room .summary-row-label {
+  color: #0f172a;
+}
+.stay-payment-summary-card .summary-row-mattress .summary-row-label {
+  color: #6b21a8;
+}
+.stay-payment-summary-card .summary-row-breakfast .summary-row-label {
+  color: #92400e;
+}
+.stay-payment-summary-card .summary-row-extension .summary-row-label {
+  color: #166534;
+}
+
+.stay-payment-summary-card .summary-row-desc {
+  font-size: 0.76rem;
+  margin-top: 3px;
+}
+
+.stay-payment-summary-card .summary-row-room .summary-row-desc {
+  color: #64748b;
+}
+.stay-payment-summary-card .summary-row-mattress .summary-row-desc {
+  color: #7e22ce;
+}
+.stay-payment-summary-card .summary-row-breakfast .summary-row-desc {
+  color: #b45309;
+}
+.stay-payment-summary-card .summary-row-extension .summary-row-desc {
+  color: #15803d;
+}
+
+.stay-payment-summary-card .summary-row-desc .discount-tag {
+  color: #dc2626;
+  font-weight: 750;
+}
+
+.stay-payment-summary-card .summary-row-desc .gst-tag {
+  color: #059669;
+  font-weight: 750;
+}
+
+.stay-payment-summary-card .summary-row-price {
+  font-weight: 900;
+  font-size: 1.05rem;
+}
+
+.stay-payment-summary-card .summary-row-room .summary-row-price {
+  color: #0f172a;
+}
+.stay-payment-summary-card .summary-row-mattress .summary-row-price {
+  color: #6b21a8;
+}
+.stay-payment-summary-card .summary-row-breakfast .summary-row-price {
+  color: #92400e;
+}
+.stay-payment-summary-card .summary-row-extension .summary-row-price {
+  color: #166534;
+}
+
+.stay-payment-summary-card .summary-row-breakdown {
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.stay-payment-summary-card .summary-row-room .summary-row-breakdown {
+  color: #059669;
+}
+.stay-payment-summary-card .summary-row-mattress .summary-row-breakdown {
+  color: #7e22ce;
+}
+.stay-payment-summary-card .summary-row-breakfast .summary-row-breakdown {
+  color: #b45309;
+}
+.stay-payment-summary-card .summary-row-extension .summary-row-breakdown {
+  color: #15803d;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border-radius: 14px;
+  padding: 16px 22px;
+  color: #ffffff !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.35);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner .banner-subtext {
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+  color: #ffffff !important;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner .banner-title {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #ffffff !important;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner .banner-breakdown {
+  font-size: 0.76rem;
+  opacity: 0.85;
+  margin-top: 2px;
+  color: #ffffff !important;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner .banner-amount {
+  font-size: 2rem;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: #ffffff !important;
+}
+
+.stay-payment-summary-card .summary-grand-total-banner .banner-note {
+  font-size: 0.74rem;
+  opacity: 0.9;
+  margin-top: 4px;
+  font-weight: 700;
+  color: #ffffff !important;
+}
+
+/* Dark Theme Overrides for Stage 6 Stay Charges & Payment Summary Card */
+[data-theme="dark"] .stay-payment-summary-card,
+body.dark-theme .stay-payment-summary-card {
+  background: #141821 !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-card-header,
+body.dark-theme .stay-payment-summary-card .summary-card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-card-title,
+body.dark-theme .stay-payment-summary-card .summary-card-title {
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-card-subtitle,
+body.dark-theme .stay-payment-summary-card .summary-card-subtitle {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-card-badge,
+body.dark-theme .stay-payment-summary-card .summary-card-badge {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-row-room,
+body.dark-theme .stay-payment-summary-card .summary-row-room {
+  background: #1a2230 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-room .summary-row-label,
+body.dark-theme .stay-payment-summary-card .summary-row-room .summary-row-label {
+  color: #f1f5f9 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-room .summary-row-desc,
+body.dark-theme .stay-payment-summary-card .summary-row-room .summary-row-desc {
+  color: #94a3b8 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-room .summary-row-price,
+body.dark-theme .stay-payment-summary-card .summary-row-room .summary-row-price {
+  color: #f8fafc !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-room .summary-row-breakdown,
+body.dark-theme .stay-payment-summary-card .summary-row-room .summary-row-breakdown {
+  color: #34d399 !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-row-mattress,
+body.dark-theme .stay-payment-summary-card .summary-row-mattress {
+  background: rgba(147, 51, 234, 0.14) !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-mattress .summary-row-label,
+body.dark-theme .stay-payment-summary-card .summary-row-mattress .summary-row-label {
+  color: #e9d5ff !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-mattress .summary-row-desc,
+body.dark-theme .stay-payment-summary-card .summary-row-mattress .summary-row-desc {
+  color: #d8b4fe !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-mattress .summary-row-price,
+body.dark-theme .stay-payment-summary-card .summary-row-mattress .summary-row-price {
+  color: #f3e8ff !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-mattress .summary-row-breakdown,
+body.dark-theme .stay-payment-summary-card .summary-row-mattress .summary-row-breakdown {
+  color: #c084fc !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-row-breakfast,
+body.dark-theme .stay-payment-summary-card .summary-row-breakfast {
+  background: rgba(217, 119, 6, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-breakfast .summary-row-label,
+body.dark-theme .stay-payment-summary-card .summary-row-breakfast .summary-row-label {
+  color: #fde68a !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-breakfast .summary-row-desc,
+body.dark-theme .stay-payment-summary-card .summary-row-breakfast .summary-row-desc {
+  color: #fcd34d !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-breakfast .summary-row-price,
+body.dark-theme .stay-payment-summary-card .summary-row-breakfast .summary-row-price {
+  color: #fef3c7 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-breakfast .summary-row-breakdown,
+body.dark-theme .stay-payment-summary-card .summary-row-breakfast .summary-row-breakdown {
+  color: #fbbf24 !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-row-extension,
+body.dark-theme .stay-payment-summary-card .summary-row-extension {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border-color: rgba(52, 211, 153, 0.35) !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-extension .summary-row-label,
+body.dark-theme .stay-payment-summary-card .summary-row-extension .summary-row-label {
+  color: #a7f3d0 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-extension .summary-row-desc,
+body.dark-theme .stay-payment-summary-card .summary-row-extension .summary-row-desc {
+  color: #6ee7b7 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-extension .summary-row-price,
+body.dark-theme .stay-payment-summary-card .summary-row-extension .summary-row-price {
+  color: #d1fae5 !important;
+}
+[data-theme="dark"] .stay-payment-summary-card .summary-row-extension .summary-row-breakdown,
+body.dark-theme .stay-payment-summary-card .summary-row-extension .summary-row-breakdown {
+  color: #34d399 !important;
+}
+
+[data-theme="dark"] .stay-payment-summary-card .summary-grand-total-banner,
+body.dark-theme .stay-payment-summary-card .summary-grand-total-banner {
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.5) !important;
 }
 
 /* --------------------------------------------------------------------------

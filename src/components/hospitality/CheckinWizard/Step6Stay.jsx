@@ -3581,62 +3581,53 @@ export default function Step6Stay({
           <div
             className="stay-payment-summary-card"
             id="stage6-stay-payment-summary"
-            style={{
-              marginTop: '22px',
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              border: '2px solid #0284c7',
-              borderRadius: '18px',
-              padding: '22px 24px',
-              boxShadow: '0 8px 30px rgba(2, 132, 199, 0.12)',
-              boxSizing: 'border-box'
-            }}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
+            <div className="summary-card-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.12)', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.35rem' }}>
+                <div className="summary-card-icon">
                   💳
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  <h3 className="summary-card-title">
                     Stay Charges &amp; Payment Details
                   </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b', fontWeight: 650 }}>
+                  <p className="summary-card-subtitle">
                     Transparent itemized billing: Base, Discount, GST &amp; Add-ons ({nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`})
                   </p>
                 </div>
               </div>
-              <span style={{ fontSize: '0.78rem', fontWeight: 800, padding: '4px 12px', borderRadius: '14px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>
+              <span className="summary-card-badge">
                 Live Pre-Checkout Calculation
               </span>
             </div>
 
             {/* Itemized Rows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+            <div className="summary-itemized-rows">
               
               {/* Row 1: Room Tariff (Base, Discount, GST) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#ffffff', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+              <div className="summary-row summary-row-room">
                 <div>
-                  <div style={{ fontWeight: 850, fontSize: '0.90rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div className="summary-row-label">
                     <span>🏨</span> Room Tariff Subtotal ({allRooms.length} {allRooms.length > 1 ? 'Rooms' : 'Room'} × {nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`})
                   </div>
-                  <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '3px' }}>
+                  <div className="summary-row-desc">
                     Base: ₹{roomGrossTariff.toLocaleString('en-IN')} (₹{basePrice.toLocaleString('en-IN')} for 24 hours × {nights})
                     {effectiveDiscountPct > 0 && (
-                      <span style={{ color: '#dc2626', fontWeight: 750 }}>
+                      <span className="discount-tag">
                         {' • '}Less {effectiveDiscountPct}% Discount (-₹{roomDiscountAmt.toLocaleString('en-IN')})
                       </span>
                     )}
-                    <span style={{ color: '#059669', fontWeight: 750 }}>
+                    <span className="gst-tag">
                       {' • '}Room GST ({isOta ? otaGstRate : effectiveGstPct}%{isOta ? ' Included' : ''}): +₹{roomGstAmt.toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#0f172a' }}>
+                  <div className="summary-row-price">
                     ₹{roomTariffSubtotal.toLocaleString('en-IN')}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 750 }}>
+                  <div className="summary-row-breakdown">
                     Base: ₹{roomNetBaseTariff.toLocaleString('en-IN')} + GST: ₹{roomGstAmt.toLocaleString('en-IN')}{isOta ? ' (Included)' : ''}
                   </div>
                 </div>
@@ -3644,20 +3635,20 @@ export default function Step6Stay({
 
               {/* Row 2: Extra Mattress (Base & GST) if active */}
               {currentExtraBeds > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#faf5ff', borderRadius: '12px', border: '1.5px solid #d8b4fe' }}>
+                <div className="summary-row summary-row-mattress">
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.90rem', color: '#6b21a8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="summary-row-label">
                       <span>🛏️</span> Extra Mattress Charges ({currentExtraBeds} {currentExtraBeds > 1 ? 'Mattresses' : 'Mattress'} × {nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`})
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#7e22ce', marginTop: '3px' }}>
+                    <div className="summary-row-desc">
                       Base: ₹{extraBedCharge.toLocaleString('en-IN')} • Extra Mattress GST ({extraBedGstRate}%): +₹{extraBedGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#6b21a8' }}>
+                    <div className="summary-row-price">
                       ₹{extraBedTotalAmt.toLocaleString('en-IN')}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#7e22ce', fontWeight: 750 }}>
+                    <div className="summary-row-breakdown">
                       Base: ₹{extraBedCharge.toLocaleString('en-IN')} + GST: ₹{extraBedGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
@@ -3666,20 +3657,20 @@ export default function Step6Stay({
 
               {/* Row 3: Breakfast (Base & GST) if active */}
               {mealTotalCharge > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#fffbeb', borderRadius: '12px', border: '1.5px solid #fde68a' }}>
+                <div className="summary-row summary-row-breakfast">
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.90rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="summary-row-label">
                       <span>🍳</span> Buffet Breakfast Inclusions ({totalGuests} {totalGuests > 1 ? 'Guests' : 'Guest'} × {nights === 1 ? '24 Hours' : `${nights * 24} Hours (${nights} × 24 hrs)`})
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#b45309', marginTop: '3px' }}>
+                    <div className="summary-row-desc">
                       Base: ₹{mealTotalCharge.toLocaleString('en-IN')} (₹{breakfastRate}/guest for 24 hrs) • Food GST ({breakfastGstRate}%): +₹{breakfastGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#92400e' }}>
+                    <div className="summary-row-price">
                       ₹{breakfastTotalAmt.toLocaleString('en-IN')}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 750 }}>
+                    <div className="summary-row-breakdown">
                       Base: ₹{mealTotalCharge.toLocaleString('en-IN')} + GST: ₹{breakfastGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
@@ -3688,20 +3679,20 @@ export default function Step6Stay({
 
               {/* Row 4: Extension Charges (Base & GST) if active */}
               {extensionCharge > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#f0fdf4', borderRadius: '12px', border: '1.5px solid #86efac' }}>
+                <div className="summary-row summary-row-extension">
                   <div>
-                    <div style={{ fontWeight: 850, fontSize: '0.90rem', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="summary-row-label">
                       <span>⏱️</span> Stay Extension / Early Check-in Charges
                     </div>
-                    <div style={{ fontSize: '0.76rem', color: '#15803d', marginTop: '3px' }}>
+                    <div className="summary-row-desc">
                       Base: ₹{extensionCharge.toLocaleString('en-IN')} • GST ({effectiveGstPct}%): +₹{extGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#166534' }}>
+                    <div className="summary-row-price">
                       ₹{extTotalAmt.toLocaleString('en-IN')}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 750 }}>
+                    <div className="summary-row-breakdown">
                       Base: ₹{extensionCharge.toLocaleString('en-IN')} + GST: ₹{extGstAmt.toLocaleString('en-IN')}
                     </div>
                   </div>
@@ -3710,36 +3701,23 @@ export default function Step6Stay({
             </div>
 
             {/* Grand Total Banner */}
-            <div
-              style={{
-                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                borderRadius: '14px',
-                padding: '16px 22px',
-                color: '#ffffff',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                boxShadow: '0 4px 16px rgba(2, 132, 199, 0.35)',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}
-            >
+            <div className="summary-grand-total-banner">
               <div>
-                <div style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.9 }}>
+                <div className="banner-subtext">
                   Total Stay Billing Summary
                 </div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>
+                <div className="banner-title">
                   Grand Total
                 </div>
-                <div style={{ fontSize: '0.76rem', opacity: 0.85, marginTop: '2px' }}>
+                <div className="banner-breakdown">
                   Total Base: ₹{netChargeBeforeTax.toLocaleString('en-IN')} | Total GST: ₹{gstAmount.toLocaleString('en-IN')}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 950, letterSpacing: '-0.02em', lineHeight: 1 }}>
+                <div className="banner-amount">
                   ₹{finalGrandTotal.toLocaleString('en-IN')}
                 </div>
-                <div style={{ fontSize: '0.74rem', opacity: 0.9, marginTop: '4px', fontWeight: 700 }}>
+                <div className="banner-note">
                   {isOta && draft.isPrepaid ? 'Hotel Extras Payable at Desk' : 'Inclusive of all room tariff & add-on taxes'}
                 </div>
               </div>

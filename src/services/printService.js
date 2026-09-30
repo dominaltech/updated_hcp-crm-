@@ -1864,16 +1864,48 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   }
 
   // 5. Billing & Payment Breakdown
-  const tariffNet = Number(data.roomTariffNet !== undefined ? data.roomTariffNet : (data.netCharge !== undefined ? data.netCharge : (data.total_room_charge || 0)));
   const discountAmount = Number(data.discountAmount !== undefined ? data.discountAmount : (data.discount_amount || 0));
   const discountPct = Number(data.discountPct !== undefined ? data.discountPct : (data.discount_pct || 0));
-  const taxAmount = Number(data.taxAmount !== undefined ? data.taxAmount : (data.tax_amount || Math.round(tariffNet * 0.05)));
+  let grandTotal = Number(data.totalDue !== undefined ? data.totalDue : (data.grandTotal !== undefined ? data.grandTotal : 0));
+  if (grandTotal <= 0 && data.total_room_charge) {
+    grandTotal = Number(data.total_room_charge);
+  }
+
+  let tariffNet = Number(data.roomTariffNet !== undefined ? data.roomTariffNet : (data.netCharge !== undefined ? data.netCharge : 0));
+  let taxAmount = Number(data.taxAmount !== undefined ? data.taxAmount : (data.tax_amount || 0));
+
+  // If tariffNet was passed as 0 or undefined, but we have grandTotal:
+  if (tariffNet <= 0 && grandTotal > 0) {
+    if (taxAmount > 0) {
+      tariffNet = Math.round((grandTotal - taxAmount + discountAmount) * 100) / 100;
+    } else {
+      // 5% standard GST included: Base = Total / 1.05
+      tariffNet = Math.round(((grandTotal + discountAmount) / 1.05) * 100) / 100;
+      taxAmount = Math.round((grandTotal - tariffNet) * 100) / 100;
+    }
+  }
+
+  // If taxAmount is 0 but we have tariffNet and grandTotal:
+  if (taxAmount <= 0 && tariffNet > 0) {
+    if (grandTotal > tariffNet) {
+      taxAmount = Math.round((grandTotal - tariffNet + discountAmount) * 100) / 100;
+    } else {
+      taxAmount = Math.round(tariffNet * 0.05);
+      if (grandTotal <= 0) {
+        grandTotal = tariffNet - discountAmount + taxAmount;
+      }
+    }
+  }
+
+  if (grandTotal <= 0) {
+    grandTotal = Math.max(0, tariffNet - discountAmount + taxAmount);
+  }
+
   const foodTotal = Number(data.foodTotal !== undefined ? data.foodTotal : (data.summary?.foodTotal || 0));
   const barTotal = Number(data.barTotal !== undefined ? data.barTotal : (data.summary?.barTotal || 0));
   const fnbTotal = foodTotal + barTotal;
   const fnbPendingTotal = Number(data.foodPending !== undefined ? data.foodPending : (data.fnbPendingTotal !== undefined ? data.fnbPendingTotal : (data.summary?.fnbPendingTotal || 0)));
 
-  const grandTotal = Number(data.totalDue !== undefined ? data.totalDue : (data.grandTotal !== undefined ? data.grandTotal : (tariffNet + taxAmount)));
   const totalPaid = Number(data.totalPaid !== undefined ? data.totalPaid : (data.initial_paid || data.advancePaid || 0));
   const balanceDue = Math.max(0, grandTotal - totalPaid);
 
