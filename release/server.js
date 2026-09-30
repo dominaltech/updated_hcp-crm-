@@ -976,7 +976,8 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const cleanCheckedInBy = (req.body.checked_in_by || 'Front Desk').trim();
 
     // Advance Payment Mode & Cheque Attributes
-    const isOtaPrepaidCheckin = (booking_source || '').toUpperCase() === 'OTA' && (Boolean(is_prepaid) || rate_type === 'prepaid');
+    const checkinRateType = req.body.rate_type || b.rate_type || null;
+    const isOtaPrepaidCheckin = (booking_source || '').toUpperCase() === 'OTA' && (Boolean(cleanIsPrepaid) || checkinRateType === 'prepaid');
     const defaultAdvMode = isOtaPrepaidCheckin && (cash + card + online + cheque) === 0 ? 'prepaid' : 'cash';
     const advMode = (advance_payment_mode || (cash > 0 ? 'cash' : (card > 0 ? 'card' : (online > 0 ? 'upi' : defaultAdvMode)))).toLowerCase();
     const isCheque = advMode === 'cheque';
@@ -2580,9 +2581,6 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     const actual_nights = b.actual_nights ?? b.actualNights;
     const recalculated_room_charge = b.recalculated_room_charge ?? b.recalculatedRoomCharge;
     const checked_out_by = b.checked_out_by ?? b.checkedOutBy ?? req.user?.full_name ?? req.user?.username;
-    const isOtaPrepaidInitial = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
-    const defaultCheckoutMode = isOtaPrepaidInitial && computedSettle === 0 ? 'prepaid' : (computedSettle > 0 ? 'split' : 'cash');
-    const final_payment_mode = b.final_payment_mode ?? b.finalPaymentMode ?? defaultCheckoutMode;
     const cheque_no = b.cheque_no ?? b.chequeNo;
     const bank_name = b.bank_name ?? b.bankName ?? b.chequeBank;
     const cheque_date = b.cheque_date ?? b.chequeDate;
@@ -2597,6 +2595,10 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
 
     const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
     if (!primaryBooking) throw new Error('Booking not found');
+
+    const isOtaPrepaidInitial = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
+    const defaultCheckoutMode = isOtaPrepaidInitial && computedSettle === 0 ? 'prepaid' : (computedSettle > 0 ? 'split' : 'cash');
+    const final_payment_mode = b.final_payment_mode ?? b.finalPaymentMode ?? defaultCheckoutMode;
 
     const guestId = primaryBooking.guest_id;
     const checkoutTime = new Date().toISOString();

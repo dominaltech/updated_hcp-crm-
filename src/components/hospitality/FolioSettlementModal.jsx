@@ -20,6 +20,8 @@ export default function FolioSettlementModal({
   const onlineInputRef = useRef(null);
   const cardInputRef = useRef(null);
   const chequeInputRef = useRef(null);
+  const prevOpenRef = useRef(false);
+  const activeBookingIdRef = useRef(null);
 
   const [selectedMethod, setSelectedMethod] = useState('cash');
   const [splitCash, setSplitCash] = useState(0);
@@ -43,6 +45,8 @@ export default function FolioSettlementModal({
   const earlyExtensionCharge = folioData?.earlyExtensionCharge ?? folioData?.summary?.earlyExtensionCharge ?? 0;
   const stayDurationStr = folioData?.stayDurationStr || folioData?.summary?.stayDurationStr || '';
   const expectedNights = folioData?.expectedNights ?? folioData?.summary?.expectedNights ?? 1;
+
+  const currentBookingId = folioData?.bookingId || folioData?.booking_id || room?.current_booking_id;
 
   const bookingSource = String(folioData?.bookingSource || room?.booking_source || folioData?.source || room?.source || '').toUpperCase();
   const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
@@ -115,7 +119,15 @@ export default function FolioSettlementModal({
       );
 
   useEffect(() => {
-    if (isOpen && folioData) {
+    // Only reset/initialize form fields when modal transitions from closed to open,
+    // or when opened for a completely different booking.
+    const justOpened = isOpen && !prevOpenRef.current;
+    const bookingChanged = isOpen && currentBookingId && activeBookingIdRef.current !== currentBookingId;
+
+    if (justOpened || bookingChanged) {
+      prevOpenRef.current = true;
+      activeBookingIdRef.current = currentBookingId;
+
       setOnlineUtr('');
       setChequeNo('');
       setChequeBank('');
@@ -131,8 +143,11 @@ export default function FolioSettlementModal({
         ? `Early checkout refund: Stayed ${stayDurationStr || `${earlyStayDays}d ${earlyStayHours}h`} (Expected ${expectedNights}d)`
         : 'Guest refund of excess advance on checkout';
       setRefundReason(defaultReason);
+    } else if (!isOpen) {
+      prevOpenRef.current = false;
+      activeBookingIdRef.current = null;
     }
-  }, [isOpen, folioData, balanceDue, isEarlyCheckout, stayDurationStr, earlyStayDays, earlyStayHours, expectedNights]);
+  }, [isOpen, currentBookingId, isEarlyCheckout, stayDurationStr, earlyStayDays, earlyStayHours, expectedNights]);
 
   useEffect(() => {
     if (!isBtc && splitCheque > 0) {
