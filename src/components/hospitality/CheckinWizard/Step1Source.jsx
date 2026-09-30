@@ -1893,58 +1893,6 @@ export default function Step1Source({
                       (Max: {totalMaxExtraBeds})
                     </span>
                   </div>
-
-                  {/* Extra Persons Yes/No Prompt */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>
-                      Extra Persons?
-                    </span>
-                    <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1.5px solid #cbd5e1' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateDraft({
-                            hasExtraPersons: false,
-                            extraAdults: 0,
-                            extraChildren: 0
-                          });
-                        }}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '0.84rem',
-                          fontWeight: 800,
-                          border: 'none',
-                          cursor: 'pointer',
-                          background: !draft.hasExtraPersons ? '#0284c7' : '#ffffff',
-                          color: !draft.hasExtraPersons ? '#ffffff' : '#475569'
-                        }}
-                      >
-                        No
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateDraft({
-                            hasExtraPersons: true
-                          });
-                        }}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '0.84rem',
-                          fontWeight: 800,
-                          border: 'none',
-                          cursor: 'pointer',
-                          background: draft.hasExtraPersons ? '#0284c7' : '#ffffff',
-                          color: draft.hasExtraPersons ? '#ffffff' : '#475569'
-                        }}
-                      >
-                        Yes
-                      </button>
-                    </div>
-                    <span style={{ fontSize: '0.74rem', color: draft.hasExtraPersons ? '#0369a1' : '#64748b', fontWeight: 700 }}>
-                      {draft.hasExtraPersons ? '✓ Add extra guests at Stage 6' : '(No extra guests)'}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>

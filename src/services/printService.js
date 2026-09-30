@@ -3853,16 +3853,10 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 
   const isOtaPrepaid = isBookingOta && !isPayAtHotel;
 
+  const cleanOtaName = String(otaName || '').replace(/^[0-9.]*\s*Select\s*OTA\s*Platform\s*\*?/i, '').trim();
+
   if (isBookingOta) {
-    if (isPayAtHotel) {
-      bookingModeStr = otaName ? `OTA (Pay at Hotel) - ${otaName}` : 'OTA (Pay at Hotel)';
-    } else if (r.is_prepaid === 1 || r.is_prepaid === '1' || r.is_prepaid === true || r.rate_type === 'prepaid' || c.is_prepaid === 1 || c.rate_type === 'prepaid') {
-      bookingModeStr = otaName ? `OTA (Pre-Paid) - ${otaName}` : 'OTA (Pre-Paid)';
-    } else if (otaName) {
-      bookingModeStr = `OTA (${otaName})`;
-    } else {
-      bookingModeStr = 'OTA';
-    }
+    bookingModeStr = cleanOtaName ? `OTA (${cleanOtaName})` : 'OTA';
   } else if (String(rawBookingMode).toUpperCase().startsWith('BTC')) {
     // User Requirement: "Booking Mode : BTC (Infosys BPM Technolo" should show only "Booking Mode : BTC "
     bookingModeStr = 'BTC';
@@ -4146,7 +4140,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
                         <span style="color: #333; font-weight: 400;">Room No. :</span>
                         <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(roomNum)}</span>
                       </td>
-                      <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
+                      <td style="padding: 1px 0 1px 12px; width: 50%; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                         <span style="color: #333; font-weight: 400;">Booking Mode :</span>
                         <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(bookingModeStr)}</span>
                       </td>
