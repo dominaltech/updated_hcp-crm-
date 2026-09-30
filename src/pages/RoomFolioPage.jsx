@@ -609,6 +609,28 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     setLightboxTitle(title || 'Preview');
   };
 
+  const handleFnbSplitChange = (mode, rawVal) => {
+    const baseTotal = Number(selectedFnbOrder?.total) || 0;
+    if (rawVal === '') {
+      if (mode === 'cash') setFnbSplitCash('');
+      if (mode === 'online') setFnbSplitOnline('');
+      if (mode === 'card') setFnbSplitCard('');
+      return;
+    }
+    let val = Math.max(0, parseFloat(rawVal) || 0);
+    const otherPayments =
+      (mode === 'cash' ? 0 : (Number(fnbSplitCash) || 0)) +
+      (mode === 'online' ? 0 : (Number(fnbSplitOnline) || 0)) +
+      (mode === 'card' ? 0 : (Number(fnbSplitCard) || 0));
+    const maxAllowed = Math.max(0, baseTotal - otherPayments);
+    if (val > maxAllowed) {
+      val = maxAllowed;
+    }
+    if (mode === 'cash') setFnbSplitCash(val);
+    if (mode === 'online') setFnbSplitOnline(val);
+    if (mode === 'card') setFnbSplitCard(val);
+  };
+
   const handleSettleFnbFromFolio = async () => {
     if (!selectedFnbOrder) return;
     const baseTotal = Number(selectedFnbOrder.total) || 0;
@@ -4283,7 +4305,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <input
                               type="number"
                               value={fnbSplitCash}
-                              onChange={(e) => setFnbSplitCash(e.target.value)}
+                              onChange={(e) => handleFnbSplitChange('cash', e.target.value)}
                               style={{ width: '100%', padding: '7px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem', fontWeight: 700 }}
                             />
                           </div>
@@ -4292,7 +4314,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <input
                               type="number"
                               value={fnbSplitOnline}
-                              onChange={(e) => setFnbSplitOnline(e.target.value)}
+                              onChange={(e) => handleFnbSplitChange('online', e.target.value)}
                               style={{ width: '100%', padding: '7px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem', fontWeight: 700 }}
                             />
                           </div>
@@ -4301,7 +4323,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <input
                               type="number"
                               value={fnbSplitCard}
-                              onChange={(e) => setFnbSplitCard(e.target.value)}
+                              onChange={(e) => handleFnbSplitChange('card', e.target.value)}
                               style={{ width: '100%', padding: '7px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem', fontWeight: 700 }}
                             />
                           </div>

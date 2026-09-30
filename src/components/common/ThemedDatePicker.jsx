@@ -438,7 +438,7 @@ export default function ThemedDatePicker({
                   title="Previous Year"
                   style={{
                     border: '1px solid var(--border-color, #e2e8f0)',
-                    background: '#ffffff',
+                    background: 'var(--bg-surface, #ffffff)',
                     borderRadius: '6px',
                     width: '26px',
                     height: '26px',
@@ -448,7 +448,7 @@ export default function ThemedDatePicker({
                     cursor: 'pointer',
                     fontWeight: 800,
                     fontSize: '0.85rem',
-                    color: '#334155'
+                    color: 'var(--text-primary, #0f172a)'
                   }}
                 >
                   ‹
@@ -465,7 +465,7 @@ export default function ThemedDatePicker({
                   title="Next Year"
                   style={{
                     border: '1px solid var(--border-color, #e2e8f0)',
-                    background: '#ffffff',
+                    background: 'var(--bg-surface, #ffffff)',
                     borderRadius: '6px',
                     width: '26px',
                     height: '26px',
@@ -475,7 +475,7 @@ export default function ThemedDatePicker({
                     cursor: 'pointer',
                     fontWeight: 800,
                     fontSize: '0.85rem',
-                    color: '#334155'
+                    color: 'var(--text-primary, #0f172a)'
                   }}
                 >
                   ›
@@ -496,13 +496,13 @@ export default function ThemedDatePicker({
                         setIsMonthYearPickerOpen(false);
                       }}
                       style={{
-                        padding: '6px 4px',
+                        padding: '7px 4px',
                         borderRadius: '8px',
-                        border: isSelected ? 'none' : '1px solid var(--border-color, #e2e8f0)',
-                        background: isSelected ? 'var(--apple-blue, #0071e3)' : '#ffffff',
-                        color: isSelected ? '#ffffff' : 'var(--text-primary, #1e293b)',
-                        fontWeight: isSelected ? 800 : 650,
-                        fontSize: '0.78rem',
+                        border: isSelected ? '1.5px solid var(--apple-blue, #0071e3)' : '1px solid var(--border-color, #e2e8f0)',
+                        background: isSelected ? 'var(--apple-blue, #0071e3)' : 'var(--bg-surface, #ffffff)',
+                        color: isSelected ? '#ffffff' : 'var(--text-primary, #0f172a)',
+                        fontWeight: isSelected ? 900 : 700,
+                        fontSize: '0.82rem',
                         cursor: 'pointer',
                         textAlign: 'center',
                         transition: 'all 0.15s ease'
@@ -572,12 +572,13 @@ export default function ThemedDatePicker({
                           ? 'var(--apple-blue, #0071e3)'
                           : (cell.isToday ? 'rgba(56, 189, 248, 0.12)' : 'transparent'),
                         color: cell.isDisabled
-                          ? '#cbd5e1'
+                          ? 'var(--text-tertiary, #94a3b8)'
                           : (cell.isSelected
                             ? '#ffffff'
                             : (cell.isCurrentMonth
                               ? 'var(--text-primary, #0f172a)'
                               : 'var(--text-tertiary, #94a3b8)')),
+                        opacity: cell.isDisabled ? 0.35 : 1,
                         cursor: cell.isDisabled ? 'not-allowed' : 'pointer',
                         transition: 'all 0.12s ease',
                         position: 'relative'
@@ -627,8 +628,8 @@ export default function ThemedDatePicker({
                   title={isTodayDisabled ? 'Today is before minimum allowed date' : 'Select today'}
                   style={{
                     border: 'none',
-                    background: isTodayDisabled ? '#f1f5f9' : 'rgba(0, 113, 227, 0.08)',
-                    color: isTodayDisabled ? '#94a3b8' : 'var(--apple-blue, #0071e3)',
+                    background: isTodayDisabled ? 'var(--bg-surface-secondary, #f1f5f9)' : 'rgba(0, 113, 227, 0.12)',
+                    color: isTodayDisabled ? 'var(--text-tertiary, #94a3b8)' : 'var(--apple-blue, #0071e3)',
                     fontWeight: 800,
                     padding: '4px 8px',
                     borderRadius: '6px',
@@ -645,8 +646,8 @@ export default function ThemedDatePicker({
                     onClick={handleClear}
                     style={{
                       border: 'none',
-                      background: '#fef2f2',
-                      color: '#dc2626',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      color: '#ef4444',
                       fontWeight: 800,
                       padding: '4px 8px',
                       borderRadius: '6px',

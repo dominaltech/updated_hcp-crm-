@@ -111,10 +111,39 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
   };
 
   const handleAmountChange = (mode, rawVal) => {
-    const val = Math.max(0, parseFloat(rawVal) || 0);
+    if (rawVal === '') {
+      if (mode === 'cash') setSplitCash(0);
+      if (mode === 'online') setSplitOnline(0);
+      if (mode === 'card') setSplitCard(0);
+      return;
+    }
+    let val = Math.max(0, parseFloat(rawVal) || 0);
+
+    const otherPayments =
+      (mode === 'cash' ? 0 : (Number(splitCash) || 0)) +
+      (mode === 'online' ? 0 : (Number(splitOnline) || 0)) +
+      (mode === 'card' ? 0 : (Number(splitCard) || 0));
+
+    // Sum of all payment methods CANNOT exceed grandTotal (bill amount)
+    const maxAllowed = Math.max(0, grandTotal - otherPayments);
+    if (val > maxAllowed) {
+      val = maxAllowed;
+    }
+
     if (mode === 'cash') setSplitCash(val);
     if (mode === 'online') setSplitOnline(val);
     if (mode === 'card') setSplitCard(val);
+  };
+
+  const fillRemaining = (mode) => {
+    const otherPayments =
+      (mode === 'cash' ? 0 : (Number(splitCash) || 0)) +
+      (mode === 'online' ? 0 : (Number(splitOnline) || 0)) +
+      (mode === 'card' ? 0 : (Number(splitCard) || 0));
+    const rem = Math.max(0, grandTotal - otherPayments);
+    if (mode === 'cash') setSplitCash(rem);
+    else if (mode === 'online') setSplitOnline(rem);
+    else if (mode === 'card') setSplitCard(rem);
   };
 
   // Dynamic card EDC swipe surcharge & UPI Tax
@@ -728,13 +757,33 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Amount</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cash Amount</span>
+                      {remainingAlloc > 0 && splitCash < grandTotal && (
+                        <button
+                          type="button"
+                          onClick={() => fillRemaining('cash')}
+                          style={{
+                            border: 'none',
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            color: '#16a34a',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          + Fill Rem ({formatCurrency(remainingAlloc)})
+                        </button>
+                      )}
+                    </div>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
                       <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
-                        max={grandTotal}
+                        max={Math.max(0, grandTotal - (Number(splitOnline) || 0) - (Number(splitCard) || 0))}
                         value={splitCash || ''}
                         onChange={(e) => handleAmountChange('cash', e.target.value)}
                         placeholder="0"
@@ -779,13 +828,33 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online Amount</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Online Amount</span>
+                      {remainingAlloc > 0 && splitOnline < grandTotal && (
+                        <button
+                          type="button"
+                          onClick={() => fillRemaining('online')}
+                          style={{
+                            border: 'none',
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            color: 'var(--apple-blue)',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          + Fill Rem ({formatCurrency(remainingAlloc)})
+                        </button>
+                      )}
+                    </div>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
                       <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
-                        max={grandTotal}
+                        max={Math.max(0, grandTotal - (Number(splitCash) || 0) - (Number(splitCard) || 0))}
                         value={splitOnline || ''}
                         onChange={(e) => handleAmountChange('online', e.target.value)}
                         placeholder="0"
@@ -840,13 +909,33 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Card Base Amount</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Card Base Amount</span>
+                      {remainingAlloc > 0 && splitCard < grandTotal && (
+                        <button
+                          type="button"
+                          onClick={() => fillRemaining('card')}
+                          style={{
+                            border: 'none',
+                            background: 'rgba(168, 85, 247, 0.15)',
+                            color: '#a855f7',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          + Fill Rem ({formatCurrency(remainingAlloc)})
+                        </button>
+                      )}
+                    </div>
                     <div style={{ position: 'relative', marginTop: '4px' }}>
                       <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-secondary)' }}>₹</span>
                       <input
                         type="number"
                         min={0}
-                        max={grandTotal}
+                        max={Math.max(0, grandTotal - (Number(splitCash) || 0) - (Number(splitOnline) || 0))}
                         value={splitCard || ''}
                         onChange={(e) => handleAmountChange('card', e.target.value)}
                         placeholder="0"
@@ -884,7 +973,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   }}
                 >
                   <span style={{ fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>💳</span> {cardPct}% EDC Card Processing Fee: <strong>+₹{cardSurcharge}</strong>
+                    <span>💳</span> {cardPct}% EDC Card Processing Fee: <strong>+₹{cardSurcharge}</strong> (Cut &amp; Shown in Bill)
                   </span>
                   <span style={{ fontWeight: 950, color: '#b45309', fontSize: '1.05rem' }}>
                     Total Swipe on Card Machine: {formatCurrency(cardTotalSwipe)}
@@ -1059,7 +1148,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                 ? 'Settling...'
                 : (isStayingGuest && roomBillStatus === 'pending')
                 ? `🏨 Charge to Room Folio (${formatCurrency(grandTotal)})`
-                : `🖨️ Settle & Print Bill Slip (${formatCurrency(grandTotal + cardSurcharge)})`}
+                : `🖨️ Settle & Print Bill Slip (${formatCurrency(grandTotal + cardSurcharge + upiTax)})`}
             </button>
           </div>
         </div>
