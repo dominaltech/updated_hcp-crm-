@@ -2093,12 +2093,12 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       nowRoomCharge = isOtaPrepaid
         ? Math.max(hotelExtrasCharge, effectivePaid)
         : (otaBillAmount + hotelExtrasCharge);
-      finalNowRoomPreTax = Math.round((nowRoomCharge / gstFactor) * 100) / 100;
+      finalNowRoomPreTax = Math.round((nowRoomCharge * 0.95) * 100) / 100;
       finalNowRoomGst = Math.max(0, Number((nowRoomCharge - finalNowRoomPreTax).toFixed(2)));
       const otaBase = isOtaPayAtHotel ? otaBillAmount : 0;
-      finalNowBaseRoomTariff = Math.round((otaBase / gstFactor) * 100) / 100;
+      finalNowBaseRoomTariff = Math.round((otaBase * 0.95) * 100) / 100;
       finalNowBaseRoomTariffGst = Math.max(0, Number((otaBase - finalNowBaseRoomTariff).toFixed(2)));
-      finalNowExtraMattressCost = Math.round((groupExtraBedCharge / gstFactor) * 100) / 100;
+      finalNowExtraMattressCost = Math.round((groupExtraBedCharge * 0.95) * 100) / 100;
       finalNowExtraMattressGst = Math.max(0, Number((groupExtraBedCharge - finalNowExtraMattressCost).toFixed(2)));
     }
 
@@ -2141,9 +2141,9 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
 
     const refundAmount = effectiveBalanceDue < 0 ? Math.abs(effectiveBalanceDue) : 0;
 
-    // Pre-tax room charge (taxable amount before GST)
+    // Pre-tax room charge (taxable amount before GST - Option B for OTA: 95% base, 5% flat GST)
     const combinedPreTaxRoomCharge = (isOtaPrepaid || isOtaPayAtHotel)
-      ? Math.round((effectiveRoomCharge / gstFactor) * 100) / 100
+      ? Math.round((effectiveRoomCharge * 0.95) * 100) / 100
       : (stayCalc.isEarlyCheckout ? effectivePreTaxRoomCharge : Math.round(effectiveRoomCharge / gstFactor));
 
     // Running totals

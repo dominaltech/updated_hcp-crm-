@@ -2081,11 +2081,26 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const nowDiscountTotal = Math.max(0, nowGrossTotal - nowRoomChargeCalc);
     const nowDiscountGst = Math.max(0, nowDiscountTotal - nowDiscountAmount);
 
-    const nowRoomCharge = isOtaPrepaid
-      ? Math.max(hotelExtrasCharge, effectivePaid)
-      : (isOtaPayAtHotel
-          ? otaBillAmount + hotelExtrasCharge
-          : nowRoomChargeCalc);
+    let nowRoomCharge = nowRoomChargeCalc;
+    let finalNowRoomPreTax = nowRoomPreTax;
+    let finalNowRoomGst = nowRoomGst;
+    let finalNowBaseRoomTariff = nowBaseRoomTariff;
+    let finalNowBaseRoomTariffGst = nowBaseRoomTariffGst;
+    let finalNowExtraMattressCost = nowExtraMattressCost;
+    let finalNowExtraMattressGst = nowExtraMattressGst;
+
+    if (isOtaPrepaid || isOtaPayAtHotel) {
+      nowRoomCharge = isOtaPrepaid
+        ? Math.max(hotelExtrasCharge, effectivePaid)
+        : (otaBillAmount + hotelExtrasCharge);
+      finalNowRoomPreTax = Math.round((nowRoomCharge * 0.95) * 100) / 100;
+      finalNowRoomGst = Math.max(0, Number((nowRoomCharge - finalNowRoomPreTax).toFixed(2)));
+      const otaBase = isOtaPayAtHotel ? otaBillAmount : 0;
+      finalNowBaseRoomTariff = Math.round((otaBase * 0.95) * 100) / 100;
+      finalNowBaseRoomTariffGst = Math.max(0, Number((otaBase - finalNowBaseRoomTariff).toFixed(2)));
+      finalNowExtraMattressCost = Math.round((groupExtraBedCharge * 0.95) * 100) / 100;
+      finalNowExtraMattressGst = Math.max(0, Number((groupExtraBedCharge - finalNowExtraMattressCost).toFixed(2)));
+    }
 
     // Running totals tailored by booking source & prepaid status
     let effectiveRoomCharge = combinedTotalRoomCharge;
@@ -2126,9 +2141,9 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
 
     const refundAmount = effectiveBalanceDue < 0 ? Math.abs(effectiveBalanceDue) : 0;
 
-    // Pre-tax room charge (taxable amount before GST)
+    // Pre-tax room charge (taxable amount before GST - Option B for OTA: 95% base, 5% flat GST)
     const combinedPreTaxRoomCharge = (isOtaPrepaid || isOtaPayAtHotel)
-      ? effectiveRoomCharge
+      ? Math.round((effectiveRoomCharge * 0.95) * 100) / 100
       : (stayCalc.isEarlyCheckout ? effectivePreTaxRoomCharge : Math.round(effectiveRoomCharge / gstFactor));
 
     // Running totals
@@ -2233,13 +2248,13 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
                 stayCalcNow: {
                   isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
                   roomCharge: nowRoomCharge,
-                  baseRoomTariff: nowBaseRoomTariff,
-                  baseRoomTariffGst: nowBaseRoomTariffGst,
-                  baseRoomTotal: nowBaseRoomTariff + nowBaseRoomTariffGst,
-                  dailyBaseRate: combinedBaseRate,
-                  extraMattressCost: nowExtraMattressCost,
-                  extraMattressGst: nowExtraMattressGst,
-                  extraMattressTotal: nowExtraMattressCost + nowExtraMattressGst,
+                  baseRoomTariff: finalNowBaseRoomTariff,
+                  baseRoomTariffGst: finalNowBaseRoomTariffGst,
+                  baseRoomTotal: finalNowBaseRoomTariff + finalNowBaseRoomTariffGst,
+                  dailyBaseRate: isOtaPayAtHotel ? finalNowBaseRoomTariff : combinedBaseRate,
+                  extraMattressCost: finalNowExtraMattressCost,
+                  extraMattressGst: finalNowExtraMattressGst,
+                  extraMattressTotal: finalNowExtraMattressCost + finalNowExtraMattressGst,
                   extraMattressBeds: groupExtraBeds,
                   extraMattressDaily: groupExtraBedCharge,
                   breakfastCost: nowBreakfastCost,
@@ -2251,11 +2266,11 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
                   extensionGst: nowExtensionGst,
                   extensionTotal: nowExtensionCharge + nowExtensionGst,
                   extensionHours: nowExtraHours,
-                  discountAmount: nowDiscountAmount,
-                  discountGst: nowDiscountGst,
-                  discountTotal: nowDiscountTotal,
-                  roomSubtotalPreTax: nowRoomPreTax,
-                  roomGst: nowRoomGst,
+                  discountAmount: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountAmount,
+                  discountGst: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountGst,
+                  discountTotal: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountTotal,
+                  roomSubtotalPreTax: finalNowRoomPreTax,
+                  roomGst: finalNowRoomGst,
                   gstPct: effectiveGstPct,
                   fnbTaxable,
                   fnbGst,
@@ -2349,6 +2364,11 @@ app.post('/api/rooms/:id/payments', requireAuth, (req, res) => {
     }
 
     const cleanMode = String(payment_mode || 'cash').toLowerCase();
+    const isBtcBooking = String(booking.booking_source || '').toUpperCase() === 'BTC' || Boolean(booking.btc_company_id) || Boolean(booking.btc_company_name);
+    if (!isBtcBooking && (parseFloat(split_cheque) > 0 || cleanMode === 'cheque')) {
+      return res.status(400).json({ success: false, error: 'Cheque payment option is only allowed for corporate BTC bookings.' });
+    }
+
     const receiptNo = getReceiptNumberWithMode(cleanMode);
     const cleanCashier = (cashier_name || req.user?.username || req.user?.name || 'Front Desk Cashier').trim();
 
@@ -2732,7 +2752,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       const bSettle = idx === 0 ? netSettle : 0;
       const bRefund = idx === 0 ? netRefund : 0;
       const isSettlingNow = netSettle > 0 && settleMode !== 'btc';
-      const updatedPaymentStatus = isSettlingNow
+      const isOtaPrepaidBooking = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
+      const isPrepaidSettled = isOtaPrepaidBooking && (netSettle >= maxBalanceDue || maxBalanceDue <= 0.5);
+      const updatedPaymentStatus = isSettlingNow || isPrepaidSettled
         ? 'settled'
         : (isCompanyPaysLater 
             ? 'pending_from_company' 

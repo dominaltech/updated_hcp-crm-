@@ -65,19 +65,19 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
     expect(html).toContain('WIPRO');
     expect(html).toContain('ASFASDASDF');
 
-    // 2. Base room tariff must be pre-tax 5000 / 1.05 = 4761.90 (NOT 5900.00!)
+    // 2. Base room tariff must be pre-tax (Option B flat 5%: 5000 * 0.95 = 4750.00)
     expect(html).toContain('Room Tariff -');
-    expect(html).toContain('4761.90');
+    expect(html).toContain('4750.00');
 
-    // 3. Early check-in must be 900 / 1.05 = 857.14 and labeled Early Check-In Charge (NOT Extra Mattress!)
+    // 3. Early check-in must be 900 * 0.95 = 855.00 and labeled Early Check-In Charge (NOT Extra Mattress!)
     expect(html).toContain('Early Check-In Charge');
-    expect(html).toContain('857.14');
+    expect(html).toContain('855.00');
     expect(html).not.toContain('Extra Mattress Base Tariff');
 
-    // 4. CGST & SGST @ 2.5% on 5619.04 = 140.48 each
+    // 4. CGST & SGST @ 2.5% on 5605.00 = 147.50 each (Total GST: 295.00 = 5% of 5900)
     expect(html).toContain('CGST @ 2.5%');
     expect(html).toContain('SGST @ 2.5%');
-    expect(html).toContain('140.48');
+    expect(html).toContain('147.50');
 
     // 5. Room Bill Total must be exactly 5900.00 in both columns (NOT 3900.00 in middle vs 4050.00!)
     expect(html).toContain('Room Bill Total');
@@ -115,11 +115,11 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
 
     const html = buildFinalBillA4HTML(otaBookingWithMattress, otaBookingWithMattress, {});
 
-    // Room Tariff: 5000 / 1.05 = 4761.90
-    expect(html).toContain('4761.90');
-    // Extra Mattress: 500 / 1.05 = 476.19
+    // Room Tariff: 5000 * 0.95 = 4750.00
+    expect(html).toContain('4750.00');
+    // Extra Mattress: 500 * 0.95 = 475.00
     expect(html).toContain('Extra Mattress Base Tariff');
-    expect(html).toContain('476.19');
+    expect(html).toContain('475.00');
     // Room Bill Total: 5500.00
     expect(html).toContain('5500.00');
   });
@@ -135,7 +135,7 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
       total_paid: 1500
     };
     const htmlPrepaid = buildGuestRegistrationHTML(otaPrepaid);
-    expect(htmlPrepaid).toContain('71.43'); // 5% inclusive GST on 1500
+    expect(htmlPrepaid).toContain('75.00'); // Option B: 5% flat GST on 1500
     expect(htmlPrepaid).toContain('(In Voucher)');
 
     // 2. OTA Prepaid with Extra Mattress (Image 3 case)
@@ -150,7 +150,7 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
       total_paid: 500
     };
     const htmlWithExtras = buildGuestRegistrationHTML(otaPrepaidWithExtras);
-    expect(htmlWithExtras).toContain('133.33'); // 5% inclusive GST on 2800 (2300 + 500)
+    expect(htmlWithExtras).toContain('140.00'); // Option B: 5% flat GST on 2800 (2300 + 500)
     expect(htmlWithExtras).toContain('(In Voucher)');
   });
 
@@ -185,15 +185,15 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
       checked_out_by: 'Jaijeet sir'
     });
 
-    // 1. Base Room Tariff (1000 / 1.05 = 952.38)
+    // 1. Base Room Tariff (Option B: 1000 * 0.95 = 950.00)
     expect(html).toContain('Room Tariff -');
-    expect(html).toContain('952.38');
+    expect(html).toContain('950.00');
     expect(html).not.toContain('1904.76');
 
-    // 2. CGST & SGST @ 2.5% on 952.38 = 23.81 each
+    // 2. CGST & SGST @ 2.5% on 950.00 = 25.00 each (Total GST: 50.00 = 5% of 1000)
     expect(html).toContain('CGST @ 2.5%');
     expect(html).toContain('SGST @ 2.5%');
-    expect(html).toContain('23.81');
+    expect(html).toContain('25.00');
 
     // 3. Room Bill Total: exactly 1000.00
     expect(html).toContain('Room Bill Total');

@@ -275,7 +275,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         ? Number(summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount))
         : Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
       const roomTaxable = isBookingOta
-        ? Number(summary.roomTaxable ?? summary.stayTaxable ?? Math.round((roomCharge / 1.05) * 100) / 100)
+        ? Number(summary.roomTaxable ?? summary.stayTaxable ?? Math.round((roomCharge * 0.95) * 100) / 100)
         : Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
       const stayTaxable = roomTaxable;
       const stayTax = isBookingOta
@@ -1584,7 +1584,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           const otaVoucherVal = Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0);
           const entireBookingVal = isOtaPrepaidStay ? (otaVoucherVal + stayNetTotal) : stayNetTotal;
           const entireCollectedVal = isOtaPrepaidStay ? (otaVoucherVal + advancePaidVal) : advancePaidVal;
-          const stayTaxable = Math.round((stayNetTotal / 1.05) * 100) / 100;
+          const isBookingOtaStay = isOtaPrepaidStay || isOtaPayAtHotel || folioData.bookingSource === 'OTA';
+          const stayTaxable = isBookingOtaStay
+            ? Math.round(stayNetTotal * 0.95 * 100) / 100
+            : Math.round((stayNetTotal / 1.05) * 100) / 100;
           const stayGst = Math.max(0, Number((stayNetTotal - stayTaxable).toFixed(2)));
           const stayDiscountVal = (isOtaPrepaidStay || isOtaPayAtHotel) ? 0 : Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
           const stayPreTax = stayTaxable + stayDiscountVal;
@@ -1974,7 +1977,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.90rem', padding: '10px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fef3c7' }}>
                           <span style={{ color: '#92400e', fontWeight: 800 }}>GST (5%):</span>
                           <strong style={{ color: '#b45309', fontSize: '1.08rem', fontWeight: 900 }}>
-                            {formatCurrency(Math.round((entireBookingVal - (entireBookingVal / 1.05)) * 100) / 100)}
+                            {formatCurrency(Math.round(entireBookingVal * 0.05 * 100) / 100)}
                           </strong>
                         </div>
 
@@ -2919,9 +2922,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <div className="financial-tile">
                       <span className="tile-label">GST (5%)</span>
                       <strong className="tile-val" style={{ color: '#b45309' }}>
-                        {formatCurrency(Math.round((entireBookingVal - (entireBookingVal / 1.05)) * 100) / 100)}
+                        {formatCurrency(Math.round(entireBookingVal * 0.05 * 100) / 100)}
                       </strong>
-                      <small>Included in Voucher</small>
+                      <small>{isOtaPrepaidStay ? 'Included in Voucher' : 'Pay at Hotel (5% GST)'}</small>
                     </div>
                     <div className="financial-tile">
                       <span className="tile-label">Total Bill</span>

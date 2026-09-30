@@ -1845,9 +1845,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     effectiveTotalBooking = otaPrebookedAmount + hotelExtrasTotal;
   }
   const otaVoucherGst = isOta
-    ? (taxAmount > 0 && Math.abs(taxAmount - Math.round((effectiveTotalBooking - (effectiveTotalBooking / 1.05)) * 100) / 100) < 5
-        ? taxAmount
-        : Math.round((effectiveTotalBooking - (effectiveTotalBooking / 1.05)) * 100) / 100)
+    ? Math.round(effectiveTotalBooking * 0.05 * 100) / 100
     : 0;
 
   const prebookedCollected = isOtaPrepaid ? otaPrebookedAmount : 0;
@@ -3836,13 +3834,25 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
     baseGrossTariff = totalRoomCharge;
   }
 
-  // Pre-tax base calculation (5% inclusive standard):
-  const baseRoomPreTax = Math.round((baseGrossTariff / 1.05) * 100) / 100;
-  const extraMattressPreTax = extraBedCharge > 0 ? Math.round((extraBedCharge / 1.05) * 100) / 100 : 0;
-  const earlyCheckinPreTax = earlyCheckinCharge > 0 ? Math.round((earlyCheckinCharge / 1.05) * 100) / 100 : 0;
-  const extraRoomsPreTax = extraRoomsCharge > 0 ? Math.round((extraRoomsCharge / 1.05) * 100) / 100 : 0;
-  const extraBreakfastPreTax = extraBreakfastCharge > 0 ? Math.round((extraBreakfastCharge / 1.05) * 100) / 100 : 0;
-  const discountPreTax = discountAmt > 0 ? Math.round((discountAmt / 1.05) * 100) / 100 : 0;
+  // Pre-tax base calculation (Option B: Flat 5% GST inside for OTA bookings: 95% base + 5% GST):
+  const baseRoomPreTax = isBookingOta
+    ? Math.round(baseGrossTariff * 0.95 * 100) / 100
+    : Math.round((baseGrossTariff / 1.05) * 100) / 100;
+  const extraMattressPreTax = extraBedCharge > 0
+    ? (isBookingOta ? Math.round(extraBedCharge * 0.95 * 100) / 100 : Math.round((extraBedCharge / 1.05) * 100) / 100)
+    : 0;
+  const earlyCheckinPreTax = earlyCheckinCharge > 0
+    ? (isBookingOta ? Math.round(earlyCheckinCharge * 0.95 * 100) / 100 : Math.round((earlyCheckinCharge / 1.05) * 100) / 100)
+    : 0;
+  const extraRoomsPreTax = extraRoomsCharge > 0
+    ? (isBookingOta ? Math.round(extraRoomsCharge * 0.95 * 100) / 100 : Math.round((extraRoomsCharge / 1.05) * 100) / 100)
+    : 0;
+  const extraBreakfastPreTax = extraBreakfastCharge > 0
+    ? (isBookingOta ? Math.round(extraBreakfastCharge * 0.95 * 100) / 100 : Math.round((extraBreakfastCharge / 1.05) * 100) / 100)
+    : 0;
+  const discountPreTax = discountAmt > 0
+    ? (isBookingOta ? Math.round(discountAmt * 0.95 * 100) / 100 : Math.round((discountAmt / 1.05) * 100) / 100)
+    : 0;
 
   // Room GST & Model selection
   const isIgst = Boolean(r.is_igst || c.is_igst || c.isIgst || r.tax_type === 'IGST' || c.taxType === 'IGST' || s.is_igst || s.isIgst);
