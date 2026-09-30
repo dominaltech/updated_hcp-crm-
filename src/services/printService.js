@@ -3050,6 +3050,14 @@ export function buildGuestPaymentSummaryHTML(data) {
   const cashierName = data.cashier_name || data.cashier || data.staff_name || getActiveCashierName() || 'Cashier';
   const printDate = new Date().toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 
+  const isPrepaidSummary = Boolean(
+    data.is_prepaid === 1 ||
+    data.is_prepaid === '1' ||
+    data.is_prepaid === true ||
+    data.rate_type === 'prepaid' ||
+    ((data.booking_source && String(data.booking_source).toUpperCase() === 'OTA') && (data.is_prepaid || !data.advance_amount || Number(data.advance_amount) === 0))
+  );
+
   // Gather payments
   let payments = [];
   if (Array.isArray(data.payments) && data.payments.length > 0) {
@@ -3067,6 +3075,21 @@ export function buildGuestPaymentSummaryHTML(data) {
       upi_tax: data.upi_tax || 0,
       created_at: data.created_at || data.check_in || new Date(),
       purpose: data.particulars || 'paid while checkin : checkin',
+      cashier: cashierName
+    }];
+  } else if (isPrepaidSummary) {
+    payments = [{
+      id: data.id || 1,
+      receipt_no: 'PREPAID',
+      amount: 0,
+      payment_mode: `PREPAID (${data.ota_platform || 'OTA'})`,
+      cheque_no: '',
+      bank_name: '',
+      utr_number: '',
+      card_surcharge: 0,
+      upi_tax: 0,
+      created_at: rawCheckIn || new Date(),
+      purpose: `Prepaid Online Stay (${data.ota_platform || 'OTA Voucher'})`,
       cashier: cashierName
     }];
   }

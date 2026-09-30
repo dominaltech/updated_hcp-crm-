@@ -667,6 +667,7 @@ db.exec(`
 // Migrations for Bookings (OTA Pre/Post-Paid, Manual Bill Override, Corporate BTC, Advance & Cheques)
 try { db.exec("ALTER TABLE bookings ADD COLUMN is_prepaid INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN ota_bill_amount REAL DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN rate_type TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN btc_company_id INTEGER DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN btc_company_name TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN btc_approval_ref TEXT DEFAULT NULL;"); } catch (e) {}

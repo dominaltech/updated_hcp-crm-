@@ -699,11 +699,38 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 </div>
               );
 
-              const modeLabel = (
-                r.final_payment_mode ||
-                r.advance_payment_mode ||
-                'Cash'
-              ).toUpperCase();
+              const isPrepaid = Boolean(
+                r.is_prepaid === 1 ||
+                r.is_prepaid === '1' ||
+                r.is_prepaid === true ||
+                r.rate_type === 'prepaid' ||
+                ((r.booking_source && r.booking_source.toUpperCase() === 'OTA') && (
+                  r.is_prepaid ||
+                  (r.final_settlement_mode && r.final_settlement_mode.toLowerCase().includes('prepaid')) ||
+                  (r.final_payment_mode && r.final_payment_mode.toLowerCase().includes('prepaid')) ||
+                  (r.advance_payment_mode && r.advance_payment_mode.toLowerCase().includes('prepaid')) ||
+                  Number(r.total_paid || 0) === 0
+                ))
+              );
+
+              const hotelPaid = Number(r.total_paid || 0);
+
+              let modeLabel = 'CASH';
+              if (isPrepaid) {
+                if (hotelPaid === 0) {
+                  modeLabel = 'PREPAID';
+                } else {
+                  const extraMode = (r.final_settlement_mode || r.final_payment_mode || r.advance_payment_mode || 'Cash').toUpperCase();
+                  modeLabel = `PREPAID + ${extraMode}`;
+                }
+              } else {
+                modeLabel = (
+                  r.final_settlement_mode ||
+                  r.final_payment_mode ||
+                  r.advance_payment_mode ||
+                  'Cash'
+                ).toUpperCase();
+              }
 
               return (
                 <tr
@@ -841,11 +868,16 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       style={{
                         fontSize: '0.95rem',
                         fontWeight: 850,
-                        color: isBtcPending ? '#dc2626' : (isPending ? '#b45309' : '#15803d')
+                        color: isBtcPending ? '#dc2626' : (isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#15803d'))
                       }}
                     >
-                      {formatCurrency(r.total_room_charge || r.total_paid || 0)}
+                      {formatCurrency(isPrepaid && hotelPaid === 0 ? 0 : (r.total_paid || r.total_room_charge || 0))}
                     </div>
+                    {isPrepaid && (
+                      <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700, marginTop: '2px' }}>
+                        Prepaid via {r.ota_platform || 'OTA'}{r.ota_bill_amount > 0 ? ` (₹${Number(r.ota_bill_amount).toLocaleString('en-IN')})` : ''}
+                      </div>
+                    )}
                     {r.refund_amount > 0 && (
                       <div style={{ marginTop: '2px' }}>
                         <span
@@ -904,15 +936,15 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             fontWeight: 800,
                             padding: '2px 7px',
                             borderRadius: '6px',
-                            background: isPending ? '#fffbeb' : '#dcfce7',
-                            color: isPending ? '#b45309' : '#166534',
-                            border: `1px solid ${isPending ? '#fde68a' : '#bbf7d0'}`,
+                            background: isPending ? '#fffbeb' : (isPrepaid && hotelPaid === 0 ? '#f3e8ff' : '#dcfce7'),
+                            color: isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#166534'),
+                            border: `1px solid ${isPending ? '#fde68a' : (isPrepaid && hotelPaid === 0 ? '#d8b4fe' : '#bbf7d0')}`,
                             cursor: 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px'
                           }}
-                          title="Click to Change Payment Status"
+                          title={isPrepaid && hotelPaid === 0 ? 'Prepaid Stay (100% Voucher Covered)' : 'Click to Change Payment Status'}
                         >
                           {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
                         </span>
@@ -1424,13 +1456,34 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </div>
                     </div>
 
-                    <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 750, color: '#166534', textTransform: 'uppercase' }}>Total Stay Revenue</span>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
-                        {formatCurrency(detailBooking.total_paid || detailBooking.total_room_charge || 0)}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#166534' }}>Settled &amp; Completed</div>
-                    </div>
+                    {(() => {
+                      const isDetailPrepaidStay = Boolean(
+                        detailBooking.is_prepaid === 1 ||
+                        detailBooking.is_prepaid === '1' ||
+                        detailBooking.is_prepaid === true ||
+                        detailBooking.rate_type === 'prepaid' ||
+                        ((detailBooking.booking_source && detailBooking.booking_source.toUpperCase() === 'OTA') && (
+                          detailBooking.is_prepaid || 
+                          (detailBooking.final_settlement_mode && detailBooking.final_settlement_mode.toLowerCase().includes('prepaid')) ||
+                          (detailBooking.final_payment_mode && detailBooking.final_payment_mode.toLowerCase().includes('prepaid')) ||
+                          (detailBooking.advance_payment_mode && detailBooking.advance_payment_mode.toLowerCase().includes('prepaid')) ||
+                          Number(detailBooking.total_paid || 0) === 0
+                        ))
+                      );
+                      const isZeroHotelPaid = Number(detailBooking.total_paid || 0) === 0;
+
+                      return (
+                        <div style={{ padding: '12px', background: isDetailPrepaidStay && isZeroHotelPaid ? '#faf5ff' : '#f0fdf4', borderRadius: '10px', border: `1px solid ${isDetailPrepaidStay && isZeroHotelPaid ? '#e9d5ff' : '#bbf7d0'}` }}>
+                          <span style={{ fontSize: '0.74rem', fontWeight: 750, color: isDetailPrepaidStay && isZeroHotelPaid ? '#6b21a8' : '#166534', textTransform: 'uppercase' }}>Total Stay Revenue</span>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 900, color: isDetailPrepaidStay && isZeroHotelPaid ? '#7c3aed' : '#15803d', marginTop: '2px' }}>
+                            {isDetailPrepaidStay && isZeroHotelPaid && detailBooking.ota_bill_amount > 0 ? formatCurrency(detailBooking.ota_bill_amount) : formatCurrency(detailBooking.total_paid || detailBooking.total_room_charge || 0)}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: isDetailPrepaidStay && isZeroHotelPaid ? '#7c3aed' : '#166534', fontWeight: 600 }}>
+                            {isDetailPrepaidStay && isZeroHotelPaid ? `Prepaid Online (${detailBooking.ota_platform || 'OTA'}) • Hotel Paid: ₹0` : 'Settled & Completed'}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Housekeeping & Cleanliness Info (Point 12) */}
@@ -1464,7 +1517,21 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         </h4>
                       </div>
                       <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                        Click "Receipt" to print official cash receipt (Receipt 1, 2-on-A4)
+                        {Boolean(
+                          detailBooking.is_prepaid === 1 ||
+                          detailBooking.is_prepaid === '1' ||
+                          detailBooking.is_prepaid === true ||
+                          detailBooking.rate_type === 'prepaid' ||
+                          ((detailBooking.booking_source && detailBooking.booking_source.toUpperCase() === 'OTA') && (
+                            detailBooking.is_prepaid || 
+                            (detailBooking.final_settlement_mode && detailBooking.final_settlement_mode.toLowerCase().includes('prepaid')) ||
+                            (detailBooking.final_payment_mode && detailBooking.final_payment_mode.toLowerCase().includes('prepaid')) ||
+                            (detailBooking.advance_payment_mode && detailBooking.advance_payment_mode.toLowerCase().includes('prepaid')) ||
+                            Number(detailBooking.total_paid || 0) === 0
+                          ))
+                        ) && Number(detailBooking.total_paid || 0) === 0
+                          ? `Prepaid stay (${detailBooking.ota_platform || 'OTA'}) • Official Tax Invoice available below (No Cash Receipt required)`
+                          : 'Click "Receipt" to print official cash receipt (Receipt 1, 2-on-A4)'}
                       </span>
                     </div>
 
@@ -1483,6 +1550,20 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         </thead>
                         <tbody>
                           {(() => {
+                            const isDetailPrepaid = Boolean(
+                              detailBooking.is_prepaid === 1 ||
+                              detailBooking.is_prepaid === '1' ||
+                              detailBooking.is_prepaid === true ||
+                              detailBooking.rate_type === 'prepaid' ||
+                              ((detailBooking.booking_source && detailBooking.booking_source.toUpperCase() === 'OTA') && (
+                                detailBooking.is_prepaid || 
+                                (detailBooking.final_settlement_mode && detailBooking.final_settlement_mode.toLowerCase().includes('prepaid')) ||
+                                (detailBooking.final_payment_mode && detailBooking.final_payment_mode.toLowerCase().includes('prepaid')) ||
+                                (detailBooking.advance_payment_mode && detailBooking.advance_payment_mode.toLowerCase().includes('prepaid')) ||
+                                Number(detailBooking.total_paid || 0) === 0
+                              ))
+                            );
+
                             const allPayments = [...(Array.isArray(detailBooking.payments) ? detailBooking.payments : [])];
                             if (detailBooking.refund_amount > 0 && !allPayments.some(p => p.payment_type === 'refund')) {
                               allPayments.push({
@@ -1501,10 +1582,13 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             if (allPayments.length > 0) {
                               return allPayments.map((p) => {
                                 const isRefundRow = p.payment_type === 'refund' || (p.notes && p.notes.toLowerCase().includes('refund')) || (p.amount < 0);
+                                const isPrepaidZeroRow = isDetailPrepaid && Number(p.amount) === 0 && !isRefundRow;
+                                const pMode = isPrepaidZeroRow ? 'PREPAID' : (p.payment_mode || 'CASH');
+
                                 return (
-                                  <tr key={p.id} style={{ background: isRefundRow ? '#fff1f2' : 'inherit' }}>
-                                    <td style={{ fontWeight: 800, color: isRefundRow ? '#b91c1c' : '#0f172a' }}>
-                                      {p.receipt_no || `RCP-${p.id}`}
+                                  <tr key={p.id} style={{ background: isRefundRow ? '#fff1f2' : (isPrepaidZeroRow ? '#faf5ff' : 'inherit') }}>
+                                    <td style={{ fontWeight: 800, color: isRefundRow ? '#b91c1c' : (isPrepaidZeroRow ? '#6b21a8' : '#0f172a') }}>
+                                      {isPrepaidZeroRow ? 'PREPAID' : (p.receipt_no || `RCP-${p.id}`)}
                                       {isRefundRow && (
                                         <span style={{ fontSize: '0.66rem', fontWeight: 850, background: '#fee2e2', color: '#991b1b', padding: '2px 5px', borderRadius: '4px', marginLeft: '6px', border: '1px solid #fca5a5' }}>
                                           DEBIT
@@ -1524,6 +1608,15 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                             {p.notes || detailBooking.refund_reason || 'Early checkout adjustment'}
                                           </div>
                                         </div>
+                                      ) : isPrepaidZeroRow ? (
+                                        <div>
+                                          <span style={{ fontSize: '0.82rem', fontWeight: 750, color: '#0f172a' }}>
+                                            Prepaid Stay ({detailBooking.ota_platform || 'OTA'})
+                                          </span>
+                                          <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
+                                            Room Tariff &amp; Accommodation
+                                          </div>
+                                        </div>
                                       ) : (
                                         <span style={{ textTransform: 'capitalize', fontSize: '0.8rem', fontWeight: 700 }}>
                                           {p.payment_type ? p.payment_type.replace('_', ' ') : 'Stay Payment'}
@@ -1531,8 +1624,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                       )}
                                     </td>
                                     <td>
-                                      <span style={{ textTransform: 'uppercase', fontSize: '0.74rem', fontWeight: 800, background: isRefundRow ? '#fee2e2' : '#eff6ff', color: isRefundRow ? '#991b1b' : '#1d4ed8', padding: '2px 8px', borderRadius: '6px', border: isRefundRow ? '1px solid #fca5a5' : 'none' }}>
-                                        {p.payment_mode || 'CASH'}
+                                      <span style={{
+                                        textTransform: 'uppercase',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        background: isRefundRow ? '#fee2e2' : (isPrepaidZeroRow ? '#f3e8ff' : '#eff6ff'),
+                                        color: isRefundRow ? '#991b1b' : (isPrepaidZeroRow ? '#6b21a8' : '#1d4ed8'),
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        border: isRefundRow ? '1px solid #fca5a5' : (isPrepaidZeroRow ? '1px solid #d8b4fe' : 'none')
+                                      }}>
+                                        {pMode}
                                       </span>
                                       {p.utr_number && (
                                         <div style={{ fontSize: '0.70rem', color: '#0369a1', marginTop: '2px' }}>
@@ -1541,15 +1643,21 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                       )}
                                     </td>
                                     <td>
-                                      <strong style={{ color: isRefundRow ? '#dc2626' : '#15803d', fontSize: '0.95rem' }}>
+                                      <strong style={{ color: isRefundRow ? '#dc2626' : (isPrepaidZeroRow ? '#6b21a8' : '#15803d'), fontSize: '0.95rem' }}>
                                         {isRefundRow ? `- ${formatCurrency(Math.abs(p.amount))}` : formatCurrency(p.amount)}
                                       </strong>
-                                      {!isRefundRow && Number(p.card_surcharge) > 0 && (
+                                      {isPrepaidZeroRow && (
+                                        <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 600, marginTop: '2px' }}>
+                                          Prepaid via {detailBooking.ota_platform || 'OTA'}
+                                          {detailBooking.ota_bill_amount > 0 ? ` (₹${Number(detailBooking.ota_bill_amount).toLocaleString('en-IN')})` : ''}
+                                        </div>
+                                      )}
+                                      {!isRefundRow && !isPrepaidZeroRow && Number(p.card_surcharge) > 0 && (
                                         <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
                                           Base: {formatCurrency(p.split_card > 0 ? p.split_card : p.amount - p.card_surcharge)} + ₹{p.card_surcharge} Fee
                                         </div>
                                       )}
-                                      {!isRefundRow && Number(p.upi_tax) > 0 && (
+                                      {!isRefundRow && !isPrepaidZeroRow && Number(p.upi_tax) > 0 && (
                                         <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
                                           Base: {formatCurrency(p.split_online > 0 ? p.split_online : p.amount - p.upi_tax)} + ₹{p.upi_tax} Fee
                                         </div>
@@ -1584,6 +1692,24 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                         >
                                           🖨️ Debit Voucher
                                         </button>
+                                      ) : isPrepaidZeroRow ? (
+                                        <span
+                                          style={{
+                                            fontSize: '0.74rem',
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            background: '#f8fafc',
+                                            color: '#64748b',
+                                            fontWeight: 750,
+                                            border: '1px solid #e2e8f0',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                          }}
+                                          title="Guest prepaid full tariff online. No cash receipt needed. Official Tax Invoice is available below."
+                                        >
+                                          ✓ Prepaid Online (No Receipt)
+                                        </span>
                                       ) : (
                                         <button
                                           type="button"
@@ -1666,6 +1792,72 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                               });
                             }
 
+                            if (isDetailPrepaid) {
+                              return (
+                                <tr style={{ background: '#faf5ff' }}>
+                                  <td style={{ fontWeight: 800, color: '#6b21a8' }}>
+                                    PREPAID
+                                  </td>
+                                  <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                    {formatDateTime(detailBooking.checkin_time)}
+                                  </td>
+                                  <td>
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 750, color: '#0f172a' }}>
+                                      Prepaid Stay ({detailBooking.ota_platform || 'OTA'})
+                                    </span>
+                                    <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
+                                      Room Tariff &amp; Accommodation
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <span style={{
+                                      textTransform: 'uppercase',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 800,
+                                      background: '#f3e8ff',
+                                      color: '#6b21a8',
+                                      padding: '2px 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #d8b4fe'
+                                    }}>
+                                      PREPAID
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <strong style={{ color: '#6b21a8', fontSize: '0.95rem' }}>
+                                      ₹0
+                                    </strong>
+                                    <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 600, marginTop: '2px' }}>
+                                      Prepaid via {detailBooking.ota_platform || 'OTA'}
+                                      {detailBooking.ota_bill_amount > 0 ? ` (₹${Number(detailBooking.ota_bill_amount).toLocaleString('en-IN')})` : ''}
+                                    </div>
+                                  </td>
+                                  <td style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                                    {detailBooking.checked_in_by || detailBooking.checked_out_by || 'Front Desk'}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span
+                                      style={{
+                                        fontSize: '0.74rem',
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        background: '#f8fafc',
+                                        color: '#64748b',
+                                        fontWeight: 750,
+                                        border: '1px solid #e2e8f0',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                      title="Guest prepaid entire stay online. No cash receipt needed. Official Tax Invoice is available below."
+                                    >
+                                      ✓ Prepaid Online (No Receipt)
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            }
+
                             return (
                               <tr>
                                 <td style={{ fontWeight: 800, color: '#0f172a' }}>
@@ -1679,7 +1871,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                 </td>
                                 <td>
                                   <span style={{ textTransform: 'uppercase', fontSize: '0.74rem', fontWeight: 800, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px' }}>
-                                    {detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'CASH'}
+                                    {detailBooking.final_settlement_mode || detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'CASH'}
                                   </span>
                                 </td>
                                 <td>
@@ -1695,7 +1887,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                     type="button"
                                     className="filter-chip"
                                     onClick={() => {
-                                      const sMode = (detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'Cash').toLowerCase();
+                                      const sMode = (detailBooking.final_settlement_mode || detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'Cash').toLowerCase();
                                       const serialNo = (detailBooking.advance_receipt_no && !detailBooking.advance_receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(detailBooking.advance_receipt_no))
                                         ? detailBooking.advance_receipt_no
                                         : (sMode.includes('upi') ? 'UPI01' : sMode.includes('card') ? 'POS01' : sMode.includes('cheque') ? 'CHQ01' : 'CR01');
@@ -1716,7 +1908,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                         base_amount: baseAmt,
                                         card_surcharge: cardFee,
                                         upi_tax: upiFee,
-                                        payment_mode: detailBooking.final_payment_mode || 'Cash',
+                                        payment_mode: detailBooking.final_settlement_mode || detailBooking.final_payment_mode || 'Cash',
                                         split_cash: detailBooking.split_cash || detailBooking.final_split_cash,
                                         split_online: detailBooking.split_online || detailBooking.final_split_online,
                                         split_card: detailBooking.split_card || detailBooking.final_split_card,

@@ -976,7 +976,9 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
     const cleanCheckedInBy = (req.body.checked_in_by || 'Front Desk').trim();
 
     // Advance Payment Mode & Cheque Attributes
-    const advMode = (advance_payment_mode || (cash > 0 ? 'cash' : (card > 0 ? 'card' : (online > 0 ? 'upi' : 'cash')))).toLowerCase();
+    const isOtaPrepaidCheckin = (booking_source || '').toUpperCase() === 'OTA' && (Boolean(is_prepaid) || rate_type === 'prepaid');
+    const defaultAdvMode = isOtaPrepaidCheckin && (cash + card + online + cheque) === 0 ? 'prepaid' : 'cash';
+    const advMode = (advance_payment_mode || (cash > 0 ? 'cash' : (card > 0 ? 'card' : (online > 0 ? 'upi' : defaultAdvMode)))).toLowerCase();
     const isCheque = advMode === 'cheque';
     const advChequeNo = isCheque ? (advance_cheque_no || '').trim() : null;
     const advChequeBank = isCheque ? (advance_cheque_bank || '').trim() : null;
@@ -2578,7 +2580,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     const actual_nights = b.actual_nights ?? b.actualNights;
     const recalculated_room_charge = b.recalculated_room_charge ?? b.recalculatedRoomCharge;
     const checked_out_by = b.checked_out_by ?? b.checkedOutBy ?? req.user?.full_name ?? req.user?.username;
-    const final_payment_mode = b.final_payment_mode ?? b.finalPaymentMode ?? (computedSettle > 0 ? 'split' : 'cash');
+    const isOtaPrepaidInitial = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
+    const defaultCheckoutMode = isOtaPrepaidInitial && computedSettle === 0 ? 'prepaid' : (computedSettle > 0 ? 'split' : 'cash');
+    const final_payment_mode = b.final_payment_mode ?? b.finalPaymentMode ?? defaultCheckoutMode;
     const cheque_no = b.cheque_no ?? b.chequeNo;
     const bank_name = b.bank_name ?? b.bankName ?? b.chequeBank;
     const cheque_date = b.cheque_date ?? b.chequeDate;
@@ -7511,6 +7515,9 @@ app.get('/api/hospitality/history', (req, res) => {
         b.split_online,
         b.payment_status,
         b.status as booking_status,
+        b.is_prepaid,
+        b.ota_bill_amount,
+        b.rate_type,
         b.booking_source,
         b.ota_platform,
         b.ota_booking_id,
@@ -7636,11 +7643,15 @@ app.get('/api/hospitality/history', (req, res) => {
           booking_source: row.booking_source,
           ota_platform: row.ota_platform,
           ota_booking_id: row.ota_booking_id,
+          is_prepaid: row.is_prepaid,
+          ota_bill_amount: row.ota_bill_amount || 0,
+          rate_type: row.rate_type || null,
           btc_company_id: row.btc_company_id,
           btc_company_name: row.btc_company_name,
           btc_approval_ref: row.btc_approval_ref,
           advance_payment_mode: row.advance_payment_mode,
           final_settlement_mode: row.final_settlement_mode,
+          final_payment_mode: row.final_settlement_mode || row.advance_payment_mode || (row.is_prepaid ? 'prepaid' : 'cash'),
           advance_receipt_no: row.advance_receipt_no,
           final_receipt_no: row.final_receipt_no,
           refund_amount: row.refund_amount || 0,
@@ -7664,7 +7675,9 @@ app.get('/api/hospitality/history', (req, res) => {
           entry.rooms.push(row.room_number);
           entry.all_group_rooms.push({ id: row.room_id, room_number: row.room_number, room_type: row.room_type });
         }
-        if (!entry.room_types.includes(row.room_type)) entry.room_types.push(row.room_type);
+        if (row.is_prepaid) entry.is_prepaid = row.is_prepaid;
+        if (row.ota_bill_amount) entry.ota_bill_amount = (entry.ota_bill_amount || 0) + (row.ota_bill_amount || 0);
+        if (row.rate_type) entry.rate_type = row.rate_type;
         entry.total_room_charge += (row.total_room_charge || 0);
         entry.total_paid += (row.total_paid || 0);
         entry.food_total = (entry.food_total || 0) + (row.food_total || 0);
