@@ -68,6 +68,9 @@ export default function FolioSettlementModal({
   );
   const effectiveAdvancePaid = Number(folioData?.advancePaid || 0);
 
+  const bookingSource = String(folioData?.bookingSource || room?.booking_source || '').toUpperCase();
+  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
+
   useEffect(() => {
     if (isOpen && folioData) {
       setOnlineUtr('');
@@ -88,13 +91,18 @@ export default function FolioSettlementModal({
     }
   }, [isOpen, folioData, balanceDue, isEarlyCheckout, stayDurationStr, earlyStayDays, earlyStayHours, expectedNights]);
 
+  useEffect(() => {
+    if (!isBtc && splitCheque > 0) {
+      setSplitCheque(0);
+      setChequeNo('');
+      setChequeBank('');
+    }
+  }, [isBtc, splitCheque]);
+
   if (!isOpen || !folioData || !room) return null;
 
   const totalSettled = Number(splitCash) + Number(splitOnline) + Number(splitCard) + Number(splitCheque);
   const remainingSettle = Math.max(0, balanceDue - totalSettled);
-
-  const bookingSource = String(folioData?.bookingSource || room?.booking_source || '').toUpperCase();
-  const isBtc = bookingSource === 'BTC' || Boolean(folioData?.btcCompanyName) || Boolean(room?.btc_company_id) || Boolean(folioData?.isBtcBooking) || Boolean(room?.is_btc);
   const isCompanyPayingLater = isBtc && btcCheckoutMode === 'company_later';
 
   // Split payment enabled: allows concurrent amounts across Cash, Online, Card, and Cheque (BTC only)
@@ -142,14 +150,6 @@ export default function FolioSettlementModal({
     else if (field === 'card') setSplitCard(rem);
     else if (field === 'cheque' && isBtc) setSplitCheque(rem);
   };
-
-  useEffect(() => {
-    if (!isBtc && splitCheque > 0) {
-      setSplitCheque(0);
-      setChequeNo('');
-      setChequeBank('');
-    }
-  }, [isBtc, splitCheque]);
 
   const quickFill = (mode) => {
     if (mode === 'cheque' && !isBtc) return;
