@@ -324,6 +324,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         otaBookingId: r.ota_booking_id || r.otaBookingId || r.ota_voucher_no || r.otaVoucherNo,
         ota_booking_id: r.ota_booking_id || r.otaBookingId || r.ota_voucher_no || r.otaVoucherNo,
         otaVoucherNo: r.ota_booking_id || r.otaBookingId || r.ota_voucher_no || r.otaVoucherNo,
+        ota_bill_amount: Number(summary.otaBillAmount || r.ota_bill_amount || raw.ota_bill_amount || 0),
+        otaBillAmount: Number(summary.otaBillAmount || r.ota_bill_amount || raw.ota_bill_amount || 0),
         isEarlyCheckin: Boolean(r.is_early_checkin || raw.is_early_checkin),
         originalCheckinTime: r.original_checkin_time || raw.original_checkin_time || '12:00 PM',
         earlyCheckinTime: r.early_checkin_time || raw.early_checkin_time || '',
@@ -1083,7 +1085,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             type="button"
             className="filter-chip btn-folio-action-chip btn-folio-tax-chip"
             onClick={() => {
-              const roomObj = { ...folioData, ...(folioData?.room || {}) };
+              const r = folioData?.room || {};
+              const roomObj = {
+                ...folioData,
+                ...r,
+                room: { ...r, ...folioData },
+                ota_bill_amount: Number(folioData?.ota_bill_amount || folioData?.otaBillAmount || folioData?.summary?.otaBillAmount || r?.ota_bill_amount || 0),
+                otaBillAmount: Number(folioData?.otaBillAmount || folioData?.ota_bill_amount || folioData?.summary?.otaBillAmount || r?.ota_bill_amount || 0),
+                booking_source: folioData?.bookingSource || r?.booking_source || 'Walk-in',
+                rate_type: folioData?.rateType || r?.rate_type || (folioData?.isOtaPrepaid ? 'prepaid' : 'standard'),
+                is_prepaid: folioData?.isOtaPrepaid ? 1 : (folioData?.isOtaPayAtHotel ? 0 : (r?.is_prepaid ?? 0))
+              };
               setDocActionModal({
                 isOpen: true,
                 type: 'invoice',

@@ -153,4 +153,115 @@ describe('User Requirements: OTA 5% Inclusive GST and HCP605 Itemized Tax Invoic
     expect(htmlWithExtras).toContain('133.33'); // 5% inclusive GST on 2800 (2300 + 500)
     expect(htmlWithExtras).toContain('(In Voucher)');
   });
+
+  it('correctly calculates Room 105 OTA Prepaid Tax Invoice with 0 balance and voucher credit', () => {
+    const room105 = {
+      room_number: '105',
+      booking_source: 'OTA',
+      ota_platform: 'Goibibo',
+      ota_booking_id: 'lkjkjhlkh',
+      ota_bill_amount: 1000,
+      room_rate: 2000,
+      price: 2000,
+      total_room_charge: 0,
+      is_prepaid: 1,
+      rate_type: 'prepaid',
+      voucher_number: '260930-606',
+      invoice_no: 'HCP606'
+    };
+    const calc105 = {
+      ...room105,
+      room: room105,
+      summary: {
+        otaBillAmount: 1000,
+        roomCharge: 0,
+        roomGrossTariff: 0,
+        grossTariff: 0
+      }
+    };
+    const html = buildFinalBillA4HTML(room105, calc105, {
+      settled_at: '2026-09-30T14:04:09',
+      invoiceNo: 'HCP606',
+      checked_out_by: 'Jaijeet sir'
+    });
+
+    // 1. Base Room Tariff (1000 / 1.05 = 952.38)
+    expect(html).toContain('Room Tariff -');
+    expect(html).toContain('952.38');
+    expect(html).not.toContain('1904.76');
+
+    // 2. CGST & SGST @ 2.5% on 952.38 = 23.81 each
+    expect(html).toContain('CGST @ 2.5%');
+    expect(html).toContain('SGST @ 2.5%');
+    expect(html).toContain('23.81');
+
+    // 3. Room Bill Total: exactly 1000.00
+    expect(html).toContain('Room Bill Total');
+    expect(html).toContain('1000.00');
+
+    // 4. Round-off: 0.00 (NOT 2000.00!)
+    expect(html).toContain('Round-off');
+    expect(html).toContain('0.00');
+    expect(html).not.toContain('2000.00');
+
+    // 5. Invoice Total: 1000.00 & Words
+    expect(html).toContain('Invoice Total');
+    expect(html).toContain('Rs. One Thousand Only');
+
+    // 6. Settlement Box: Gross 1000.00, OTA Pre-Paid Voucher 1000.00, Net Payable 0.00
+    expect(html).toContain('Gross Payable Amount');
+    expect(html).toContain('OTA Pre-Paid Voucher');
+    expect(html).toContain('Net Payable Amount');
+    expect(html).toContain('0.00');
+    expect(html).toContain('(Net Payable Amount In words : Rs. Zero Only)');
+  });
+
+  it('correctly calculates Room 105 with F&B bill showing only F&B to pay', () => {
+    const room105WithFnb = {
+      room_number: '105',
+      booking_source: 'OTA',
+      ota_platform: 'Goibibo',
+      ota_booking_id: 'lkjkjhlkh',
+      ota_bill_amount: 1000,
+      room_rate: 2000,
+      price: 2000,
+      total_room_charge: 0,
+      is_prepaid: 1,
+      rate_type: 'prepaid',
+      voucher_number: '260930-606',
+      invoice_no: 'HCP606'
+    };
+    const calc105WithFnb = {
+      ...room105WithFnb,
+      foodTotal: 300,
+      barTotal: 0,
+      summary: {
+        otaBillAmount: 1000,
+        roomCharge: 0,
+        foodTotal: 300,
+        barTotal: 0
+      }
+    };
+    const html = buildFinalBillA4HTML(room105WithFnb, calc105WithFnb, {
+      settled_at: '2026-09-30T14:04:09',
+      invoiceNo: 'HCP606',
+      checked_out_by: 'Jaijeet sir'
+    });
+
+    // Room 1000 + F&B 300 = Invoice Total 1300
+    expect(html).toContain('Invoice Total');
+    expect(html).toContain('1300.00');
+    expect(html).toContain('Rs. One Thousand Three Hundred Only');
+
+    // Settlement: Gross 1300.00, OTA Voucher 1000.00, Net Payable 300.00
+    expect(html).toContain('Gross Payable Amount');
+    expect(html).toContain('1300.00');
+    expect(html).toContain('OTA Pre-Paid Voucher');
+    expect(html).toContain('1000.00');
+    expect(html).toContain('Net Payable Amount');
+    expect(html).toContain('300.00');
+    expect(html).toContain('Rs. Three Hundred Only');
+  });
 });
+
+

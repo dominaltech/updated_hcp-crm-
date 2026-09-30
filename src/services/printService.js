@@ -3727,25 +3727,42 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   let bookingModeStr = rawBookingMode;
   const otaName = r.ota_platform || r.otaPlatform || c.otaPlatform || c.ota_platform;
   const btcName = r.btc_company_name || r.btcCompanyName || c.btcCompanyName || c.btc_company_name;
-  if (String(rawBookingMode).toUpperCase() === 'OTA' || Boolean(otaName)) {
-    const isPayAtHotel = (
-      r.rate_type === 'pay_at_hotel' ||
-      r.rateType === 'pay_at_hotel' ||
-      c.rateType === 'pay_at_hotel' ||
-      c.rate_type === 'pay_at_hotel' ||
-      r.is_prepaid === 0 ||
-      r.is_prepaid === '0' ||
-      r.is_prepaid === false ||
-      r.isPrepaid === false ||
-      c.is_prepaid === 0 ||
-      c.is_prepaid === '0' ||
-      c.is_prepaid === false ||
-      c.isPrepaid === false ||
-      r.booking?.is_prepaid === 0 ||
-      r.booking?.is_prepaid === false
-    );
-    const payModeLabel = isPayAtHotel ? 'Pay at Hotel' : 'Pre-Paid';
-    bookingModeStr = otaName ? `OTA (${payModeLabel}) - ${otaName}` : `OTA (${payModeLabel})`;
+
+  const isBookingOta = (
+    String(rawBookingMode).toUpperCase() === 'OTA' ||
+    Boolean(otaName) ||
+    String(r.booking_source || c.bookingSource || r.source || c.source || '').toUpperCase() === 'OTA'
+  );
+
+  const isPayAtHotel = isBookingOta && (
+    r.rate_type === 'pay_at_hotel' ||
+    r.rateType === 'pay_at_hotel' ||
+    c.rateType === 'pay_at_hotel' ||
+    c.rate_type === 'pay_at_hotel' ||
+    r.is_prepaid === 0 ||
+    r.is_prepaid === '0' ||
+    r.is_prepaid === false ||
+    r.isPrepaid === false ||
+    c.is_prepaid === 0 ||
+    c.is_prepaid === '0' ||
+    c.is_prepaid === false ||
+    c.isPrepaid === false ||
+    r.booking?.is_prepaid === 0 ||
+    r.booking?.is_prepaid === false
+  );
+
+  const isOtaPrepaid = isBookingOta && !isPayAtHotel;
+
+  if (isBookingOta) {
+    if (isPayAtHotel) {
+      bookingModeStr = otaName ? `OTA (Pay at Hotel) - ${otaName}` : 'OTA (Pay at Hotel)';
+    } else if (r.is_prepaid === 1 || r.is_prepaid === '1' || r.is_prepaid === true || r.rate_type === 'prepaid' || c.is_prepaid === 1 || c.rate_type === 'prepaid') {
+      bookingModeStr = otaName ? `OTA (Pre-Paid) - ${otaName}` : 'OTA (Pre-Paid)';
+    } else if (otaName) {
+      bookingModeStr = `OTA (${otaName})`;
+    } else {
+      bookingModeStr = 'OTA';
+    }
   } else if (String(rawBookingMode).toUpperCase().startsWith('BTC')) {
     // User Requirement: "Booking Mode : BTC (Infosys BPM Technolo" should show only "Booking Mode : BTC "
     bookingModeStr = 'BTC';
@@ -3780,7 +3797,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const discountAmt = Number(c.discountAmount || summary.discountAmount || r.discount_amount || 0);
 
   // Other Charges & Extras breakdown
-  const extraBedCharge = Number(r.extra_bed_charge ?? c.extraBedCharge ?? summary.extraBedCharge ?? 0);
+  const extraBedCharge = Number(r.extra_bed_charge ?? c.extraBedCharge ?? summary.extraBedCharge ?? c.hotelExtrasCharge ?? r.hotelExtrasCharge ?? 0);
   const extraBedsCount = Number(r.extra_beds ?? c.extra_beds ?? c.extraBeds ?? (extraBedCharge > 0 ? Math.round(extraBedCharge / 500) : 0));
   const isEarlyCheckinBooking = Boolean(r.is_early_checkin || c.isEarlyCheckin || c.is_early_checkin);
   const earlyCheckinCharge = Number(
@@ -3797,10 +3814,17 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const barTotal = Number(c.barTotal || summary.barTotal || 0);
   const fnbTotal = foodTotal + barTotal;
 
-  const isBookingOta = (r.booking_source || c.bookingSource || r.source) === 'OTA';
-  const otaBillAmount = Number(r.ota_bill_amount || c.otaBillAmount || 0);
-  const totalRoomCharge = Number(c.roomCharge || summary.roomCharge || r.total_room_charge || r.room_rate || 0);
+  const otaBillAmount = Number(
+    r.ota_bill_amount || c.otaBillAmount || c.ota_bill_amount || summary.otaBillAmount || r.otaBillAmount || 
+    (c.summary && c.summary.otaBillAmount) || (r.summary && r.summary.otaBillAmount) || 0
+  );
   const explicitHotelExtras = extraBedCharge + earlyCheckinCharge + extraRoomsCharge + extraBreakfastCharge;
+  const totalRoomCharge = Number(
+    (c.roomCharge !== undefined && c.roomCharge !== null && c.roomCharge > 0) ? c.roomCharge :
+    ((summary.roomCharge !== undefined && summary.roomCharge !== null && summary.roomCharge > 0) ? summary.roomCharge :
+    ((r.total_room_charge !== undefined && r.total_room_charge !== null && r.total_room_charge > 0) ? r.total_room_charge :
+    (isBookingOta && otaBillAmount > 0 ? otaBillAmount : (r.room_rate || r.price || 0))))
+  );
 
   // Base Gross Room Package (WITHOUT extra mattress, WITHOUT early check-in, WITHOUT extra room/breakfast):
   let baseGrossTariff = 0;
@@ -3849,7 +3873,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
     effectiveTariff = baseRoomPreTax;
     roomTaxable = Number((baseRoomPreTax + extraMattressPreTax + earlyCheckinPreTax + extraRoomsPreTax + extraBreakfastPreTax - discountPreTax).toFixed(2));
     const calculatedRoomGross = Number((baseGrossTariff + extraBedCharge + earlyCheckinCharge + extraRoomsCharge + extraBreakfastCharge - discountAmt).toFixed(2));
-    const finalRoomBillTotal = (totalRoomCharge > 0 && Math.abs(calculatedRoomGross - totalRoomCharge) <= 2) ? totalRoomCharge : calculatedRoomGross;
+    const finalRoomBillTotal = calculatedRoomGross;
     const totalGstAmt = Number(Math.max(0, finalRoomBillTotal - roomTaxable).toFixed(2));
     if (isIgst) {
       igst = totalGstAmt;
@@ -3900,14 +3924,17 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 
   // Settlement Details
   const grossPayable = invoiceTotal;
-  const advanceReceived = Number(
+  const otaVoucherCovered = isOtaPrepaid ? (otaBillAmount > 0 ? otaBillAmount : baseGrossTariff) : 0;
+  const deskAdvance = Number(
     r.advance_payment !== undefined && r.advance_payment !== null
       ? r.advance_payment
-      : (c.advancePaid || summary.advancePaid || r.initial_paid || (r.status === 'checked_out' ? Math.max(0, (r.total_paid || 0) - (r.final_settlement_payment || 0)) : (r.total_paid || 0)))
+      : (c.advancePaid || summary.advancePaid || r.initial_paid || 0)
   );
-  const settleAmt = Number(s.settleAmt || s.amount || r.final_settlement_payment || 0);
-  const refundAmt = Number(s.refundAmt || r.refund_amount || 0);
-  const netPayable = Math.max(0, grossPayable - advanceReceived);
+
+  const totalAdvanceOrVoucher = isOtaPrepaid
+    ? (otaVoucherCovered + deskAdvance)
+    : deskAdvance;
+  const netPayable = Math.max(0, grossPayable - totalAdvanceOrVoucher);
   const netPayableWords = formatWords(netPayable);
 
   // Staff & Badge Resolution (Requirement 8: Checkout by Cashier name, never 'Front Desk')
@@ -4176,7 +4203,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
               <!-- Room Bill Total row (Total amount and label are bold) -->
               <tr style="background: transparent; border-top: 1px dashed #000; border-bottom: 1px dashed #000;">
                 <td style="padding: 2.5px 10px; font-weight: 700; color: #000;">Room Bill Total</td>
-                <td style="padding: 2.5px 10px 2.5px 30px; text-align: left; font-weight: 700; color: #000;">${roomBillTotal.toFixed(2)}</td>
+                <td style="padding: 2.5px 10px 2.5px 30px; text-align: left; font-weight: 700; color: #000;">${isPreTaxTariffModel ? roomTaxable.toFixed(2) : roomBillTotal.toFixed(2)}</td>
                 <td style="padding: 2.5px 10px; text-align: right; font-weight: 700; color: #000; border-left: 1.5px dashed #000;">${roomBillTotal.toFixed(2)}</td>
               </tr>
 
@@ -4278,10 +4305,23 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
                     <td style="padding: 1.5px 0; font-weight: 700; color: #000;">Gross Payable Amount</td>
                     <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${grossPayable.toFixed(2)}</td>
                   </tr>
+                  ${isOtaPrepaid ? `
+                  <tr>
+                    <td style="padding: 1.5px 0; font-weight: 700; color: #000;">OTA Pre-Paid Voucher</td>
+                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${otaVoucherCovered.toFixed(2)}</td>
+                  </tr>
+                  ${deskAdvance > 0 ? `
+                  <tr>
+                    <td style="padding: 1.5px 0; font-weight: 700; color: #000;">Advance Received (Desk)</td>
+                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${deskAdvance.toFixed(2)}</td>
+                  </tr>
+                  ` : ''}
+                  ` : `
                   <tr>
                     <td style="padding: 1.5px 0; font-weight: 700; color: #000;">Advance Received</td>
-                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${advanceReceived.toFixed(2)}</td>
+                    <td style="padding: 1.5px 0; text-align: right; font-weight: 700; color: #000;">${deskAdvance.toFixed(2)}</td>
                   </tr>
+                  `}
                   <tr style="border-top: 1.5px dashed #000;">
                     <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">Net Payable Amount</td>
                     <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${netPayable.toFixed(2)}</td>
