@@ -2032,17 +2032,24 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             )}
                           </div>
 
-                          <div style={{ padding: '10px 14px', background: stayDueAmount > 0 ? '#fef2f2' : '#f8fafc', borderRadius: '10px', border: `1px solid ${stayDueAmount > 0 ? '#fecaca' : '#e2e8f0'}` }}>
-                            <span style={{ fontSize: '0.76rem', color: stayDueAmount > 0 ? '#991b1b' : '#475569', fontWeight: 800, textTransform: 'uppercase', display: 'block' }}>Remaining</span>
-                            <strong style={{ fontSize: '1.18rem', color: stayDueAmount > 0 ? '#dc2626' : '#15803d', fontWeight: 900, display: 'block', marginTop: '2px' }}>
-                              {stayDueAmount > 0 ? formatCurrency(stayDueAmount) : '₹0.00 (Settled)'}
+                          <div style={{ padding: '10px 14px', background: folioDueAmount > 0 ? '#fef2f2' : '#f8fafc', borderRadius: '10px', border: `1px solid ${folioDueAmount > 0 ? '#fecaca' : '#e2e8f0'}` }}>
+                            <span style={{ fontSize: '0.76rem', color: folioDueAmount > 0 ? '#991b1b' : '#475569', fontWeight: 800, textTransform: 'uppercase', display: 'block' }}>Remaining</span>
+                            <strong style={{ fontSize: '1.18rem', color: folioDueAmount > 0 ? '#dc2626' : '#15803d', fontWeight: 900, display: 'block', marginTop: '2px' }}>
+                              {folioDueAmount > 0 ? formatCurrency(folioDueAmount) : '₹0.00 (Settled)'}
                             </strong>
+                            {folioDueAmount > 0 && isOtaPrepaidStay && fnbPendingTotal > 0 && (
+                              <span style={{ fontSize: '0.70rem', color: '#b91c1c', fontWeight: 700, display: 'block', marginTop: '1px' }}>
+                                {hotelExtrasCharge > 0 ? 'F&B + Extras Due' : 'Pending F&B Orders'}
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {fnbPendingTotal > 0 && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '2px', padding: '8px 12px', background: '#fff7ed', borderRadius: '8px', border: '1px solid #ffedd5', fontWeight: 800 }}>
-                            <span style={{ color: '#9a3412' }}>Total Folio Due (Stay + F&amp;B):</span>
+                            <span style={{ color: '#9a3412' }}>
+                              {isOtaPrepaidStay && stayDueAmount === 0 ? 'Total Folio Due (F&B Orders):' : 'Total Folio Due (Stay + F&B):'}
+                            </span>
                             <span style={{ color: '#c2410c' }}>
                               {formatCurrency(folioDueAmount)}
                             </span>
@@ -2964,16 +2971,20 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     </div>
                     <div
                       className="financial-tile"
-                      style={stayDueAmount > 0 ? { border: '1.5px solid #fca5a5', background: 'rgba(239, 68, 68, 0.04)' } : { border: '1.5px solid #86efac', background: 'rgba(34, 197, 94, 0.08)' }}
+                      style={folioDueAmount > 0 ? { border: '1.5px solid #fca5a5', background: 'rgba(239, 68, 68, 0.04)' } : { border: '1.5px solid #86efac', background: 'rgba(34, 197, 94, 0.08)' }}
                     >
-                      <span className="tile-label" style={{ color: stayDueAmount > 0 ? '#991b1b' : '#166534' }}>
+                      <span className="tile-label" style={{ color: folioDueAmount > 0 ? '#991b1b' : '#166534' }}>
                         Remaining
                       </span>
-                      <strong className="tile-val" style={{ color: stayDueAmount > 0 ? '#dc2626' : '#15803d' }}>
-                        {stayDueAmount > 0 ? formatCurrency(stayDueAmount) : 'Settled'}
+                      <strong className="tile-val" style={{ color: folioDueAmount > 0 ? '#dc2626' : '#15803d' }}>
+                        {folioDueAmount > 0 ? formatCurrency(folioDueAmount) : 'Settled'}
                       </strong>
-                      <small style={{ color: stayDueAmount > 0 ? '#dc2626' : '#15803d' }}>
-                        {stayDueAmount > 0 ? 'Due at Checkout' : 'Fully Settled'}
+                      <small style={{ color: folioDueAmount > 0 ? '#dc2626' : '#15803d' }}>
+                        {folioDueAmount > 0
+                          ? (fnbPendingTotal > 0
+                              ? (hotelExtrasCharge > 0 ? `${formatCurrency(fnbPendingTotal)} F&B + ${formatCurrency(hotelExtrasCharge)} Extras Due` : `${formatCurrency(fnbPendingTotal)} F&B Due`)
+                              : 'Due at Checkout')
+                          : 'Fully Settled'}
                       </small>
                     </div>
                   </>

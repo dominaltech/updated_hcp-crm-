@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { printCashReceipt, printPettyCashVoucher, printFinalBillA4, printGuestRegistrationA4, autoSavePdfDocument, buildFinalBillA4HTML, buildMoneyReceiptHTML } from '../../services/printService';
 import DocumentScannerModal from '../common/DocumentScannerModal';
+import { compressBase64Image } from '../../utils/imageCompressor';
 
 export default function FolioSettlementModal({
   isOpen,
@@ -34,8 +35,29 @@ export default function FolioSettlementModal({
   const [chequeBank, setChequeBank] = useState('');
   const [chequePhoto, setChequePhoto] = useState(null);
   const [isChequeScannerOpen, setIsChequeScannerOpen] = useState(false);
+  const [isHardwareScanning, setIsHardwareScanning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [btcCheckoutMode, setBtcCheckoutMode] = useState('company_later'); // 'company_later' | 'pay_now'
+
+  const handleHardwareScanCheque = async () => {
+    setIsHardwareScanning(true);
+    try {
+      showToast('⚡ Communicating with scanner... Scanner carriage is reading cheque.', 'info', 6000);
+      const res = await api.scanHardwareDocument();
+      if (res && res.success && res.image) {
+        const compressed = await compressBase64Image(res.image);
+        setChequePhoto(compressed || res.image);
+        showToast('✓ Physical cheque scanned successfully from scanner!', 'green', 4000);
+      } else {
+        throw new Error(res?.error || 'No image returned from scanner.');
+      }
+    } catch (err) {
+      console.error('Scan error:', err);
+      showToast(`Scanner Error: ${err.message || 'Scanner acquisition failed. Ensure USB scanner is connected.'}`, 'red', 6000);
+    } finally {
+      setIsHardwareScanning(false);
+    }
+  };
 
   // Return Type & Refund States
   const [returnType, setReturnType] = useState('cash'); // 'cash', 'online', 'card'
@@ -1193,6 +1215,27 @@ export default function FolioSettlementModal({
                           </div>
                         ) : (
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={handleHardwareScanCheque}
+                              disabled={isHardwareScanning}
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: isHardwareScanning ? '#94a3b8' : '#0284c7',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: isHardwareScanning ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              title="Scan physical cheque directly from flatbed optical scanner"
+                            >
+                              <span>🖨️</span> {isHardwareScanning ? 'Scanning...' : 'Scan from Scanner'}
+                            </button>
                             <button
                               type="button"
                               onClick={() => setIsChequeScannerOpen(true)}

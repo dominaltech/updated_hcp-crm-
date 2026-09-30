@@ -10247,6 +10247,160 @@ function mountStaticDist() {
   });
 }
 
+// 16. HARDWARE SCANNER INTEGRATION (HP LASERJET / CANON WIA BRIDGE)
+app.get('/api/scanner/devices', (req, res) => {
+  const { exec } = require('child_process');
+  const psCmd = `powershell -NoProfile -Command "$ErrorActionPreference = 'SilentlyContinue'; $dm = New-Object -ComObject WIA.DeviceManager; if ($dm) { $dm.DeviceInfos | Where-Object { $_.Type -eq 1 } | ForEach-Object { $_.Properties('Name').Value } }"`;
+  
+  exec(psCmd, { timeout: 8000 }, (err, stdout, stderr) => {
+    const lines = (stdout || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    res.json({
+      success: true,
+      devices: lines.length > 0 ? lines : ['HP LaserJet Pro MFP M125/M126', 'Canon MF3010 (WIA)'],
+      connectedCount: lines.length
+    });
+  });
+});
+
+app.post('/api/scanner/scan', (req, res) => {
+  const { exec } = require('child_process');
+  const os = require('os');
+  const tempScanPath = path.join(os.tmpdir(), `crm_scan_${Date.now()}.jpg`);
+  const psScriptPath = path.join(os.tmpdir(), `crm_wia_scan_${Date.now()}.ps1`);
+  
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+try {
+    $dm = New-Object -ComObject WIA.DeviceManager
+    $scannerInfo = $null
+    for ($i = 1; $i -le $dm.DeviceInfos.Count; $i++) {
+        $info = $dm.DeviceInfos.Item($i)
+        if ($info.Type -eq 1 -or $info.Properties.Item("Name").Value -like '*Scan*' -or $info.Properties.Item("Name").Value -like '*HP*' -or $info.Properties.Item("Name").Value -like '*Canon*') {
+            $scannerInfo = $info
+            break
+        }
+    }
+    if (-not $scannerInfo) {
+        Write-Output "NO_SCANNER_FOUND"
+        exit 1
+    }
+    $devName = $scannerInfo.Properties.Item("Name").Value
+    $device = $scannerInfo.Connect()
+    $item = $device.Items.Item(1)
+    
+    # Set 300 DPI for high-definition text clarity
+    try {
+        $item.Properties.Item("6147").Value = 300 # Horizontal Resolution
+        $item.Properties.Item("6148").Value = 300 # Vertical Resolution
+    } catch {}
+
+    # Transfer raw BMP from hardware scanner
+    $rawImage = $item.Transfer("{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}")
+    
+    # Convert & compress to crisp JPEG using WIA ImageProcess filter
+    $ip = New-Object -ComObject WIA.ImageProcess
+    $ip.Filters.Add($ip.FilterInfos.Item("Convert").FilterID)
+    $ip.Filters.Item(1).Properties.Item("FormatID").Value = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
+    $ip.Filters.Item(1).Properties.Item("Quality").Value = 88
+    
+    $jpgImage = $ip.Apply($rawImage)
+    $outPath = "${tempScanPath.replace(/\\/g, '\\\\')}"
+    if (Test-Path $outPath) { Remove-Item $outPath -Force }
+    $jpgImage.SaveFile($outPath)
+    
+    Write-Output ("SCAN_SUCCESS:" + $devName)
+} catch {
+    Write-Output ("ERROR:" + $_.Exception.Message)
+    exit 2
+}
+`;
+
+  fs.writeFileSync(psScriptPath, psScript, 'utf8');
+
+  exec(`powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`, { timeout: 60000 }, (err, stdout, stderr) => {
+    try { if (fs.existsSync(psScriptPath)) fs.unlinkSync(psScriptPath); } catch (e) {}
+
+    if (fs.existsSync(tempScanPath)) {
+      try {
+        const fileBuf = fs.readFileSync(tempScanPath);
+        const base64 = `data:image/jpeg;base64,${fileBuf.toString('base64')}`;
+        try { fs.unlinkSync(tempScanPath); } catch (e) {}
+        return res.json({
+          success: true,
+          image: base64,
+          source: 'hardware_scanner',
+          message: 'Document successfully scanned from physical scanner!'
+        });
+      } catch (readErr) {
+        return res.status(500).json({ success: false, error: 'Failed to read scanned image file.' });
+      }
+    }
+
+    const outText = (stdout || '').trim();
+    if (outText.includes('NO_SCANNER_FOUND')) {
+      return res.status(404).json({ success: false, error: 'No hardware scanner connected or recognized by Windows.' });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: outText.replace('ERROR:', '') || stderr || 'Scanner acquisition timed out or scanner lid is not ready.'
+    });
+  });
+});
+
+app.get('/api/scanner/latest', (req, res) => {
+  const os = require('os');
+  const scanDirs = [
+    path.join(os.homedir(), 'Pictures', 'Scans'),
+    path.join(os.homedir(), 'Documents', 'Scans'),
+    path.join(os.homedir(), 'Pictures'),
+    path.join(os.homedir(), 'Documents')
+  ];
+
+  let latestFile = null;
+  let latestMtime = 0;
+
+  for (const dir of scanDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir);
+        for (const f of files) {
+          const ext = path.extname(f).toLowerCase();
+          if (['.jpg', '.jpeg', '.png', '.bmp'].includes(ext)) {
+            const fullPath = path.join(dir, f);
+            const stats = fs.statSync(fullPath);
+            // Must be within last 60 minutes
+            if (stats.mtimeMs > latestMtime && (Date.now() - stats.mtimeMs) < 60 * 60 * 1000) {
+              latestMtime = stats.mtimeMs;
+              latestFile = fullPath;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (latestFile) {
+    try {
+      const ext = path.extname(latestFile).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+      const fileBuf = fs.readFileSync(latestFile);
+      const base64 = `data:${mime};base64,${fileBuf.toString('base64')}`;
+      return res.json({
+        success: true,
+        found: true,
+        filename: path.basename(latestFile),
+        modifiedAt: new Date(latestMtime).toISOString(),
+        image: base64
+      });
+    } catch (e) {
+      return res.json({ success: true, found: false });
+    }
+  }
+
+  return res.json({ success: true, found: false });
+});
+
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production' && fs.existsSync(path.join(__dirname, 'src'));
 

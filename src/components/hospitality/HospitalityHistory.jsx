@@ -6,6 +6,7 @@ import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, prin
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
 import DocumentScannerModal from '../common/DocumentScannerModal';
+import { compressBase64Image } from '../../utils/imageCompressor';
 
 // Module-level in-memory cache for instant 0ms navigation
 let globalHistoryCache = null;
@@ -59,6 +60,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [isChequeCamOpen, setIsChequeCamOpen] = useState(false);
   const [chequeCamTargetMode, setChequeCamTargetMode] = useState('scan_modal'); // 'scan_modal' | 'settle_btc'
   const [chequeScanSubmitting, setChequeScanSubmitting] = useState(false);
+  const [isHardwareScanning, setIsHardwareScanning] = useState(false);
+  const [detectedScanner, setDetectedScanner] = useState(null);
+
+  // Auto-detect attached flatbed / WIA hardware scanner on mount
+  useEffect(() => {
+    api.getScannerDevices().then(res => {
+      if (res && res.devices && res.devices.length > 0) {
+        setDetectedScanner(res.devices[0]);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Image Lightbox State for Click-to-Zoom
   const [lightboxImg, setLightboxImg] = useState(null);
@@ -73,7 +85,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
 
     try {
       let params = [];
-      if (dateRange !== 'all' && dateRange !== 'pending_btc') params.push(`range=${dateRange}`);
+      if (dateRange !== 'all' && dateRange !== 'pending_btc' && dateRange !== 'all_btc') params.push(`range=${dateRange}`);
       if (searchQuery.trim()) params.push(`q=${encodeURIComponent(searchQuery.trim())}`);
       const paramStr = params.join('&');
       const res = await api.getStayHistory(paramStr);
@@ -96,15 +108,64 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     loadHistory();
   }, [loadHistory]);
 
-  const pendingBtcCount = records.filter((r) => {
-    return (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
-      r.payment_status !== 'settled';
-  }).length;
+  // Robust BTC Booking Identifier
+  const isBtcBookingRecord = useCallback((r) => {
+    if (!r) return false;
+    return Boolean(
+      r.booking_source === 'BTC' ||
+      r.btc_company_id !== null ||
+      (r.btc_company_name && String(r.btc_company_name).trim().length > 0) ||
+      r.final_payment_mode === 'btc' ||
+      r.advance_payment_mode === 'btc' ||
+      r.final_settlement_mode === 'btc' ||
+      r.payment_status === 'pending_from_company'
+    );
+  }, []);
+
+  // Robust Cheque Passed/Realized Identifier
+  const isChequePassedRecord = useCallback((r) => {
+    if (!r) return false;
+    const status = (r.cheque_status || r.advance_cheque_status || '').toLowerCase();
+    const isPassedStatus = status === 'realized' || status === 'passed';
+    return isPassedStatus && (r.payment_status === 'settled' || r.advance_cheque_status === 'realized');
+  }, []);
+
+  // Robust Pending BTC Identifier:
+  // A BTC booking remains pending if:
+  // 1) It has a cheque (scanned/attached/recorded) and that cheque has NOT passed/realized yet.
+  // 2) Or if it has no cheque and payment_status is not settled.
+  // "If cheque passes then only should be clear and should not show in pendings BTC"
+  const isBtcPendingRecord = useCallback((r) => {
+    if (!r) return false;
+    if (!isBtcBookingRecord(r)) return false;
+
+    const hasCheque = Boolean(
+      (Number(r.split_cheque || 0) > 0) ||
+      r.advance_payment_mode === 'cheque' ||
+      r.final_payment_mode === 'cheque' ||
+      r.final_settlement_mode === 'cheque' ||
+      r.settlement_cheque_no ||
+      r.advance_cheque_no ||
+      r.cheque_photo ||
+      r.settlement_cheque_photo
+    );
+
+    if (hasCheque) {
+      return !isChequePassedRecord(r);
+    }
+
+    return r.payment_status !== 'settled';
+  }, [isBtcBookingRecord, isChequePassedRecord]);
+
+  const pendingBtcCount = records.filter(isBtcPendingRecord).length;
+  const allBtcCount = records.filter(isBtcBookingRecord).length;
 
   const filteredRecords = records.filter((r) => {
     if (dateRange === 'pending_btc') {
-      return (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
-        r.payment_status !== 'settled';
+      return isBtcPendingRecord(r);
+    }
+    if (dateRange === 'all_btc') {
+      return isBtcBookingRecord(r);
     }
     if (dateRange === 'today') {
       const itemDate = new Date(r.checkout_time || r.checkin_time);
@@ -226,6 +287,51 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     }
   };
 
+  const handleHardwareScanCheque = async () => {
+    setIsHardwareScanning(true);
+    try {
+      showToast('⚡ Communicating with scanner... Scanner carriage is reading cheque.', 'info', 6000);
+      const res = await api.scanHardwareDocument();
+      if (res && res.success && res.image) {
+        const compressed = await compressBase64Image(res.image);
+        if (chequeCamTargetMode === 'settle_btc') {
+          setSettleBtcChequePhoto(compressed || res.image);
+        } else {
+          setChequeScanPhoto(compressed || res.image);
+        }
+        if (res.device) setDetectedScanner(res.device);
+        showToast(`✓ Cheque scanned successfully from ${res.device || detectedScanner || 'scanner'}!`, 'green', 4000);
+      } else {
+        throw new Error(res?.error || 'No scanned image returned from scanner.');
+      }
+    } catch (err) {
+      console.error('Cheque scan error:', err);
+      const errMsg = err?.message || 'Scanner acquisition failed. Ensure scanner is turned on and connected via USB.';
+      showToast(`Scanner Error: ${errMsg}`, 'red', 6000);
+    } finally {
+      setIsHardwareScanning(false);
+    }
+  };
+
+  const handleGrabLatestScanCheque = async () => {
+    try {
+      const res = await api.getLatestScannedDocument();
+      if (res && res.found && res.image) {
+        const compressed = await compressBase64Image(res.image);
+        if (chequeCamTargetMode === 'settle_btc') {
+          setSettleBtcChequePhoto(compressed || res.image);
+        } else {
+          setChequeScanPhoto(compressed || res.image);
+        }
+        showToast(`✓ Retrieved latest scan (${res.filename || 'Scans folder'})!`, 'green', 4000);
+      } else {
+        showToast('No recent scans found in Windows Scans folder. Click "Scan from Scanner" to trigger direct scan.', 'info', 4000);
+      }
+    } catch (err) {
+      showToast('Could not check Scans folder: ' + err.message, 'red');
+    }
+  };
+
   const handleOpenScanCheque = (booking) => {
     if (!booking) return;
     setChequeScanTarget(booking);
@@ -233,6 +339,10 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     setChequeScanNo(booking.settlement_cheque_no || booking.advance_cheque_no || '');
     setChequeScanBank(booking.settlement_cheque_bank || booking.advance_cheque_bank || '');
     setChequeCamTargetMode('scan_modal');
+    // Re-check scanner connection in background
+    api.getScannerDevices().then(res => {
+      if (res && res.devices && res.devices.length > 0) setDetectedScanner(res.devices[0]);
+    }).catch(() => {});
   };
 
   const handleSaveChequeScan = async (andPass = false) => {
@@ -613,6 +723,38 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 </span>
               )}
             </button>
+
+            <button
+              type="button"
+              className={`history-chip ${dateRange === 'all_btc' ? 'active' : ''}`}
+              onClick={() => setDateRange('all_btc')}
+              style={{
+                background: dateRange === 'all_btc' ? '#1e40af' : (allBtcCount > 0 ? '#eff6ff' : undefined),
+                color: dateRange === 'all_btc' ? '#ffffff' : (allBtcCount > 0 ? '#1d4ed8' : undefined),
+                borderColor: dateRange === 'all_btc' ? '#1d4ed8' : (allBtcCount > 0 ? '#93c5fd' : undefined),
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              title="Filter and show all BTC bookings (Both Pending and Paid/Settled)"
+            >
+              <span>🏢 All BTC</span>
+              {allBtcCount > 0 && (
+                <span
+                  style={{
+                    background: dateRange === 'all_btc' ? '#ffffff' : '#1d4ed8',
+                    color: dateRange === 'all_btc' ? '#1d4ed8' : '#ffffff',
+                    padding: '1px 7px',
+                    borderRadius: '10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 900
+                  }}
+                >
+                  {allBtcCount}
+                </span>
+              )}
+            </button>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -784,13 +926,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               const isCheckedOut = r.status === 'checked_out';
               const isSelected = selectedIds.has(r.id);
 
-              const isBtcBooking =
-                r.booking_source === 'BTC' ||
-                r.btc_company_id !== null ||
-                Boolean(r.btc_company_name) ||
-                r.rate_type === 'btc' ||
-                r.final_payment_mode === 'btc' ||
-                r.payment_status === 'pending_from_company';
+              const isBtcBooking = isBtcBookingRecord(r);
+              const isChequePassed = isChequePassedRecord(r);
+              const isBtcPending = isBtcPendingRecord(r);
 
               const hasCheque =
                 (r.final_settlement_mode && r.final_settlement_mode.toLowerCase() === 'cheque') ||
@@ -804,12 +942,6 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
 
               const isChequeEligible = hasCheque || isBtcBooking;
               const hasChequePhoto = Boolean(r.cheque_photo || r.settlement_cheque_photo);
-              const isChequePassed = (r.cheque_status === 'realized' || r.cheque_status === 'passed') && r.payment_status === 'settled';
-
-              const isBtcPending =
-                isBtcBooking &&
-                r.payment_status !== 'settled' &&
-                !isChequePassed;
 
               const isPending =
                 isBtcPending ||
@@ -1175,9 +1307,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                               alignItems: 'center',
                               gap: '4px'
                             }}
-                            title="Scan and attach physical cheque"
+                            title="Scan physical cheque from flatbed scanner or camera"
                           >
-                            <span>📷</span> Scan Cheque
+                            <span>🖨️</span> Scan Cheque
                           </button>
                         )}
                         {(r.settlement_cheque_no || r.advance_cheque_no) && (
@@ -2685,6 +2817,27 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <button
                         type="button"
+                        onClick={handleHardwareScanCheque}
+                        disabled={isHardwareScanning}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: isHardwareScanning ? '#94a3b8' : '#0284c7',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: isHardwareScanning ? 'not-allowed' : 'pointer'
+                        }}
+                        title="Scan cheque using physical flatbed scanner"
+                      >
+                        <span>🖨️</span> {isHardwareScanning ? 'Scanning...' : 'Scan Scanner'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setChequeCamTargetMode('settle_btc');
                           setIsChequeCamOpen(true);
@@ -2995,29 +3148,96 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 <label style={{ fontSize: '0.80rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
                   Cheque Physical Copy / Scan
                 </label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+
+                {/* Scanner Connection Status */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: detectedScanner ? '#f0fdf4' : '#f8fafc',
+                  border: detectedScanner ? '1.5px solid #86efac' : '1.5px solid #e2e8f0',
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  marginBottom: '10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 750,
+                  color: detectedScanner ? '#15803d' : '#64748b'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{detectedScanner ? '🟢' : '⚪'}</span>
+                    <span>{detectedScanner ? `Hardware Scanner: ${detectedScanner}` : 'Optical flatbed scanner bridge ready'}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleHardwareScanCheque}
+                    disabled={isHardwareScanning}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '9px 18px',
+                      borderRadius: '8px',
+                      background: isHardwareScanning ? '#94a3b8' : '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 850,
+                      fontSize: '0.86rem',
+                      cursor: isHardwareScanning ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)'
+                    }}
+                    title="Read physical cheque directly from flatbed optical scanner (Canon / HP / Epson)"
+                  >
+                    <span>🖨️</span> {isHardwareScanning ? '⚡ Reading Scanner...' : 'Scan from Scanner'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleGrabLatestScanCheque}
+                    disabled={isHardwareScanning}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '9px 14px',
+                      borderRadius: '8px',
+                      background: '#f8fafc',
+                      color: '#0369a1',
+                      border: '1.5px solid #bae6fd',
+                      fontWeight: 800,
+                      fontSize: '0.84rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Retrieve latest scanned file from Windows Scans folder"
+                  >
+                    <span>📂</span> Grab Latest Scan
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
                       setChequeCamTargetMode('scan_modal');
                       setIsChequeCamOpen(true);
                     }}
+                    disabled={isHardwareScanning}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      padding: '8px 16px',
+                      padding: '9px 14px',
                       borderRadius: '8px',
-                      background: '#0071e3',
-                      color: '#ffffff',
-                      border: 'none',
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1.5px solid #cbd5e1',
                       fontWeight: 800,
                       fontSize: '0.84rem',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(0, 113, 227, 0.3)'
+                      cursor: 'pointer'
                     }}
+                    title="Capture cheque using webcam / camera"
                   >
-                    <span>📷</span> Open Camera Scanner
+                    <span>📷</span> Camera
                   </button>
 
                   <label
@@ -3025,7 +3245,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      padding: '8px 16px',
+                      padding: '9px 14px',
                       borderRadius: '8px',
                       background: '#f1f5f9',
                       color: '#334155',
@@ -3040,12 +3260,13 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       type="file"
                       accept="image/*"
                       style={{ display: 'none' }}
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (file) {
                           const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            setChequeScanPhoto(evt.target.result);
+                          reader.onload = async (evt) => {
+                            const compressed = await compressBase64Image(evt.target.result);
+                            setChequeScanPhoto(compressed || evt.target.result);
                             showToast('✓ Cheque photo selected', 'green');
                           };
                           reader.readAsDataURL(file);
@@ -3055,9 +3276,16 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   </label>
 
                   <span style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic' }}>
-                    Tip: Press <strong>Ctrl+V</strong> to paste image directly
+                    Tip: Press <strong>Ctrl+V</strong> to paste
                   </span>
                 </div>
+
+                {isHardwareScanning && (
+                  <div style={{ marginTop: '8px', padding: '8px 12px', background: '#e0f2fe', border: '1px solid #7dd3fc', borderRadius: '8px', color: '#0369a1', fontSize: '0.80rem', fontWeight: 750, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #0284c7', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    <span>Scanner carriage is reading physical cheque... Please wait.</span>
+                  </div>
+                )}
               </div>
 
               {/* Photo Preview or Empty State */}
@@ -3129,12 +3357,12 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     background: '#f8fafc'
                   }}
                 >
-                  <div style={{ fontSize: '2rem', marginBottom: '6px' }}>📄</div>
+                  <div style={{ fontSize: '2rem', marginBottom: '6px' }}>🖨️</div>
                   <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#475569' }}>
                     No cheque photo attached yet
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
-                    Click <strong>Open Camera Scanner</strong> above or upload an image file
+                    Click <strong>Scan from Scanner</strong> above to scan physical cheque, or choose file / camera
                   </div>
                 </div>
               )}
