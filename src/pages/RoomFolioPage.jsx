@@ -3298,9 +3298,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           ...folioData,
           balanceDue: folioDueAmount,
           isOtaPrepaid,
-          foodTotal,
-          barTotal,
-          fnbTotal
+          foodTotal: Number(folioData.foodTotal || 0),
+          barTotal: Number(folioData.barTotal || 0),
+          fnbTotal: Number(folioData.fnbTotal || ((Number(folioData.foodTotal) || 0) + (Number(folioData.barTotal) || 0)))
         } : folioData}
         onClose={() => setIsSettlementOpen(false)}
         onCheckoutSuccess={(res) => {
