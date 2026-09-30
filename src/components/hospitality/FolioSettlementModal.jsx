@@ -64,7 +64,10 @@ export default function FolioSettlementModal({
     room?.is_prepaid === '1' ||
     room?.is_prepaid === true ||
     folioData?.rateType === 'prepaid' ||
-    room?.rate_type === 'prepaid'
+    folioData?.rate_type === 'prepaid' ||
+    room?.rate_type === 'prepaid' ||
+    Boolean(folioData?.otaPlatform || room?.ota_platform) ||
+    Number(folioData?.advancePaid || room?.total_paid || 0) === 0
   );
 
   const pendingRestaurantOrders = (folioData?.restaurantOrders || [])
@@ -137,7 +140,7 @@ export default function FolioSettlementModal({
       setChequePhoto(null);
       setReturnUtr('');
       setReturnType('cash');
-      setSplitCash(0);
+      setSplitCash((!isBtc && balanceDue > 0) ? balanceDue : 0);
       setSplitOnline(0);
       setSplitCard(0);
       setSplitCheque(0);

@@ -245,19 +245,20 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       const r = raw.room || {};
       const summary = raw.summary || {};
 
-      const isBookingOta = (r.booking_source || raw.booking_source || r.source) === 'OTA';
+      const isBookingOta = String(r.booking_source || raw.booking_source || r.source || '').toUpperCase() === 'OTA';
       const isOtaPayAtHotel = isBookingOta && (
         summary.isOtaPayAtHotel === true ||
-        r.is_prepaid === 0 ||
-        r.is_prepaid === '0' ||
-        r.is_prepaid === false ||
-        String(r.rate_type || '').includes('hotel')
+        String(r.rate_type || '').toLowerCase().includes('hotel')
       );
       const isOtaPrepaid = isBookingOta && !isOtaPayAtHotel && (
         summary.isOtaPrepaid === true ||
         r.is_prepaid === 1 ||
         r.is_prepaid === '1' ||
-        r.is_prepaid === true
+        r.is_prepaid === true ||
+        r.rate_type === 'prepaid' ||
+        Boolean(r.ota_platform) ||
+        Boolean(raw.ota_platform) ||
+        Number(r.total_paid || 0) === 0
       );
 
       const foodTotal = Number(summary.foodTotal ?? 0);
@@ -783,7 +784,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     .map((r) => (typeof r === 'object' && r !== null ? (r.room_number || r.roomNumber || '') : String(r)))
     .filter(Boolean);
   const isMultiGroup = Boolean(folioData.is_combined || groupRoomsList.length > 1);
-  const isOtaBooking = (folioData.bookingSource || folioData.room?.booking_source) === 'OTA';
+  const isOtaBooking = String(folioData.bookingSource || folioData.room?.booking_source || '').toUpperCase() === 'OTA';
   const isBtcBooking = String(folioData.bookingSource || folioData.room?.booking_source || '').toUpperCase() === 'BTC' ||
     Boolean(folioData.btcCompanyName) ||
     Boolean(folioData.room?.btc_company_name) ||
@@ -791,12 +792,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const isOtaPayAtHotel = isOtaBooking && (
     folioData.isOtaPayAtHotel === true ||
     folioData.summary?.isOtaPayAtHotel === true ||
-    folioData.is_prepaid === 0 ||
-    folioData.is_prepaid === '0' ||
-    folioData.is_prepaid === false ||
-    folioData.isPrepaid === false ||
-    folioData.otaIsPrepaid === false ||
-    String(folioData.rateType || folioData.rate_type || '').includes('hotel')
+    String(folioData.rateType || folioData.rate_type || '').toLowerCase().includes('hotel')
   );
   const isOtaPrepaid = isOtaBooking && !isOtaPayAtHotel && (
     folioData.isOtaPrepaid === true ||
@@ -805,7 +801,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     folioData.is_prepaid === '1' ||
     folioData.is_prepaid === true ||
     folioData.isPrepaid === true ||
-    folioData.otaIsPrepaid === true
+    folioData.otaIsPrepaid === true ||
+    folioData.rateType === 'prepaid' ||
+    folioData.rate_type === 'prepaid' ||
+    folioData.room?.is_prepaid === 1 ||
+    folioData.room?.rate_type === 'prepaid' ||
+    Boolean(folioData.otaPlatform || folioData.ota_platform || folioData.room?.ota_platform) ||
+    Number(folioData.advancePaid || folioData.room?.total_paid || 0) === 0
   );
   const otaBookedAdults = isOtaBooking ? (folioData.ota_booked_adults ?? folioData.otaBookedAdults ?? 1) : null;
   const otaBookedChildren = isOtaBooking ? (folioData.ota_booked_children ?? folioData.otaBookedChildren ?? 0) : null;
@@ -3001,14 +3003,28 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <div className="financial-tile">
                       <span className="tile-label">Total Amount</span>
                       <strong className="tile-val">
-                        {formatCurrency(isOtaPrepaidStay ? (stayNetTotal + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
+                        {formatCurrency(isOtaPrepaidStay ? (hotelExtrasCharge + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
                       </strong>
-                      <small>{fnbTotal > 0 ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireBookingVal)})` : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}</small>
+                      <small>
+                        {isOtaPrepaidStay
+                          ? (fnbPendingTotal > 0
+                              ? `Stay Covered (OTA) + F&B (${formatCurrency(fnbPendingTotal)})`
+                              : `Stay Covered (OTA Voucher: ${formatCurrency(entireBookingVal)})`)
+                          : (fnbTotal > 0
+                              ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})`
+                              : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}
+                      </small>
                     </div>
                     <div className="financial-tile">
                       <span className="tile-label">Advance Paid</span>
                       <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
-                      <small>{fnbPaidTotal > 0 ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}` : (isOtaPrepaidStay ? `Desk (Entire: ${formatCurrency(entireCollectedVal)})` : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}</small>
+                      <small>
+                        {isOtaPrepaidStay
+                          ? `Prepaid via ${folioData.otaPlatform || 'OTA'}${advancePaidVal > 0 ? ` (+ Desk: ${formatCurrency(advancePaidVal)})` : ''}`
+                          : (fnbPaidTotal > 0
+                              ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}`
+                              : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}
+                      </small>
                     </div>
                     <div
                       className="financial-tile"
@@ -3024,10 +3040,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                         {netFolioBalance < 0
                           ? `Refund to guest (${formatCurrency(fnbPendingTotal)} F&B covered by advance)`
                           : (folioDueAmount <= 0
-                              ? 'Fully Settled'
+                              ? 'Fully Settled (₹0 Due)'
                               : (stayExcessAdvance > 0
                                   ? `${formatCurrency(fnbPendingTotal)} F&B - ${formatCurrency(stayExcessAdvance)} adv credit`
-                                  : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout')))}
+                                  : (isOtaPrepaidStay
+                                      ? (fnbPendingTotal > 0
+                                          ? (hotelExtrasCharge > 0 ? `${formatCurrency(fnbPendingTotal)} F&B Due + ${formatCurrency(hotelExtrasCharge)} Extras` : `${formatCurrency(fnbPendingTotal)} F&B Bill Due`)
+                                          : (hotelExtrasCharge > 0 ? `${formatCurrency(hotelExtrasCharge)} Extras Due` : 'Fully Settled (₹0 Due)'))
+                                      : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout'))))}
                       </small>
                     </div>
                   </>

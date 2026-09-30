@@ -640,9 +640,10 @@ export default function TableSessionView({
                     </div>
 
                     <div
+                      className="pos-dish-name"
                       style={{
                         fontWeight: 800,
-                        color: isSelected ? '#0071e3' : '#0f172a',
+                        color: isSelected ? '#0071e3' : 'var(--text-primary, #0f172a)',
                         fontSize: '0.90rem',
                         margin: '4px 0',
                         lineHeight: 1.25,
@@ -818,10 +819,11 @@ export default function TableSessionView({
                   >
                     <div style={{ flex: 1, minWidth: 0, paddingRight: '6px' }}>
                       <div
+                        className="cart-item-name"
                         style={{
                           fontWeight: 750,
                           fontSize: '0.82rem',
-                          color: '#0f172a',
+                          color: 'var(--text-primary, #0f172a)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
@@ -829,7 +831,7 @@ export default function TableSessionView({
                       >
                         {item.is_veg ? '🟢' : '🔴'} {item.name}
                       </div>
-                      <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
+                      <div className="cart-item-price-each" style={{ fontSize: '0.70rem', color: '#64748b' }}>
                         {formatCurrency(item.price)} each
                       </div>
                     </div>
@@ -837,42 +839,48 @@ export default function TableSessionView({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '80px', justifyContent: 'center' }}>
                       <button
                         type="button"
+                        className="btn-cart-qty-ctrl btn-cart-qty-minus"
                         onClick={() => handleUpdateQuantity(item.id, -1)}
                         style={{
                           width: '22px',
                           height: '22px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
-                          background: '#ffffff',
+                          background: 'var(--bg-cart-qty, #ffffff)',
+                          color: 'var(--text-primary, #0f172a)',
                           cursor: 'pointer',
                           fontWeight: 800,
                           fontSize: '0.85rem'
                         }}
+                        title="Decrease quantity"
                       >
                         -
                       </button>
-                      <span style={{ fontWeight: 800, fontSize: '0.86rem', minWidth: '18px', textAlign: 'center' }}>
+                      <span className="cart-qty-count" style={{ fontWeight: 800, fontSize: '0.86rem', minWidth: '18px', textAlign: 'center', color: 'var(--text-primary, #0f172a)' }}>
                         {itemQty}
                       </span>
                       <button
                         type="button"
+                        className="btn-cart-qty-ctrl btn-cart-qty-plus"
                         onClick={() => handleUpdateQuantity(item.id, 1)}
                         style={{
                           width: '22px',
                           height: '22px',
                           borderRadius: '6px',
                           border: '1px solid #cbd5e1',
-                          background: '#ffffff',
+                          background: 'var(--bg-cart-qty, #ffffff)',
+                          color: 'var(--text-primary, #0f172a)',
                           cursor: 'pointer',
                           fontWeight: 800,
                           fontSize: '0.85rem'
                         }}
+                        title="Increase quantity"
                       >
                         +
                       </button>
                     </div>
 
-                    <div style={{ width: '65px', textAlign: 'right', fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
+                    <div className="cart-item-total-col" style={{ width: '65px', textAlign: 'right', fontWeight: 800, fontSize: '0.86rem', color: 'var(--text-primary, #0f172a)' }}>
                       {formatCurrency(item.price * itemQty)}
                     </div>
 
@@ -904,19 +912,20 @@ export default function TableSessionView({
           <div className="cart-financial-summary" style={{ borderTop: '2px solid #f1f5f9', paddingTop: '6px', marginTop: 'auto', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.80rem', color: '#64748b', marginBottom: '2px' }}>
               <span>Subtotal:</span>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(subtotal)}</span>
+              <span className="cart-subtotal-val" style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(subtotal)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.80rem', color: '#64748b', marginBottom: '3px' }}>
               <span>{department === 'bar' ? 'VAT (5%):' : 'GST (5%):'}</span>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>{formatCurrency(gst)}</span>
+              <span className="cart-tax-val" style={{ fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>{formatCurrency(gst)}</span>
             </div>
             <div
+              className="cart-grand-total-row"
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '1.05rem',
                 fontWeight: 900,
-                color: '#0f172a',
+                color: 'var(--text-primary, #0f172a)',
                 paddingTop: '3px',
                 borderTop: '1px dashed #e2e8f0',
                 marginBottom: '6px'

@@ -207,10 +207,11 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
               return (
                 <tr
                   key={b.id}
+                  className={`settled-bill-row ${isEdited ? 'settled-bill-row-edited' : ''}`}
                   onClick={() => setEditingBill(b)}
                   style={{
                     cursor: 'pointer',
-                    background: isEdited ? '#fffdf0' : '#ffffff',
+                    background: isEdited ? 'var(--bg-settled-edited, #fffdf0)' : 'var(--bg-surface, #ffffff)',
                     borderLeft: isEdited ? '4.5px solid #f59e0b' : '4px solid transparent',
                     transition: 'background 0.15s ease'
                   }}
@@ -226,7 +227,7 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                   </td>
                   <td style={{ fontWeight: 800 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ color: isEdited ? '#b45309' : '#0f172a' }}>
+                      <span className="settled-order-num" style={{ color: isEdited ? '#b45309' : 'var(--text-primary, #0f172a)' }}>
                         #{b.order_number || b.id}
                       </span>
                       {isEdited && (

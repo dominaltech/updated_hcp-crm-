@@ -2011,17 +2011,18 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       : fallbackGstPct;
     const gstFactor = 1 + (roomGstPct / 100);
 
-    const isOta = room.booking_source === 'OTA';
+    const isOta = String(room.booking_source || '').toUpperCase() === 'OTA';
     const isOtaPayAtHotel = isOta && (
-      room.is_prepaid === 0 ||
-      room.is_prepaid === '0' ||
-      room.is_prepaid === false ||
-      String(room.rate_type || '').includes('hotel')
+      room.rate_type === 'pay_at_hotel' ||
+      String(room.rate_type || '').toLowerCase().includes('hotel')
     );
     const isOtaPrepaid = isOta && !isOtaPayAtHotel && (
       parseInt(room.is_prepaid) === 1 ||
       room.is_prepaid === true ||
-      room.is_prepaid === '1'
+      room.is_prepaid === '1' ||
+      room.rate_type === 'prepaid' ||
+      Boolean(room.ota_platform) ||
+      Number(room.total_paid || 0) === 0
     );
     const otaBillAmount = parseFloat(room.ota_bill_amount) || 0;
     const hotelExtrasCharge = groupExtraBedCharge + groupExtraRoomsCharge + groupExtraBreakfastCharge + (isOta ? groupEarlyCheckinCharge : 0);

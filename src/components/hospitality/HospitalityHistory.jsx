@@ -768,15 +768,15 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   />
                 </th>
               )}
-              <th style={{ width: '90px' }}>Booking #</th>
-              <th style={{ width: '120px' }}>Room(s)</th>
-              <th>Guest Details</th>
-              <th style={{ width: '160px' }}>Check-In</th>
-              <th style={{ width: '160px' }}>Check-Out</th>
-              <th style={{ width: '130px' }}>Stay Duration</th>
-              <th style={{ width: '150px' }}>Amount Paid</th>
-              <th style={{ width: '170px' }}>Cashier Staff</th>
-              <th style={{ width: '160px', textAlign: 'center' }}>Actions</th>
+              <th className="history-col-booking" style={{ width: '90px' }}>Booking #</th>
+              <th className="history-col-rooms" style={{ width: '120px' }}>Room(s)</th>
+              <th className="history-col-guest">Guest Details</th>
+              <th className="history-col-checkin" style={{ width: '160px' }}>Check-In</th>
+              <th className="history-col-checkout" style={{ width: '160px' }}>Check-Out</th>
+              <th className="history-col-duration" style={{ width: '130px' }}>Stay Duration</th>
+              <th className="history-col-amount" style={{ width: '150px' }}>Amount Paid</th>
+              <th className="history-col-staff" style={{ width: '170px' }}>Cashier Staff</th>
+              <th className="history-col-actions" style={{ width: '160px', textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -931,10 +931,10 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       />
                     </td>
                   )}
-                  <td style={{ fontWeight: 800, color: '#64748b', fontSize: '0.82rem' }}>
+                  <td className="history-col-booking" style={{ fontWeight: 800, color: '#64748b', fontSize: '0.82rem' }}>
                     #{r.id}
                   </td>
-                  <td>
+                  <td className="history-col-rooms">
                     <span
                       style={{
                         fontWeight: 800,
@@ -948,29 +948,30 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       🔑 #{r.room_number || (r.all_group_rooms ? r.all_group_rooms.map(x => typeof x === 'object' && x !== null ? (x.room_number || x.number) : x).filter(Boolean).join(', #') : '')}
                     </span>
                   </td>
-                  <td>
+                  <td className="history-col-guest">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      {guestAvatar}
+                      <div className="history-guest-avatar">{guestAvatar}</div>
                       <div>
-                        <div style={{ fontWeight: 750, color: '#0f172a', fontSize: '0.9rem' }}>
+                        <div className="history-guest-name" style={{ fontWeight: 750, color: 'var(--text-primary, #0f172a)', fontSize: '0.9rem' }}>
                           {r.guest_name || 'N/A'}
                         </div>
-                        <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                        <div className="history-guest-subtext" style={{ fontSize: '0.76rem', color: '#64748b' }}>
                           📱 {r.mobile || '-'} • {r.doc_type || 'ID'}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                  <td className="history-col-checkin">
+                    <div className="history-checkin-date" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
                       {formatShortDT(r.checkin_time)}
                     </div>
-                    <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    <div className="history-booking-channel" style={{ fontSize: '0.74rem', color: '#64748b' }}>
                       {r.booking_source || 'Walk-in'}
                     </div>
                   </td>
-                  <td>
+                  <td className="history-col-checkout">
                     <div
+                      className="history-checkout-date"
                       style={{
                         fontSize: '0.84rem',
                         fontWeight: 700,
@@ -1009,7 +1010,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       )}
                     </div>
                   </td>
-                  <td>
+                  <td className="history-col-duration">
                     <div>
                       <span style={{ fontWeight: 750, color: '#334155', fontSize: '0.82rem' }}>
                         {r.stay_duration_str || '1 Day'}
@@ -1021,93 +1022,110 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       )}
                     </div>
                   </td>
-                  <td>
-                    <div
-                      style={{
-                        fontSize: '0.95rem',
-                        fontWeight: 850,
-                        color: isBtcPending ? '#dc2626' : (isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#15803d'))
-                      }}
-                    >
-                      {formatCurrency(isPrepaid && hotelPaid === 0 ? 0 : (r.total_paid || r.total_room_charge || 0))}
-                    </div>
-                    {isPrepaid && (
-                      <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700, marginTop: '2px' }}>
-                        Prepaid via {r.ota_platform || 'OTA'}{r.ota_bill_amount > 0 ? ` (₹${Number(r.ota_bill_amount).toLocaleString('en-IN')})` : ''}
-                      </div>
-                    )}
-                    {r.refund_amount > 0 && (
-                      <div style={{ marginTop: '2px' }}>
-                        <span
+                  <td className="history-col-amount">
+                    {isBtcPending ? (
+                      <div>
+                        <div
+                          className="history-btc-pending-amount"
                           style={{
-                            fontSize: '0.70rem',
-                            fontWeight: 800,
-                            padding: '2px 6px',
-                            borderRadius: '6px',
-                            background: '#fee2e2',
-                            color: '#b91c1c',
-                            border: '1px solid #fca5a5',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px'
+                            fontSize: '0.96rem',
+                            fontWeight: 900,
+                            color: '#dc2626'
                           }}
-                          title={`Debit Voucher: ${r.refund_voucher_no || 'DEB'} • ${r.refund_reason || 'Early checkout refund'}`}
                         >
-                          ↩️ Refund: -{formatCurrency(r.refund_amount)} ({String(r.refund_mode || 'CASH').toUpperCase()})
-                        </span>
+                          {formatCurrency(Math.max(0, (Number(r.total_room_charge || r.total_cost || 0) + Number(r.extra_bed_charge || 0)) - Number(r.total_paid || 0)) || Number(r.total_room_charge || 0))} Due
+                        </div>
+                        <div style={{ marginTop: '3px' }}>
+                          <span
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSettleBtc(r);
+                            }}
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 850,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: '#fef2f2',
+                              color: '#dc2626',
+                              border: '1.5px solid #f87171',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Click to Settle Pending BTC Payment from Company"
+                          >
+                            🏢 Pending BTC ✏️
+                          </span>
+                        </div>
                       </div>
-                    )}
-                    <div style={{ marginTop: '3px' }}>
-                      {isBtcPending ? (
-                        <span
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenSettleBtc(r);
-                          }}
+                    ) : (
+                      <div>
+                        <div
+                          className="history-paid-amount"
                           style={{
-                            fontSize: '0.72rem',
+                            fontSize: '0.95rem',
                             fontWeight: 850,
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            background: '#fef2f2',
-                            color: '#dc2626',
-                            border: '1.5px solid #f87171',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
+                            color: isPrepaid && hotelPaid === 0 ? '#6b21a8' : (isPending ? '#b45309' : '#15803d')
                           }}
-                          title="Click to Settle Pending BTC Payment from Company"
                         >
-                          🏢 Pending BTC ✏️
-                        </span>
-                      ) : (
-                        <span
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onChangePaymentStatus) onChangePaymentStatus(r);
-                          }}
-                          style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            padding: '2px 7px',
-                            borderRadius: '6px',
-                            background: isPending ? '#fffbeb' : (isPrepaid && hotelPaid === 0 ? '#f3e8ff' : '#dcfce7'),
-                            color: isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#166534'),
-                            border: `1px solid ${isPending ? '#fde68a' : (isPrepaid && hotelPaid === 0 ? '#d8b4fe' : '#bbf7d0')}`,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                          title={isPrepaid && hotelPaid === 0 ? 'Prepaid Stay (100% Voucher Covered)' : 'Click to Change Payment Status'}
-                        >
-                          {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
-                        </span>
-                      )}
-                    </div>
+                          {formatCurrency(isPrepaid && hotelPaid === 0 ? 0 : (r.total_paid || r.total_room_charge || 0))}
+                        </div>
+                        {isPrepaid && (
+                          <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700, marginTop: '2px' }}>
+                            Prepaid via {r.ota_platform || 'OTA'}{r.ota_bill_amount > 0 ? ` (₹${Number(r.ota_bill_amount).toLocaleString('en-IN')})` : ''}
+                          </div>
+                        )}
+                        {r.refund_amount > 0 && (
+                          <div style={{ marginTop: '2px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.70rem',
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: '6px',
+                                background: '#fee2e2',
+                                color: '#b91c1c',
+                                border: '1px solid #fca5a5',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={`Debit Voucher: ${r.refund_voucher_no || 'DEB'} • ${r.refund_reason || 'Early checkout refund'}`}
+                            >
+                              ↩️ Refund: -{formatCurrency(r.refund_amount)} ({String(r.refund_mode || 'CASH').toUpperCase()})
+                            </span>
+                          </div>
+                        )}
+                        <div style={{ marginTop: '3px' }}>
+                          <span
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onChangePaymentStatus) onChangePaymentStatus(r);
+                            }}
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              padding: '2px 7px',
+                              borderRadius: '6px',
+                              background: isPending ? '#fffbeb' : (isPrepaid && hotelPaid === 0 ? '#f3e8ff' : '#dcfce7'),
+                              color: isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#166534'),
+                              border: `1px solid ${isPending ? '#fde68a' : (isPrepaid && hotelPaid === 0 ? '#d8b4fe' : '#bbf7d0')}`,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title={isPrepaid && hotelPaid === 0 ? 'Prepaid Stay (100% Voucher Covered)' : 'Click to Change Payment Status'}
+                          >
+                            {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     {isChequeEligible && (
                       <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                         {hasChequePhoto ? (
@@ -1175,7 +1193,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </div>
                     )}
                   </td>
-                  <td>
+                  <td className="history-col-staff">
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem' }}>
                       <span style={{ color: '#1e3a8a' }}>
                         📥 In: <strong>{r.checked_in_by || 'Front Desk'}</strong>
@@ -1187,7 +1205,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       )}
                     </div>
                   </td>
-                  <td style={{ textAlign: 'center' }} onPointerDown={(e) => e.stopPropagation()}>
+                  <td className="history-col-actions" style={{ textAlign: 'center' }} onPointerDown={(e) => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
                       {isBtcPending && !hasCheque && (
                         <button
