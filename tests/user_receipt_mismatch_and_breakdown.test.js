@@ -49,7 +49,8 @@ describe('Receipt Amount Match, Base/Card Charge/Entire Breakdown & Overlap Fixe
 
     // Line 3 dynamicModeValue must be single line without wrapping or overlap
     expect(html).toContain('by Card POS');
-    expect(html).toContain('₹ 666.00 (+₹16 Fee)');
+    expect(html).toContain('₹ 666.00');
+    expect(html).not.toContain('(+₹16 Fee)');
 
     // Table must show Base Amount, Card Charge, then Entire Amount
     expect(html).toContain('(Base Amount)');

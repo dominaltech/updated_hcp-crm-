@@ -929,12 +929,10 @@ export function buildMoneyReceiptHTML(receipt) {
 
   if (rawMode.includes('upi') || rawMode.includes('online')) {
     dynamicModeLabel = 'by Online UPI';
-    const feeInfo = upiTax > 0 ? ` (+₹${upiTax} Fee)` : '';
-    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
+    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else if (rawMode.includes('card') || rawMode.includes('pos')) {
     dynamicModeLabel = 'by Card POS';
-    const feeInfo = cardSurcharge > 0 ? ` (+₹${cardSurcharge} Fee)` : '';
-    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}${feeInfo}`;
+    dynamicModeValue = `₹ ${finalDisplayAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
     dynamicModeLabel = 'by Cheque';
     dynamicModeValue = `₹ ${baseAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
