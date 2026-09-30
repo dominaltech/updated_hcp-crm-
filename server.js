@@ -2711,16 +2711,16 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       finalReceiptNo = `${baseVoucher}-1`;
     }
 
-    const isCheque = settleMode === 'cheque';
-    const sChequeNo = isCheque ? (cheque_no || null) : null;
-    const sChequeBank = isCheque ? (bank_name || null) : null;
-    const sChequeDate = isCheque ? (cheque_date || checkoutTime.split('T')[0]) : null;
-    const sChequePhoto = isCheque ? (cheque_photo || null) : null;
-
     const settleSplitCash = parseFloat(b.split_cash ?? b.splitCash ?? 0) || 0;
     const settleSplitCard = parseFloat(b.split_card ?? b.splitCard ?? 0) || 0;
     const settleSplitOnline = parseFloat(b.split_online ?? b.splitOnline ?? 0) || 0;
     const settleSplitCheque = parseFloat(b.split_cheque ?? b.splitCheque ?? 0) || 0;
+
+    const isCheque = settleMode === 'cheque' || settleSplitCheque > 0;
+    const sChequeNo = isCheque ? (cheque_no || null) : null;
+    const sChequeBank = isCheque ? (bank_name || null) : null;
+    const sChequeDate = isCheque ? (cheque_date || checkoutTime.split('T')[0]) : null;
+    const sChequePhoto = isCheque ? (cheque_photo || null) : null;
 
     const surchargeCfg = getSurchargeSettings();
     let finalCardSurcharge = req.body.card_surcharge !== undefined ? parseFloat(req.body.card_surcharge) : (req.body.cardSurcharge !== undefined ? parseFloat(req.body.cardSurcharge) : 0);
@@ -2747,14 +2747,16 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       const bRoomCharge = finalRoomCharge !== null ? (finalRoomCharge * fraction) : null;
       const bSettle = idx === 0 ? netSettle : 0;
       const bRefund = idx === 0 ? netRefund : 0;
-      const isSettlingNow = netSettle > 0 && settleMode !== 'btc';
+      const isSettlingNow = netSettle > 0 && settleMode !== 'btc' && !isCheque;
       const isOtaPrepaidBooking = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
       const isPrepaidSettled = isOtaPrepaidBooking && (netSettle >= maxBalanceDue || maxBalanceDue <= 0.5);
       const updatedPaymentStatus = isSettlingNow || isPrepaidSettled
         ? 'settled'
-        : (isCompanyPaysLater 
-            ? 'pending_from_company' 
-            : ((primaryBooking.total_paid || 0) >= (bRoomCharge || primaryBooking.total_room_charge || 0) ? 'settled' : 'pending'));
+        : (isCheque
+            ? 'pending'
+            : (isCompanyPaysLater 
+                ? 'pending_from_company' 
+                : ((primaryBooking.total_paid || 0) >= (bRoomCharge || primaryBooking.total_room_charge || 0) ? 'settled' : 'pending')));
 
       db.prepare(`
         UPDATE bookings 
@@ -7505,6 +7507,17 @@ app.get('/api/hospitality/history', (req, res) => {
         b.split_cash,
         b.split_card,
         b.split_online,
+        b.split_cheque,
+        b.settlement_cheque_no,
+        b.settlement_cheque_bank,
+        b.settlement_cheque_date,
+        b.settlement_cheque_photo,
+        b.advance_cheque_no,
+        b.advance_cheque_bank,
+        b.advance_cheque_status,
+        b.cheque_photo,
+        COALESCE((SELECT p.cheque_status FROM payments p WHERE p.booking_id = b.id AND (p.payment_mode = 'cheque' OR p.split_cheque > 0) ORDER BY p.id DESC LIMIT 1), b.advance_cheque_status, 'pending') as cheque_status,
+        COALESCE(b.settlement_cheque_photo, b.cheque_photo, (SELECT p.cheque_photo FROM payments p WHERE p.booking_id = b.id AND p.cheque_photo IS NOT NULL ORDER BY p.id DESC LIMIT 1)) as effective_cheque_photo,
         b.payment_status,
         b.status as booking_status,
         b.is_prepaid,
@@ -7631,6 +7644,16 @@ app.get('/api/hospitality/history', (req, res) => {
           split_cash: row.split_cash,
           split_card: row.split_card,
           split_online: row.split_online,
+          split_cheque: row.split_cheque || 0,
+          settlement_cheque_no: row.settlement_cheque_no || row.advance_cheque_no || null,
+          settlement_cheque_bank: row.settlement_cheque_bank || row.advance_cheque_bank || null,
+          settlement_cheque_date: row.settlement_cheque_date || null,
+          settlement_cheque_photo: row.effective_cheque_photo || row.settlement_cheque_photo || row.cheque_photo || null,
+          advance_cheque_no: row.advance_cheque_no || null,
+          advance_cheque_bank: row.advance_cheque_bank || null,
+          advance_cheque_status: row.advance_cheque_status || null,
+          cheque_photo: row.effective_cheque_photo || row.cheque_photo || row.settlement_cheque_photo || null,
+          cheque_status: row.cheque_status || 'pending',
           payment_status: row.payment_status,
           booking_source: row.booking_source,
           ota_platform: row.ota_platform,
@@ -7681,6 +7704,20 @@ app.get('/api/hospitality/history', (req, res) => {
         entry.split_cash += (row.split_cash || 0);
         entry.split_card += (row.split_card || 0);
         entry.split_online += (row.split_online || 0);
+        entry.split_cheque = (entry.split_cheque || 0) + (row.split_cheque || 0);
+        if (!entry.cheque_photo && (row.effective_cheque_photo || row.cheque_photo)) {
+          entry.cheque_photo = row.effective_cheque_photo || row.cheque_photo;
+          entry.settlement_cheque_photo = row.effective_cheque_photo || row.cheque_photo;
+        }
+        if (!entry.settlement_cheque_no && (row.settlement_cheque_no || row.advance_cheque_no)) {
+          entry.settlement_cheque_no = row.settlement_cheque_no || row.advance_cheque_no;
+        }
+        if (!entry.settlement_cheque_bank && (row.settlement_cheque_bank || row.advance_cheque_bank)) {
+          entry.settlement_cheque_bank = row.settlement_cheque_bank || row.advance_cheque_bank;
+        }
+        if (row.cheque_status && entry.cheque_status === 'pending') {
+          entry.cheque_status = row.cheque_status;
+        }
         entry.adults_male += (row.adults_male || 0);
         entry.adults_female += (row.adults_female || 0);
         entry.children += (row.children || 0);
@@ -8137,6 +8174,176 @@ app.post(['/api/bookings/:id/payment-status', '/api/hospitality/history/:id/paym
     });
   } catch (err) {
     console.error('Update payment status error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to Pass / Realize Cheque and immediately credit amount into hotel accounts ledger
+app.post(['/api/bookings/:id/pass-cheque', '/api/hospitality/history/:id/pass-cheque'], requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cashier_name, notes, cheque_no, bank_name } = req.body;
+    const cleanCashier = (cashier_name || req.user?.full_name || req.user?.username || 'Accounts Staff').trim();
+    const now = new Date().toISOString();
+
+    const booking = db.prepare(`SELECT * FROM bookings WHERE id = ?`).get(id);
+    if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    // Find all linked group bookings sharing the guest and checkin time
+    const inTimeKey = booking.checkin_time ? new Date(booking.checkin_time).toISOString().substring(0, 16) : '';
+    const groupBookings = db.prepare(`
+      SELECT id, room_id, total_room_charge, total_paid FROM bookings
+      WHERE guest_id = ? AND strftime('%Y-%m-%dT%H:%M', checkin_time) = ?
+    `).all(booking.guest_id, inTimeKey);
+    const bookingIds = groupBookings.length > 0 ? groupBookings.map(gb => gb.id) : [booking.id];
+
+    // Find any existing cheque payment for this booking
+    const existingChequePayment = db.prepare(`
+      SELECT * FROM payments 
+      WHERE booking_id = ? AND (payment_mode = 'cheque' OR split_cheque > 0 OR cheque_no IS NOT NULL)
+      ORDER BY id DESC LIMIT 1
+    `).get(id);
+
+    const totalGroupCharge = groupBookings.reduce((sum, gb) => sum + (gb.total_room_charge || 0), 0) || booking.total_room_charge || 0;
+    const totalGroupPaid = groupBookings.reduce((sum, gb) => sum + (gb.total_paid || 0), 0);
+    const dueAmount = Math.max(0, totalGroupCharge - totalGroupPaid) || totalGroupCharge;
+
+    const chequeAmt = existingChequePayment 
+      ? (parseFloat(existingChequePayment.split_cheque || 0) > 0 ? parseFloat(existingChequePayment.split_cheque) : parseFloat(existingChequePayment.amount || 0))
+      : (parseFloat(booking.split_cheque || 0) > 0 ? parseFloat(booking.split_cheque) : dueAmount);
+
+    let receiptNo = existingChequePayment?.receipt_no;
+
+    if (existingChequePayment) {
+      // Mark existing payment as realized / passed
+      db.prepare(`
+        UPDATE payments 
+        SET 
+          cheque_status = 'realized',
+          realized_at = ?,
+          cashier_name = COALESCE(?, cashier_name),
+          cheque_no = COALESCE(?, cheque_no),
+          bank_name = COALESCE(?, bank_name),
+          notes = CASE WHEN ? != '' THEN notes || ' | ' || ? ELSE notes END
+        WHERE id = ?
+      `).run(
+        now,
+        cleanCashier,
+        cheque_no || null,
+        bank_name || null,
+        notes || '',
+        notes || '',
+        existingChequePayment.id
+      );
+    } else {
+      // Create new realized payment in ledger so accounts reflect it immediately
+      receiptNo = getReceiptNumberWithMode('cheque');
+      db.prepare(`
+        INSERT INTO payments (
+          receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+          amount, cheque_no, bank_name, cheque_status, realized_at, cashier_name, notes,
+          cheque_photo, split_cheque
+        ) VALUES (?, ?, ?, 'hospitality', 'company_settlement', 'cheque', ?, ?, ?, 'realized', ?, ?, ?, ?, ?)
+      `).run(
+        receiptNo,
+        booking.id,
+        booking.room_id,
+        chequeAmt,
+        cheque_no || booking.settlement_cheque_no || booking.advance_cheque_no || null,
+        bank_name || booking.settlement_cheque_bank || booking.advance_cheque_bank || null,
+        now,
+        cleanCashier,
+        notes || `Cheque passed and realized for ${booking.btc_company_name ? 'Company: ' + booking.btc_company_name : 'Room ' + booking.room_id} (${booking.guest_name || 'Guest'})`,
+        booking.settlement_cheque_photo || booking.cheque_photo || null,
+        chequeAmt
+      );
+    }
+
+    // Update all linked bookings: mark payment_status = 'settled', advance_cheque_status = 'realized', final_settlement_mode = 'cheque'
+    for (const bId of bookingIds) {
+      db.prepare(`
+        UPDATE bookings 
+        SET 
+          payment_status = 'settled',
+          advance_cheque_status = 'realized',
+          final_settlement_mode = 'cheque',
+          settlement_cheque_no = COALESCE(?, settlement_cheque_no),
+          settlement_cheque_bank = COALESCE(?, settlement_cheque_bank),
+          total_paid = CASE WHEN total_paid < total_room_charge THEN total_room_charge ELSE total_paid END,
+          final_receipt_no = COALESCE(final_receipt_no, ?)
+        WHERE id = ?
+      `).run(
+        cheque_no || null,
+        bank_name || null,
+        receiptNo || null,
+        bId
+      );
+    }
+
+    res.json({
+      success: true,
+      message: `Cheque passed successfully! ₹${chequeAmt.toLocaleString('en-IN')} added to hotel accounts.`,
+      booking_id: booking.id,
+      amount: chequeAmt,
+      cheque_status: 'realized',
+      payment_status: 'settled',
+      receipt_no: receiptNo
+    });
+  } catch (err) {
+    console.error('Pass cheque error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to Upload / Scan Cheque Photo
+app.post(['/api/bookings/:id/cheque-photo', '/api/hospitality/history/:id/cheque-photo'], requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cheque_photo, cheque_no, bank_name } = req.body;
+    if (!cheque_photo) {
+      return res.status(400).json({ success: false, error: 'Cheque photo is required' });
+    }
+
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+    if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    db.prepare(`
+      UPDATE bookings 
+      SET 
+        cheque_photo = ?,
+        settlement_cheque_photo = ?,
+        settlement_cheque_no = COALESCE(?, settlement_cheque_no),
+        settlement_cheque_bank = COALESCE(?, settlement_cheque_bank),
+        advance_cheque_no = COALESCE(?, advance_cheque_no),
+        advance_cheque_bank = COALESCE(?, advance_cheque_bank)
+      WHERE id = ?
+    `).run(
+      cheque_photo,
+      cheque_photo,
+      cheque_no || null,
+      bank_name || null,
+      cheque_no || null,
+      bank_name || null,
+      id
+    );
+
+    // Also update any payments for this booking
+    db.prepare(`
+      UPDATE payments 
+      SET 
+        cheque_photo = ?,
+        cheque_no = COALESCE(?, cheque_no),
+        bank_name = COALESCE(?, bank_name)
+      WHERE booking_id = ? AND (payment_mode = 'cheque' OR split_cheque > 0 OR cheque_no IS NOT NULL)
+    `).run(cheque_photo, cheque_no || null, bank_name || null, id);
+
+    res.json({
+      success: true,
+      message: 'Cheque scanned and attached successfully',
+      cheque_photo
+    });
+  } catch (err) {
+    console.error('Update cheque photo error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

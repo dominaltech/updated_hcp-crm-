@@ -5,6 +5,7 @@ import { formatCurrency, formatDateTime, formatTaxInvoiceNumber } from '../../ut
 import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary } from '../../services/printService';
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
+import DocumentScannerModal from '../common/DocumentScannerModal';
 
 // Module-level in-memory cache for instant 0ms navigation
 let globalHistoryCache = null;
@@ -44,10 +45,20 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [settleBtcUtr, setSettleBtcUtr] = useState('');
   const [settleBtcChequeNo, setSettleBtcChequeNo] = useState('');
   const [settleBtcChequeBank, setSettleBtcChequeBank] = useState('');
+  const [settleBtcChequePhoto, setSettleBtcChequePhoto] = useState(null);
   const [settleBtcChequeStatus, setSettleBtcChequeStatus] = useState('realized');
   const [settleBtcCashier, setSettleBtcCashier] = useState('');
   const [settleBtcNotes, setSettleBtcNotes] = useState('');
   const [settleBtcSubmitting, setSettleBtcSubmitting] = useState(false);
+
+  // Cheque Scan & Pass Modal State
+  const [chequeScanTarget, setChequeScanTarget] = useState(null);
+  const [chequeScanPhoto, setChequeScanPhoto] = useState(null);
+  const [chequeScanNo, setChequeScanNo] = useState('');
+  const [chequeScanBank, setChequeScanBank] = useState('');
+  const [isChequeCamOpen, setIsChequeCamOpen] = useState(false);
+  const [chequeCamTargetMode, setChequeCamTargetMode] = useState('scan_modal'); // 'scan_modal' | 'settle_btc'
+  const [chequeScanSubmitting, setChequeScanSubmitting] = useState(false);
 
   // Image Lightbox State for Click-to-Zoom
   const [lightboxImg, setLightboxImg] = useState(null);
@@ -127,8 +138,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     const totalDue = Math.max(0, (booking.total_room_charge || 0) - (booking.total_paid || 0)) || booking.total_room_charge || 0;
     setSettleBtcAmount(totalDue > 0 ? String(totalDue) : String(booking.total_room_charge || ''));
     setSettleBtcUtr('');
-    setSettleBtcChequeNo('');
-    setSettleBtcChequeBank('');
+    setSettleBtcChequeNo(booking.settlement_cheque_no || booking.advance_cheque_no || '');
+    setSettleBtcChequeBank(booking.settlement_cheque_bank || booking.advance_cheque_bank || '');
+    setSettleBtcChequePhoto(booking.settlement_cheque_photo || booking.cheque_photo || null);
     setSettleBtcChequeStatus('realized');
     setSettleBtcCashier(currentUser?.full_name || currentUser?.username || 'Accounts');
     setSettleBtcNotes(`Corporate BTC settlement for ${booking.guest_name || 'Guest'}${booking.btc_company_name ? ` (${booking.btc_company_name})` : ''}`);
@@ -161,6 +173,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         reference_no: settleBtcUtr.trim() || null,
         cheque_no: settleBtcChequeNo.trim() || null,
         bank_name: settleBtcChequeBank.trim() || null,
+        cheque_photo: settleBtcChequePhoto || null,
         cheque_status: settleBtcChequeStatus || 'realized',
         notes: settleBtcNotes.trim() || `BTC Company Settlement via ${settleBtcMode.toUpperCase()}`
       };
@@ -212,6 +225,123 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
       setSettleBtcSubmitting(false);
     }
   };
+
+  const handleOpenScanCheque = (booking) => {
+    if (!booking) return;
+    setChequeScanTarget(booking);
+    setChequeScanPhoto(booking.cheque_photo || booking.settlement_cheque_photo || null);
+    setChequeScanNo(booking.settlement_cheque_no || booking.advance_cheque_no || '');
+    setChequeScanBank(booking.settlement_cheque_bank || booking.advance_cheque_bank || '');
+    setChequeCamTargetMode('scan_modal');
+  };
+
+  const handleSaveChequeScan = async (andPass = false) => {
+    if (!chequeScanTarget) return;
+    if (!chequeScanPhoto && !andPass) {
+      showToast('Please capture or upload a cheque photo first.', 'red');
+      return;
+    }
+    setChequeScanSubmitting(true);
+    try {
+      if (chequeScanPhoto) {
+        const photoRes = await api.uploadChequePhoto(chequeScanTarget.id, {
+          cheque_photo: chequeScanPhoto,
+          cheque_no: chequeScanNo.trim() || undefined,
+          bank_name: chequeScanBank.trim() || undefined
+        });
+        if (!photoRes || !photoRes.success) {
+          throw new Error(photoRes?.error || 'Failed to save cheque photo');
+        }
+      }
+
+      if (andPass) {
+        const passRes = await api.passCheque(chequeScanTarget.id, {
+          cashier_name: (currentUser?.full_name || currentUser?.username || 'Accounts Staff').trim(),
+          cheque_no: chequeScanNo.trim() || undefined,
+          bank_name: chequeScanBank.trim() || undefined
+        });
+        if (passRes && passRes.success) {
+          showToast(`✓ Cheque passed! Amount credited to hotel account.`, 'green', 5000);
+        } else {
+          throw new Error(passRes?.error || 'Failed to pass cheque');
+        }
+      } else {
+        showToast('✓ Scanned cheque saved and attached to booking!', 'green', 4000);
+      }
+
+      setChequeScanTarget(null);
+      loadHistory(true);
+      if (detailBooking && detailBooking.id === chequeScanTarget.id) {
+        handleOpenDetail(chequeScanTarget.id);
+      }
+    } catch (err) {
+      showToast('Error: ' + err.message, 'red');
+    } finally {
+      setChequeScanSubmitting(false);
+    }
+  };
+
+  const handlePassCheque = async (booking) => {
+    if (!booking) return;
+    const chequeAmt = parseFloat(booking.split_cheque || 0) > 0 
+      ? parseFloat(booking.split_cheque) 
+      : (parseFloat(booking.total_room_charge || 0) || parseFloat(booking.total_paid || 0));
+    const chequeNo = booking.settlement_cheque_no || booking.advance_cheque_no || 'Cheque';
+
+    const confirmed = await showConfirm({
+      title: 'Pass Cheque into Hotel Account?',
+      message: `Pass ${chequeNo} for Booking #${booking.id} (${booking.guest_name || 'Guest'})?\n\nAmount: ${formatCurrency(chequeAmt)}\n\nThis will mark the cheque as REALIZED and credit ${formatCurrency(chequeAmt)} into the hotel accounts ledger immediately.`,
+      icon: '🏛️',
+      confirmText: '✅ Yes, Pass Cheque',
+      isDestructive: false
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await api.passCheque(booking.id, {
+        cashier_name: (currentUser?.full_name || currentUser?.username || 'Accounts Staff').trim(),
+        cheque_no: booking.settlement_cheque_no || booking.advance_cheque_no || undefined,
+        bank_name: booking.settlement_cheque_bank || booking.advance_cheque_bank || undefined
+      });
+      if (res && res.success) {
+        showToast(`✓ Cheque passed! ${formatCurrency(chequeAmt)} credited to hotel account.`, 'green', 5000);
+        loadHistory(true);
+        if (detailBooking && detailBooking.id === booking.id) {
+          handleOpenDetail(booking.id);
+        }
+      } else {
+        showToast(res?.error || 'Failed to pass cheque', 'red');
+      }
+    } catch (err) {
+      showToast('Error passing cheque: ' + err.message, 'red');
+    }
+  };
+
+  // Clipboard paste listener: paste scanned cheque photo directly with Ctrl+V
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (!chequeScanTarget) return;
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          const blob = item.getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              setChequeScanPhoto(evt.target.result);
+              showToast('✓ Cheque photo pasted from clipboard', 'green');
+            };
+            reader.readAsDataURL(blob);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [chequeScanTarget, showToast]);
 
   const formatShortDT = (dt) => {
     if (!dt) return '-';
@@ -653,11 +783,37 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
             {filteredRecords.map((r) => {
               const isCheckedOut = r.status === 'checked_out';
               const isSelected = selectedIds.has(r.id);
+
+              const isBtcBooking =
+                r.booking_source === 'BTC' ||
+                r.btc_company_id !== null ||
+                Boolean(r.btc_company_name) ||
+                r.rate_type === 'btc' ||
+                r.final_payment_mode === 'btc' ||
+                r.payment_status === 'pending_from_company';
+
+              const hasCheque =
+                (r.final_settlement_mode && r.final_settlement_mode.toLowerCase() === 'cheque') ||
+                (r.final_payment_mode && r.final_payment_mode.toLowerCase() === 'cheque') ||
+                (r.advance_payment_mode && r.advance_payment_mode.toLowerCase() === 'cheque') ||
+                Number(r.split_cheque || 0) > 0 ||
+                Boolean(r.settlement_cheque_no) ||
+                Boolean(r.advance_cheque_no) ||
+                Boolean(r.cheque_photo) ||
+                Boolean(r.settlement_cheque_photo);
+
+              const isChequeEligible = hasCheque || isBtcBooking;
+              const hasChequePhoto = Boolean(r.cheque_photo || r.settlement_cheque_photo);
+              const isChequePassed = (r.cheque_status === 'realized' || r.cheque_status === 'passed') && r.payment_status === 'settled';
+
               const isBtcPending =
-                (r.booking_source === 'BTC' || r.btc_company_id !== null || r.final_payment_mode === 'btc' || r.payment_status === 'pending_from_company') &&
-                r.payment_status !== 'settled';
+                isBtcBooking &&
+                r.payment_status !== 'settled' &&
+                !isChequePassed;
+
               const isPending =
                 isBtcPending ||
+                (hasCheque && !isChequePassed) ||
                 r.payment_status === 'pending' ||
                 r.payment_status === 'pending_from_company';
 
@@ -716,7 +872,9 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               const hotelPaid = Number(r.total_paid || 0);
 
               let modeLabel = 'CASH';
-              if (isPrepaid) {
+              if (hasCheque) {
+                modeLabel = Number(r.split_cheque || 0) > 0 && r.final_settlement_mode === 'split' ? 'SPLIT + CHEQUE' : 'CHEQUE';
+              } else if (isPrepaid) {
                 if (hotelPaid === 0) {
                   modeLabel = 'PREPAID';
                 } else {
@@ -728,7 +886,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   r.final_settlement_mode ||
                   r.final_payment_mode ||
                   r.advance_payment_mode ||
-                  'Cash'
+                  (isBtcBooking ? 'BTC' : 'Cash')
                 ).toUpperCase();
               }
 
@@ -950,6 +1108,67 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         </span>
                       )}
                     </div>
+                    {isChequeEligible && (
+                      <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                        {hasChequePhoto ? (
+                          <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLightboxImg(r.cheque_photo || r.settlement_cheque_photo);
+                              setLightboxTitle(`Scanned Cheque - Booking #${r.id} (${r.guest_name})`);
+                            }}
+                            style={{
+                              fontSize: '0.70rem',
+                              fontWeight: 800,
+                              padding: '2px 7px',
+                              borderRadius: '6px',
+                              background: '#f0fdf4',
+                              color: '#15803d',
+                              border: '1px solid #86efac',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Click to view scanned physical cheque"
+                          >
+                            <span>🖼️</span> Cheque Scanned 👁️
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenScanCheque(r);
+                            }}
+                            style={{
+                              fontSize: '0.70rem',
+                              fontWeight: 800,
+                              padding: '2px 7px',
+                              borderRadius: '6px',
+                              background: '#fffbeb',
+                              color: '#b45309',
+                              border: '1px dashed #f59e0b',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Scan and attach physical cheque"
+                          >
+                            <span>📷</span> Scan Cheque
+                          </button>
+                        )}
+                        {(r.settlement_cheque_no || r.advance_cheque_no) && (
+                          <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>
+                            #{r.settlement_cheque_no || r.advance_cheque_no}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {r.btc_company_name && (
                       <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
                         🏢 {r.btc_company_name}
@@ -970,7 +1189,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   </td>
                   <td style={{ textAlign: 'center' }} onPointerDown={(e) => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
-                      {isBtcPending && (
+                      {isBtcPending && !hasCheque && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -993,6 +1212,81 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         >
                           💳 Settle BTC
                         </button>
+                      )}
+                      {isChequeEligible && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenScanCheque(r);
+                            }}
+                            style={{
+                              padding: '5px 8px',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              background: hasChequePhoto ? '#f0fdf4' : '#fffbeb',
+                              color: hasChequePhoto ? '#15803d' : '#b45309',
+                              border: `1.5px solid ${hasChequePhoto ? '#86efac' : '#fcd34d'}`,
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                            title={hasChequePhoto ? 'View or re-scan physical cheque' : 'Scan physical cheque via webcam or upload'}
+                          >
+                            <span>{hasChequePhoto ? '🔍' : '📷'}</span> {hasChequePhoto ? 'Cheque' : 'Scan Cheque'}
+                          </button>
+
+                          {!isChequePassed ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePassCheque(r);
+                              }}
+                              style={{
+                                padding: '5px 9px',
+                                fontSize: '0.74rem',
+                                fontWeight: 850,
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title="Pass this cheque and add amount to hotel account"
+                            >
+                              <span>✅</span> Pass Cheque
+                            </button>
+                          ) : (
+                            <span
+                              style={{
+                                padding: '4px 7px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                background: '#f0fdf4',
+                                color: '#166534',
+                                border: '1px solid #bbf7d0',
+                                borderRadius: '6px',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title="Cheque has been passed and amount added to hotel account"
+                            >
+                              <span>✓</span> Passed
+                            </span>
+                          )}
+                        </>
                       )}
                       {isBtcPending ? (
                         <button
@@ -1935,6 +2229,120 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </table>
                     </div>
                   </div>
+
+                  {/* Cheque Realization & Scan Status in Stay Details */}
+                  {(() => {
+                    const detailHasCheque = (
+                      (detailBooking.final_settlement_mode && detailBooking.final_settlement_mode.toLowerCase() === 'cheque') ||
+                      (detailBooking.final_payment_mode && detailBooking.final_payment_mode.toLowerCase() === 'cheque') ||
+                      (detailBooking.advance_payment_mode && detailBooking.advance_payment_mode.toLowerCase() === 'cheque') ||
+                      Number(detailBooking.split_cheque || 0) > 0 ||
+                      Boolean(detailBooking.settlement_cheque_no) ||
+                      Boolean(detailBooking.advance_cheque_no) ||
+                      Boolean(detailBooking.cheque_photo) ||
+                      Boolean(detailBooking.settlement_cheque_photo) ||
+                      (detailBooking.booking_source === 'BTC' || detailBooking.btc_company_id !== null || Boolean(detailBooking.btc_company_name))
+                    );
+
+                    if (!detailHasCheque) return null;
+
+                    const chqPhoto = detailBooking.cheque_photo || detailBooking.settlement_cheque_photo;
+                    const isChqPassed = (detailBooking.cheque_status === 'realized' || detailBooking.cheque_status === 'passed') && detailBooking.payment_status === 'settled';
+                    const chqNo = detailBooking.settlement_cheque_no || detailBooking.advance_cheque_no || detailBooking.cheque_no || 'N/A';
+                    const chqBank = detailBooking.settlement_cheque_bank || detailBooking.advance_cheque_bank || detailBooking.bank_name || '-';
+
+                    return (
+                      <div style={{ marginTop: '20px', padding: '16px 20px', background: '#f8fafc', borderRadius: '12px', border: '1.5px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.4rem' }}>🏛️</span>
+                            <div>
+                              <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>Cheque Settlement &amp; Verification</strong>
+                              <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                                Cheque #{chqNo} • Bank: {chqBank}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: isChqPassed ? '#dcfce7' : '#fffbeb',
+                                color: isChqPassed ? '#166534' : '#b45309',
+                                border: `1px solid ${isChqPassed ? '#86efac' : '#fde68a'}`
+                              }}
+                            >
+                              {isChqPassed ? '✓ Cheque Realized (Credited to Account)' : '⏳ Pending Bank Clearance'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenScanCheque(detailBooking)}
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: chqPhoto ? '#f0fdf4' : '#0071e3',
+                                color: chqPhoto ? '#15803d' : '#ffffff',
+                                border: chqPhoto ? '1.5px solid #86efac' : 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {chqPhoto ? '🔍 View / Re-scan Cheque' : '📷 Scan Cheque'}
+                            </button>
+                            {!isChqPassed && (
+                              <button
+                                type="button"
+                                onClick={() => handlePassCheque(detailBooking)}
+                                style={{
+                                  padding: '5px 14px',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 850,
+                                  background: '#16a34a',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
+                                }}
+                              >
+                                ✅ Pass Cheque (Credit Account)
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {chqPhoto && (
+                          <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <img
+                              src={chqPhoto}
+                              alt="Physical Cheque Scan"
+                              onClick={() => {
+                                setLightboxImg(chqPhoto);
+                                setLightboxTitle(`Cheque #${chqNo} - Booking #${detailBooking.id}`);
+                              }}
+                              style={{
+                                height: '70px',
+                                width: '130px',
+                                objectFit: 'cover',
+                                borderRadius: '8px',
+                                border: '1.5px solid #cbd5e1',
+                                cursor: 'zoom-in',
+                                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)'
+                              }}
+                              title="Click to Zoom Fullscreen"
+                            />
+                            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                              Physical cheque copy scanned and verified. Click image to enlarge.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -2250,6 +2658,110 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </button>
                     </div>
                   </div>
+
+                  {/* Cheque Photo Scan / Upload for BTC */}
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '6px' }}>
+                      Physical Cheque Photo / Scan
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChequeCamTargetMode('settle_btc');
+                          setIsChequeCamOpen(true);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: '#0071e3',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span>📷</span> Scan Camera
+                      </button>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: '#f1f5f9',
+                          color: '#334155',
+                          border: '1px solid #cbd5e1',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span>📁</span> Upload
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => {
+                                setSettleBtcChequePhoto(evt.target.result);
+                                showToast('✓ Cheque photo selected', 'green');
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      {settleBtcChequePhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setSettleBtcChequePhoto(null)}
+                          style={{
+                            padding: '4px 8px',
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            border: '1px solid #fca5a5',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🗑️ Remove Photo
+                        </button>
+                      )}
+                    </div>
+
+                    {settleBtcChequePhoto && (
+                      <div style={{ marginTop: '8px' }}>
+                        <img
+                          src={settleBtcChequePhoto}
+                          alt="Cheque Scan"
+                          onClick={() => {
+                            setLightboxImg(settleBtcChequePhoto);
+                            setLightboxTitle(`BTC Settlement Cheque #${settleBtcChequeNo || ''}`);
+                          }}
+                          style={{
+                            height: '60px',
+                            width: '120px',
+                            objectFit: 'cover',
+                            borderRadius: '6px',
+                            border: '1.5px solid #86efac',
+                            cursor: 'zoom-in'
+                          }}
+                          title="Click to Zoom"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2305,6 +2817,397 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
           </div>
         </div>
       )}
+
+      {/* Cheque Scanning & Realization Modal */}
+      {chequeScanTarget && (
+        <div
+          className="modal-overlay active"
+          style={{
+            zIndex: 10080,
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="modal-container"
+            style={{
+              width: '100%',
+              maxWidth: '620px',
+              maxHeight: '92vh',
+              borderRadius: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              background: 'var(--bg-app, #ffffff)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header */}
+            <div
+              className="modal-header"
+              style={{
+                padding: '16px 22px',
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.5rem' }}>📷</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 850, color: '#ffffff' }}>
+                    Scan &amp; Pass Cheque
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                    Booking #{chequeScanTarget.id} • Room #{chequeScanTarget.room_number || '-'} • {chequeScanTarget.guest_name || 'Guest'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChequeScanTarget(null)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  border: 'none',
+                  color: '#ffffff',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="modal-body" style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
+              {/* Booking & Financial Info Banner */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  background: '#f8fafc',
+                  border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Cheque Amount / Total Bill
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 850, color: '#15803d' }}>
+                    {formatCurrency(
+                      parseFloat(chequeScanTarget.split_cheque || 0) > 0
+                        ? parseFloat(chequeScanTarget.split_cheque)
+                        : (parseFloat(chequeScanTarget.total_room_charge || 0) || parseFloat(chequeScanTarget.total_paid || 0))
+                    )}
+                  </div>
+                  {chequeScanTarget.btc_company_name && (
+                    <div style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 700, marginTop: '2px' }}>
+                      🏢 Corporate: {chequeScanTarget.btc_company_name}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      background: (chequeScanTarget.cheque_status === 'realized' || chequeScanTarget.cheque_status === 'passed') ? '#dcfce7' : '#fffbeb',
+                      color: (chequeScanTarget.cheque_status === 'realized' || chequeScanTarget.cheque_status === 'passed') ? '#166534' : '#b45309',
+                      border: `1.5px solid ${(chequeScanTarget.cheque_status === 'realized' || chequeScanTarget.cheque_status === 'passed') ? '#86efac' : '#fde68a'}`
+                    }}
+                  >
+                    {(chequeScanTarget.cheque_status === 'realized' || chequeScanTarget.cheque_status === 'passed')
+                      ? '✓ Realized / Passed'
+                      : '⏳ Pending Clearance'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cheque Details Inputs */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ fontSize: '0.80rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                    Cheque Number *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. 000452"
+                    value={chequeScanNo}
+                    onChange={(e) => setChequeScanNo(e.target.value)}
+                    style={{ height: '38px', fontWeight: 750 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.80rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                    Bank &amp; Branch Name
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. SBI, Solapur Branch"
+                    value={chequeScanBank}
+                    onChange={(e) => setChequeScanBank(e.target.value)}
+                    style={{ height: '38px' }}
+                  />
+                </div>
+              </div>
+
+              {/* Scan / Upload Controls */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.80rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  Cheque Physical Copy / Scan
+                </label>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChequeCamTargetMode('scan_modal');
+                      setIsChequeCamOpen(true);
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#0071e3',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 800,
+                      fontSize: '0.84rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(0, 113, 227, 0.3)'
+                    }}
+                  >
+                    <span>📷</span> Open Camera Scanner
+                  </button>
+
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1.5px solid #cbd5e1',
+                      fontWeight: 800,
+                      fontSize: '0.84rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>📁</span> Upload Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            setChequeScanPhoto(evt.target.result);
+                            showToast('✓ Cheque photo selected', 'green');
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <span style={{ fontSize: '0.74rem', color: '#64748b', fontStyle: 'italic' }}>
+                    Tip: Press <strong>Ctrl+V</strong> to paste image directly
+                  </span>
+                </div>
+              </div>
+
+              {/* Photo Preview or Empty State */}
+              {chequeScanPhoto ? (
+                <div
+                  style={{
+                    position: 'relative',
+                    background: '#0f172a',
+                    borderRadius: '12px',
+                    padding: '8px',
+                    textAlign: 'center',
+                    border: '2px solid #22c55e',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+                  }}
+                >
+                  <img
+                    src={chequeScanPhoto}
+                    alt="Scanned Cheque"
+                    onClick={() => {
+                      setLightboxImg(chequeScanPhoto);
+                      setLightboxTitle(`Scanned Cheque #${chequeScanNo || 'Photo'} - Booking #${chequeScanTarget.id}`);
+                    }}
+                    style={{
+                      maxHeight: '260px',
+                      width: '100%',
+                      objectFit: 'contain',
+                      borderRadius: '8px',
+                      cursor: 'zoom-in'
+                    }}
+                    title="Click to Zoom Fullscreen"
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '6px',
+                      padding: '0 4px'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.74rem', color: '#86efac', fontWeight: 700 }}>
+                      ✓ Cheque image attached • Click photo to zoom
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setChequeScanPhoto(null)}
+                      style={{
+                        background: '#ef4444',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🗑️ Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: '2px dashed #cbd5e1',
+                    borderRadius: '12px',
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    background: '#f8fafc'
+                  }}
+                >
+                  <div style={{ fontSize: '2rem', marginBottom: '6px' }}>📄</div>
+                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#475569' }}>
+                    No cheque photo attached yet
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Click <strong>Open Camera Scanner</strong> above or upload an image file
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer with Actions */}
+            <div
+              className="modal-footer"
+              style={{
+                padding: '14px 22px',
+                background: '#f8fafc',
+                borderTop: '1.5px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              <button
+                type="button"
+                className="btn-custom-cancel"
+                onClick={() => setChequeScanTarget(null)}
+                style={{ padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSaveChequeScan(false)}
+                  disabled={chequeScanSubmitting || !chequeScanPhoto}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#334155',
+                    border: '1.5px solid #cbd5e1',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: chequeScanSubmitting || !chequeScanPhoto ? 'not-allowed' : 'pointer'
+                  }}
+                  title="Save attached cheque photo to booking record without passing yet"
+                >
+                  💾 {chequeScanSubmitting ? 'Saving...' : 'Save Scan Only'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveChequeScan(true)}
+                  disabled={chequeScanSubmitting}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: '8px',
+                    background: '#16a34a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 850,
+                    fontSize: '0.86rem',
+                    cursor: chequeScanSubmitting ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 8px rgba(22, 163, 74, 0.35)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  title="Save cheque photo and immediately credit amount into hotel accounts ledger"
+                >
+                  <span>✅</span> {chequeScanSubmitting ? 'Processing...' : 'Pass Cheque (Credit Account)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Camera Scanner for Cheques */}
+      <DocumentScannerModal
+        isOpen={isChequeCamOpen}
+        onClose={() => setIsChequeCamOpen(false)}
+        onCapture={(photoDataUrl) => {
+          if (chequeCamTargetMode === 'settle_btc') {
+            setSettleBtcChequePhoto(photoDataUrl);
+          } else {
+            setChequeScanPhoto(photoDataUrl);
+          }
+          setIsChequeCamOpen(false);
+          showToast('✓ Cheque scanned from camera!', 'green');
+        }}
+        title="Scan Physical Cheque"
+        subtitle="Align the physical cheque within the frame and click Snap Photo"
+      />
 
       {/* Full Size Image Lightbox with Mouse Wheel Scroll to Zoom */}
       <ImageLightbox

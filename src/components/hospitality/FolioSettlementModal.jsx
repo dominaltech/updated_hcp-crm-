@@ -3,6 +3,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../services/api';
 import { printCashReceipt, printPettyCashVoucher, printFinalBillA4, printGuestRegistrationA4, autoSavePdfDocument, buildFinalBillA4HTML, buildMoneyReceiptHTML } from '../../services/printService';
+import DocumentScannerModal from '../common/DocumentScannerModal';
 
 export default function FolioSettlementModal({
   isOpen,
@@ -31,6 +32,8 @@ export default function FolioSettlementModal({
   const [onlineUtr, setOnlineUtr] = useState('');
   const [chequeNo, setChequeNo] = useState('');
   const [chequeBank, setChequeBank] = useState('');
+  const [chequePhoto, setChequePhoto] = useState(null);
+  const [isChequeScannerOpen, setIsChequeScannerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [btcCheckoutMode, setBtcCheckoutMode] = useState('company_later'); // 'company_later' | 'pay_now'
 
@@ -131,6 +134,7 @@ export default function FolioSettlementModal({
       setOnlineUtr('');
       setChequeNo('');
       setChequeBank('');
+      setChequePhoto(null);
       setReturnUtr('');
       setReturnType('cash');
       setSplitCash(0);
@@ -146,6 +150,7 @@ export default function FolioSettlementModal({
     } else if (!isOpen) {
       prevOpenRef.current = false;
       activeBookingIdRef.current = null;
+      setChequePhoto(null);
     }
   }, [isOpen, currentBookingId, isEarlyCheckout, stayDurationStr, earlyStayDays, earlyStayHours, expectedNights]);
 
@@ -154,6 +159,7 @@ export default function FolioSettlementModal({
       setSplitCheque(0);
       setChequeNo('');
       setChequeBank('');
+      setChequePhoto(null);
     }
   }, [isBtc, splitCheque]);
 
@@ -329,8 +335,10 @@ export default function FolioSettlementModal({
         final_upi_tax: isCompanyPayingLater ? 0 : upiTax,
         split_cheque: isCompanyPayingLater ? 0 : splitCheque,
         splitCheque: isCompanyPayingLater ? 0 : splitCheque,
-        cheque_no: isCompanyPayingLater ? '' : chequeNo.trim(),
-        bank_name: isCompanyPayingLater ? '' : chequeBank.trim(),
+        cheque_no: chequeNo.trim() || '',
+        bank_name: chequeBank.trim() || '',
+        cheque_photo: chequePhoto || null,
+        chequePhoto: chequePhoto || null,
         checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
         checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
       };
@@ -1140,6 +1148,100 @@ export default function FolioSettlementModal({
                           />
                         </div>
                       </div>
+
+                      {/* Cheque Photo Scan & Upload */}
+                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label style={{ fontSize: '0.76rem', fontWeight: 750, color: 'var(--text-secondary)', margin: 0 }}>
+                            Physical Cheque Scan / Photo (Optional — or scan later in History):
+                          </label>
+                          {chequePhoto && (
+                            <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 800 }}>
+                              ✓ Cheque Attached
+                            </span>
+                          )}
+                        </div>
+                        {chequePhoto ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-app)', padding: '8px 12px', borderRadius: '8px', border: '1.5px solid #86efac' }}>
+                            <img
+                              src={chequePhoto}
+                              alt="Cheque Scan"
+                              style={{ width: '64px', height: '38px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                            />
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 750 }}>
+                              Cheque Photo Ready
+                            </div>
+                            <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setIsChequeScannerOpen(true)}
+                                style={{ background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.72rem', fontWeight: 750, cursor: 'pointer' }}
+                              >
+                                🔄 Retake
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setChequePhoto(null)}
+                                style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.72rem', fontWeight: 750, cursor: 'pointer' }}
+                              >
+                                ✕ Remove
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => setIsChequeScannerOpen(true)}
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                border: '1px solid #7dd3fc',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <span>📸</span> Scan with Camera
+                            </button>
+                            <label
+                              style={{
+                                padding: '6px 14px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: 'var(--bg-app)',
+                                color: 'var(--text-primary)',
+                                border: '1.5px solid var(--border-color)',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <span>📁</span> Upload Cheque File
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => setChequePhoto(reader.result);
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -1410,6 +1512,14 @@ export default function FolioSettlementModal({
           </div>
         </div>
       </div>
+      {/* Camera Cheque Scanner Modal */}
+      <DocumentScannerModal
+        isOpen={isChequeScannerOpen}
+        onClose={() => setIsChequeScannerOpen(false)}
+        onCapture={(photo) => setChequePhoto(photo)}
+        title="📸 Scan Physical Cheque Photo"
+        subtitle="Align the cheque clearly within frame and click Snap Photo"
+      />
     </div>
   );
 }

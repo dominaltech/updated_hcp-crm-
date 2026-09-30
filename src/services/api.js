@@ -112,6 +112,8 @@ export const api = {
   checkout: (id, data) => request(`/checkout/${id}`, { method: 'POST', body: data }),
   extendCheckout: (id, data) => request(`/bookings/${id}/extend-checkout`, { method: 'POST', body: data }),
   updatePaymentStatus: (id, data) => request(`/bookings/${id}/payment-status`, { method: 'POST', body: data }),
+  passCheque: (id, data) => request(`/bookings/${id}/pass-cheque`, { method: 'POST', body: data || {} }),
+  uploadChequePhoto: (id, data) => request(`/bookings/${id}/cheque-photo`, { method: 'POST', body: data }),
   getBookingDetails: (id) => request(`/bookings/${id}`),
   getStayHistory: (params = '') => request(`/hospitality/history${params ? `?${params}` : ''}`),
 
