@@ -48,16 +48,6 @@ app.use(express.json({ limit: '20mb' })); // Support base64 image uploads
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 const distDir = path.join(__dirname, 'dist');
 const publicDir = path.join(__dirname, 'public');
-
-if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir, {
-    setHeaders: (res) => {
-      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.set('Pragma', 'no-cache');
-      res.set('Expires', '0');
-    }
-  }));
-}
 app.use(express.static(publicDir));
 
 // Development helper: Programmatic frontend build endpoint
@@ -10030,15 +10020,46 @@ app.get('/api/vouchers/petty-cash/:expenseId', (req, res) => {
   }
 });
 
-// Direct Screen Routes for Multi-Screen setups (serving React app)
-app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses'], (req, res) => {
-  const indexPath = fs.existsSync(path.join(distDir, 'index.html'))
-    ? path.join(distDir, 'index.html')
-    : path.join(__dirname, 'index.html');
-  res.sendFile(indexPath);
-});
+function mountStaticDist() {
+  if (fs.existsSync(distDir)) {
+    app.use(express.static(distDir, {
+      setHeaders: (res) => {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+      }
+    }));
+  }
+  // Direct Screen Routes for Multi-Screen setups (serving React app)
+  app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses'], (req, res) => {
+    const indexPath = fs.existsSync(path.join(distDir, 'index.html'))
+      ? path.join(distDir, 'index.html')
+      : path.join(__dirname, 'index.html');
+    res.sendFile(indexPath);
+  });
+}
 
-if (require.main === module && !process.env.NETLIFY) {
+async function startServer() {
+  const isDev = process.env.NODE_ENV !== 'production' && fs.existsSync(path.join(__dirname, 'src'));
+
+  if (isDev) {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+        root: __dirname
+      });
+      app.use(vite.middlewares);
+      console.log(`⚡ Vite Live Dev Server active: Serving directly from /src with instant HMR`);
+    } catch (viteErr) {
+      console.warn('⚠️ Could not start Vite dev middleware, serving dist folder:', viteErr.message);
+      mountStaticDist();
+    }
+  } else {
+    mountStaticDist();
+  }
+
   const server = app.listen(PORT, () => {
     console.log(`✨ Hotel City Park CRM running on http://localhost:${PORT}`);
     console.log(`🏨 Hospitality Screen: http://localhost:${PORT}/hospitality`);
@@ -10062,6 +10083,10 @@ if (require.main === module && !process.env.NETLIFY) {
       console.error('Server error:', err);
     }
   });
+}
+
+if (require.main === module && !process.env.NETLIFY) {
+  startServer();
 }
 
 module.exports = app;
