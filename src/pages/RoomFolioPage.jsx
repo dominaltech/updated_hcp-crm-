@@ -245,23 +245,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       const r = raw.room || {};
       const summary = raw.summary || {};
 
-      const foodTotal = Number(summary.foodTotal ?? 0);
-      const barTotal = Number(summary.barTotal ?? 0);
-      const roomCharge = Number(summary.stayCalcNow?.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
-      const discountAmount = Number(summary.stayCalcNow?.discountAmount ?? summary.discountAmount ?? (r.discount_amount || 0));
-      const discountPct = Number(summary.stayCalcNow?.discountPct ?? summary.discountPct ?? (r.discount_pct || 0));
-      const roomGrossTariff = Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
-      const roomTaxable = Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
-      const stayTaxable = Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.stayTaxable ?? roomTaxable);
-      const stayTax = Number(summary.stayCalcNow?.roomGst ?? summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
-      const grossTariff = Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount));
-      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
-      const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
-      const balanceDue = Number(summary.stayCalcNow?.balanceDue ?? summary.balanceDue ?? (netTotalCharge - advancePaid));
-      const visitors = Array.isArray(raw.visitors) ? raw.visitors : [];
-      const payments = Array.isArray(raw.payments) ? raw.payments : [];
-      const visitorsCount = Number(summary.visitorsCount ?? visitors.length);
-
       const isBookingOta = (r.booking_source || raw.booking_source || r.source) === 'OTA';
       const isOtaPayAtHotel = isBookingOta && (
         summary.isOtaPayAtHotel === true ||
@@ -276,6 +259,35 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         r.is_prepaid === '1' ||
         r.is_prepaid === true
       );
+
+      const foodTotal = Number(summary.foodTotal ?? 0);
+      const barTotal = Number(summary.barTotal ?? 0);
+      const roomCharge = isBookingOta
+        ? Number(summary.roomCharge ?? (r.total_room_charge || 0))
+        : Number(summary.stayCalcNow?.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
+      const discountAmount = isBookingOta
+        ? 0
+        : Number(summary.stayCalcNow?.discountAmount ?? summary.discountAmount ?? (r.discount_amount || 0));
+      const discountPct = isBookingOta
+        ? 0
+        : Number(summary.stayCalcNow?.discountPct ?? summary.discountPct ?? (r.discount_pct || 0));
+      const roomGrossTariff = isBookingOta
+        ? Number(summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount))
+        : Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
+      const roomTaxable = isBookingOta
+        ? Number(summary.roomTaxable ?? summary.stayTaxable ?? Math.round((roomCharge / 1.05) * 100) / 100)
+        : Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
+      const stayTaxable = roomTaxable;
+      const stayTax = isBookingOta
+        ? Number(summary.stayTax ?? Math.max(0, Number((roomCharge - roomTaxable).toFixed(2))))
+        : Number(summary.stayCalcNow?.roomGst ?? summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
+      const grossTariff = roomGrossTariff;
+      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
+      const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
+      const balanceDue = Number(summary.stayCalcNow?.balanceDue ?? summary.balanceDue ?? (netTotalCharge - advancePaid));
+      const visitors = Array.isArray(raw.visitors) ? raw.visitors : [];
+      const payments = Array.isArray(raw.payments) ? raw.payments : [];
+      const visitorsCount = Number(summary.visitorsCount ?? visitors.length);
 
       const normalized = {
         ...raw,
@@ -1560,10 +1572,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           const otaVoucherVal = Number(folioData.otaBillAmount || folioData.ota_bill_amount || 0);
           const entireBookingVal = isOtaPrepaidStay ? (otaVoucherVal + stayNetTotal) : stayNetTotal;
           const entireCollectedVal = isOtaPrepaidStay ? (otaVoucherVal + advancePaidVal) : advancePaidVal;
-          const stayTaxable = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : Math.round(stayNetTotal / 1.05);
-          const stayGst = (isOtaPrepaidStay || isOtaPayAtHotel) ? 0 : (stayNetTotal - stayTaxable);
-          const stayDiscountVal = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
-          const stayPreTax = (isOtaPrepaidStay || isOtaPayAtHotel) ? stayNetTotal : (stayTaxable + stayDiscountVal);
+          const stayTaxable = Math.round((stayNetTotal / 1.05) * 100) / 100;
+          const stayGst = Math.max(0, Number((stayNetTotal - stayTaxable).toFixed(2)));
+          const stayDiscountVal = (isOtaPrepaidStay || isOtaPayAtHotel) ? 0 : Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
+          const stayPreTax = stayTaxable + stayDiscountVal;
           const rawStayBalance = isOtaPrepaidStay
             ? (hotelExtrasCharge - advancePaidVal)
             : (stayNetTotal - advancePaidVal);

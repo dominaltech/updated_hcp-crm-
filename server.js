@@ -2081,11 +2081,26 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const nowDiscountTotal = Math.max(0, nowGrossTotal - nowRoomChargeCalc);
     const nowDiscountGst = Math.max(0, nowDiscountTotal - nowDiscountAmount);
 
-    const nowRoomCharge = isOtaPrepaid
-      ? Math.max(hotelExtrasCharge, effectivePaid)
-      : (isOtaPayAtHotel
-          ? otaBillAmount + hotelExtrasCharge
-          : nowRoomChargeCalc);
+    let nowRoomCharge = nowRoomChargeCalc;
+    let finalNowRoomPreTax = nowRoomPreTax;
+    let finalNowRoomGst = nowRoomGst;
+    let finalNowBaseRoomTariff = nowBaseRoomTariff;
+    let finalNowBaseRoomTariffGst = nowBaseRoomTariffGst;
+    let finalNowExtraMattressCost = nowExtraMattressCost;
+    let finalNowExtraMattressGst = nowExtraMattressGst;
+
+    if (isOtaPrepaid || isOtaPayAtHotel) {
+      nowRoomCharge = isOtaPrepaid
+        ? Math.max(hotelExtrasCharge, effectivePaid)
+        : (otaBillAmount + hotelExtrasCharge);
+      finalNowRoomPreTax = Math.round((nowRoomCharge / gstFactor) * 100) / 100;
+      finalNowRoomGst = Math.max(0, Number((nowRoomCharge - finalNowRoomPreTax).toFixed(2)));
+      const otaBase = isOtaPayAtHotel ? otaBillAmount : 0;
+      finalNowBaseRoomTariff = Math.round((otaBase / gstFactor) * 100) / 100;
+      finalNowBaseRoomTariffGst = Math.max(0, Number((otaBase - finalNowBaseRoomTariff).toFixed(2)));
+      finalNowExtraMattressCost = Math.round((groupExtraBedCharge / gstFactor) * 100) / 100;
+      finalNowExtraMattressGst = Math.max(0, Number((groupExtraBedCharge - finalNowExtraMattressCost).toFixed(2)));
+    }
 
     // Running totals tailored by booking source & prepaid status
     let effectiveRoomCharge = combinedTotalRoomCharge;
@@ -2128,7 +2143,7 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
 
     // Pre-tax room charge (taxable amount before GST)
     const combinedPreTaxRoomCharge = (isOtaPrepaid || isOtaPayAtHotel)
-      ? effectiveRoomCharge
+      ? Math.round((effectiveRoomCharge / gstFactor) * 100) / 100
       : (stayCalc.isEarlyCheckout ? effectivePreTaxRoomCharge : Math.round(effectiveRoomCharge / gstFactor));
 
     // Running totals
@@ -2233,13 +2248,13 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
                 stayCalcNow: {
                   isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
                   roomCharge: nowRoomCharge,
-                  baseRoomTariff: nowBaseRoomTariff,
-                  baseRoomTariffGst: nowBaseRoomTariffGst,
-                  baseRoomTotal: nowBaseRoomTariff + nowBaseRoomTariffGst,
-                  dailyBaseRate: combinedBaseRate,
-                  extraMattressCost: nowExtraMattressCost,
-                  extraMattressGst: nowExtraMattressGst,
-                  extraMattressTotal: nowExtraMattressCost + nowExtraMattressGst,
+                  baseRoomTariff: finalNowBaseRoomTariff,
+                  baseRoomTariffGst: finalNowBaseRoomTariffGst,
+                  baseRoomTotal: finalNowBaseRoomTariff + finalNowBaseRoomTariffGst,
+                  dailyBaseRate: isOtaPayAtHotel ? finalNowBaseRoomTariff : combinedBaseRate,
+                  extraMattressCost: finalNowExtraMattressCost,
+                  extraMattressGst: finalNowExtraMattressGst,
+                  extraMattressTotal: finalNowExtraMattressCost + finalNowExtraMattressGst,
                   extraMattressBeds: groupExtraBeds,
                   extraMattressDaily: groupExtraBedCharge,
                   breakfastCost: nowBreakfastCost,
@@ -2251,11 +2266,11 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
                   extensionGst: nowExtensionGst,
                   extensionTotal: nowExtensionCharge + nowExtensionGst,
                   extensionHours: nowExtraHours,
-                  discountAmount: nowDiscountAmount,
-                  discountGst: nowDiscountGst,
-                  discountTotal: nowDiscountTotal,
-                  roomSubtotalPreTax: nowRoomPreTax,
-                  roomGst: nowRoomGst,
+                  discountAmount: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountAmount,
+                  discountGst: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountGst,
+                  discountTotal: (isOtaPrepaid || isOtaPayAtHotel) ? 0 : nowDiscountTotal,
+                  roomSubtotalPreTax: finalNowRoomPreTax,
+                  roomGst: finalNowRoomGst,
                   gstPct: effectiveGstPct,
                   fnbTaxable,
                   fnbGst,
