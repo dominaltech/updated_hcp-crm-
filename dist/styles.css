@@ -3486,6 +3486,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
    ========================================================================== */
 #print-registration-sheet,
 #print-payment-summary-sheet,
+#print-money-receipt-sheet,
+#print-petty-cash-sheet,
+#print-activities-summary-sheet,
+.printable-two-per-a4-sheet,
+.printable-full-a4-sheet,
 #hotel-app-print {
   display: none !important;
 }
@@ -4069,15 +4074,46 @@ body.dark-theme .doc-action-card {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 14px 0 16px 0;
+  gap: 12px;
+  flex-wrap: nowrap !important;
+  padding: 10px 0 12px 0;
   background: rgba(245, 245, 247, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1.5px solid var(--border-light);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.folio-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: nowrap !important;
+}
+
+.folio-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.folio-header-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.folio-header-actions .btn-folio-action-chip,
+.folio-header-actions .filter-chip,
+.folio-header-actions .btn-scan-action {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  padding: 6px 11px !important;
+  font-size: 0.8rem !important;
 }
 
 [data-theme="dark"] .folio-page-header,
@@ -7063,8 +7099,8 @@ body.table-pos-mode .table-session-header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex-wrap: nowrap !important;
+  gap: 12px;
 }
 
 .btn-back-rooms {
@@ -8455,6 +8491,15 @@ body.table-pos-mode .table-session-header {
   align-items: center;
 }
 
+.room-context-menu-status-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 800;
+}
+
 .room-context-menu-item {
   display: flex;
   align-items: center;
@@ -8466,6 +8511,19 @@ body.table-pos-mode .table-session-header {
   color: #1e293b;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.room-context-menu-item .menu-item-title {
+  color: inherit;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.room-context-menu-item .menu-item-subtext {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .room-context-menu-item:hover {
@@ -9242,6 +9300,420 @@ body.table-pos-mode .table-session-header {
   background: #f8fafc;
 }
 
+/* Room badge without emoji and hash */
+.history-room-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 4px 10px;
+  font-weight: 800;
+  font-size: 0.90rem;
+  color: #0284c7;
+  background: #f0f9ff;
+  border: 1.5px solid #bae6fd;
+  border-radius: 7px;
+  letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .history-room-badge,
+body.dark-theme .history-room-badge {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+/* Entire row reddish if pending from BTC */
+.history-row-btc-pending {
+  background-color: #fff1f2 !important;
+  border-left: 4px solid #ef4444 !important;
+}
+
+.history-row-btc-pending:hover {
+  background-color: #ffe4e6 !important;
+}
+
+[data-theme="dark"] .history-row-btc-pending,
+body.dark-theme .history-row-btc-pending {
+  background-color: rgba(225, 29, 72, 0.16) !important;
+  border-left: 4px solid #f43f5e !important;
+}
+
+[data-theme="dark"] .history-row-btc-pending:hover,
+body.dark-theme .history-row-btc-pending:hover {
+  background-color: rgba(225, 29, 72, 0.24) !important;
+}
+
+/* Check-in and Check-out timestamps - prevent text overflow to 2nd line */
+.history-col-checkin,
+.history-col-checkout,
+.history-checkin-date,
+.history-checkout-date {
+  white-space: nowrap !important;
+}
+
+/* History Table Row Margins for Smooth Arrow Navigation */
+.history-data-table tbody tr {
+  scroll-margin-top: 150px;
+}
+
+/* Keyboard-focused row in history table */
+.history-data-table tbody tr.history-row-focused {
+  background-color: #f0f9ff !important;
+  outline: 2px solid #2563eb !important;
+  outline-offset: -2px !important;
+}
+
+.history-data-table tbody tr.history-row-btc-pending.history-row-focused {
+  background-color: #fee2e2 !important;
+  outline: 2px solid #dc2626 !important;
+  outline-offset: -2px !important;
+}
+
+.history-data-table tbody tr.history-row-selected {
+  background-color: #fef2f2 !important;
+}
+
+[data-theme="dark"] .history-data-table tbody tr.history-row-focused,
+body.dark-theme .history-data-table tbody tr.history-row-focused {
+  background-color: rgba(59, 130, 246, 0.22) !important;
+  outline: 2px solid #60a5fa !important;
+  outline-offset: -2px !important;
+}
+
+[data-theme="dark"] .history-data-table tbody tr.history-row-btc-pending.history-row-focused,
+body.dark-theme .history-data-table tbody tr.history-row-btc-pending.history-row-focused {
+  background-color: rgba(225, 29, 72, 0.28) !important;
+  outline: 2px solid #f43f5e !important;
+  outline-offset: -2px !important;
+}
+
+[data-theme="dark"] .history-data-table tbody tr.history-row-selected,
+body.dark-theme .history-data-table tbody tr.history-row-selected {
+  background-color: rgba(225, 29, 72, 0.32) !important;
+}
+
+/* Floating Scroll to Top Row (Up Button) */
+.history-scroll-top-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #0071e3;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 900;
+  transition: all 0.2s ease;
+}
+
+.history-scroll-top-btn:hover {
+  background: #005bb5;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.55);
+}
+
+[data-theme="dark"] .history-scroll-top-btn,
+body.dark-theme .history-scroll-top-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #3b82f6;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
+}
+
+[data-theme="dark"] .history-scroll-top-btn:hover,
+body.dark-theme .history-scroll-top-btn:hover {
+  background: #1d4ed8;
+  border-color: #60a5fa;
+}
+
+/* Filter toggle button & expandable panel */
+.history-filter-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.history-filter-toggle-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.history-filter-toggle-btn.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+[data-theme="dark"] .history-filter-toggle-btn,
+body.dark-theme .history-filter-toggle-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .history-filter-toggle-btn.active,
+body.dark-theme .history-filter-toggle-btn.active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+.history-filter-panel {
+  margin-top: 12px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  animation: filterSlideDown 0.18s ease-out;
+}
+
+[data-theme="dark"] .history-filter-panel,
+body.dark-theme .history-filter-panel {
+  background: #0f172a;
+  border-color: #334155;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes filterSlideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.history-filter-panel .filter-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+[data-theme="dark"] .history-filter-panel .filter-panel-header,
+body.dark-theme .history-filter-panel .filter-panel-header {
+  border-bottom-color: #1e293b;
+}
+
+.history-filter-panel .filter-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.history-filter-panel .filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-filter-panel .filter-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+[data-theme="dark"] .history-filter-panel .filter-label,
+body.dark-theme .history-filter-panel .filter-label {
+  color: #94a3b8;
+}
+
+.history-filter-panel .filter-sublabel {
+  font-size: 0.70rem;
+  font-weight: normal;
+  text-transform: none;
+  color: #94a3b8;
+}
+
+.history-filter-panel .filter-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.history-filter-panel .filter-input:focus {
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] .history-filter-panel .filter-input,
+body.dark-theme .history-filter-panel .filter-input {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .history-filter-panel .filter-input:focus {
+  border-color: #60a5fa;
+  background: #0f172a;
+}
+
+.history-filter-panel .filter-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+[data-theme="dark"] .history-filter-panel .filter-panel-actions,
+body.dark-theme .history-filter-panel .filter-panel-actions {
+  border-top-color: #1e293b;
+}
+
+.filter-btn-clear {
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filter-btn-apply {
+  padding: 7px 16px;
+  border-radius: 7px;
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+/* Filter Scope Buttons in Filter Panel */
+.filter-scope-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.filter-scope-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.filter-scope-btn.scope-all.active {
+  border: 2px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.filter-scope-btn.scope-checkin.active {
+  border: 2px solid #16a34a;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.filter-scope-btn.scope-checkout.active {
+  border: 2px solid #0284c7;
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+.filter-scope-btn.scope-range.active {
+  border: 2px solid #7c3aed;
+  background: #faf5ff;
+  color: #6d28d9;
+}
+
+/* Dark Theme Filter Scope Buttons */
+[data-theme="dark"] .filter-scope-btn,
+body.dark-theme .filter-scope-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .filter-scope-btn:hover,
+body.dark-theme .filter-scope-btn:hover {
+  background: #334155;
+  border-color: #475569;
+}
+
+[data-theme="dark"] .filter-scope-btn.scope-all.active,
+body.dark-theme .filter-scope-btn.scope-all.active {
+  border-color: #60a5fa;
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .filter-scope-btn.scope-checkin.active,
+body.dark-theme .filter-scope-btn.scope-checkin.active {
+  border-color: #4ade80;
+  background: rgba(34, 197, 94, 0.25);
+  color: #86efac;
+}
+
+[data-theme="dark"] .filter-scope-btn.scope-checkout.active,
+body.dark-theme .filter-scope-btn.scope-checkout.active {
+  border-color: #38bdf8;
+  background: rgba(2, 132, 199, 0.25);
+  color: #7dd3fc;
+}
+
+[data-theme="dark"] .filter-scope-btn.scope-range.active,
+body.dark-theme .filter-scope-btn.scope-range.active {
+  border-color: #a78bfa;
+  background: rgba(124, 58, 237, 0.25);
+  color: #c4b5fd;
+}
+
+/* History Fullscreen View */
+.history-fullscreen-view {
+  animation: fadeIn 0.15s ease-out;
+}
+
+[data-theme="dark"] .history-fullscreen-view,
+body.dark-theme .history-fullscreen-view {
+  background: #090d16 !important;
+  color: #f1f5f9;
+}
+
+
 .history-empty-state {
   padding: 60px 20px;
   text-align: center;
@@ -9607,7 +10079,8 @@ body.dark-theme .manager-subnav-btn.active {
 
   .voucher-no-highlight {
     border: 1.5px solid #000000 !important;
-    background-color: #f8fafc !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #000000 !important;
     font-size: 10.5pt !important;
     font-weight: 950 !important;
@@ -9844,7 +10317,9 @@ body.dark-theme .manager-subnav-btn.active {
     font-size: 13pt !important;
     font-weight: 950 !important;
     border-radius: 4px !important;
-    background: #f8fafc !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
   }
 
   .receipt-disclaimer {
@@ -11043,9 +11518,66 @@ body.dark-theme .room-fnb-blinking-pill {
 [data-theme="dark"] .room-context-menu,
 body.dark-theme .room-context-menu {
   background: #1e222a !important;
-  border: 1.5px solid var(--border-medium) !important;
-  box-shadow: var(--shadow-floating) !important;
+  border: 1.5px solid #334155 !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5) !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .room-context-menu-header,
+body.dark-theme .room-context-menu-header {
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #2a313e !important;
+}
+
+[data-theme="dark"] .room-context-menu-status-badge,
+body.dark-theme .room-context-menu-status-badge {
+  background: #2a313e !important;
+  color: #cbd5e1 !important;
+  border: 1px solid #3b4455 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item,
+body.dark-theme .room-context-menu-item {
+  color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item .menu-item-title,
+body.dark-theme .room-context-menu-item .menu-item-title {
+  color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item .menu-item-subtext,
+body.dark-theme .room-context-menu-item .menu-item-subtext {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item:hover,
+body.dark-theme .room-context-menu-item:hover {
+  background: #2a313e !important;
   color: #ffffff !important;
+}
+
+[data-theme="dark"] .room-context-menu-item.status-ready:hover,
+body.dark-theme .room-context-menu-item.status-ready:hover {
+  background: rgba(34, 197, 94, 0.22) !important;
+  color: #4ade80 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item.status-cleaning:hover,
+body.dark-theme .room-context-menu-item.status-cleaning:hover {
+  background: rgba(56, 189, 248, 0.22) !important;
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .room-context-menu-item.status-maint:hover,
+body.dark-theme .room-context-menu-item.status-maint:hover {
+  background: rgba(249, 115, 22, 0.22) !important;
+  color: #fb923c !important;
+}
+
+[data-theme="dark"] .room-context-menu-divider,
+body.dark-theme .room-context-menu-divider {
+  background: #2a313e !important;
 }
 
 [data-theme="dark"] .context-menu-item,
@@ -11869,6 +12401,256 @@ body.dark-theme .settled-order-num {
   color: #f8fafc !important;
 }
 
+/* Settled Bills Table Cells & Badges */
+.settled-token-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+
+[data-theme="dark"] .settled-token-badge,
+body.dark-theme .settled-token-badge {
+  background: rgba(14, 165, 233, 0.18) !important;
+  color: #38bdf8 !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+.settled-items-summary {
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+[data-theme="dark"] .settled-items-summary,
+body.dark-theme .settled-items-summary {
+  color: #cbd5e1 !important;
+}
+
+.settled-grand-total {
+  font-weight: 850;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .settled-grand-total,
+body.dark-theme .settled-grand-total {
+  color: #f8fafc !important;
+}
+
+.settled-date-cell {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+[data-theme="dark"] .settled-date-cell,
+body.dark-theme .settled-date-cell {
+  color: #94a3b8 !important;
+}
+
+/* Payment Mode Badges in Settled Bills & POS Manager */
+.settled-paymode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 6px;
+  text-transform: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  line-height: 1.3;
+}
+
+/* Settled to Room / Room Folio */
+.settled-paymode-badge.badge-room-folio {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-room-folio,
+body.dark-theme .settled-paymode-badge.badge-room-folio {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+/* Cash */
+.settled-paymode-badge.badge-cash {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-cash,
+body.dark-theme .settled-paymode-badge.badge-cash {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+/* UPI / Online */
+.settled-paymode-badge.badge-upi {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #bae6fd;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-upi,
+body.dark-theme .settled-paymode-badge.badge-upi {
+  background: rgba(14, 165, 233, 0.18) !important;
+  color: #38bdf8 !important;
+  border-color: rgba(14, 165, 233, 0.35) !important;
+}
+
+/* Card POS */
+.settled-paymode-badge.badge-card {
+  background: #ede9fe;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-card,
+body.dark-theme .settled-paymode-badge.badge-card {
+  background: rgba(139, 92, 246, 0.18) !important;
+  color: #c084fc !important;
+  border-color: rgba(139, 92, 246, 0.35) !important;
+}
+
+/* Split Payment */
+.settled-paymode-badge.badge-split {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-split,
+body.dark-theme .settled-paymode-badge.badge-split {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+}
+
+/* Fallback Default */
+.settled-paymode-badge.badge-default {
+  background: #f8fafc;
+  color: #334155;
+  border-color: #e2e8f0;
+}
+
+[data-theme="dark"] .settled-paymode-badge.badge-default,
+body.dark-theme .settled-paymode-badge.badge-default {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Settled Bills Edit & Reprint Buttons */
+.settled-edit-btn {
+  font-size: 0.76rem;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  border-radius: 8px;
+  font-weight: 750;
+  cursor: pointer;
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  transition: all 0.15s ease;
+}
+
+[data-theme="dark"] .settled-edit-btn,
+body.dark-theme .settled-edit-btn {
+  background: #21252e !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.settled-edit-btn.is-edited {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+[data-theme="dark"] .settled-edit-btn.is-edited,
+body.dark-theme .settled-edit-btn.is-edited {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+/* Table Settle Modal - Dark Mode Polish */
+[data-theme="dark"] .settle-room-pending-banner,
+body.dark-theme .settle-room-pending-banner {
+  background: rgba(245, 158, 11, 0.14) !important;
+  border: 1.5px solid rgba(245, 158, 11, 0.35) !important;
+}
+
+[data-theme="dark"] .settle-room-pending-banner h4,
+[data-theme="dark"] .settle-room-pending-title,
+body.dark-theme .settle-room-pending-title {
+  color: #fbbf24 !important;
+}
+
+[data-theme="dark"] .settle-room-pending-banner p,
+[data-theme="dark"] .settle-room-pending-desc,
+body.dark-theme .settle-room-pending-desc {
+  color: #fde68a !important;
+}
+
+[data-theme="dark"] .settle-card-fee-alert,
+body.dark-theme .settle-card-fee-alert {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+[data-theme="dark"] .settle-card-fee-alert span,
+body.dark-theme .settle-card-fee-alert span {
+  color: #fbbf24 !important;
+}
+
+[data-theme="dark"] .settle-upi-tax-alert,
+body.dark-theme .settle-upi-tax-alert {
+  background: rgba(14, 165, 233, 0.15) !important;
+  border-color: rgba(14, 165, 233, 0.35) !important;
+}
+
+[data-theme="dark"] .settle-upi-tax-alert span,
+body.dark-theme .settle-upi-tax-alert span {
+  color: #38bdf8 !important;
+}
+
+[data-theme="dark"] #pos-online-utr-panel,
+body.dark-theme #pos-online-utr-panel {
+  background: rgba(37, 99, 235, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}
+
+[data-theme="dark"] #pos-online-utr-panel label,
+body.dark-theme #pos-online-utr-panel label {
+  color: #93c5fd !important;
+}
+
+[data-theme="dark"] #pos-online-utr-panel .utr-amount-tag,
+body.dark-theme #pos-online-utr-panel .utr-amount-tag {
+  background: rgba(30, 58, 138, 0.7) !important;
+  color: #bfdbfe !important;
+}
+
+[data-theme="dark"] .folio-card,
+body.dark-theme .folio-card {
+  background: #171a21 !important;
+}
+
+
 /* Clean History Table Layout */
 .history-guest-avatar {
   display: none !important;
@@ -12084,66 +12866,66 @@ body.dark-theme ::-webkit-scrollbar-thumb:hover {
 }
 
 /* 11. Overrides for Headings, Inline Colors, Tables & Cards */
-[data-theme="dark"] h1,
-[data-theme="dark"] h2,
-[data-theme="dark"] h3,
-[data-theme="dark"] h4,
-[data-theme="dark"] h5,
-[data-theme="dark"] h6,
-body.dark-theme h1,
-body.dark-theme h2,
-body.dark-theme h3,
-body.dark-theme h4,
-body.dark-theme h5,
-body.dark-theme h6 {
+[data-theme="dark"] #hotel-app-screen h1,
+[data-theme="dark"] #hotel-app-screen h2,
+[data-theme="dark"] #hotel-app-screen h3,
+[data-theme="dark"] #hotel-app-screen h4,
+[data-theme="dark"] #hotel-app-screen h5,
+[data-theme="dark"] #hotel-app-screen h6,
+body.dark-theme #hotel-app-screen h1,
+body.dark-theme #hotel-app-screen h2,
+body.dark-theme #hotel-app-screen h3,
+body.dark-theme #hotel-app-screen h4,
+body.dark-theme #hotel-app-screen h5,
+body.dark-theme #hotel-app-screen h6 {
   color: #f3f4f6 !important;
 }
 
 /* Master Overrides for inline dark colors on any element in dark mode */
-[data-theme="dark"] [style*="color: #0f172a"],
-[data-theme="dark"] [style*="color:#0f172a"],
-[data-theme="dark"] [style*="color: #1e293b"],
-[data-theme="dark"] [style*="color:#1e293b"],
-[data-theme="dark"] [style*="color: #334155"],
-[data-theme="dark"] [style*="color:#334155"],
-body.dark-theme [style*="color: #0f172a"],
-body.dark-theme [style*="color:#0f172a"],
-body.dark-theme [style*="color: #1e293b"],
-body.dark-theme [style*="color:#1e293b"],
-body.dark-theme [style*="color: #334155"],
-body.dark-theme [style*="color:#334155"] {
+[data-theme="dark"] #hotel-app-screen [style*="color: #0f172a"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#0f172a"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #1e293b"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#1e293b"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #334155"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#334155"],
+body.dark-theme #hotel-app-screen [style*="color: #0f172a"],
+body.dark-theme #hotel-app-screen [style*="color:#0f172a"],
+body.dark-theme #hotel-app-screen [style*="color: #1e293b"],
+body.dark-theme #hotel-app-screen [style*="color:#1e293b"],
+body.dark-theme #hotel-app-screen [style*="color: #334155"],
+body.dark-theme #hotel-app-screen [style*="color:#334155"] {
   color: #f3f4f6 !important;
 }
 
 /* Muted subtitles with inline #64748b or #475569 */
-[data-theme="dark"] p[style*="color: #64748b"],
-[data-theme="dark"] p[style*="color:#64748b"],
-[data-theme="dark"] span[style*="color: #64748b"],
-[data-theme="dark"] span[style*="color:#64748b"],
-[data-theme="dark"] div[style*="color: #64748b"],
-[data-theme="dark"] div[style*="color:#64748b"],
-[data-theme="dark"] [style*="color: #475569"],
-[data-theme="dark"] [style*="color:#475569"],
-body.dark-theme p[style*="color: #64748b"],
-body.dark-theme p[style*="color:#64748b"],
-body.dark-theme span[style*="color: #64748b"],
-body.dark-theme span[style*="color:#64748b"],
-body.dark-theme div[style*="color: #64748b"],
-body.dark-theme div[style*="color:#64748b"],
-body.dark-theme [style*="color: #475569"],
-body.dark-theme [style*="color:#475569"] {
+[data-theme="dark"] #hotel-app-screen p[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen p[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen span[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen span[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen div[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen div[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #475569"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#475569"],
+body.dark-theme #hotel-app-screen p[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen p[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen span[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen span[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen div[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen div[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen [style*="color: #475569"],
+body.dark-theme #hotel-app-screen [style*="color:#475569"] {
   color: #94a3b8 !important;
 }
 
 /* Master Fix for code tags and light badge boxes (Cashier ID, GSTIN, etc.) */
-[data-theme="dark"] code,
-[data-theme="dark"] code[style*="background"],
-[data-theme="dark"] [style*="background: #f1f5f9"],
-[data-theme="dark"] [style*="background:#f1f5f9"],
-body.dark-theme code,
-body.dark-theme code[style*="background"],
-body.dark-theme [style*="background: #f1f5f9"],
-body.dark-theme [style*="background:#f1f5f9"] {
+[data-theme="dark"] #hotel-app-screen code,
+[data-theme="dark"] #hotel-app-screen code[style*="background"],
+[data-theme="dark"] #hotel-app-screen [style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen [style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen code,
+body.dark-theme #hotel-app-screen code[style*="background"],
+body.dark-theme #hotel-app-screen [style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen [style*="background:#f1f5f9"] {
   background: #222630 !important;
   color: #f3f4f6 !important;
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -12174,30 +12956,30 @@ body.dark-theme .owner-rooms-table tr:hover td {
   background: #1c202a !important;
 }
 
-[data-theme="dark"] div[style*="background: #ffffff"],
-[data-theme="dark"] div[style*="background: rgb(255, 255, 255)"],
-[data-theme="dark"] div[style*="background:#ffffff"],
-body.dark-theme div[style*="background: #ffffff"],
-body.dark-theme div[style*="background: rgb(255, 255, 255)"],
-body.dark-theme div[style*="background:#ffffff"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen div[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(255, 255, 255)"],
+body.dark-theme #hotel-app-screen div[style*="background:#ffffff"] {
   background: #171a21 !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   color: #f3f4f6 !important;
 }
 
-[data-theme="dark"] div[style*="background: #fffbeb"],
-[data-theme="dark"] div[style*="background: rgb(255, 251, 235)"],
-body.dark-theme div[style*="background: #fffbeb"],
-body.dark-theme div[style*="background: rgb(255, 251, 235)"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #fffbeb"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(255, 251, 235)"],
+body.dark-theme #hotel-app-screen div[style*="background: #fffbeb"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(255, 251, 235)"] {
   background: rgba(245, 158, 11, 0.14) !important;
   border-color: rgba(245, 158, 11, 0.35) !important;
   color: #fde047 !important;
 }
 
-[data-theme="dark"] div[style*="background: #f8fafc"],
-[data-theme="dark"] div[style*="background: rgb(248, 250, 252)"],
-body.dark-theme div[style*="background: #f8fafc"],
-body.dark-theme div[style*="background: rgb(248, 250, 252)"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(248, 250, 252)"],
+body.dark-theme #hotel-app-screen div[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(248, 250, 252)"] {
   background: #15181e !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: #f3f4f6 !important;
@@ -12227,81 +13009,81 @@ body.dark-theme .manager-subnav-btn.active {
 }
 
 /* Light buttons / chips with inline background in dark theme */
-[data-theme="dark"] button[style*="background: #f1f5f9"],
-[data-theme="dark"] button[style*="background:#f1f5f9"],
-[data-theme="dark"] button[style*="background: #f8fafc"],
-[data-theme="dark"] button[style*="background:#f8fafc"],
-[data-theme="dark"] button[style*="background: #ffffff"],
-[data-theme="dark"] button[style*="background:#ffffff"],
-[data-theme="dark"] button[style*="background: #fff"],
-[data-theme="dark"] button[style*="background:#fff"],
-body.dark-theme button[style*="background: #f1f5f9"],
-body.dark-theme button[style*="background:#f1f5f9"],
-body.dark-theme button[style*="background: #f8fafc"],
-body.dark-theme button[style*="background:#f8fafc"],
-body.dark-theme button[style*="background: #ffffff"],
-body.dark-theme button[style*="background:#ffffff"],
-body.dark-theme button[style*="background: #fff"],
-body.dark-theme button[style*="background:#fff"] {
+[data-theme="dark"] #hotel-app-screen button[style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#f1f5f9"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#f8fafc"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#ffffff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #fff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#fff"],
+body.dark-theme #hotel-app-screen button[style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen button[style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen button[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen button[style*="background:#f8fafc"],
+body.dark-theme #hotel-app-screen button[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen button[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen button[style*="background: #fff"],
+body.dark-theme #hotel-app-screen button[style*="background:#fff"] {
   background: #1e222a !important;
   color: #f3f4f6 !important;
   border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-[data-theme="dark"] span[style*="background: #f1f5f9"],
-[data-theme="dark"] span[style*="background:#f1f5f9"],
-[data-theme="dark"] span[style*="background: #f8fafc"],
-[data-theme="dark"] span[style*="background:#f8fafc"],
-[data-theme="dark"] span[style*="background: #ffffff"],
-[data-theme="dark"] span[style*="background:#ffffff"],
-[data-theme="dark"] span[style*="background: #fff"],
-[data-theme="dark"] span[style*="background:#fff"],
-[data-theme="dark"] .ai-field-tag,
-[data-theme="dark"] .ota-platform-pill,
-body.dark-theme span[style*="background: #f1f5f9"],
-body.dark-theme span[style*="background:#f1f5f9"],
-body.dark-theme span[style*="background: #f8fafc"],
-body.dark-theme span[style*="background:#f8fafc"],
-body.dark-theme span[style*="background: #ffffff"],
-body.dark-theme span[style*="background:#ffffff"],
-body.dark-theme span[style*="background: #fff"],
-body.dark-theme span[style*="background:#fff"],
-body.dark-theme .ai-field-tag,
-body.dark-theme .ota-platform-pill {
+[data-theme="dark"] #hotel-app-screen span[style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#f1f5f9"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#f8fafc"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#ffffff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #fff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#fff"],
+[data-theme="dark"] #hotel-app-screen .ai-field-tag,
+[data-theme="dark"] #hotel-app-screen .ota-platform-pill,
+body.dark-theme #hotel-app-screen span[style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen span[style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen span[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen span[style*="background:#f8fafc"],
+body.dark-theme #hotel-app-screen span[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen span[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen span[style*="background: #fff"],
+body.dark-theme #hotel-app-screen span[style*="background:#fff"],
+body.dark-theme #hotel-app-screen .ai-field-tag,
+body.dark-theme #hotel-app-screen .ota-platform-pill {
   background: #1c2028 !important;
   color: #e2e8f0 !important;
   border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 /* Surcharge Cards in Dark Mode */
-[data-theme="dark"] .card-surcharge,
-[data-theme="dark"] div[style*="background: #fefce8"],
-[data-theme="dark"] div[style*="background:#fefce8"],
-body.dark-theme .card-surcharge,
-body.dark-theme div[style*="background: #fefce8"],
-body.dark-theme div[style*="background:#fefce8"] {
+[data-theme="dark"] #hotel-app-screen .card-surcharge,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #fefce8"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#fefce8"],
+body.dark-theme #hotel-app-screen .card-surcharge,
+body.dark-theme #hotel-app-screen div[style*="background: #fefce8"],
+body.dark-theme #hotel-app-screen div[style*="background:#fefce8"] {
   background: rgba(234, 179, 8, 0.12) !important;
   border-color: rgba(234, 179, 8, 0.35) !important;
   color: #fef08a !important;
 }
 
-[data-theme="dark"] .upi-surcharge,
-[data-theme="dark"] div[style*="background: #f0f9ff"],
-[data-theme="dark"] div[style*="background:#f0f9ff"],
-body.dark-theme .upi-surcharge,
-body.dark-theme div[style*="background: #f0f9ff"],
-body.dark-theme div[style*="background:#f0f9ff"] {
+[data-theme="dark"] #hotel-app-screen .upi-surcharge,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f0f9ff"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#f0f9ff"],
+body.dark-theme #hotel-app-screen .upi-surcharge,
+body.dark-theme #hotel-app-screen div[style*="background: #f0f9ff"],
+body.dark-theme #hotel-app-screen div[style*="background:#f0f9ff"] {
   background: rgba(56, 189, 248, 0.12) !important;
   border-color: rgba(56, 189, 248, 0.35) !important;
   color: #bae6fd !important;
 }
 
-[data-theme="dark"] .upi-threshold,
-[data-theme="dark"] div[style*="background: #f0fdf4"],
-[data-theme="dark"] div[style*="background:#f0fdf4"],
-body.dark-theme .upi-threshold,
-body.dark-theme div[style*="background: #f0fdf4"],
-body.dark-theme div[style*="background:#f0fdf4"] {
+[data-theme="dark"] #hotel-app-screen .upi-threshold,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f0fdf4"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#f0fdf4"],
+body.dark-theme #hotel-app-screen .upi-threshold,
+body.dark-theme #hotel-app-screen div[style*="background: #f0fdf4"],
+body.dark-theme #hotel-app-screen div[style*="background:#f0fdf4"] {
   background: rgba(34, 197, 94, 0.12) !important;
   border-color: rgba(34, 197, 94, 0.35) !important;
   color: #bbf7d0 !important;
@@ -12324,10 +13106,10 @@ body.dark-theme .surcharge-preview-pill {
 }
 
 /* Empty Floor State Dashed Boxes in Dark Mode */
-[data-theme="dark"] div[style*="dashed #cbd5e1"],
-[data-theme="dark"] div[style*="dashed:#cbd5e1"],
-body.dark-theme div[style*="dashed #cbd5e1"],
-body.dark-theme div[style*="dashed:#cbd5e1"] {
+[data-theme="dark"] #hotel-app-screen div[style*="dashed #cbd5e1"],
+[data-theme="dark"] #hotel-app-screen div[style*="dashed:#cbd5e1"],
+body.dark-theme #hotel-app-screen div[style*="dashed #cbd5e1"],
+body.dark-theme #hotel-app-screen div[style*="dashed:#cbd5e1"] {
   background: #171a21 !important;
   border-color: rgba(255, 255, 255, 0.18) !important;
   color: #f3f4f6 !important;
@@ -12845,9 +13627,9 @@ body.dark-theme .stay-metric-pill {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 14px 0 16px 0;
+  gap: 12px;
+  flex-wrap: nowrap !important;
+  padding: 10px 0 12px 0;
   background: rgba(245, 245, 247, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -13081,9 +13863,10 @@ html.dark-theme .btn-folio-visitors-action {
 
   .printable-full-a4-sheet:only-child,
   #print-payment-summary-sheet,
-  #print-payment-summary-sheet.print-active {
+  #print-payment-summary-sheet.print-active,
+  .guest-payment-summary-sheet {
     min-height: auto !important;
-    max-height: 272mm !important;
+    max-height: 276mm !important;
     height: auto !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
@@ -13093,6 +13876,165 @@ html.dark-theme .btn-folio-visitors-action {
     page-break-after: avoid !important;
     break-after: avoid !important;
     overflow: hidden !important;
+  }
+
+  /* Universal Print Theme Isolation: Screen dark mode must NEVER bleed into print sheets */
+  [data-theme="dark"] #hotel-app-print,
+  [data-theme="dark"] #hotel-app-print *,
+  body.dark-theme #hotel-app-print,
+  body.dark-theme #hotel-app-print *,
+  [data-theme="dark"] #print-money-receipt-sheet,
+  [data-theme="dark"] #print-money-receipt-sheet *,
+  body.dark-theme #print-money-receipt-sheet,
+  body.dark-theme #print-money-receipt-sheet *,
+  [data-theme="dark"] #print-payment-summary-sheet,
+  [data-theme="dark"] #print-payment-summary-sheet *,
+  body.dark-theme #print-payment-summary-sheet,
+  body.dark-theme #print-payment-summary-sheet *,
+  [data-theme="dark"] #print-registration-sheet,
+  [data-theme="dark"] #print-registration-sheet *,
+  body.dark-theme #print-registration-sheet,
+  body.dark-theme #print-registration-sheet *,
+  [data-theme="dark"] #print-petty-cash-sheet,
+  [data-theme="dark"] #print-petty-cash-sheet *,
+  body.dark-theme #print-petty-cash-sheet,
+  body.dark-theme #print-petty-cash-sheet *,
+  [data-theme="dark"] #print-activities-summary-sheet,
+  [data-theme="dark"] #print-activities-summary-sheet *,
+  body.dark-theme #print-activities-summary-sheet,
+  body.dark-theme #print-activities-summary-sheet *,
+  [data-theme="dark"] .printable-two-per-a4-sheet,
+  [data-theme="dark"] .printable-two-per-a4-sheet *,
+  body.dark-theme .printable-two-per-a4-sheet,
+  body.dark-theme .printable-two-per-a4-sheet *,
+  [data-theme="dark"] .printable-full-a4-sheet,
+  [data-theme="dark"] .printable-full-a4-sheet *,
+  body.dark-theme .printable-full-a4-sheet,
+  body.dark-theme .printable-full-a4-sheet * {
+    color-scheme: light !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="dark"] .receipt-doc-title,
+  body.dark-theme .receipt-doc-title,
+  .receipt-doc-title,
+  div.receipt-doc-title,
+  h2.receipt-doc-title {
+    color: #000000 !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-copy-tag,
+  body.dark-theme .receipt-copy-tag,
+  .receipt-copy-tag {
+    color: #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-lbl,
+  body.dark-theme #print-money-receipt-sheet .receipt-lbl,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-fill-line,
+  body.dark-theme #print-money-receipt-sheet .receipt-fill-line,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-no-badge,
+  body.dark-theme #print-money-receipt-sheet .receipt-no-badge,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-date-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-date-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .voucher-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .voucher-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-cashier-name,
+  body.dark-theme #print-money-receipt-sheet .receipt-cashier-name,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-sig-label,
+  body.dark-theme #print-money-receipt-sheet .receipt-sig-label,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-disclaimer,
+  body.dark-theme #print-money-receipt-sheet .receipt-disclaimer,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-address-text,
+  body.dark-theme #print-money-receipt-sheet .receipt-address-text {
+    color: #000000 !important;
+  }
+
+  /* Ironclad White Background & Black Text Protection for Voucher Number in Print */
+  [data-theme="dark"] .voucher-no-highlight,
+  body.dark-theme .voucher-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .voucher-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .voucher-no-highlight,
+  #hotel-app-print .voucher-no-highlight,
+  .voucher-no-highlight {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1.5px solid #000000 !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-no-highlight,
+  body.dark-theme .receipt-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-no-highlight,
+  #hotel-app-print .receipt-no-highlight,
+  .receipt-no-highlight {
+    border: 2px solid #b91c1c !important;
+    background-color: #fee2e2 !important;
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-date-highlight,
+  body.dark-theme .receipt-date-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-date-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-date-highlight,
+  #hotel-app-print .receipt-date-highlight,
+  .receipt-date-highlight {
+    color: #000000 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    font-weight: 850 !important;
+  }
+
+  [data-theme="dark"] .receipt-rs-box,
+  body.dark-theme .receipt-rs-box,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-rs-box,
+  body.dark-theme #print-money-receipt-sheet .receipt-rs-box,
+  #hotel-app-print .receipt-rs-box,
+  .receipt-rs-box {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1.5px solid #000000 !important;
+  }
+
+  [data-theme="dark"] .voucher-date-highlight,
+  body.dark-theme .voucher-date-highlight,
+  [data-theme="dark"] #print-petty-cash-sheet .voucher-date-highlight,
+  body.dark-theme #print-petty-cash-sheet .voucher-date-highlight,
+  #hotel-app-print .voucher-date-highlight,
+  .voucher-date-highlight {
+    border: 1.5px solid #000000 !important;
+    background-color: #fef08a !important;
+    background: #fef08a !important;
+    color: #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-mini-table th,
+  body.dark-theme #print-money-receipt-sheet .receipt-mini-table th {
+    background: #f1f5f9 !important;
+    background-color: #f1f5f9 !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-mini-table td,
+  body.dark-theme #print-money-receipt-sheet .receipt-mini-table td {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  [data-theme="dark"] #print-payment-summary-sheet h1,
+  body.dark-theme #print-payment-summary-sheet h1 {
+    color: #1e3a8a !important;
   }
 
   #print-registration-sheet,

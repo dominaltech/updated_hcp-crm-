@@ -20,3 +20,6 @@ test_hotel.db
 qa-selenium.zip
 qa-selenium/
 propmpt.txt
+backup-file/
+*.zip
+*.lnk

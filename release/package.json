@@ -4,13 +4,14 @@
   "description": "",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev": "node server.js",
     "dev:react": "vite",
     "build": "vite build",
     "start": "node server.js",
     "test": "vitest run",
     "electron:start": "electron .",
-    "package:win": "electron-packager . \"Hotel City Park CRM\" --platform=win32 --arch=x64 --out=release-electron --icon=build/icon.ico --asar=false --overwrite --ignore=\"^/(scratch|tests|QA|nnnnew|release|release-electron|\\.git)\""
+    "package:win": "electron-packager . \"Hotel City Park CRM\" --platform=win32 --arch=x64 --out=release-electron --icon=build/icon.ico --asar=false --overwrite --ignore=\"^/(scratch|tests|QA|qa-selenium|qa-selenium\\.zip|nnnnew|nnnnew\\.zip|backup-file|release|release-electron|\\.git|.*\\.db|.*\\.sqlite|.*\\.zip)\"",
+    "release:update": "node scripts/update_release.js"
   },
   "keywords": [],
   "author": "",

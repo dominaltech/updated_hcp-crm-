@@ -164,6 +164,7 @@ db.exec(`
     split_cash REAL DEFAULT 0,
     split_card REAL DEFAULT 0,
     split_online REAL DEFAULT 0,
+    split_cheque REAL DEFAULT 0,
     total_paid REAL DEFAULT 0,
     payment_status TEXT DEFAULT 'paid', -- paid, partial, pending
     status TEXT DEFAULT 'active', -- active, checked_out
@@ -676,6 +677,7 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN advance_payment_mode TEXT DEFAULT
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_receipt_no TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_cheque_no TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_cheque_bank TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN advance_cheque_status TEXT DEFAULT 'pending';"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN final_settlement_payment REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN final_settlement_mode TEXT DEFAULT 'cash';"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN final_receipt_no TEXT DEFAULT NULL;"); } catch (e) {}
@@ -735,6 +737,7 @@ try { db.exec("ALTER TABLE payments ADD COLUMN split_cash REAL DEFAULT 0;"); } c
 try { db.exec("ALTER TABLE payments ADD COLUMN split_card REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_online REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_cheque REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN split_cheque REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_card_surcharge REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_upi_tax REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN final_card_surcharge REAL DEFAULT 0;"); } catch (e) {}
@@ -827,35 +830,37 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN refund_voucher_no TEXT DEFAULT NU
 try { db.exec("ALTER TABLE bookings ADD COLUMN refund_reason TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN refund_utr TEXT DEFAULT NULL;"); } catch (e) {}
 
-// Sample BTC companies seeder removed: Users add corporate BTC accounts manually.
+// Room tariff per adult (Point 5)
+try { db.exec("ALTER TABLE rooms ADD COLUMN price_single REAL DEFAULT NULL;"); } catch (e) {}
 
-// Secret Manager & Encryption for sensitive settings
-const secretManager = require('./services/secretManager');
-secretManager.migrateDatabaseSecrets(db);
+// Base & GST Rate Columns for Add-ons and Stay Extension Slabs
+try { db.exec("ALTER TABLE rooms ADD COLUMN extra_bed_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN breakfast_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ext_3h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ext_6h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ext_9h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN single_gst_pct REAL DEFAULT 5;"); } catch (e) {}
 
-const defaultKey = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('gemini_api_key');
-const currentDecrypted = defaultKey && defaultKey.value ? secretManager.decryptSecret(defaultKey.value) : '';
-if ((!currentDecrypted || currentDecrypted.startsWith('AIzaSyTest')) && process.env.GEMINI_API_KEY) {
-  db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(
-    'gemini_api_key',
-    secretManager.encryptSecret(process.env.GEMINI_API_KEY)
-  );
-}
+// Out-of-state IGST support (Point 22)
+try { db.exec("ALTER TABLE bookings ADD COLUMN tax_type TEXT DEFAULT 'cgst_sgst';"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN is_igst INTEGER DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN company_name TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN gst_number TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN company_address TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE guests ADD COLUMN company_name TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE guests ADD COLUMN gst_number TEXT DEFAULT NULL;"); } catch (e) {}
 
-const defaultOta = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('ota_platforms');
-if (!defaultOta) {
-  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run(
-    'ota_platforms',
-    JSON.stringify(['MakeMyTrip', 'Goibibo', 'Booking.com', 'Agoda', 'Airbnb', 'EaseMyTrip', 'Yatra', 'Expedia'])
-  );
-}
-
-const defaultMinAdvance = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('min_checkin_advance_pct');
-if (!defaultMinAdvance) {
-  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('min_checkin_advance_pct', '50');
-}
-
+// Expenses purpose hierarchy, owner attribution & remainder adjustment (Points 12, 13, 16)
+try { db.exec("ALTER TABLE expenses ADD COLUMN purpose_category TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN purpose_child TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN owner_name TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN original_amount REAL DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN actual_used_amount REAL DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN returned_amount REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN bill_scan_photo TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE expenses ADD COLUMN owner_phone TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE payments ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
 
 // Seed Default Debit / Expense Categories & Owners Config (Point 12)
 const defaultExpenseCategories = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('expense_categories_config');
@@ -892,6 +897,34 @@ if (!defaultExpenseOwners) {
     { id: '2', name: 'Respected Mahesh Sir', phone: '' }
   ];
   db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('expense_owners_config', JSON.stringify(initialOwners));
+}
+
+// Sample BTC companies seeder removed: Users add corporate BTC accounts manually.
+
+// Secret Manager & Encryption for sensitive settings
+const secretManager = require('./services/secretManager');
+secretManager.migrateDatabaseSecrets(db);
+
+const defaultKey = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('gemini_api_key');
+const currentDecrypted = defaultKey && defaultKey.value ? secretManager.decryptSecret(defaultKey.value) : '';
+if ((!currentDecrypted || currentDecrypted.startsWith('AIzaSyTest')) && process.env.GEMINI_API_KEY) {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(
+    'gemini_api_key',
+    secretManager.encryptSecret(process.env.GEMINI_API_KEY)
+  );
+}
+
+const defaultOta = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('ota_platforms');
+if (!defaultOta) {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run(
+    'ota_platforms',
+    JSON.stringify(['MakeMyTrip', 'Goibibo', 'Booking.com', 'Agoda', 'Airbnb', 'EaseMyTrip', 'Yatra', 'Expedia'])
+  );
+}
+
+const defaultMinAdvance = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('min_checkin_advance_pct');
+if (!defaultMinAdvance) {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('min_checkin_advance_pct', '50');
 }
 
 // Performance Indexes for Instant Navigation & Sub-Millisecond History Lookups

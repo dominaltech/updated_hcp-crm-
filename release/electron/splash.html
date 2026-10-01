@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hotel City Park CRM</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+    .splash-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 40px;
+      max-width: 480px;
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(56, 189, 248, 0.1);
+      animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .logo-container {
+      position: relative;
+      margin-bottom: 24px;
+    }
+    .logo-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.25) 0%, rgba(99, 102, 241, 0) 70%);
+      border-radius: 50%;
+      filter: blur(20px);
+      animation: pulseGlow 2.5s infinite ease-in-out;
+    }
+    .logo-img {
+      position: relative;
+      width: 110px;
+      height: auto;
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+      animation: floatLogo 3s infinite ease-in-out;
+    }
+    .brand-title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #ffffff 20%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .brand-subtitle {
+      font-size: 13px;
+      font-weight: 500;
+      color: #94a3b8;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .status-text {
+      font-size: 13px;
+      color: #38bdf8;
+      font-weight: 500;
+      margin-bottom: 14px;
+      letter-spacing: 0.2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #38bdf8;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #38bdf8;
+      animation: blink 1s infinite alternate;
+    }
+    .progress-bar {
+      width: 260px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+    .progress-indicator {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 45%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      border-radius: 999px;
+      animation: shimmer 1.2s infinite ease-in-out;
+    }
+    .version-tag {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 0.5px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes floatLogo {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(260%); }
+    }
+    @keyframes blink {
+      0% { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="splash-card">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <img class="logo-img" src="../public/HCP_New_Logo_Png_witought-name-removebg.png" alt="Hotel City Park" onerror="this.src='../public/logo.png'" />
+    </div>
+    <div class="brand-title">Hotel City Park CRM</div>
+    <div class="brand-subtitle">Front Desk Management</div>
+    <div class="status-text">
+      <div class="status-dot"></div>
+      <span>Launching front desk dashboard...</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-indicator"></div>
+    </div>
+    <div class="version-tag">Version 1.0.0 &bull; Desktop Edition</div>
+  </div>
+</body>
+</html>
