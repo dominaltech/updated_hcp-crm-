@@ -1082,8 +1082,8 @@ export function buildMoneyReceiptHTML(receipt) {
 
         <!-- Middle: RECEIPT Heading & Copy Tag (little fonts, no box, 'ORIGINAL' / 'HOTEL COPY') -->
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 8px;">
-          <h2 class="receipt-doc-title" style="margin: 0; font-size: 20pt; font-weight: 950; font-family: Georgia, serif; letter-spacing: 2.5px; color: #000000; line-height: 1;">RECEIPT</h2>
-          <div class="receipt-copy-tag" style="margin-top: 3px; font-size: 8.5pt; font-weight: 850; letter-spacing: 1.5px; color: #000000; text-transform: uppercase;">${copyLabel}</div>
+          <div class="receipt-doc-title" style="margin: 0; font-size: 20pt; font-weight: 950; font-family: Georgia, serif; letter-spacing: 2.5px; color: #000000 !important; line-height: 1;">RECEIPT</div>
+          <div class="receipt-copy-tag" style="margin-top: 3px; font-size: 8.5pt; font-weight: 850; letter-spacing: 1.5px; color: #000000 !important; text-transform: uppercase;">${copyLabel}</div>
         </div>
 
         <!-- Right Side: Serial No, Date (without box) & Voucher No (Voucher No: on single line, bold value) -->
@@ -3173,7 +3173,7 @@ export function buildGuestPaymentSummaryHTML(data) {
   `;
 
   return `
-    <div class="full-a4-registration-card guest-payment-summary-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 12px 16px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; min-height: 275mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+    <div class="full-a4-registration-card guest-payment-summary-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; border: 3.5px solid #1e3a8a; padding: 10px 16px 14px 16px; background: #fff; line-height: 1.35; display: flex; flex-direction: column; justify-content: space-between; min-height: 255mm; max-height: 268mm; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
       <!-- Watermark Crest -->
       <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.04; pointer-events: none; z-index: 0; text-align: center; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
         <img src="/HCP New Logo Png_witought-name.png" alt="" style="width: 440px; height: auto;" loading="eager" decoding="sync" />
@@ -3191,8 +3191,8 @@ export function buildGuestPaymentSummaryHTML(data) {
                 <div style="margin: 2px 0 0; font-size: 8.2pt; font-weight: 850; color: #1e3a8a; letter-spacing: 0.5px; text-transform: uppercase;">
                   by JMG HOSPITALITY AND INFRA LLP
                 </div>
-                <p style="margin: 3px 0 0; font-size: 8pt; font-weight: 750; color: #1e293b; max-width: 380px; line-height: 1.25;">
-                  119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)
+                <p style="margin: 3px 0 0; font-size: 8pt; font-weight: 750; color: #1e293b; white-space: nowrap; line-height: 1.25;">
+                  119, Murarji Peth, Char Hutatma Chowk, Solapur - 413001
                 </p>
                 <p style="margin: 3px 0 0; font-size: 8pt; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                   <img src="/phone-call.png" alt="" style="width: 11px; height: 11px; object-fit: contain; vertical-align: middle;" loading="eager" decoding="sync" />
@@ -3293,11 +3293,11 @@ export function buildGuestPaymentSummaryHTML(data) {
         </div>
 
         <!-- FOOTER & SIGNATURES -->
-        <div style="padding-top: 20px; border-top: 1.5px solid #cbd5e1; margin-top: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 20px 0;">
+        <div style="padding-top: 10px; border-top: 1.5px solid #cbd5e1; margin-top: auto; margin-bottom: 2px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 10px 20px 4px;">
             <!-- Guest Signature -->
             <div style="text-align: center;">
-              <div style="border-bottom: 1.5px solid #000; width: 175px; height: 35px; margin-bottom: 4px;"></div>
+              <div style="border-bottom: 1.5px solid #000; width: 175px; height: 26px; margin-bottom: 4px;"></div>
               <div style="font-size: 9pt; font-weight: 800; color: #0f172a;">Guest Signature</div>
             </div>
 

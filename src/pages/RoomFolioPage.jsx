@@ -1013,14 +1013,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     <section className="panel-view active" id="view-room-folio">
       {/* Top Action Toolbar with Universal Back & Close Buttons */}
       <div className="folio-page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+        <div className="folio-header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, flexWrap: 'nowrap' }}>
           <button type="button" className="universal-back-btn" id="btn-folio-page-back" onClick={onBack} title="Back to Rooms Grid">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
             <span>Back</span>
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
             <h2 id="folio-page-room-title" className="folio-room-heading">
               Room {folioData.roomNumber}
             </h2>
@@ -1032,7 +1032,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="folio-header-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
           <button
             type="button"
             className="filter-chip btn-folio-action-chip btn-folio-visitors-chip btn-folio-visitors-action"

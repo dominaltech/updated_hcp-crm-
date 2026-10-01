@@ -4074,15 +4074,46 @@ body.dark-theme .doc-action-card {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 14px 0 16px 0;
+  gap: 12px;
+  flex-wrap: nowrap !important;
+  padding: 10px 0 12px 0;
   background: rgba(245, 245, 247, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1.5px solid var(--border-light);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
   transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.folio-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: nowrap !important;
+}
+
+.folio-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.folio-header-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.folio-header-actions .btn-folio-action-chip,
+.folio-header-actions .filter-chip,
+.folio-header-actions .btn-scan-action {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  padding: 6px 11px !important;
+  font-size: 0.8rem !important;
 }
 
 [data-theme="dark"] .folio-page-header,
@@ -7068,8 +7099,8 @@ body.table-pos-mode .table-session-header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex-wrap: nowrap !important;
+  gap: 12px;
 }
 
 .btn-back-rooms {
@@ -13343,9 +13374,9 @@ body.dark-theme .stay-metric-pill {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 14px 0 16px 0;
+  gap: 12px;
+  flex-wrap: nowrap !important;
+  padding: 10px 0 12px 0;
   background: rgba(245, 245, 247, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -13579,9 +13610,10 @@ html.dark-theme .btn-folio-visitors-action {
 
   .printable-full-a4-sheet:only-child,
   #print-payment-summary-sheet,
-  #print-payment-summary-sheet.print-active {
+  #print-payment-summary-sheet.print-active,
+  .guest-payment-summary-sheet {
     min-height: auto !important;
-    max-height: 272mm !important;
+    max-height: 276mm !important;
     height: auto !important;
     background: #ffffff !important;
     background-color: #ffffff !important;
@@ -13591,6 +13623,64 @@ html.dark-theme .btn-folio-visitors-action {
     page-break-after: avoid !important;
     break-after: avoid !important;
     overflow: hidden !important;
+  }
+
+  /* Universal Print Theme Isolation: Screen dark mode must NEVER bleed into print sheets */
+  [data-theme="dark"] #hotel-app-print *,
+  body.dark-theme #hotel-app-print *,
+  [data-theme="dark"] #print-money-receipt-sheet *,
+  body.dark-theme #print-money-receipt-sheet *,
+  [data-theme="dark"] #print-payment-summary-sheet *,
+  body.dark-theme #print-payment-summary-sheet *,
+  [data-theme="dark"] #print-registration-sheet *,
+  body.dark-theme #print-registration-sheet *,
+  [data-theme="dark"] #print-petty-cash-sheet *,
+  body.dark-theme #print-petty-cash-sheet *,
+  [data-theme="dark"] #print-activities-summary-sheet *,
+  body.dark-theme #print-activities-summary-sheet *,
+  [data-theme="dark"] .printable-two-per-a4-sheet *,
+  body.dark-theme .printable-two-per-a4-sheet *,
+  [data-theme="dark"] .printable-full-a4-sheet *,
+  body.dark-theme .printable-full-a4-sheet * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="dark"] .receipt-doc-title,
+  body.dark-theme .receipt-doc-title,
+  .receipt-doc-title,
+  div.receipt-doc-title,
+  h2.receipt-doc-title {
+    color: #000000 !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-copy-tag,
+  body.dark-theme .receipt-copy-tag,
+  .receipt-copy-tag {
+    color: #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-lbl,
+  body.dark-theme #print-money-receipt-sheet .receipt-lbl,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-fill-line,
+  body.dark-theme #print-money-receipt-sheet .receipt-fill-line,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-no-badge,
+  body.dark-theme #print-money-receipt-sheet .receipt-no-badge,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-date-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-date-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .voucher-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .voucher-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-cashier-name,
+  body.dark-theme #print-money-receipt-sheet .receipt-cashier-name,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-sig-label,
+  body.dark-theme #print-money-receipt-sheet .receipt-sig-label {
+    color: #000000 !important;
+  }
+
+  [data-theme="dark"] #print-payment-summary-sheet h1,
+  body.dark-theme #print-payment-summary-sheet h1 {
+    color: #1e3a8a !important;
   }
 
   #print-registration-sheet,

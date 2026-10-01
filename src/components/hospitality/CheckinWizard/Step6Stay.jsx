@@ -3084,6 +3084,7 @@ export default function Step6Stay({
                   placeholder={(!isOta && currentAdults === 0) ? 'Select adult guest...' : 'Base Tariff'}
                   value={(!isOta && currentAdults === 0 && !draft._customBaseRate) ? '' : (draft.baseRate !== undefined ? draft.baseRate : (calculatedBasePrice || ''))}
                   onFocus={(e) => e.target.select()}
+                  onClick={(e) => e.target.select()}
                   onChange={(e) => {
                     const val = e.target.value;
                     updateDraft({

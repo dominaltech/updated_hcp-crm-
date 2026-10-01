@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('html2pdf.js', () => ({
+  default: () => ({
+    set: () => ({
+      from: () => ({
+        save: vi.fn(),
+        outputPdf: vi.fn().mockResolvedValue('data:application/pdf;base64,mock')
+      })
+    })
+  })
+}));
 
 describe('Checkin Adult Selection & Respective Tariff Amounts', () => {
   // Test calculatedBasePrice logic from Step6Stay.jsx & CheckinWizardModal.jsx
@@ -234,6 +245,62 @@ describe('Print Theme Preservation (No Shift to Light Theme)', () => {
     const fnBody = isolationFnMatch[1];
     expect(fnBody).not.toContain("setAttribute('data-theme', 'light')");
     expect(fnBody).not.toContain("classList.remove('dark-theme')");
+  });
+
+  it('buildMoneyReceiptHTML renders RECEIPT heading as black div with color: #000000 !important immune to dark theme', async () => {
+    const { buildMoneyReceiptHTML } = await import('../src/services/printService');
+    const html = buildMoneyReceiptHTML({
+      receipt_no: 'POS06',
+      voucher_number: '260930-610',
+      guest_name: 'Md Yahya Ab Wahid Mundewadi',
+      amount: 513,
+      payment_mode: 'card'
+    });
+
+    // Heading must be a div or have explicit #000000 !important color, NOT an unstyled h2 that gets turned white by dark theme
+    expect(html).toContain('<div class="receipt-doc-title" style="margin: 0; font-size: 20pt; font-weight: 950; font-family: Georgia, serif; letter-spacing: 2.5px; color: #000000 !important; line-height: 1;">RECEIPT</div>');
+    expect(html).not.toContain('<h2 class="receipt-doc-title"');
+  });
+
+  it('buildGuestPaymentSummaryHTML renders address on single line without (Maharashtra) and provides signature clearance', async () => {
+    const { buildGuestPaymentSummaryHTML } = await import('../src/services/printService');
+    const html = buildGuestPaymentSummaryHTML({
+      guest_name: 'Md Yahya Ab Wahid Mundewadi',
+      room_numbers: '102',
+      room_type: 'Deluxe AC',
+      voucher_no: '260930-610',
+      checkin_time: '2026-09-30T17:22:00',
+      checkout_time: '2026-10-01T10:00:00',
+      payments: [{
+        receipt_no: 'POS06',
+        amount: 513,
+        payment_mode: 'CARD',
+        card_surcharge: 13,
+        particulars: 'paid while checkin : Card POS'
+      }]
+    });
+
+    // Address must be strictly on one line without (Maharashtra)
+    expect(html).toContain('119, Murarji Peth, Char Hutatma Chowk, Solapur - 413001');
+    expect(html).not.toContain('413 001');
+    expect(html).not.toContain('(Maharashtra)');
+
+    // Signature clearance
+    expect(html).toContain('Guest Signature');
+    expect(html).toContain('For HOTEL CITY PARK');
+    expect(html).toContain('max-height: 268mm');
+  });
+
+  it('RoomFolioPage header keeps Back button, Room title, and all action buttons in the same line without wrapping', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const folioCode = fs.readFileSync(path.resolve(__dirname, '../src/pages/RoomFolioPage.jsx'), 'utf-8');
+    const stylesCode = fs.readFileSync(path.resolve(__dirname, '../public/styles.css'), 'utf-8');
+
+    // RoomFolioPage must have folio-header-left and folio-header-actions with flexWrap nowrap
+    expect(folioCode).toContain('className="folio-header-left"');
+    expect(folioCode).toContain('className="folio-header-actions"');
+    expect(stylesCode).toContain('flex-wrap: nowrap !important;');
   });
 });
 
