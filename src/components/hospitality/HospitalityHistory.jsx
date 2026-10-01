@@ -1324,31 +1324,6 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         )}
       </div>
 
-      <div className="history-stats-bar">
-          <span>Showing {filteredRecords.length} completed stays</span>
-          <span className="stats-sep">•</span>
-          <span>Total Revenue: {formatCurrency(totalRev)}</span>
-          {pendingBtcCount > 0 && (
-            <>
-              <span className="stats-sep">•</span>
-              <span style={{ color: '#dc2626', fontWeight: 800 }}>
-                🏢 {pendingBtcCount} Pending BTC Stay{pendingBtcCount > 1 ? 's' : ''}
-              </span>
-            </>
-          )}
-          {isSelectionMode && (
-            <>
-              <span className="stats-sep">•</span>
-              <span style={{ color: '#2563eb', fontWeight: 800 }}>
-                ✓ Selection Active
-              </span>
-            </>
-          )}
-          <span className="stats-sep">•</span>
-          <span style={{ color: '#64748b', fontSize: '0.76rem', fontWeight: 650 }}>
-            ⌨️ <strong>↑ / ↓</strong> Navigate • <strong>Enter</strong> Open Stay
-          </span>
-        </div>
 
       {/* History Data Table */}
       <div className="history-table-container">
