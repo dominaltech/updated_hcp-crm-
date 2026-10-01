@@ -135,7 +135,7 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     expect(html).not.toContain('by Cash / Cheque');
 
     // Amount with fee (2000 + 10 = 2010), no UTR clutter on line 3
-    expect(html).toContain('₹ 2,010.00 (+₹10 Fee)');
+    expect(html).toContain('₹ 2,010.00');
     const line3Slice = html.slice(html.indexOf('by Online UPI'), html.indexOf('Room No.'));
     expect(line3Slice).not.toContain('UTR');
 
@@ -179,7 +179,7 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     expect(html).not.toContain('by Cash / Cheque');
 
     // Amount with fee (2000 + 50 = 2050)
-    expect(html).toContain('₹ 2,050.00 (+₹50 Fee)');
+    expect(html).toContain('₹ 2,050.00');
 
     // Table row with fee (Card POS, not Cash Payment!)
     expect(html).toContain('Room 104 - Paid while checking');

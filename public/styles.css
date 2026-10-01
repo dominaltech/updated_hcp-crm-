@@ -10079,7 +10079,8 @@ body.dark-theme .manager-subnav-btn.active {
 
   .voucher-no-highlight {
     border: 1.5px solid #000000 !important;
-    background-color: #f8fafc !important;
+    background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #000000 !important;
     font-size: 10.5pt !important;
     font-weight: 950 !important;
@@ -10316,7 +10317,9 @@ body.dark-theme .manager-subnav-btn.active {
     font-size: 13pt !important;
     font-weight: 950 !important;
     border-radius: 4px !important;
-    background: #f8fafc !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
   }
 
   .receipt-disclaimer {
@@ -12613,66 +12616,66 @@ body.dark-theme ::-webkit-scrollbar-thumb:hover {
 }
 
 /* 11. Overrides for Headings, Inline Colors, Tables & Cards */
-[data-theme="dark"] h1,
-[data-theme="dark"] h2,
-[data-theme="dark"] h3,
-[data-theme="dark"] h4,
-[data-theme="dark"] h5,
-[data-theme="dark"] h6,
-body.dark-theme h1,
-body.dark-theme h2,
-body.dark-theme h3,
-body.dark-theme h4,
-body.dark-theme h5,
-body.dark-theme h6 {
+[data-theme="dark"] #hotel-app-screen h1,
+[data-theme="dark"] #hotel-app-screen h2,
+[data-theme="dark"] #hotel-app-screen h3,
+[data-theme="dark"] #hotel-app-screen h4,
+[data-theme="dark"] #hotel-app-screen h5,
+[data-theme="dark"] #hotel-app-screen h6,
+body.dark-theme #hotel-app-screen h1,
+body.dark-theme #hotel-app-screen h2,
+body.dark-theme #hotel-app-screen h3,
+body.dark-theme #hotel-app-screen h4,
+body.dark-theme #hotel-app-screen h5,
+body.dark-theme #hotel-app-screen h6 {
   color: #f3f4f6 !important;
 }
 
 /* Master Overrides for inline dark colors on any element in dark mode */
-[data-theme="dark"] [style*="color: #0f172a"],
-[data-theme="dark"] [style*="color:#0f172a"],
-[data-theme="dark"] [style*="color: #1e293b"],
-[data-theme="dark"] [style*="color:#1e293b"],
-[data-theme="dark"] [style*="color: #334155"],
-[data-theme="dark"] [style*="color:#334155"],
-body.dark-theme [style*="color: #0f172a"],
-body.dark-theme [style*="color:#0f172a"],
-body.dark-theme [style*="color: #1e293b"],
-body.dark-theme [style*="color:#1e293b"],
-body.dark-theme [style*="color: #334155"],
-body.dark-theme [style*="color:#334155"] {
+[data-theme="dark"] #hotel-app-screen [style*="color: #0f172a"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#0f172a"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #1e293b"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#1e293b"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #334155"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#334155"],
+body.dark-theme #hotel-app-screen [style*="color: #0f172a"],
+body.dark-theme #hotel-app-screen [style*="color:#0f172a"],
+body.dark-theme #hotel-app-screen [style*="color: #1e293b"],
+body.dark-theme #hotel-app-screen [style*="color:#1e293b"],
+body.dark-theme #hotel-app-screen [style*="color: #334155"],
+body.dark-theme #hotel-app-screen [style*="color:#334155"] {
   color: #f3f4f6 !important;
 }
 
 /* Muted subtitles with inline #64748b or #475569 */
-[data-theme="dark"] p[style*="color: #64748b"],
-[data-theme="dark"] p[style*="color:#64748b"],
-[data-theme="dark"] span[style*="color: #64748b"],
-[data-theme="dark"] span[style*="color:#64748b"],
-[data-theme="dark"] div[style*="color: #64748b"],
-[data-theme="dark"] div[style*="color:#64748b"],
-[data-theme="dark"] [style*="color: #475569"],
-[data-theme="dark"] [style*="color:#475569"],
-body.dark-theme p[style*="color: #64748b"],
-body.dark-theme p[style*="color:#64748b"],
-body.dark-theme span[style*="color: #64748b"],
-body.dark-theme span[style*="color:#64748b"],
-body.dark-theme div[style*="color: #64748b"],
-body.dark-theme div[style*="color:#64748b"],
-body.dark-theme [style*="color: #475569"],
-body.dark-theme [style*="color:#475569"] {
+[data-theme="dark"] #hotel-app-screen p[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen p[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen span[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen span[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen div[style*="color: #64748b"],
+[data-theme="dark"] #hotel-app-screen div[style*="color:#64748b"],
+[data-theme="dark"] #hotel-app-screen [style*="color: #475569"],
+[data-theme="dark"] #hotel-app-screen [style*="color:#475569"],
+body.dark-theme #hotel-app-screen p[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen p[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen span[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen span[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen div[style*="color: #64748b"],
+body.dark-theme #hotel-app-screen div[style*="color:#64748b"],
+body.dark-theme #hotel-app-screen [style*="color: #475569"],
+body.dark-theme #hotel-app-screen [style*="color:#475569"] {
   color: #94a3b8 !important;
 }
 
 /* Master Fix for code tags and light badge boxes (Cashier ID, GSTIN, etc.) */
-[data-theme="dark"] code,
-[data-theme="dark"] code[style*="background"],
-[data-theme="dark"] [style*="background: #f1f5f9"],
-[data-theme="dark"] [style*="background:#f1f5f9"],
-body.dark-theme code,
-body.dark-theme code[style*="background"],
-body.dark-theme [style*="background: #f1f5f9"],
-body.dark-theme [style*="background:#f1f5f9"] {
+[data-theme="dark"] #hotel-app-screen code,
+[data-theme="dark"] #hotel-app-screen code[style*="background"],
+[data-theme="dark"] #hotel-app-screen [style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen [style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen code,
+body.dark-theme #hotel-app-screen code[style*="background"],
+body.dark-theme #hotel-app-screen [style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen [style*="background:#f1f5f9"] {
   background: #222630 !important;
   color: #f3f4f6 !important;
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -12703,30 +12706,30 @@ body.dark-theme .owner-rooms-table tr:hover td {
   background: #1c202a !important;
 }
 
-[data-theme="dark"] div[style*="background: #ffffff"],
-[data-theme="dark"] div[style*="background: rgb(255, 255, 255)"],
-[data-theme="dark"] div[style*="background:#ffffff"],
-body.dark-theme div[style*="background: #ffffff"],
-body.dark-theme div[style*="background: rgb(255, 255, 255)"],
-body.dark-theme div[style*="background:#ffffff"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(255, 255, 255)"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen div[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(255, 255, 255)"],
+body.dark-theme #hotel-app-screen div[style*="background:#ffffff"] {
   background: #171a21 !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   color: #f3f4f6 !important;
 }
 
-[data-theme="dark"] div[style*="background: #fffbeb"],
-[data-theme="dark"] div[style*="background: rgb(255, 251, 235)"],
-body.dark-theme div[style*="background: #fffbeb"],
-body.dark-theme div[style*="background: rgb(255, 251, 235)"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #fffbeb"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(255, 251, 235)"],
+body.dark-theme #hotel-app-screen div[style*="background: #fffbeb"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(255, 251, 235)"] {
   background: rgba(245, 158, 11, 0.14) !important;
   border-color: rgba(245, 158, 11, 0.35) !important;
   color: #fde047 !important;
 }
 
-[data-theme="dark"] div[style*="background: #f8fafc"],
-[data-theme="dark"] div[style*="background: rgb(248, 250, 252)"],
-body.dark-theme div[style*="background: #f8fafc"],
-body.dark-theme div[style*="background: rgb(248, 250, 252)"] {
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen div[style*="background: rgb(248, 250, 252)"],
+body.dark-theme #hotel-app-screen div[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen div[style*="background: rgb(248, 250, 252)"] {
   background: #15181e !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: #f3f4f6 !important;
@@ -12756,81 +12759,81 @@ body.dark-theme .manager-subnav-btn.active {
 }
 
 /* Light buttons / chips with inline background in dark theme */
-[data-theme="dark"] button[style*="background: #f1f5f9"],
-[data-theme="dark"] button[style*="background:#f1f5f9"],
-[data-theme="dark"] button[style*="background: #f8fafc"],
-[data-theme="dark"] button[style*="background:#f8fafc"],
-[data-theme="dark"] button[style*="background: #ffffff"],
-[data-theme="dark"] button[style*="background:#ffffff"],
-[data-theme="dark"] button[style*="background: #fff"],
-[data-theme="dark"] button[style*="background:#fff"],
-body.dark-theme button[style*="background: #f1f5f9"],
-body.dark-theme button[style*="background:#f1f5f9"],
-body.dark-theme button[style*="background: #f8fafc"],
-body.dark-theme button[style*="background:#f8fafc"],
-body.dark-theme button[style*="background: #ffffff"],
-body.dark-theme button[style*="background:#ffffff"],
-body.dark-theme button[style*="background: #fff"],
-body.dark-theme button[style*="background:#fff"] {
+[data-theme="dark"] #hotel-app-screen button[style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#f1f5f9"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#f8fafc"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#ffffff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background: #fff"],
+[data-theme="dark"] #hotel-app-screen button[style*="background:#fff"],
+body.dark-theme #hotel-app-screen button[style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen button[style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen button[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen button[style*="background:#f8fafc"],
+body.dark-theme #hotel-app-screen button[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen button[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen button[style*="background: #fff"],
+body.dark-theme #hotel-app-screen button[style*="background:#fff"] {
   background: #1e222a !important;
   color: #f3f4f6 !important;
   border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-[data-theme="dark"] span[style*="background: #f1f5f9"],
-[data-theme="dark"] span[style*="background:#f1f5f9"],
-[data-theme="dark"] span[style*="background: #f8fafc"],
-[data-theme="dark"] span[style*="background:#f8fafc"],
-[data-theme="dark"] span[style*="background: #ffffff"],
-[data-theme="dark"] span[style*="background:#ffffff"],
-[data-theme="dark"] span[style*="background: #fff"],
-[data-theme="dark"] span[style*="background:#fff"],
-[data-theme="dark"] .ai-field-tag,
-[data-theme="dark"] .ota-platform-pill,
-body.dark-theme span[style*="background: #f1f5f9"],
-body.dark-theme span[style*="background:#f1f5f9"],
-body.dark-theme span[style*="background: #f8fafc"],
-body.dark-theme span[style*="background:#f8fafc"],
-body.dark-theme span[style*="background: #ffffff"],
-body.dark-theme span[style*="background:#ffffff"],
-body.dark-theme span[style*="background: #fff"],
-body.dark-theme span[style*="background:#fff"],
-body.dark-theme .ai-field-tag,
-body.dark-theme .ota-platform-pill {
+[data-theme="dark"] #hotel-app-screen span[style*="background: #f1f5f9"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#f1f5f9"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #f8fafc"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#f8fafc"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #ffffff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#ffffff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background: #fff"],
+[data-theme="dark"] #hotel-app-screen span[style*="background:#fff"],
+[data-theme="dark"] #hotel-app-screen .ai-field-tag,
+[data-theme="dark"] #hotel-app-screen .ota-platform-pill,
+body.dark-theme #hotel-app-screen span[style*="background: #f1f5f9"],
+body.dark-theme #hotel-app-screen span[style*="background:#f1f5f9"],
+body.dark-theme #hotel-app-screen span[style*="background: #f8fafc"],
+body.dark-theme #hotel-app-screen span[style*="background:#f8fafc"],
+body.dark-theme #hotel-app-screen span[style*="background: #ffffff"],
+body.dark-theme #hotel-app-screen span[style*="background:#ffffff"],
+body.dark-theme #hotel-app-screen span[style*="background: #fff"],
+body.dark-theme #hotel-app-screen span[style*="background:#fff"],
+body.dark-theme #hotel-app-screen .ai-field-tag,
+body.dark-theme #hotel-app-screen .ota-platform-pill {
   background: #1c2028 !important;
   color: #e2e8f0 !important;
   border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 /* Surcharge Cards in Dark Mode */
-[data-theme="dark"] .card-surcharge,
-[data-theme="dark"] div[style*="background: #fefce8"],
-[data-theme="dark"] div[style*="background:#fefce8"],
-body.dark-theme .card-surcharge,
-body.dark-theme div[style*="background: #fefce8"],
-body.dark-theme div[style*="background:#fefce8"] {
+[data-theme="dark"] #hotel-app-screen .card-surcharge,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #fefce8"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#fefce8"],
+body.dark-theme #hotel-app-screen .card-surcharge,
+body.dark-theme #hotel-app-screen div[style*="background: #fefce8"],
+body.dark-theme #hotel-app-screen div[style*="background:#fefce8"] {
   background: rgba(234, 179, 8, 0.12) !important;
   border-color: rgba(234, 179, 8, 0.35) !important;
   color: #fef08a !important;
 }
 
-[data-theme="dark"] .upi-surcharge,
-[data-theme="dark"] div[style*="background: #f0f9ff"],
-[data-theme="dark"] div[style*="background:#f0f9ff"],
-body.dark-theme .upi-surcharge,
-body.dark-theme div[style*="background: #f0f9ff"],
-body.dark-theme div[style*="background:#f0f9ff"] {
+[data-theme="dark"] #hotel-app-screen .upi-surcharge,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f0f9ff"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#f0f9ff"],
+body.dark-theme #hotel-app-screen .upi-surcharge,
+body.dark-theme #hotel-app-screen div[style*="background: #f0f9ff"],
+body.dark-theme #hotel-app-screen div[style*="background:#f0f9ff"] {
   background: rgba(56, 189, 248, 0.12) !important;
   border-color: rgba(56, 189, 248, 0.35) !important;
   color: #bae6fd !important;
 }
 
-[data-theme="dark"] .upi-threshold,
-[data-theme="dark"] div[style*="background: #f0fdf4"],
-[data-theme="dark"] div[style*="background:#f0fdf4"],
-body.dark-theme .upi-threshold,
-body.dark-theme div[style*="background: #f0fdf4"],
-body.dark-theme div[style*="background:#f0fdf4"] {
+[data-theme="dark"] #hotel-app-screen .upi-threshold,
+[data-theme="dark"] #hotel-app-screen div[style*="background: #f0fdf4"],
+[data-theme="dark"] #hotel-app-screen div[style*="background:#f0fdf4"],
+body.dark-theme #hotel-app-screen .upi-threshold,
+body.dark-theme #hotel-app-screen div[style*="background: #f0fdf4"],
+body.dark-theme #hotel-app-screen div[style*="background:#f0fdf4"] {
   background: rgba(34, 197, 94, 0.12) !important;
   border-color: rgba(34, 197, 94, 0.35) !important;
   color: #bbf7d0 !important;
@@ -12853,10 +12856,10 @@ body.dark-theme .surcharge-preview-pill {
 }
 
 /* Empty Floor State Dashed Boxes in Dark Mode */
-[data-theme="dark"] div[style*="dashed #cbd5e1"],
-[data-theme="dark"] div[style*="dashed:#cbd5e1"],
-body.dark-theme div[style*="dashed #cbd5e1"],
-body.dark-theme div[style*="dashed:#cbd5e1"] {
+[data-theme="dark"] #hotel-app-screen div[style*="dashed #cbd5e1"],
+[data-theme="dark"] #hotel-app-screen div[style*="dashed:#cbd5e1"],
+body.dark-theme #hotel-app-screen div[style*="dashed #cbd5e1"],
+body.dark-theme #hotel-app-screen div[style*="dashed:#cbd5e1"] {
   background: #171a21 !important;
   border-color: rgba(255, 255, 255, 0.18) !important;
   color: #f3f4f6 !important;
@@ -13626,22 +13629,39 @@ html.dark-theme .btn-folio-visitors-action {
   }
 
   /* Universal Print Theme Isolation: Screen dark mode must NEVER bleed into print sheets */
+  [data-theme="dark"] #hotel-app-print,
   [data-theme="dark"] #hotel-app-print *,
+  body.dark-theme #hotel-app-print,
   body.dark-theme #hotel-app-print *,
+  [data-theme="dark"] #print-money-receipt-sheet,
   [data-theme="dark"] #print-money-receipt-sheet *,
+  body.dark-theme #print-money-receipt-sheet,
   body.dark-theme #print-money-receipt-sheet *,
+  [data-theme="dark"] #print-payment-summary-sheet,
   [data-theme="dark"] #print-payment-summary-sheet *,
+  body.dark-theme #print-payment-summary-sheet,
   body.dark-theme #print-payment-summary-sheet *,
+  [data-theme="dark"] #print-registration-sheet,
   [data-theme="dark"] #print-registration-sheet *,
+  body.dark-theme #print-registration-sheet,
   body.dark-theme #print-registration-sheet *,
+  [data-theme="dark"] #print-petty-cash-sheet,
   [data-theme="dark"] #print-petty-cash-sheet *,
+  body.dark-theme #print-petty-cash-sheet,
   body.dark-theme #print-petty-cash-sheet *,
+  [data-theme="dark"] #print-activities-summary-sheet,
   [data-theme="dark"] #print-activities-summary-sheet *,
+  body.dark-theme #print-activities-summary-sheet,
   body.dark-theme #print-activities-summary-sheet *,
+  [data-theme="dark"] .printable-two-per-a4-sheet,
   [data-theme="dark"] .printable-two-per-a4-sheet *,
+  body.dark-theme .printable-two-per-a4-sheet,
   body.dark-theme .printable-two-per-a4-sheet *,
+  [data-theme="dark"] .printable-full-a4-sheet,
   [data-theme="dark"] .printable-full-a4-sheet *,
+  body.dark-theme .printable-full-a4-sheet,
   body.dark-theme .printable-full-a4-sheet * {
+    color-scheme: light !important;
     text-shadow: none !important;
     box-shadow: none !important;
   }
@@ -13674,8 +13694,92 @@ html.dark-theme .btn-folio-visitors-action {
   [data-theme="dark"] #print-money-receipt-sheet .receipt-cashier-name,
   body.dark-theme #print-money-receipt-sheet .receipt-cashier-name,
   [data-theme="dark"] #print-money-receipt-sheet .receipt-sig-label,
-  body.dark-theme #print-money-receipt-sheet .receipt-sig-label {
+  body.dark-theme #print-money-receipt-sheet .receipt-sig-label,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-disclaimer,
+  body.dark-theme #print-money-receipt-sheet .receipt-disclaimer,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-address-text,
+  body.dark-theme #print-money-receipt-sheet .receipt-address-text {
     color: #000000 !important;
+  }
+
+  /* Ironclad White Background & Black Text Protection for Voucher Number in Print */
+  [data-theme="dark"] .voucher-no-highlight,
+  body.dark-theme .voucher-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .voucher-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .voucher-no-highlight,
+  #hotel-app-print .voucher-no-highlight,
+  .voucher-no-highlight {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1.5px solid #000000 !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-no-highlight,
+  body.dark-theme .receipt-no-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-no-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-no-highlight,
+  #hotel-app-print .receipt-no-highlight,
+  .receipt-no-highlight {
+    border: 2px solid #b91c1c !important;
+    background-color: #fee2e2 !important;
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    font-weight: 950 !important;
+  }
+
+  [data-theme="dark"] .receipt-date-highlight,
+  body.dark-theme .receipt-date-highlight,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-date-highlight,
+  body.dark-theme #print-money-receipt-sheet .receipt-date-highlight,
+  #hotel-app-print .receipt-date-highlight,
+  .receipt-date-highlight {
+    color: #000000 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    font-weight: 850 !important;
+  }
+
+  [data-theme="dark"] .receipt-rs-box,
+  body.dark-theme .receipt-rs-box,
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-rs-box,
+  body.dark-theme #print-money-receipt-sheet .receipt-rs-box,
+  #hotel-app-print .receipt-rs-box,
+  .receipt-rs-box {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1.5px solid #000000 !important;
+  }
+
+  [data-theme="dark"] .voucher-date-highlight,
+  body.dark-theme .voucher-date-highlight,
+  [data-theme="dark"] #print-petty-cash-sheet .voucher-date-highlight,
+  body.dark-theme #print-petty-cash-sheet .voucher-date-highlight,
+  #hotel-app-print .voucher-date-highlight,
+  .voucher-date-highlight {
+    border: 1.5px solid #000000 !important;
+    background-color: #fef08a !important;
+    background: #fef08a !important;
+    color: #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-mini-table th,
+  body.dark-theme #print-money-receipt-sheet .receipt-mini-table th {
+    background: #f1f5f9 !important;
+    background-color: #f1f5f9 !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  [data-theme="dark"] #print-money-receipt-sheet .receipt-mini-table td,
+  body.dark-theme #print-money-receipt-sheet .receipt-mini-table td {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
   }
 
   [data-theme="dark"] #print-payment-summary-sheet h1,

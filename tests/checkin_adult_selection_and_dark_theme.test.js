@@ -302,5 +302,41 @@ describe('Print Theme Preservation (No Shift to Light Theme)', () => {
     expect(folioCode).toContain('className="folio-header-actions"');
     expect(stylesCode).toContain('flex-wrap: nowrap !important;');
   });
+
+  it('voucher number box in receipt has pure white background and black text with !important immune to dark theme', async () => {
+    const { buildMoneyReceiptHTML } = await import('../src/services/printService');
+    const html = buildMoneyReceiptHTML({
+      receipt_no: 'POS05',
+      voucher_number: '268938-608',
+      guest_name: 'Md Yahya Ab Wahid Mundewadi',
+      amount: 2050,
+      payment_mode: 'card'
+    });
+
+    // Voucher No highlight span must have pure white background and bold black text
+    expect(html).toContain('class="voucher-no-highlight"');
+    expect(html).toContain('color: #000000 !important;');
+    expect(html).toContain('background: #ffffff !important;');
+    expect(html).toContain('border: 1.5px solid #000000 !important;');
+    expect(html).toContain('268938-608');
+
+    // styles.css must define print protection for .voucher-no-highlight
+    const fs = await import('fs');
+    const path = await import('path');
+    const stylesCss = fs.readFileSync(path.resolve(__dirname, '../public/styles.css'), 'utf-8');
+
+    // Base .voucher-no-highlight has white background
+    expect(stylesCss).toContain('background-color: #ffffff !important;');
+    expect(stylesCss).toContain('color: #000000 !important;');
+
+    // Explicit @media print rules protecting voucher-no-highlight from dark theme overrides
+    expect(stylesCss).toContain('[data-theme="dark"] #print-money-receipt-sheet .voucher-no-highlight');
+    expect(stylesCss).toContain('[data-theme="dark"] .voucher-no-highlight');
+    expect(stylesCss).toContain('#hotel-app-print .voucher-no-highlight');
+
+    // Screen dark mode rules must be scoped to #hotel-app-screen
+    expect(stylesCss).toContain('[data-theme="dark"] #hotel-app-screen span[style*="background: #f8fafc"]');
+    expect(stylesCss).not.toContain('\n[data-theme="dark"] span[style*="background: #f8fafc"]');
+  });
 });
 

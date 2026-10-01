@@ -1020,10 +1020,10 @@ export function buildMoneyReceiptHTML(receipt) {
     .map(
       (r) => `
       <tr style="${r.isTotal ? 'background-color: #f8fafc;' : ''}">
-        <td style="padding: 5px 10px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; vertical-align: middle;">
-          <div style="font-weight: 850; font-size: 11.5pt; color: #000000; line-height: 1.3;">${escapeHtml(r.title)}</div>
+        <td style="padding: 5px 10px; border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; vertical-align: middle; color: #000000 !important;">
+          <div style="font-weight: 850; font-size: 11.5pt; color: #000000 !important; line-height: 1.3;">${escapeHtml(r.title)}</div>
         </td>
-        <td style="padding: 5px 10px; border-bottom: 1.5px solid #000; text-align: right; font-size: 12pt; font-weight: ${r.amt !== null ? '950' : 'normal'}; vertical-align: middle; white-space: nowrap;">
+        <td style="padding: 5px 10px; border-bottom: 1.5px solid #000; text-align: right; font-size: 12pt; font-weight: ${r.amt !== null ? '950' : 'normal'}; vertical-align: middle; white-space: nowrap; color: #000000 !important;">
           ${r.amt !== null ? `₹ ${parseFloat(r.amt).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '&nbsp;'}
         </td>
       </tr>
@@ -1057,7 +1057,7 @@ export function buildMoneyReceiptHTML(receipt) {
   const formattedReceiptNo = formatReceiptNumberWithMode(rawReceiptNo, rawMode);
 
   const renderReceiptCard = (copyLabel) => `
-    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 136mm; max-height: 137mm; box-sizing: border-box;">
+    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 136mm; max-height: 137mm; box-sizing: border-box; background: #ffffff !important; color: #000000 !important;">
       <!-- Elegant Watermark Crest (Without Name) -->
       <div class="receipt-watermark" style="position: absolute; top: 52%; left: 50%; transform: translate(-50%, -50%); opacity: 0.055; pointer-events: none; z-index: 0; text-align: center;">
         <img src="/hcp-logo-without-name.png" alt="" style="width: 145px; height: auto;" loading="eager" decoding="sync" />
@@ -1072,7 +1072,7 @@ export function buildMoneyReceiptHTML(receipt) {
             <div style="font-size: 7.8pt; color: #1e3a8a; margin: 0 0 1px 0; text-align: left;">
               <span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong>
             </div>
-            <div class="receipt-address-text" style="font-size: 7pt; line-height: 1.3; color: #000000; font-weight: 700; text-align: left; margin: 0;">
+            <div class="receipt-address-text" style="font-size: 7pt; line-height: 1.3; color: #000000 !important; font-weight: 700; text-align: left; margin: 0;">
               119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
               <img src="/phone-call.png" alt="" style="width: 9px; height: 9px; object-fit: contain; vertical-align: -1px; display: inline-block;" loading="eager" decoding="sync" /> : 0217-2729791, 92, 93, 9960013388<br>
               E-mail : hcitypark@rediffmail.com • website : hotelcityparksolapur.com
@@ -1094,11 +1094,11 @@ export function buildMoneyReceiptHTML(receipt) {
           </div>
           <div style="font-size: 9pt; font-weight: 850; display: flex; align-items: center; gap: 4px; justify-content: flex-end; white-space: nowrap;">
             <span style="color: #000000; font-weight: 900;">Date:</span>
-            <span class="receipt-date-highlight" style="font-weight: 850; color: #000000;">${escapeHtml(formattedDateTimeStr)}</span>
+            <span class="receipt-date-highlight" style="font-weight: 850; color: #000000 !important;">${escapeHtml(formattedDateTimeStr)}</span>
           </div>
           <div style="font-size: 9pt; font-weight: 850; display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap;">
             <span style="color: #000000; font-weight: 900; white-space: nowrap;">Voucher No:</span>
-            <span class="voucher-no-highlight" style="min-width: 120px; text-align: center; font-family: monospace, Courier, sans-serif; font-size: 10.5pt; font-weight: 950; color: #000000; background: #f8fafc; border: 1.5px solid #000000; border-radius: 4px; padding: 1px 8px; white-space: nowrap;">${escapeHtml(displayVoucherNo)}</span>
+            <span class="voucher-no-highlight" style="min-width: 120px; text-align: center; font-family: monospace, Courier, sans-serif; font-size: 10.5pt; font-weight: 950; color: #000000 !important; background: #ffffff !important; border: 1.5px solid #000000 !important; border-radius: 4px; padding: 1px 8px; white-space: nowrap;">${escapeHtml(displayVoucherNo)}</span>
           </div>
         </div>
       </div>
@@ -1106,31 +1106,31 @@ export function buildMoneyReceiptHTML(receipt) {
       <!-- Printed Underlined Body Lines (Enlarged prominent typography) -->
       <div class="receipt-body-content">
         <div class="receipt-line-row" style="font-size: 12.5pt;">
-          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">Received with thanks from</span>
-          <span class="receipt-fill-line" style="font-size: 13pt; font-weight: 950;">${escapeHtml(receipt.guest_name || '-')}</span>
+          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850; color: #000000 !important;">Received with thanks from</span>
+          <span class="receipt-fill-line" style="font-size: 13pt; font-weight: 950; color: #000000 !important;">${escapeHtml(receipt.guest_name || '-')}</span>
         </div>
 
         <div class="receipt-line-row" style="font-size: 12.5pt;">
-          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850;">the sum of Rupees</span>
-          <span class="receipt-fill-line" style="font-size: 12.5pt; font-style: italic; font-weight: 900;">${escapeHtml(amtWords)}</span>
+          <span class="receipt-lbl" style="font-size: 12.5pt; font-weight: 850; color: #000000 !important;">the sum of Rupees</span>
+          <span class="receipt-fill-line" style="font-size: 12.5pt; font-style: italic; font-weight: 900; color: #000000 !important;">${escapeHtml(amtWords)}</span>
         </div>
 
         <div class="receipt-line-row" style="font-size: 12.5pt; display: flex; align-items: flex-end; gap: 6px; width: 100%; white-space: nowrap;">
-          <span class="receipt-lbl" style="font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">${escapeHtml(dynamicModeLabel)}</span>
-          <span class="receipt-fill-line" style="font-size: 12pt; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; line-height: 24px;">${escapeHtml(dynamicModeValue)}</span>
-          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">Room No.</span>
-          <span class="receipt-fill-line" style="width: 55px; max-width: 65px; flex: none; text-align: center; font-size: 12.5pt; font-weight: 950; white-space: nowrap; line-height: 24px;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
-          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0;">Voucher No:</span>
-          <span class="receipt-fill-line" style="width: 125px; max-width: 135px; flex: none; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 11pt; white-space: nowrap; line-height: 24px;">${escapeHtml(displayVoucherNo)}</span>
+          <span class="receipt-lbl" style="font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">${escapeHtml(dynamicModeLabel)}</span>
+          <span class="receipt-fill-line" style="font-size: 12pt; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; line-height: 24px; color: #000000 !important;">${escapeHtml(dynamicModeValue)}</span>
+          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">Room No.</span>
+          <span class="receipt-fill-line" style="width: 55px; max-width: 65px; flex: none; text-align: center; font-size: 12.5pt; font-weight: 950; white-space: nowrap; line-height: 24px; color: #000000 !important;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
+          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">Voucher No:</span>
+          <span class="receipt-fill-line" style="width: 125px; max-width: 135px; flex: none; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 11pt; white-space: nowrap; line-height: 24px; color: #000000 !important;">${escapeHtml(displayVoucherNo)}</span>
         </div>
 
         <!-- Multi-Row Ruled Table Grid (Using both rows: Row 1 = Paid while checking/living/checkout, Row 2 = Mode & UTR) -->
         <div class="receipt-table-section">
-          <table class="receipt-mini-table" style="font-size: 12pt;">
+          <table class="receipt-mini-table" style="font-size: 12pt; color: #000000 !important; background: #ffffff !important;">
             <thead>
-              <tr>
-                <th style="width: 62%; font-weight: 950; font-size: 12.5pt; padding: 6px 10px;">Bill No</th>
-                <th style="width: 38%; font-weight: 950; font-size: 12.5pt; text-align: right; padding: 6px 10px;">Amount</th>
+              <tr style="color: #000000 !important; background: #f1f5f9 !important;">
+                <th style="width: 62%; font-weight: 950; font-size: 12.5pt; padding: 6px 10px; color: #000000 !important;">Bill No</th>
+                <th style="width: 38%; font-weight: 950; font-size: 12.5pt; text-align: right; padding: 6px 10px; color: #000000 !important;">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -1142,16 +1142,16 @@ export function buildMoneyReceiptHTML(receipt) {
         <!-- Footer Section -->
         <div class="receipt-footer-row">
           <div class="receipt-amount-badge-box">
-            <div class="receipt-rs-box">
-              <span style="font-size: 12pt; font-weight: 900; margin-right: 6px;">Rs.</span>
-              <span style="font-size: 16pt; font-weight: 950;">₹ ${parseFloat(finalDisplayAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <div class="receipt-rs-box" style="background: #ffffff !important; color: #000000 !important; border: 1.5px solid #000000 !important;">
+              <span style="font-size: 12pt; font-weight: 900; margin-right: 6px; color: #000000 !important;">Rs.</span>
+              <span style="font-size: 16pt; font-weight: 950; color: #000000 !important;">₹ ${parseFloat(finalDisplayAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
-            <div class="receipt-disclaimer">* Cheques subject to realization</div>
+            <div class="receipt-disclaimer" style="color: #000000 !important;">* Cheques subject to realization</div>
           </div>
           <div class="receipt-signature-box">
-            <div class="receipt-cashier-name" style="font-size: 10.5pt; font-weight: 900;">${escapeHtml(cashierName)}</div>
-            <div class="receipt-sig-line"></div>
-            <div class="receipt-sig-label" style="font-size: 11pt; font-weight: 950;">For HOTEL CITY PARK</div>
+            <div class="receipt-cashier-name" style="font-size: 10.5pt; font-weight: 900; color: #000000 !important;">${escapeHtml(cashierName)}</div>
+            <div class="receipt-sig-line" style="border-bottom: 1.5px solid #000000 !important;"></div>
+            <div class="receipt-sig-label" style="font-size: 11pt; font-weight: 950; color: #000000 !important;">For HOTEL CITY PARK</div>
           </div>
         </div>
       </div>
