@@ -146,7 +146,7 @@ export default function CheckinWizardModal({
     checkoutTime: '',
     extensionCharge: 0,
     stayNights: 1,
-    baseRate: room ? room.price : 2000,
+    baseRate: undefined,
     discountPct: 0,
     mealPlan: 'with_breakfast',
     extraMealPlan: 'without_breakfast',
@@ -179,7 +179,7 @@ export default function CheckinWizardModal({
           roomId: room.id,
           roomNumber: room.room_number,
           roomType: room.room_type,
-          baseRate: initialTariff,
+          baseRate: undefined,
           adultsMale: 0,
           adultsFemale: 0,
           children: 0,
@@ -253,10 +253,20 @@ export default function CheckinWizardModal({
     draft.otaIsPrepaid === true
   );
   const allSelectedRooms = [room, ...(additionalRoomsList || [])];
-  const combinedRoomsTariff = allSelectedRooms.reduce((sum, r) => sum + (Number(r.price) || 2000), 0);
-  const basePrice = (draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
-    ? Number(draft.baseRate)
-    : combinedRoomsTariff;
+  const totalGuests = (Number(draft.adultsMale) || 0) + (Number(draft.adultsFemale) || 0);
+  const combinedRoomsTariff = (!isOta && totalGuests === 0)
+    ? 0
+    : allSelectedRooms.reduce((sum, r) => {
+        if (allSelectedRooms.length === 1 && totalGuests === 1 && r.price_single && Number(r.price_single) > 0) {
+          return sum + Number(r.price_single);
+        }
+        return sum + (Number(r.price) || 2000);
+      }, 0);
+  const basePrice = (!isOta && totalGuests === 0)
+    ? 0
+    : ((draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
+        ? Number(draft.baseRate)
+        : combinedRoomsTariff);
   const discountPct = Math.min(Number(draft.discountPct) || 0, room.max_discount_pct || 15);
   const extraBeds = draft.roomExtraBeds !== undefined && Object.keys(draft.roomExtraBeds).length > 0
     ? allSelectedRooms.reduce((sum, r) => {
@@ -323,7 +333,6 @@ export default function CheckinWizardModal({
     ? (draft.extraMealPlan === 'with_breakfast' ? (otaExtraAdults * breakfastRate * nights) : 0)
     : 0;
 
-  const totalGuests = (Number(draft.adultsMale) || 0) + (Number(draft.adultsFemale) || 0);
   const mealTotalCharge = isOta
     ? extraBreakfastCharge
     : (draft.mealPlan === 'with_breakfast' ? totalGuests * breakfastRate * nights : 0);

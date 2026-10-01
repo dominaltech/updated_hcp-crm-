@@ -22,14 +22,12 @@ describe('Prepaid History Tab & Receipt Suppression Requirements', () => {
     const code = rawCode.replace(/\r\n/g, '\n');
     expect(code).toContain('const isPrepaid = Boolean(');
     expect(code).toContain("if (hotelPaid === 0) {\n                  modeLabel = 'PREPAID';");
-    expect(code).toContain('{isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}');
-    expect(code).toContain("Prepaid via {r.ota_platform || 'OTA'}");
+    expect(code).toContain('({modeLabel.toLowerCase()})');
   });
 
-  it('3. HospitalityHistory.jsx styles the Passed badge with purple accent for PREPAID', () => {
+  it('3. HospitalityHistory.jsx styles the amount text with purple accent for PREPAID', () => {
     const code = fs.readFileSync(historyComponentPath, 'utf8');
-    expect(code).toContain("isPrepaid && hotelPaid === 0 ? '#f3e8ff' : '#dcfce7'");
-    expect(code).toContain("isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#166534'");
+    expect(code).toContain("isPrepaid && hotelPaid === 0 ? '#6b21a8' : (isPending ? '#b45309' : '#15803d')");
   });
 
   it('4. HospitalityHistory.jsx modal suppresses Receipt button and renders Prepaid Online (No Receipt)', () => {

@@ -54,16 +54,7 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
         <span>
           Room {room.room_number} • {room.room_type}
         </span>
-        <span
-          style={{
-            fontSize: '0.7rem',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            background: '#e2e8f0',
-            color: '#334155',
-            fontWeight: 800
-          }}
-        >
+        <span className="room-context-menu-status-badge">
           {currentStatusLabel}
         </span>
       </div>
@@ -81,8 +72,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
       >
         <span style={{ fontSize: '1.15rem' }}>✨</span>
         <div>
-          <div>Cleaning Completed (Ready)</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+          <div className="menu-item-title">Cleaning Completed (Ready)</div>
+          <div className="menu-item-subtext">
             Mark ready for new guest check-in
           </div>
         </div>
@@ -94,8 +85,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
       >
         <span style={{ fontSize: '1.15rem' }}>🧹</span>
         <div>
-          <div>Needs Cleaning</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+          <div className="menu-item-title">Needs Cleaning</div>
+          <div className="menu-item-subtext">
             Assign to housekeeping staff
           </div>
         </div>
@@ -107,8 +98,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
       >
         <span style={{ fontSize: '1.15rem' }}>🛠️</span>
         <div>
-          <div>Under Construction / Maintenance</div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+          <div className="menu-item-title">Under Construction / Maintenance</div>
+          <div className="menu-item-subtext">
             Block room for repairs / painting
           </div>
         </div>
@@ -126,8 +117,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
           >
             <span style={{ fontSize: '1.15rem' }}>👥</span>
             <div>
-              <div>Log / Manage Visitors</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+              <div className="menu-item-title">Log / Manage Visitors</div>
+              <div className="menu-item-subtext">
                 Take photo, crop &amp; register visitor
               </div>
             </div>
@@ -141,8 +132,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
           >
             <span style={{ fontSize: '1.15rem' }}>📋</span>
             <div>
-              <div>View Room Folio &amp; Checkout</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+              <div className="menu-item-title">View Room Folio &amp; Checkout</div>
+              <div className="menu-item-subtext">
                 Guest: {room.guest_name || 'Active Guest'}
               </div>
             </div>
@@ -162,8 +153,8 @@ export default function RoomContextMenu({ onOpenCheckin, onOpenFolio, onOpenVisi
           >
             <span style={{ fontSize: '1.15rem' }}>🏨</span>
             <div>
-              <div>Start Guest Check-In</div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+              <div className="menu-item-title">Start Guest Check-In</div>
+              <div className="menu-item-subtext">
                 Open check-in wizard
               </div>
             </div>

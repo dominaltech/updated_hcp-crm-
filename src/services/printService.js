@@ -77,31 +77,12 @@ if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
 }
 
 /**
- * Temporarily disables dark mode on <html> and <body> during window.print()
- * so browser print engine renders crisp, pure-white paper sheets with zero dark patches.
+ * Print theme isolation is completely handled via CSS @media print rules in styles.css.
+ * We avoid mutating <html> and <body> theme attributes on the live DOM so that
+ * the screen UI never flashes or shifts from dark theme to light theme when printing.
  */
 function enterPrintThemeIsolation() {
-  if (typeof document === 'undefined') return () => {};
-  const prevThemeAttr = document.documentElement.getAttribute('data-theme');
-  const wasHtmlDark = document.documentElement.classList.contains('dark-theme');
-  const wasBodyDark = document.body.classList.contains('dark-theme');
-
-  document.documentElement.setAttribute('data-theme', 'light');
-  document.documentElement.classList.remove('dark-theme');
-  document.body.classList.remove('dark-theme');
-
-  let restored = false;
-  return function exitPrintThemeIsolation() {
-    if (restored) return;
-    restored = true;
-    if (prevThemeAttr) {
-      document.documentElement.setAttribute('data-theme', prevThemeAttr);
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
-    if (wasHtmlDark) document.documentElement.classList.add('dark-theme');
-    if (wasBodyDark) document.body.classList.add('dark-theme');
-  };
+  return function exitPrintThemeIsolation() {};
 }
 
 /**

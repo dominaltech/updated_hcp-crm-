@@ -188,15 +188,19 @@ export default function Step6Stay({
     (r) => r.status === 'ready' && !allRooms.some((selected) => selected.id === r.id)
   );
 
-  const calculatedBasePrice = allRooms.reduce((sum, r) => {
-    if (allRooms.length === 1 && currentAdults === 1 && r.price_single && Number(r.price_single) > 0) {
-      return sum + Number(r.price_single);
-    }
-    return sum + (Number(r.price) || 2000);
-  }, 0);
-  const basePrice = (draft._customBaseRate && draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
-    ? Math.max(0, Number(draft.baseRate))
-    : calculatedBasePrice;
+  const calculatedBasePrice = (!isOta && currentAdults === 0)
+    ? 0
+    : allRooms.reduce((sum, r) => {
+        if (allRooms.length === 1 && currentAdults === 1 && r.price_single && Number(r.price_single) > 0) {
+          return sum + Number(r.price_single);
+        }
+        return sum + (Number(r.price) || 2000);
+      }, 0);
+  const basePrice = (!isOta && currentAdults === 0)
+    ? 0
+    : ((draft._customBaseRate && draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
+        ? Math.max(0, Number(draft.baseRate))
+        : calculatedBasePrice);
   const discountPct = Number(draft.discountPct) || 0;
   const effectiveGstPct = (draft.gstPct !== undefined && draft.gstPct !== '' && !isNaN(Number(draft.gstPct)))
     ? Number(draft.gstPct)
@@ -2385,10 +2389,20 @@ export default function Step6Stay({
 
                     {/* Tariff */}
                     <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px' }}>
-                      <span style={{ fontSize: '1.08rem', fontWeight: 900, color: 'var(--apple-green, #15803d)', letterSpacing: '-0.01em' }}>
-                        ₹{Number(r.price).toLocaleString('en-IN')}
-                      </span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700 }}>/ 24 hrs</span>
+                      {(!isOta && currentAdults === 0) ? (
+                        <span style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-tertiary, #94a3b8)', fontStyle: 'italic' }}>
+                          Select adult to show tariff
+                        </span>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '1.08rem', fontWeight: 900, color: 'var(--apple-green, #15803d)', letterSpacing: '-0.01em' }}>
+                            ₹{(allRooms.length === 1 && currentAdults === 1 && r.price_single && Number(r.price_single) > 0 ? Number(r.price_single) : Number(r.price)).toLocaleString('en-IN')}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                            {allRooms.length === 1 && currentAdults === 1 && r.price_single ? ' (Single) / 24 hrs' : ' / 24 hrs'}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* Modern Extra Mattress Stepper */}
@@ -3048,8 +3062,10 @@ export default function Step6Stay({
               <h4 style={{ fontSize: '0.88rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                 Room Tariff &amp; Discount
               </h4>
-              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>
-                {currentAdults === 1 && room.price_single ? '1 Adult Single Tariff' : 'Standard Tariff'}
+              <span style={{ fontSize: '0.74rem', color: (!isOta && currentAdults === 0) ? '#b45309' : '#64748b', fontWeight: 700 }}>
+                {(!isOta && currentAdults === 0)
+                  ? '⚠️ Select Adult Guest to Show Tariff'
+                  : (currentAdults === 1 && room.price_single ? '1 Adult Single Tariff' : 'Standard Tariff')}
               </span>
             </div>
 
@@ -3065,7 +3081,8 @@ export default function Step6Stay({
                   id="input-base-tariff"
                   min={0}
                   step={100}
-                  value={draft.baseRate !== undefined ? draft.baseRate : calculatedBasePrice}
+                  placeholder={(!isOta && currentAdults === 0) ? 'Select adult guest...' : 'Base Tariff'}
+                  value={(!isOta && currentAdults === 0 && !draft._customBaseRate) ? '' : (draft.baseRate !== undefined ? draft.baseRate : (calculatedBasePrice || ''))}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -3710,15 +3727,19 @@ export default function Step6Stay({
                   Grand Total
                 </div>
                 <div className="banner-breakdown">
-                  Total Base: ₹{netChargeBeforeTax.toLocaleString('en-IN')} | Total GST: ₹{gstAmount.toLocaleString('en-IN')}
+                  {(!isOta && currentAdults === 0)
+                    ? 'Please select at least 1 adult guest above'
+                    : `Total Base: ₹${netChargeBeforeTax.toLocaleString('en-IN')} | Total GST: ₹${gstAmount.toLocaleString('en-IN')}`}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="banner-amount">
-                  ₹{finalGrandTotal.toLocaleString('en-IN')}
+                  {(!isOta && currentAdults === 0) ? '—' : `₹${finalGrandTotal.toLocaleString('en-IN')}`}
                 </div>
                 <div className="banner-note">
-                  {isOta && draft.isPrepaid ? 'Hotel Extras Payable at Desk' : 'Inclusive of all room tariff & add-on taxes'}
+                  {(!isOta && currentAdults === 0)
+                    ? 'No adult guest selected'
+                    : (isOta && draft.isPrepaid ? 'Hotel Extras Payable at Desk' : 'Inclusive of all room tariff & add-on taxes')}
                 </div>
               </div>
             </div>

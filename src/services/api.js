@@ -113,6 +113,8 @@ export const api = {
   extendCheckout: (id, data) => request(`/bookings/${id}/extend-checkout`, { method: 'POST', body: data }),
   updatePaymentStatus: (id, data) => request(`/bookings/${id}/payment-status`, { method: 'POST', body: data }),
   passCheque: (id, data) => request(`/bookings/${id}/pass-cheque`, { method: 'POST', body: data || {} }),
+  bounceCheque: (id, data = {}) => request(`/bookings/${id}/bounce-cheque`, { method: 'POST', body: data }),
+  changePaymentMethod: (id, data = {}) => request(`/bookings/${id}/change-payment-method`, { method: 'POST', body: data }),
   uploadChequePhoto: (id, data) => request(`/bookings/${id}/cheque-photo`, { method: 'POST', body: data }),
   getBookingDetails: (id) => request(`/bookings/${id}`),
   getStayHistory: (params = '') => request(`/hospitality/history${params ? `?${params}` : ''}`),

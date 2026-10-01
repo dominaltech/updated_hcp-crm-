@@ -164,6 +164,7 @@ db.exec(`
     split_cash REAL DEFAULT 0,
     split_card REAL DEFAULT 0,
     split_online REAL DEFAULT 0,
+    split_cheque REAL DEFAULT 0,
     total_paid REAL DEFAULT 0,
     payment_status TEXT DEFAULT 'paid', -- paid, partial, pending
     status TEXT DEFAULT 'active', -- active, checked_out
@@ -736,6 +737,7 @@ try { db.exec("ALTER TABLE payments ADD COLUMN split_cash REAL DEFAULT 0;"); } c
 try { db.exec("ALTER TABLE payments ADD COLUMN split_card REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_online REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_cheque REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN split_cheque REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_card_surcharge REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN advance_upi_tax REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN final_card_surcharge REAL DEFAULT 0;"); } catch (e) {}

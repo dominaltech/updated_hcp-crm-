@@ -7549,6 +7549,15 @@ app.get('/api/hospitality/history', (req, res) => {
         b.checked_in_by,
         b.checked_out_by,
         b.created_at,
+        b.extension_logs_json,
+        COALESCE(
+          (SELECT MAX(created_at) FROM payments p WHERE p.booking_id = b.id),
+          (SELECT MAX(COALESCE(settled_at, created_at)) FROM restaurant_orders ro WHERE ro.booking_id = b.id),
+          (SELECT MAX(COALESCE(settled_at, created_at)) FROM bar_orders bo WHERE bo.booking_id = b.id),
+          b.actual_checkout_time,
+          b.checkin_time,
+          b.created_at
+        ) as last_activity_time,
         g.aadhar_number,
         g.dob,
         g.address,
@@ -7580,7 +7589,7 @@ app.get('/api/hospitality/history', (req, res) => {
       params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
-    query += ` ORDER BY COALESCE(b.actual_checkout_time, b.checkin_time) DESC, b.id DESC LIMIT ?`;
+    query += ` ORDER BY last_activity_time DESC, b.id DESC LIMIT ?`;
     params.push(parseInt(limit));
 
     const rows = db.prepare(query).all(...params);
@@ -7682,11 +7691,16 @@ app.get('/api/hospitality/history', (req, res) => {
           extra_beds: row.extra_beds || 0,
           checked_in_by: row.checked_in_by || 'Front Desk',
           checked_out_by: row.checked_out_by || '',
-          created_at: row.created_at
+          created_at: row.created_at,
+          last_activity_time: row.last_activity_time || row.actual_checkout_time || row.checkin_time || row.created_at,
+          extension_logs_json: row.extension_logs_json
         });
       } else {
         const entry = groupedMap.get(key);
         entry.all_booking_ids.push(row.booking_id);
+        if (row.last_activity_time && (!entry.last_activity_time || new Date(row.last_activity_time) > new Date(entry.last_activity_time))) {
+          entry.last_activity_time = row.last_activity_time;
+        }
         if (!entry.rooms.includes(row.room_number)) {
           entry.rooms.push(row.room_number);
           entry.all_group_rooms.push({ id: row.room_id, room_number: row.room_number, room_type: row.room_type });
@@ -7727,6 +7741,11 @@ app.get('/api/hospitality/history', (req, res) => {
     });
 
     const historyList = Array.from(groupedMap.values());
+    historyList.sort((a, b) => {
+      const tA = a.last_activity_time ? new Date(a.last_activity_time).getTime() : (a.id || 0);
+      const tB = b.last_activity_time ? new Date(b.last_activity_time).getTime() : (b.id || 0);
+      return tB - tA;
+    });
     res.json({ success: true, count: historyList.length, history: historyList, records: historyList });
   } catch (err) {
     console.error('History fetch error:', err);
@@ -8055,6 +8074,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
 });
 
 // Migrations for transaction ID and cheque photos in payments & bookings
+try { db.exec("ALTER TABLE bookings ADD COLUMN split_cheque REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN transaction_id TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN transaction_id TEXT DEFAULT NULL;"); } catch (e) {}
@@ -8345,6 +8365,170 @@ app.post(['/api/bookings/:id/cheque-photo', '/api/hospitality/history/:id/cheque
     });
   } catch (err) {
     console.error('Update cheque photo error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to mark Cheque as Bounced and log audit trail
+app.post(['/api/bookings/:id/bounce-cheque', '/api/hospitality/history/:id/bounce-cheque'], requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cashier_name, reason } = req.body;
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+    if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    const cleanCashier = (cashier_name || req.user?.full_name || req.user?.username || 'Accounts Staff').trim();
+    const now = new Date().toISOString();
+    const oldCheque = booking.settlement_cheque_no || booking.advance_cheque_no || 'Cheque';
+
+    // Mark previous cheque payments as bounced in ledger
+    db.prepare(`
+      UPDATE payments 
+      SET cheque_status = 'bounced', notes = notes || ' [BOUNCED]'
+      WHERE booking_id = ? AND (payment_mode = 'cheque' OR split_cheque > 0 OR cheque_no IS NOT NULL)
+    `).run(id);
+
+    let logs = [];
+    try {
+      logs = booking.extension_logs_json ? JSON.parse(booking.extension_logs_json) : [];
+    } catch (_) { logs = []; }
+    if (!Array.isArray(logs)) logs = [];
+
+    const logEntry = {
+      id: Date.now(),
+      type: 'cheque_bounced',
+      action: 'Cheque Bounced',
+      cheque_no: oldCheque,
+      bank_name: booking.settlement_cheque_bank || booking.advance_cheque_bank || '',
+      amount: booking.total_room_charge || 0,
+      changed_by: cleanCashier,
+      timestamp: now,
+      note: reason || `Cheque #${oldCheque} bounced / dishonored.`
+    };
+    logs.push(logEntry);
+
+    db.prepare(`
+      UPDATE bookings 
+      SET 
+        payment_status = 'pending_from_company',
+        advance_cheque_status = 'bounced',
+        extension_logs_json = ?
+      WHERE id = ?
+    `).run(JSON.stringify(logs), id);
+
+    res.json({
+      success: true,
+      message: `Cheque #${oldCheque} marked as bounced`,
+      log: logEntry
+    });
+  } catch (err) {
+    console.error('Bounce cheque error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to change payment method after bounced cheque or resettle
+app.post(['/api/bookings/:id/change-payment-method', '/api/hospitality/history/:id/change-payment-method'], requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_mode, amount, reference_no, cashier_name, reason, cheque_no, bank_name } = req.body;
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+    if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    const cleanMode = (new_mode || 'cash').toLowerCase();
+    const cleanAmount = parseFloat(amount) || booking.total_room_charge || 0;
+    const cleanCashier = (cashier_name || req.user?.full_name || req.user?.username || 'Accounts Staff').trim();
+    const now = new Date().toISOString();
+
+    // Mark previous cheque payments as bounced if not yet marked
+    db.prepare(`
+      UPDATE payments 
+      SET cheque_status = 'bounced' 
+      WHERE booking_id = ? AND (payment_mode = 'cheque' OR cheque_no IS NOT NULL) AND cheque_status != 'realized'
+    `).run(id);
+
+    const receiptNo = getReceiptNumberWithMode(cleanMode);
+
+    // Insert new payment transaction in ledger
+    db.prepare(`
+      INSERT INTO payments (
+        receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+        amount, cheque_no, bank_name, cheque_status, realized_at, cashier_name, notes,
+        transaction_id
+      ) VALUES (?, ?, ?, 'hospitality', 'resettle_payment', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      receiptNo,
+      booking.id,
+      booking.room_id,
+      cleanMode,
+      cleanAmount,
+      cheque_no || null,
+      bank_name || null,
+      cleanMode === 'cheque' ? 'pending' : 'realized',
+      cleanMode === 'cheque' ? null : now,
+      cleanCashier,
+      reason || `Payment method changed to ${cleanMode.toUpperCase()} (prev cheque bounced)`,
+      reference_no || null
+    );
+
+    let logs = [];
+    try {
+      logs = booking.extension_logs_json ? JSON.parse(booking.extension_logs_json) : [];
+    } catch (_) { logs = []; }
+    if (!Array.isArray(logs)) logs = [];
+
+    const oldCheque = booking.settlement_cheque_no || booking.advance_cheque_no || 'Cheque';
+    const logEntry = {
+      id: Date.now(),
+      type: 'payment_method_changed',
+      action: 'Payment Method Changed',
+      from_mode: 'cheque',
+      to_mode: cleanMode,
+      old_cheque_no: oldCheque,
+      reference_no: reference_no || null,
+      amount: cleanAmount,
+      receipt_no: receiptNo,
+      changed_by: cleanCashier,
+      timestamp: now,
+      note: reason || `Cheque #${oldCheque} bounced. Payment method changed to ${cleanMode.toUpperCase()} (${reference_no || 'Receipt: ' + receiptNo})`
+    };
+    logs.push(logEntry);
+
+    db.prepare(`
+      UPDATE bookings 
+      SET 
+        payment_status = ?,
+        final_settlement_mode = ?,
+        final_receipt_no = ?,
+        transaction_id = ?,
+        advance_cheque_status = ?,
+        settlement_cheque_no = CASE WHEN ? = 'cheque' THEN ? ELSE settlement_cheque_no END,
+        settlement_cheque_bank = CASE WHEN ? = 'cheque' THEN ? ELSE settlement_cheque_bank END,
+        total_paid = total_room_charge,
+        extension_logs_json = ?
+      WHERE id = ?
+    `).run(
+      cleanMode === 'cheque' ? 'pending_from_company' : 'settled',
+      cleanMode,
+      receiptNo,
+      reference_no || null,
+      cleanMode === 'cheque' ? 'pending' : 'bounced',
+      cleanMode,
+      cheque_no || null,
+      cleanMode,
+      bank_name || null,
+      JSON.stringify(logs),
+      id
+    );
+
+    res.json({
+      success: true,
+      message: `Payment method changed to ${cleanMode.toUpperCase()}`,
+      log: logEntry,
+      receipt_no: receiptNo
+    });
+  } catch (err) {
+    console.error('Change payment method error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

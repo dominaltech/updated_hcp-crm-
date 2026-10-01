@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
-import { formatCurrency, formatDateTime, formatTaxInvoiceNumber } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatTaxInvoiceNumber, cleanVoucherNumber } from '../../utils/formatters';
 import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary } from '../../services/printService';
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
@@ -19,6 +19,15 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [dateRange, setDateRange] = useState('all');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  // Advanced Filter Drawer State (Invoice/Voucher range & Date range)
+  const [filterFromNo, setFilterFromNo] = useState('');
+  const [filterToNo, setFilterToNo] = useState('');
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate, setFilterToDate] = useState('');
+  const [filterShowScope, setFilterShowScope] = useState('all'); // 'all' | 'checkin' | 'checkout' | 'number_range'
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterFromNoRef = useRef(null);
 
   // Long-press (Click & Hold) Refs
   const longPressTimerRef = useRef(null);
@@ -38,6 +47,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [docActionModal, setDocActionModal] = useState({ isOpen: false, type: 'info', data: null });
+  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
 
   // Settle BTC Modal State
   const [settleBtcTarget, setSettleBtcTarget] = useState(null);
@@ -51,6 +61,16 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [settleBtcCashier, setSettleBtcCashier] = useState('');
   const [settleBtcNotes, setSettleBtcNotes] = useState('');
   const [settleBtcSubmitting, setSettleBtcSubmitting] = useState(false);
+
+  // Change Payment Method State (for bounced cheques / resettlement)
+  const [changePaymentTarget, setChangePaymentTarget] = useState(null);
+  const [changePaymentNewMode, setChangePaymentNewMode] = useState('upi');
+  const [changePaymentAmount, setChangePaymentAmount] = useState('');
+  const [changePaymentRef, setChangePaymentRef] = useState('');
+  const [changePaymentChequeNo, setChangePaymentChequeNo] = useState('');
+  const [changePaymentChequeBank, setChangePaymentChequeBank] = useState('');
+  const [changePaymentReason, setChangePaymentReason] = useState('');
+  const [changePaymentSubmitting, setChangePaymentSubmitting] = useState(false);
 
   // Cheque Scan & Pass Modal State
   const [chequeScanTarget, setChequeScanTarget] = useState(null);
@@ -160,32 +180,120 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const pendingBtcCount = records.filter(isBtcPendingRecord).length;
   const allBtcCount = records.filter(isBtcBookingRecord).length;
 
-  const filteredRecords = records.filter((r) => {
-    if (dateRange === 'pending_btc') {
-      return isBtcPendingRecord(r);
+  const activeFilterCount = (filterFromNo.trim() ? 1 : 0) + (filterToNo.trim() ? 1 : 0) + (filterFromDate ? 1 : 0) + (filterToDate ? 1 : 0) + (filterShowScope !== 'all' ? 1 : 0);
+
+  const extractDigits = (str) => {
+    if (!str) return null;
+    const m = String(str).match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  };
+
+  const matchesNumberRange = (record, fromStr, toStr) => {
+    if (!fromStr && !toStr) return true;
+    const candidates = [
+      record.id,
+      record.invoice_no,
+      record.voucher_no,
+      record.voucher_number,
+      record.checkin_voucher_no,
+      record.room_number
+    ].filter(v => v !== undefined && v !== null && String(v).trim().length > 0);
+
+    const fromNum = extractDigits(fromStr);
+    const toNum = extractDigits(toStr);
+    const cleanFrom = String(fromStr || '').trim().toLowerCase();
+    const cleanTo = String(toStr || '').trim().toLowerCase();
+
+    for (const c of candidates) {
+      const cStr = String(c).trim().toLowerCase();
+      const cNum = extractDigits(c);
+
+      if (cNum !== null) {
+        if (fromNum !== null && toNum !== null) {
+          if (cNum >= fromNum && cNum <= toNum) return true;
+        } else if (fromNum !== null) {
+          if (cNum >= fromNum) return true;
+        } else if (toNum !== null) {
+          if (cNum <= toNum) return true;
+        }
+      }
+
+      if (cleanFrom && cleanTo) {
+        if (cStr >= cleanFrom && cStr <= cleanTo) return true;
+      } else if (cleanFrom && cStr.includes(cleanFrom)) {
+        return true;
+      } else if (cleanTo && cStr.includes(cleanTo)) {
+        return true;
+      }
     }
-    if (dateRange === 'all_btc') {
-      return isBtcBookingRecord(r);
+    return false;
+  };
+
+  const matchesDateRange = (record, fromDateStr, toDateStr, scope = 'all') => {
+    if (!fromDateStr && !toDateStr) return true;
+    let rawDate = null;
+    if (scope === 'checkin') {
+      rawDate = record.checkin_time || record.created_at;
+    } else if (scope === 'checkout') {
+      rawDate = record.actual_checkout_time || record.checkout_time || record.approx_checkout_time;
+    } else {
+      rawDate = record.actual_checkout_time || record.checkout_time || record.checkin_time || record.created_at;
     }
-    if (dateRange === 'today') {
-      const itemDate = new Date(r.checkout_time || r.checkin_time);
-      const today = new Date();
-      return itemDate.toDateString() === today.toDateString();
+    if (!rawDate) return false;
+    const itemDate = new Date(rawDate);
+    if (isNaN(itemDate.getTime())) return false;
+
+    if (fromDateStr) {
+      const fromD = new Date(`${fromDateStr}T00:00:00`);
+      if (itemDate < fromD) return false;
     }
-    if (dateRange === 'week') {
-      const itemDate = new Date(r.checkout_time || r.checkin_time);
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      return itemDate >= oneWeekAgo;
-    }
-    if (dateRange === 'month') {
-      const itemDate = new Date(r.checkout_time || r.checkin_time);
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      return itemDate >= oneMonthAgo;
+    if (toDateStr) {
+      const toD = new Date(`${toDateStr}T23:59:59`);
+      if (itemDate > toD) return false;
     }
     return true;
-  });
+  };
+
+  // Helper to get latest modified/activity timestamp for sorting
+  const getActivityTimestamp = (r) => {
+    if (r.last_activity_time) {
+      const t = new Date(r.last_activity_time).getTime();
+      if (!isNaN(t)) return t;
+    }
+    const dates = [
+      r.actual_checkout_time,
+      r.checkout_time,
+      r.checkin_time,
+      r.created_at
+    ].map(d => (d ? new Date(d).getTime() : 0)).filter(t => !isNaN(t) && t > 0);
+    return dates.length > 0 ? Math.max(...dates) : Number(r.id || 0);
+  };
+
+  const filteredRecords = records.filter((r) => {
+    if (dateRange === 'pending_btc') {
+      if (!isBtcPendingRecord(r)) return false;
+    } else if (dateRange === 'all_btc') {
+      if (!isBtcBookingRecord(r)) return false;
+    }
+
+    if (filterShowScope === 'checkin') {
+      const isCheckedIn = r.status === 'active' || (!r.actual_checkout_time && r.status !== 'checked_out');
+      if (!isCheckedIn) return false;
+    } else if (filterShowScope === 'checkout') {
+      const isCheckedOut = r.status === 'checked_out' || Boolean(r.actual_checkout_time);
+      if (!isCheckedOut) return false;
+    }
+
+    if (filterFromNo.trim() || filterToNo.trim()) {
+      if (!matchesNumberRange(r, filterFromNo, filterToNo)) return false;
+    }
+
+    if (filterFromDate || filterToDate) {
+      if (!matchesDateRange(r, filterFromDate, filterToDate, filterShowScope)) return false;
+    }
+
+    return true;
+  }).sort((a, b) => getActivityTimestamp(b) - getActivityTimestamp(a));
 
   const totalRev = filteredRecords.reduce(
     (acc, r) => acc + parseFloat(r.total_room_charge || r.total_paid || 0),
@@ -427,6 +535,96 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     }
   };
 
+  const handleMarkChequeBounced = async (booking) => {
+    if (!booking) return;
+    const chequeNo = booking.settlement_cheque_no || booking.advance_cheque_no || 'Cheque';
+    const confirmed = await showConfirm({
+      title: 'Mark Cheque as Bounced?',
+      message: `Mark ${chequeNo} as BOUNCED / DISHONORED for Booking #${booking.id} (${booking.guest_name || 'Guest'})?\n\nThis will record a bounced cheque log and allow changing the payment method to Cash, UPI, Card, or NEFT.`,
+      icon: '⚠️',
+      confirmText: 'Yes, Mark Bounced',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await api.bounceCheque(booking.id, {
+        cashier_name: (currentUser?.full_name || currentUser?.username || 'Accounts Staff').trim(),
+        reason: `Cheque #${chequeNo} bounced / dishonored.`
+      });
+      if (res && res.success) {
+        showToast(`⚠️ Cheque #${chequeNo} marked as bounced. Please change payment method.`, 'amber', 5000);
+        loadHistory(true);
+        if (detailBooking && detailBooking.id === booking.id) {
+          handleOpenDetail(booking.id);
+        }
+        handleOpenChangePayment(booking);
+      } else {
+        showToast(res?.error || 'Failed to update cheque status', 'red');
+      }
+    } catch (err) {
+      showToast('Error marking cheque bounced: ' + err.message, 'red');
+    }
+  };
+
+  const handleOpenChangePayment = (booking) => {
+    if (!booking) return;
+    const dueAmt = Math.max(0, (Number(booking.total_room_charge || booking.total_cost || 0) + Number(booking.extra_bed_charge || 0)) - Number(booking.total_paid || 0)) || Number(booking.total_room_charge || 0);
+    setChangePaymentTarget(booking);
+    setChangePaymentNewMode('upi');
+    setChangePaymentAmount(String(dueAmt || ''));
+    setChangePaymentRef('');
+    setChangePaymentChequeNo('');
+    setChangePaymentChequeBank('');
+    setChangePaymentReason(`Cheque bounced. Resettled via UPI`);
+  };
+
+  const handleExecuteChangePayment = async () => {
+    if (!changePaymentTarget) return;
+    const cleanAmt = parseFloat(changePaymentAmount);
+    if (isNaN(cleanAmt) || cleanAmt <= 0) {
+      showToast('Please enter a valid payment amount.', 'red');
+      return;
+    }
+    if ((changePaymentNewMode === 'upi' || changePaymentNewMode === 'bank_transfer') && !changePaymentRef.trim()) {
+      showToast('Please enter the UTR / Bank Reference Number.', 'red');
+      return;
+    }
+    if (changePaymentNewMode === 'cheque' && !changePaymentChequeNo.trim()) {
+      showToast('Please enter the replacement Cheque Number.', 'red');
+      return;
+    }
+
+    setChangePaymentSubmitting(true);
+    try {
+      const res = await api.changePaymentMethod(changePaymentTarget.id, {
+        new_mode: changePaymentNewMode,
+        amount: cleanAmt,
+        reference_no: changePaymentRef.trim() || undefined,
+        cheque_no: changePaymentChequeNo.trim() || undefined,
+        bank_name: changePaymentChequeBank.trim() || undefined,
+        reason: changePaymentReason.trim() || `Payment method changed to ${changePaymentNewMode.toUpperCase()}`,
+        cashier_name: (currentUser?.full_name || currentUser?.username || 'Accounts Staff').trim()
+      });
+
+      if (res && res.success) {
+        showToast(`✓ Payment method changed to ${changePaymentNewMode.toUpperCase()}! Receipt #${res.receipt_no || ''}`, 'green', 5000);
+        const targetId = changePaymentTarget.id;
+        setChangePaymentTarget(null);
+        loadHistory(true);
+        if (detailBooking && detailBooking.id === targetId) {
+          handleOpenDetail(targetId);
+        }
+      } else {
+        showToast(res?.error || 'Failed to change payment method.', 'red');
+      }
+    } catch (err) {
+      showToast('Error changing payment method: ' + err.message, 'red');
+    } finally {
+      setChangePaymentSubmitting(false);
+    }
+  };
+
   // Clipboard paste listener: paste scanned cheque photo directly with Ctrl+V
   useEffect(() => {
     const handlePaste = (e) => {
@@ -620,26 +818,122 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     }
   };
 
-  const handleClearAll = async () => {
-    const confirmed = await showConfirm({
-      title: 'Clear All Completed Stay Records?',
-      message: 'This will permanently delete all completed checkout records. Active stays will remain untouched.',
-      icon: '⚠️',
-      confirmText: 'Clear All History',
-      isDestructive: true
-    });
-    if (!confirmed) return;
-
-    try {
-      const res = await api.post('/hospitality/history/clear-all');
-      if (res && res.success) {
-        showToast('All completed stay records cleared.', 'green');
-        loadHistory(true);
-      }
-    } catch (err) {
-      showToast('Error clearing records: ' + err.message, 'red');
+  // Keep focused row index within bounds when filteredRecords changes
+  useEffect(() => {
+    if (filteredRecords.length > 0) {
+      setFocusedRowIndex((prev) => (prev >= filteredRecords.length ? filteredRecords.length - 1 : (prev < 0 ? 0 : prev)));
+    } else {
+      setFocusedRowIndex(-1);
     }
-  };
+  }, [filteredRecords.length]);
+
+  // Keyboard navigation for History table rows (Up / Down arrows & Enter)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // If modal/overlay is open, only handle Escape to close
+      if (isDetailOpen || settleBtcTarget || chequeScanTarget || changePaymentTarget || isChequeCamOpen || docActionModal?.isOpen || lightboxImg) {
+        if (e.key === 'Escape') {
+          if (isDetailOpen) {
+            setIsDetailOpen(false);
+            setDetailBooking(null);
+          }
+        }
+        return;
+      }
+
+      if (filteredRecords.length === 0) return;
+
+      const activeEl = document.activeElement;
+      const targetTag = activeEl?.tagName?.toLowerCase();
+      const isInput = targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select';
+
+      if (isInput) {
+        // If in search input and user presses Down arrow
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          activeEl.blur();
+          setFocusedRowIndex((prev) => (prev < 0 ? 0 : Math.min(filteredRecords.length - 1, prev + 1)));
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        // If in text input (like search box) and user hits Enter
+        if (e.key === 'Enter' && activeEl.type === 'text') {
+          e.preventDefault();
+          const targetIndex = focusedRowIndex >= 0 && focusedRowIndex < filteredRecords.length ? focusedRowIndex : 0;
+          const targetRec = filteredRecords[targetIndex];
+          if (targetRec) handleOpenDetail(targetRec.id);
+          return;
+        }
+        // In other inputs/date fields, let normal key typing happen
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedRowIndex((prev) => {
+          const next = prev < 0 ? 0 : Math.min(filteredRecords.length - 1, prev + 1);
+          return next;
+        });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedRowIndex((prev) => {
+          if (prev <= 0) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return 0;
+          }
+          const next = prev - 1;
+          if (next === 0) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+          return next;
+        });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const targetIndex = focusedRowIndex >= 0 && focusedRowIndex < filteredRecords.length ? focusedRowIndex : 0;
+        const targetRec = filteredRecords[targetIndex];
+        if (targetRec) {
+          handleOpenDetail(targetRec.id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    filteredRecords,
+    focusedRowIndex,
+    isDetailOpen,
+    settleBtcTarget,
+    chequeScanTarget,
+    changePaymentTarget,
+    isChequeCamOpen,
+    docActionModal,
+    lightboxImg
+  ]);
+
+  // Smoothly scroll the focused row into view with header offset consideration
+  useEffect(() => {
+    if (focusedRowIndex >= 0 && !isDetailOpen) {
+      if (focusedRowIndex === 0) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const rowEl = document.querySelector(`[data-history-row-index="${focusedRowIndex}"]`);
+      if (rowEl) {
+        const rect = rowEl.getBoundingClientRect();
+        const headerOffset = 150;
+        if (rect.top < headerOffset) {
+          window.scrollBy({ top: rect.top - headerOffset, behavior: 'smooth' });
+        } else if (rect.bottom > window.innerHeight) {
+          rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    }
+  }, [focusedRowIndex, isDetailOpen]);
 
   return (
     <div className="hosp-sub-content active" id="hosp-subview-history">
@@ -676,26 +970,36 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
           </div>
 
           <div className="history-filter-chips">
-            {['all', 'today', 'week', 'month'].map((range) => (
-              <button
-                key={range}
-                type="button"
-                className={`history-chip ${dateRange === range ? 'active' : ''}`}
-                onClick={() => setDateRange(range)}
-              >
-                {range === 'all'
-                  ? 'All Time'
-                  : range === 'today'
-                  ? 'Today'
-                  : range === 'week'
-                  ? 'This Week'
-                  : 'This Month'}
-              </button>
-            ))}
+            <button
+              type="button"
+              className={`history-filter-toggle-btn ${isFilterOpen || activeFilterCount > 0 ? 'active' : ''}`}
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              title="Open Filter (Invoice / Voucher Range & Date Range)"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+              <span>Filter</span>
+              {activeFilterCount > 0 && (
+                <span
+                  style={{
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontSize: '0.70rem',
+                    fontWeight: 900
+                  }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
             <button
               type="button"
               className={`history-chip ${dateRange === 'pending_btc' ? 'active' : ''}`}
-              onClick={() => setDateRange('pending_btc')}
+              onClick={() => setDateRange(prev => prev === 'pending_btc' ? 'all' : 'pending_btc')}
               style={{
                 background: dateRange === 'pending_btc' ? '#dc2626' : (pendingBtcCount > 0 ? '#fef2f2' : undefined),
                 color: dateRange === 'pending_btc' ? '#ffffff' : (pendingBtcCount > 0 ? '#dc2626' : undefined),
@@ -727,7 +1031,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
             <button
               type="button"
               className={`history-chip ${dateRange === 'all_btc' ? 'active' : ''}`}
-              onClick={() => setDateRange('all_btc')}
+              onClick={() => setDateRange(prev => prev === 'all_btc' ? 'all' : 'all_btc')}
               style={{
                 background: dateRange === 'all_btc' ? '#1e40af' : (allBtcCount > 0 ? '#eff6ff' : undefined),
                 color: dateRange === 'all_btc' ? '#ffffff' : (allBtcCount > 0 ? '#1d4ed8' : undefined),
@@ -845,33 +1149,170 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               </svg>
               <span>Refresh</span>
             </button>
-
-            <button
-              type="button"
-              className="btn-refresh-history"
-              onClick={handleClearAll}
-              style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fff1f2' }}
-              title="Clear All Completed Stay Records"
-            >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                <line x1="10" y1="11" x2="10" y2="17" />
-                <line x1="14" y1="11" x2="14" y2="17" />
-              </svg>
-              <span>Clear All</span>
-            </button>
           </div>
         </div>
 
-        <div className="history-stats-bar">
+        {/* Collapsible Filter Panel (Invoice/Voucher range & Date range) */}
+        {isFilterOpen && (
+          <div className="history-filter-panel">
+            <div className="filter-panel-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                </svg>
+                <span style={{ fontWeight: 800, fontSize: '0.90rem', color: 'var(--text-primary, #0f172a)' }}>
+                  Filter by Invoice / Voucher Number &amp; Date Range
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFilterOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#64748b' }}
+                title="Close Filter Drawer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick Filter Selection: Side heading 'Show:' with buttons Checkin, Checkout, Voucher/Invoice No */}
+            <div
+              className="filter-show-row"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '16px',
+                paddingBottom: '14px',
+                borderBottom: '1.5px solid var(--border-color, #e2e8f0)',
+                flexWrap: 'wrap'
+              }}
+            >
+              <span
+                style={{
+                  fontWeight: 850,
+                  fontSize: '0.86rem',
+                  color: 'var(--text-secondary, #475569)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                Show:
+              </span>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className={`filter-scope-btn scope-all ${filterShowScope === 'all' ? 'active' : ''}`}
+                  onClick={() => setFilterShowScope('all')}
+                >
+                  All Stays
+                </button>
+                <button
+                  type="button"
+                  className={`filter-scope-btn scope-checkin ${filterShowScope === 'checkin' ? 'active' : ''}`}
+                  onClick={() => setFilterShowScope(prev => prev === 'checkin' ? 'all' : 'checkin')}
+                >
+                  {filterShowScope === 'checkin' ? '✓ ' : ''}Checkin
+                </button>
+                <button
+                  type="button"
+                  className={`filter-scope-btn scope-checkout ${filterShowScope === 'checkout' ? 'active' : ''}`}
+                  onClick={() => setFilterShowScope(prev => prev === 'checkout' ? 'all' : 'checkout')}
+                >
+                  {filterShowScope === 'checkout' ? '✓ ' : ''}Checkout
+                </button>
+                <button
+                  type="button"
+                  className={`filter-scope-btn scope-range ${filterShowScope === 'number_range' ? 'active' : ''}`}
+                  onClick={() => {
+                    setFilterShowScope(prev => prev === 'number_range' ? 'all' : 'number_range');
+                    if (filterFromNoRef.current) {
+                      filterFromNoRef.current.focus();
+                    }
+                  }}
+                >
+                  {filterShowScope === 'number_range' ? '✓ ' : ''}Voucher / Invoice No
+                </button>
+              </div>
+            </div>
+
+            <div className="filter-panel-grid">
+              {/* Invoice or Voucher Range */}
+              <div className="filter-group">
+                <label className="filter-label">
+                  <span>Invoice / Voucher # Range</span>
+                  <span className="filter-sublabel">(Invoice #, Voucher #, or Booking ID)</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    ref={filterFromNoRef}
+                    type="text"
+                    className="filter-input"
+                    placeholder="From # (e.g. 15 or 550)"
+                    value={filterFromNo}
+                    onChange={(e) => setFilterFromNo(e.target.value)}
+                  />
+                  <span style={{ color: '#94a3b8', fontWeight: 800, fontSize: '0.85rem' }}>to</span>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="To # (e.g. 25 or 560)"
+                    value={filterToNo}
+                    onChange={(e) => setFilterToNo(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Date Range */}
+              <div className="filter-group">
+                <label className="filter-label">
+                  <span>Date Range</span>
+                  <span className="filter-sublabel">(Stay Check-In / Check-Out date)</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="date"
+                    className="filter-input"
+                    value={filterFromDate}
+                    onChange={(e) => setFilterFromDate(e.target.value)}
+                  />
+                  <span style={{ color: '#94a3b8', fontWeight: 800, fontSize: '0.85rem' }}>to</span>
+                  <input
+                    type="date"
+                    className="filter-input"
+                    value={filterToDate}
+                    onChange={(e) => setFilterToDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="filter-panel-actions">
+              <button
+                type="button"
+                className="filter-btn-clear"
+                onClick={() => {
+                  setFilterFromNo('');
+                  setFilterToNo('');
+                  setFilterFromDate('');
+                  setFilterToDate('');
+                  setFilterShowScope('all');
+                }}
+              >
+                Reset Filters
+              </button>
+              <button
+                type="button"
+                className="filter-btn-apply"
+                onClick={() => setIsFilterOpen(false)}
+              >
+                Apply &amp; Done {activeFilterCount > 0 ? `(${activeFilterCount} active)` : ''}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="history-stats-bar">
           <span>Showing {filteredRecords.length} completed stays</span>
           <span className="stats-sep">•</span>
           <span>Total Revenue: {formatCurrency(totalRev)}</span>
@@ -891,8 +1332,11 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               </span>
             </>
           )}
+          <span className="stats-sep">•</span>
+          <span style={{ color: '#64748b', fontSize: '0.76rem', fontWeight: 650 }}>
+            ⌨️ <strong>↑ / ↓</strong> Navigate • <strong>Enter</strong> Open Stay
+          </span>
         </div>
-      </div>
 
       {/* History Data Table */}
       <div className="history-table-container">
@@ -910,21 +1354,21 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   />
                 </th>
               )}
-              <th className="history-col-booking" style={{ width: '90px' }}>Booking #</th>
-              <th className="history-col-rooms" style={{ width: '120px' }}>Room(s)</th>
-              <th className="history-col-guest">Guest Details</th>
-              <th className="history-col-checkin" style={{ width: '160px' }}>Check-In</th>
-              <th className="history-col-checkout" style={{ width: '160px' }}>Check-Out</th>
-              <th className="history-col-duration" style={{ width: '130px' }}>Stay Duration</th>
-              <th className="history-col-amount" style={{ width: '150px' }}>Amount Paid</th>
-              <th className="history-col-staff" style={{ width: '170px' }}>Cashier Staff</th>
-              <th className="history-col-actions" style={{ width: '160px', textAlign: 'center' }}>Actions</th>
+              <th className="history-col-booking" style={{ width: '75px', whiteSpace: 'nowrap' }}>Booking</th>
+              <th className="history-col-rooms" style={{ width: '90px' }}>Room</th>
+              <th className="history-col-guest">Guest Name</th>
+              <th className="history-col-voucher" style={{ width: '125px', whiteSpace: 'nowrap' }}>Voucher No</th>
+              <th className="history-col-invoice" style={{ width: '105px', whiteSpace: 'nowrap' }}>Invoice No</th>
+              <th className="history-col-checkin" style={{ width: '160px', minWidth: '155px', whiteSpace: 'nowrap' }}>Check-In</th>
+              <th className="history-col-checkout" style={{ width: '160px', minWidth: '155px', whiteSpace: 'nowrap' }}>Check-Out</th>
+              <th className="history-col-amount" style={{ width: '140px' }}>Amount Paid</th>
             </tr>
           </thead>
           <tbody>
-            {filteredRecords.map((r) => {
-              const isCheckedOut = r.status === 'checked_out';
+            {filteredRecords.map((r, idx) => {
+              const isCheckedOut = r.status === 'checked_out' || Boolean(r.actual_checkout_time);
               const isSelected = selectedIds.has(r.id);
+              const isFocused = focusedRowIndex === idx;
 
               const isBtcBooking = isBtcBookingRecord(r);
               const isChequePassed = isChequePassedRecord(r);
@@ -940,52 +1384,11 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 Boolean(r.cheque_photo) ||
                 Boolean(r.settlement_cheque_photo);
 
-              const isChequeEligible = hasCheque || isBtcBooking;
-              const hasChequePhoto = Boolean(r.cheque_photo || r.settlement_cheque_photo);
-
               const isPending =
                 isBtcPending ||
                 (hasCheque && !isChequePassed) ||
                 r.payment_status === 'pending' ||
                 r.payment_status === 'pending_from_company';
-
-              const guestAvatar = r.guest_photo ? (
-                <img
-                  src={r.guest_photo}
-                  alt={r.guest_name}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setLightboxImg(r.guest_photo);
-                    setLightboxTitle(`${r.guest_name} - Guest Photo`);
-                  }}
-                  title="Click to zoom / scroll"
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '8px',
-                    objectFit: 'cover',
-                    border: '1.5px solid #e2e8f0',
-                    cursor: 'pointer'
-                  }}
-                />
-              ) : (
-                <div
-                  onPointerDown={(e) => e.stopPropagation()}
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '8px',
-                    background: '#e2e8f0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1.1rem'
-                  }}
-                >
-                  👤
-                </div>
-              );
 
               const isPrepaid = Boolean(
                 r.is_prepaid === 1 ||
@@ -1022,24 +1425,34 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 ).toUpperCase();
               }
 
+              const roomNumberClean = r.room_number || (r.all_group_rooms ? r.all_group_rooms.map(x => typeof x === 'object' && x !== null ? (x.room_number || x.number) : x).filter(Boolean).join(', ') : '-');
+
               return (
                 <tr
                   key={r.id}
+                  data-history-row-index={idx}
+                  tabIndex={0}
                   onPointerDown={(e) => handlePointerDown(e, r.id)}
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
-                  onClick={() => handleRowClick(r.id)}
+                  onMouseEnter={() => setFocusedRowIndex(idx)}
+                  onClick={() => {
+                    setFocusedRowIndex(idx);
+                    handleRowClick(r.id);
+                  }}
                   onContextMenu={(e) => {
                     if (isLongPressTriggeredRef.current) e.preventDefault();
                   }}
+                  className={`${isBtcPending ? 'history-row-btc-pending' : ''} ${isSelected ? 'history-row-selected' : ''} ${isFocused ? 'history-row-focused' : ''}`}
                   style={{
                     cursor: 'pointer',
-                    backgroundColor: isSelected ? '#fef2f2' : undefined,
-                    transition: 'background-color 0.15s ease',
+                    backgroundColor: isBtcPending ? '#fff1f2' : undefined,
+                    borderLeft: isBtcPending ? '4px solid #ef4444' : undefined,
+                    transition: 'all 0.1s ease',
                     userSelect: isSelectionMode ? 'none' : 'auto'
                   }}
-                  title={isSelectionMode ? (isSelected ? 'Click to deselect' : 'Click to select') : 'Click to view details (Click & hold to select)'}
+                  title={isSelectionMode ? (isSelected ? 'Click to deselect' : 'Click to select') : 'Click or press Enter to view stay folio'}
                 >
                   {isSelectionMode && (
                     <td
@@ -1063,495 +1476,121 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       />
                     </td>
                   )}
-                  <td className="history-col-booking" style={{ fontWeight: 800, color: '#64748b', fontSize: '0.82rem' }}>
-                    #{r.id}
+
+                  {/* Booking ID - Clean number, no # below header */}
+                  <td className="history-col-booking" style={{ fontWeight: 800, color: isBtcPending ? '#dc2626' : '#64748b', fontSize: '0.86rem', whiteSpace: 'nowrap' }}>
+                    {r.id}
                   </td>
-                  <td className="history-col-rooms">
-                    <span
-                      style={{
-                        fontWeight: 800,
-                        color: '#0071e3',
-                        background: '#eff6ff',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        border: '1px solid #dbeafe'
-                      }}
-                    >
-                      🔑 #{r.room_number || (r.all_group_rooms ? r.all_group_rooms.map(x => typeof x === 'object' && x !== null ? (x.room_number || x.number) : x).filter(Boolean).join(', #') : '')}
+
+                  {/* Room - Box with only number, no key icon and no # */}
+                  <td className="history-col-rooms" style={{ whiteSpace: 'nowrap' }}>
+                    <span className="history-room-badge">
+                      {roomNumberClean}
                     </span>
                   </td>
+
+                  {/* Guest Name */}
                   <td className="history-col-guest">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div className="history-guest-avatar">{guestAvatar}</div>
-                      <div>
-                        <div className="history-guest-name" style={{ fontWeight: 750, color: 'var(--text-primary, #0f172a)', fontSize: '0.9rem' }}>
-                          {r.guest_name || 'N/A'}
-                        </div>
-                        <div className="history-guest-subtext" style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                          📱 {r.mobile || '-'} • {r.doc_type || 'ID'}
-                        </div>
+                    <div className="history-guest-name" style={{ fontWeight: 750, color: 'var(--text-primary, #0f172a)', fontSize: '0.90rem' }}>
+                      {r.guest_name || 'N/A'}
+                    </div>
+                    {r.mobile && (
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '1px' }}>
+                        {r.mobile}
                       </div>
+                    )}
+                  </td>
+
+                  {/* Voucher No */}
+                  <td className="history-col-voucher" style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', whiteSpace: 'nowrap' }}>
+                      {cleanVoucherNumber(r.voucher_number || r.voucher_no || r.checkin_voucher_no) || (r.id ? `V-${r.id}` : '-')}
                     </div>
                   </td>
-                  <td className="history-col-checkin">
-                    <div className="history-checkin-date" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary, #0f172a)' }}>
+
+                  {/* Invoice No */}
+                  <td className="history-col-invoice" style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#1e40af', whiteSpace: 'nowrap' }}>
+                      {r.invoice_no || formatTaxInvoiceNumber(r.voucher_number || r.voucher_no || r.checkin_voucher_no || r.id)}
+                    </div>
+                  </td>
+
+                  {/* Check-In - strictly single line, no overflow */}
+                  <td className="history-col-checkin" style={{ whiteSpace: 'nowrap' }}>
+                    <div className="history-checkin-date" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary, #0f172a)', whiteSpace: 'nowrap' }}>
                       {formatShortDT(r.checkin_time)}
                     </div>
-                    <div className="history-booking-channel" style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                      {r.booking_source || 'Walk-in'}
-                    </div>
+                    {r.booking_source && (
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        {r.booking_source}
+                      </div>
+                    )}
                   </td>
-                  <td className="history-col-checkout">
+
+                  {/* Check-Out - strictly single line, no overflow */}
+                  <td className="history-col-checkout" style={{ whiteSpace: 'nowrap' }}>
                     <div
                       className="history-checkout-date"
                       style={{
                         fontSize: '0.84rem',
                         fontWeight: 700,
-                        color: isCheckedOut ? '#0071e3' : '#64748b'
+                        color: isCheckedOut ? '#0071e3' : '#64748b',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       {formatShortDT(r.checkout_time || r.approx_checkout_time)}
                     </div>
                     <div>
-                      {isCheckedOut ? (
-                        <span
-                          style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            background: '#dcfce7',
-                            color: '#166534'
-                          }}
-                        >
-                          CHECKED OUT
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            background: '#eff6ff',
-                            color: '#1d4ed8'
-                          }}
-                        >
-                          ACTIVE STAY
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="history-col-duration">
-                    <div>
-                      <span style={{ fontWeight: 750, color: '#334155', fontSize: '0.82rem' }}>
-                        {r.stay_duration_str || '1 Day'}
+                      <span
+                        style={{
+                          fontSize: '0.70rem',
+                          fontWeight: 800,
+                          padding: '2px 7px',
+                          borderRadius: '5px',
+                          background: isCheckedOut ? '#dcfce7' : '#eff6ff',
+                          color: isCheckedOut ? '#166534' : '#1d4ed8',
+                          whiteSpace: 'nowrap',
+                          display: 'inline-block'
+                        }}
+                      >
+                        {isCheckedOut ? 'CHECKED OUT' : 'ACTIVE STAY'}
                       </span>
-                      {r.expected_stay_str && (
-                        <div style={{ fontSize: '0.70rem', color: '#dc2626', fontWeight: 750, marginTop: '2px' }}>
-                          ⚡ Early (Exp: {r.expected_stay_str})
-                        </div>
-                      )}
                     </div>
                   </td>
-                  <td className="history-col-amount">
+
+                  {/* Amount Paid Number & Mode in Little */}
+                  <td className="history-col-amount" style={{ whiteSpace: 'nowrap' }}>
                     {isBtcPending ? (
                       <div>
                         <div
-                          className="history-btc-pending-amount"
                           style={{
-                            fontSize: '0.96rem',
+                            fontSize: '0.95rem',
                             fontWeight: 900,
                             color: '#dc2626'
                           }}
                         >
                           {formatCurrency(Math.max(0, (Number(r.total_room_charge || r.total_cost || 0) + Number(r.extra_bed_charge || 0)) - Number(r.total_paid || 0)) || Number(r.total_room_charge || 0))} Due
                         </div>
-                        <div style={{ marginTop: '3px' }}>
-                          <span
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenSettleBtc(r);
-                            }}
-                            style={{
-                              fontSize: '0.72rem',
-                              fontWeight: 850,
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              background: '#fef2f2',
-                              color: '#dc2626',
-                              border: '1.5px solid #f87171',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            title="Click to Settle Pending BTC Payment from Company"
-                          >
-                            🏢 Pending BTC ✏️
-                          </span>
+                        <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, marginTop: '1px' }}>
+                          (pending btc)
                         </div>
                       </div>
                     ) : (
                       <div>
                         <div
-                          className="history-paid-amount"
                           style={{
                             fontSize: '0.95rem',
-                            fontWeight: 850,
+                            fontWeight: 800,
                             color: isPrepaid && hotelPaid === 0 ? '#6b21a8' : (isPending ? '#b45309' : '#15803d')
                           }}
                         >
                           {formatCurrency(isPrepaid && hotelPaid === 0 ? 0 : (r.total_paid || r.total_room_charge || 0))}
                         </div>
-                        {isPrepaid && (
-                          <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700, marginTop: '2px' }}>
-                            Prepaid via {r.ota_platform || 'OTA'}{r.ota_bill_amount > 0 ? ` (₹${Number(r.ota_bill_amount).toLocaleString('en-IN')})` : ''}
-                          </div>
-                        )}
-                        {r.refund_amount > 0 && (
-                          <div style={{ marginTop: '2px' }}>
-                            <span
-                              style={{
-                                fontSize: '0.70rem',
-                                fontWeight: 800,
-                                padding: '2px 6px',
-                                borderRadius: '6px',
-                                background: '#fee2e2',
-                                color: '#b91c1c',
-                                border: '1px solid #fca5a5',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              title={`Debit Voucher: ${r.refund_voucher_no || 'DEB'} • ${r.refund_reason || 'Early checkout refund'}`}
-                            >
-                              ↩️ Refund: -{formatCurrency(r.refund_amount)} ({String(r.refund_mode || 'CASH').toUpperCase()})
-                            </span>
-                          </div>
-                        )}
-                        <div style={{ marginTop: '3px' }}>
-                          <span
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onChangePaymentStatus) onChangePaymentStatus(r);
-                            }}
-                            style={{
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              padding: '2px 7px',
-                              borderRadius: '6px',
-                              background: isPending ? '#fffbeb' : (isPrepaid && hotelPaid === 0 ? '#f3e8ff' : '#dcfce7'),
-                              color: isPending ? '#b45309' : (isPrepaid && hotelPaid === 0 ? '#6b21a8' : '#166534'),
-                              border: `1px solid ${isPending ? '#fde68a' : (isPrepaid && hotelPaid === 0 ? '#d8b4fe' : '#bbf7d0')}`,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            title={isPrepaid && hotelPaid === 0 ? 'Prepaid Stay (100% Voucher Covered)' : 'Click to Change Payment Status'}
-                          >
-                            {isPending ? `⏳ Pending (${modeLabel}) ✏️` : `✓ Passed (${modeLabel}) ✏️`}
-                          </span>
+                        <div style={{ fontSize: '0.72rem', color: isPrepaid ? '#7c3aed' : '#64748b', fontWeight: 600, marginTop: '1px' }}>
+                          ({modeLabel.toLowerCase()})
                         </div>
                       </div>
                     )}
-                    {isChequeEligible && (
-                      <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                        {hasChequePhoto ? (
-                          <button
-                            type="button"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLightboxImg(r.cheque_photo || r.settlement_cheque_photo);
-                              setLightboxTitle(`Scanned Cheque - Booking #${r.id} (${r.guest_name})`);
-                            }}
-                            style={{
-                              fontSize: '0.70rem',
-                              fontWeight: 800,
-                              padding: '2px 7px',
-                              borderRadius: '6px',
-                              background: '#f0fdf4',
-                              color: '#15803d',
-                              border: '1px solid #86efac',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            title="Click to view scanned physical cheque"
-                          >
-                            <span>🖼️</span> Cheque Scanned 👁️
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenScanCheque(r);
-                            }}
-                            style={{
-                              fontSize: '0.70rem',
-                              fontWeight: 800,
-                              padding: '2px 7px',
-                              borderRadius: '6px',
-                              background: '#fffbeb',
-                              color: '#b45309',
-                              border: '1px dashed #f59e0b',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            title="Scan physical cheque from flatbed scanner or camera"
-                          >
-                            <span>🖨️</span> Scan Cheque
-                          </button>
-                        )}
-                        {(r.settlement_cheque_no || r.advance_cheque_no) && (
-                          <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>
-                            #{r.settlement_cheque_no || r.advance_cheque_no}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {r.btc_company_name && (
-                      <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
-                        🏢 {r.btc_company_name}
-                      </div>
-                    )}
-                  </td>
-                  <td className="history-col-staff">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.75rem' }}>
-                      <span style={{ color: '#1e3a8a' }}>
-                        📥 In: <strong>{r.checked_in_by || 'Front Desk'}</strong>
-                      </span>
-                      {r.checked_out_by && (
-                        <span style={{ color: '#15803d' }}>
-                          📤 Out: <strong>{r.checked_out_by}</strong>
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="history-col-actions" style={{ textAlign: 'center' }} onPointerDown={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
-                      {isBtcPending && !hasCheque && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenSettleBtc(r);
-                          }}
-                          style={{
-                            padding: '5px 8px',
-                            fontSize: '0.74rem',
-                            fontWeight: 850,
-                            background: '#dc2626',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
-                          }}
-                          title="Accept and Settle Corporate Bill from Company"
-                        >
-                          💳 Settle BTC
-                        </button>
-                      )}
-                      {isChequeEligible && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenScanCheque(r);
-                            }}
-                            style={{
-                              padding: '5px 8px',
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              background: hasChequePhoto ? '#f0fdf4' : '#fffbeb',
-                              color: hasChequePhoto ? '#15803d' : '#b45309',
-                              border: `1.5px solid ${hasChequePhoto ? '#86efac' : '#fcd34d'}`,
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px'
-                            }}
-                            title={hasChequePhoto ? 'View or re-scan physical cheque' : 'Scan physical cheque via webcam or upload'}
-                          >
-                            <span>{hasChequePhoto ? '🔍' : '📷'}</span> {hasChequePhoto ? 'Cheque' : 'Scan Cheque'}
-                          </button>
-
-                          {!isChequePassed ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePassCheque(r);
-                              }}
-                              style={{
-                                padding: '5px 9px',
-                                fontSize: '0.74rem',
-                                fontWeight: 850,
-                                background: '#16a34a',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              title="Pass this cheque and add amount to hotel account"
-                            >
-                              <span>✅</span> Pass Cheque
-                            </button>
-                          ) : (
-                            <span
-                              style={{
-                                padding: '4px 7px',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                background: '#f0fdf4',
-                                color: '#166534',
-                                border: '1px solid #bbf7d0',
-                                borderRadius: '6px',
-                                whiteSpace: 'nowrap',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              title="Cheque has been passed and amount added to hotel account"
-                            >
-                              <span>✓</span> Passed
-                            </span>
-                          )}
-                        </>
-                      )}
-                      {isBtcPending ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDocActionModal({ isOpen: true, type: 'checkin', data: r });
-                          }}
-                          style={{
-                            padding: '5px 8px',
-                            fontSize: '0.74rem',
-                            fontWeight: 800,
-                            background: '#faf5ff',
-                            color: '#6b21a8',
-                            border: '1.5px solid #d8b4fe',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                          title="Check-In Form (Save, Print, or Save & Print)"
-                        >
-                          📄 Form
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDocActionModal({
-                              isOpen: true,
-                              type: 'invoice',
-                              data: {
-                                room: r,
-                                calc: {
-                                  grossTariff: r.total_room_charge || r.room_rate,
-                                  roomCharge: r.total_room_charge || r.room_rate,
-                                  roomTariffNet: r.total_room_charge,
-                                  tariffTax5Pct: Math.round((r.total_room_charge || 0) * 0.05),
-                                  foodTotal: r.food_total || 0,
-                                  barTotal: r.bar_total || 0,
-                                  hotelExtrasCharge: r.extra_bed_charge || 0,
-                                  advancePaid: r.initial_paid || r.total_paid || 0,
-                                  chargedDays: r.charged_days || 1,
-                                  billableDays: r.charged_days || 1,
-                                  discountPct: r.discount_pct || 0,
-                                  discountAmount: r.discount_amount || 0
-                                },
-                                settlement: {
-                                  settleAmt: r.final_settle_amount || r.total_paid || 0,
-                                  refundAmt: r.refund_amount || 0,
-                                  settled_at: r.actual_checkout_time || r.checkout_time || new Date(),
-                                  invoiceNo: r.invoice_no || formatTaxInvoiceNumber(r.voucher_number || r.voucher_no || r.checkin_voucher_no || r.id),
-                                  checked_out_by: r.checked_out_by || (currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1')
-                                }
-                              }
-                            });
-                          }}
-                          style={{
-                            padding: '5px 8px',
-                            fontSize: '0.74rem',
-                            fontWeight: 800,
-                            background: '#eff6ff',
-                            color: '#1e40af',
-                            border: '1.5px solid #bfdbfe',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                          title="Official Tax Invoice (Save, Print, or Save & Print)"
-                        >
-                          🧾 Tax Invoice
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDetail(r.id);
-                        }}
-                        style={{
-                          padding: '5px 10px',
-                          fontSize: '0.76rem',
-                          fontWeight: 750,
-                          background: '#0071e3',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer'
-                        }}
-                        title="View Details & Payment History"
-                      >
-                        👁️ View
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteRecord(r.id);
-                        }}
-                        style={{
-                          padding: '5px 9px',
-                          fontSize: '0.76rem',
-                          fontWeight: 750,
-                          background: '#fff1f2',
-                          color: '#dc2626',
-                          border: '1.5px solid #fecaca',
-                          borderRadius: '6px',
-                          cursor: 'pointer'
-                        }}
-                        title="Delete History Record"
-                      >
-                        🗑️ Delete
-                      </button>
-                    </div>
                   </td>
                 </tr>
               );
@@ -1570,54 +1609,173 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
         )}
       </div>
 
-      {/* Comprehensive Stay Detail & Payment History Modal (Points 6 & 12) */}
+      {/* Floating Scroll to Top Row (Up Button) */}
+      <button
+        type="button"
+        id="btn-history-scroll-top"
+        className="history-scroll-top-btn"
+        onClick={() => {
+          setFocusedRowIndex(0);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        title="Scroll to Top Row (Up)"
+      >
+        ▲
+      </button>
+
+      {/* Full-Page Stay Detail & Folio View (Entire height & width, not a popup) */}
       {isDetailOpen && (
         <div
-          className="modal-overlay active"
+          className="history-fullscreen-view"
           style={{
             zIndex: 10050,
             padding: 0,
             margin: 0,
             width: '100vw',
             height: '100vh',
-            maxWidth: '100vw',
-            maxHeight: '100vh',
             position: 'fixed',
             inset: 0,
-            background: 'rgba(15, 23, 42, 0.85)',
+            background: 'var(--bg-app, #f8fafc)',
             display: 'flex',
-            alignItems: 'stretch',
-            justifyContent: 'stretch'
+            flexDirection: 'column',
+            overflow: 'hidden'
           }}
         >
+          {/* Full-Page Top Bar */}
           <div
-            className="modal-container"
             style={{
-              width: '100vw',
-              height: '100vh',
-              maxWidth: '100vw',
-              maxHeight: '100vh',
-              borderRadius: 0,
-              margin: 0,
+              padding: '12px 28px',
+              borderBottom: '1.5px solid var(--border-color, #e2e8f0)',
+              background: 'var(--bg-surface, #ffffff)',
               display: 'flex',
-              flexDirection: 'column',
-              boxShadow: 'none',
-              border: 'none',
-              background: 'var(--bg-app, #f8fafc)'
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexShrink: 0,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
             }}
           >
-            <div className="modal-header" style={{ padding: '16px 32px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '1.6rem', padding: '6px 10px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '10px' }}>📜</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <button
+                type="button"
+                className="history-back-btn"
+                onClick={() => {
+                  setIsDetailOpen(false);
+                  setDetailBooking(null);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#1e293b',
+                  fontSize: '0.86rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+                }}
+                title="Return to History Table"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span>Back to History</span>
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.5rem', padding: '4px 8px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '8px' }}>📜</span>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
-                    Stay Details &amp; Payment History — {detailBooking ? `Booking #${detailBooking.id}` : 'Loading...'}
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
+                    Stay Details &amp; Payment Folio {detailBooking ? `— Booking #${detailBooking.id} (Room ${detailBooking.room_number || '-'})` : ''}
                   </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #64748b)' }}>
-                    Archived stay folio, housekeeping cleaner records, and cash receipts
+                  <p style={{ margin: '1px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)' }}>
+                    Archived stay folio, billing breakdown, cashier audit trail, and corporate settlement
                   </p>
                 </div>
               </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {detailBooking && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocActionModal({
+                        isOpen: true,
+                        type: 'invoice',
+                        data: {
+                          room: detailBooking,
+                          calc: {
+                            grossTariff: detailBooking.total_room_charge || detailBooking.room_rate,
+                            roomCharge: detailBooking.total_room_charge || detailBooking.room_rate,
+                            roomTariffNet: detailBooking.total_room_charge,
+                            tariffTax5Pct: Math.round((detailBooking.total_room_charge || 0) * 0.05),
+                            foodTotal: detailBooking.food_total || 0,
+                            barTotal: detailBooking.bar_total || 0,
+                            hotelExtrasCharge: detailBooking.extra_bed_charge || 0,
+                            advancePaid: detailBooking.initial_paid || detailBooking.total_paid || 0,
+                            chargedDays: detailBooking.charged_days || 1,
+                            billableDays: detailBooking.charged_days || 1,
+                            discountPct: detailBooking.discount_pct || 0,
+                            discountAmount: detailBooking.discount_amount || 0
+                          },
+                          settlement: {
+                            settleAmt: detailBooking.final_settle_amount || detailBooking.total_paid || 0,
+                            refundAmt: detailBooking.refund_amount || 0,
+                            settled_at: detailBooking.actual_checkout_time || detailBooking.checkout_time || new Date(),
+                            invoiceNo: detailBooking.invoice_no || formatTaxInvoiceNumber(detailBooking.voucher_number || detailBooking.voucher_no || detailBooking.checkin_voucher_no || detailBooking.id),
+                            checked_out_by: detailBooking.checked_out_by || (currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1')
+                          }
+                        }
+                      });
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      background: '#eff6ff',
+                      color: '#1e40af',
+                      border: '1.5px solid #bfdbfe',
+                      fontSize: '0.84rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                    title="Official Tax Invoice"
+                  >
+                    <span>🧾</span> Tax Invoice
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocActionModal({ isOpen: true, type: 'checkin', data: detailBooking });
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      background: '#faf5ff',
+                      color: '#6b21a8',
+                      border: '1.5px solid #d8b4fe',
+                      fontSize: '0.84rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                    title="Check-In Registration Form"
+                  >
+                    <span>📄</span> Form
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
                 className="modal-close-btn"
@@ -1625,55 +1783,258 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   setIsDetailOpen(false);
                   setDetailBooking(null);
                 }}
+                style={{ fontSize: '1.4rem', padding: '4px 10px' }}
+                title="Close"
               >
                 &times;
               </button>
             </div>
+          </div>
 
-            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '1440px', margin: '0 auto' }}>
-              {isDetailLoading || !detailBooking ? (
-                <div style={{ padding: '50px 20px', textAlign: 'center', color: 'var(--text-secondary, #64748b)' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
-                  <div>Loading stay &amp; payment records...</div>
-                </div>
-              ) : (
-                <>
-                  {/* BTC Settlement Alert Banner if Pending */}
-                  {Boolean(
-                    (detailBooking.booking_source === 'BTC' || detailBooking.btc_company_id !== null || detailBooking.final_payment_mode === 'btc' || detailBooking.payment_status === 'pending_from_company') &&
-                    detailBooking.payment_status !== 'settled'
-                  ) && (
-                    <div style={{ padding: '14px 18px', background: '#fef2f2', border: '1.5px solid #f87171', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', margin: '0 auto' }}>
+            {isDetailLoading || !detailBooking ? (
+              <div style={{ padding: '50px 20px', textAlign: 'center', color: 'var(--text-secondary, #64748b)' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
+                <div>Loading stay &amp; payment records...</div>
+              </div>
+            ) : (
+              <>
+                {/* BTC Settlement & Cheque Scanning Section if Pending */}
+                {Boolean(
+                  (detailBooking.booking_source === 'BTC' || detailBooking.btc_company_id !== null || detailBooking.final_payment_mode === 'btc' || detailBooking.payment_status === 'pending_from_company') &&
+                  detailBooking.payment_status !== 'settled'
+                ) && (
+                  <div style={{ padding: '16px 20px', background: '#fff1f2', border: '2px solid #f87171', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '1.6rem' }}>🏢</span>
+                        <span style={{ fontSize: '1.8rem' }}>🏢</span>
                         <div>
-                          <div style={{ fontWeight: 850, color: '#dc2626', fontSize: '0.95rem' }}>
-                            Payment Pending from Company: {formatCurrency(detailBooking.total_room_charge || 0)}
+                          <div style={{ fontWeight: 850, color: '#dc2626', fontSize: '1rem' }}>
+                            Payment Pending from Company: {formatCurrency(Math.max(0, (Number(detailBooking.total_room_charge || 0) + Number(detailBooking.extra_bed_charge || 0)) - Number(detailBooking.total_paid || 0)) || Number(detailBooking.total_room_charge || 0))} Due
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: '#991b1b', marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.80rem', color: '#991b1b', marginTop: '2px' }}>
                             Company: <strong>{detailBooking.btc_company_name || 'Corporate'}</strong> {detailBooking.btc_approval_ref ? `• Approval Ref: ${detailBooking.btc_approval_ref}` : ''}
                           </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSettleBtc(detailBooking)}
-                        style={{
-                          padding: '8px 18px',
-                          fontSize: '0.85rem',
-                          fontWeight: 850,
-                          background: '#dc2626',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)'
-                        }}
-                      >
-                        💳 Settle BTC Payment
-                      </button>
+
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenScanCheque(detailBooking)}
+                          style={{
+                            padding: '8px 16px',
+                            fontSize: '0.84rem',
+                            fontWeight: 800,
+                            background: '#d97706',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 5px rgba(217, 119, 6, 0.25)'
+                          }}
+                          title="Scan or upload physical cheque for this BTC booking"
+                        >
+                          <span>🖨️ / 📷</span> Scan Physical Cheque
+                        </button>
+
+                        {Boolean(detailBooking.settlement_cheque_no || detailBooking.advance_cheque_no || detailBooking.cheque_photo || detailBooking.settlement_cheque_photo) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePassCheque(detailBooking)}
+                              style={{
+                                padding: '8px 16px',
+                                fontSize: '0.84rem',
+                                fontWeight: 850,
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                boxShadow: '0 2px 5px rgba(22, 163, 74, 0.25)'
+                              }}
+                              title="Pass Cheque and realize payment into accounts"
+                            >
+                              <span>✅</span> Pass Cheque
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleMarkChequeBounced(detailBooking)}
+                              style={{
+                                padding: '8px 14px',
+                                fontSize: '0.84rem',
+                                fontWeight: 800,
+                                background: '#fee2e2',
+                                color: '#b91c1c',
+                                border: '1.5px solid #fca5a5',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              title="Mark cheque as bounced and change payment method"
+                            >
+                              <span>⚠️</span> Cheque Bounced
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenChangePayment(detailBooking)}
+                          style={{
+                            padding: '8px 14px',
+                            fontSize: '0.84rem',
+                            fontWeight: 800,
+                            background: '#fef3c7',
+                            color: '#b45309',
+                            border: '1.5px solid #fde68a',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                          title="Change payment method to Cash, UPI, Card, or NEFT"
+                        >
+                          <span>🔄</span> Change Payment Method
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettleBtc(detailBooking)}
+                          style={{
+                            padding: '8px 16px',
+                            fontSize: '0.84rem',
+                            fontWeight: 850,
+                            background: '#dc2626',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 5px rgba(220, 38, 38, 0.25)'
+                          }}
+                        >
+                          <span>💳</span> Settle BTC
+                        </button>
+                      </div>
                     </div>
-                  )}
+
+                    {/* Scanned Cheque Photo preview if present */}
+                    {(detailBooking.cheque_photo || detailBooking.settlement_cheque_photo) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                        <img
+                          src={detailBooking.cheque_photo || detailBooking.settlement_cheque_photo}
+                          alt="Scanned Cheque"
+                          onClick={() => {
+                            setLightboxImg(detailBooking.cheque_photo || detailBooking.settlement_cheque_photo);
+                            setLightboxTitle(`Scanned Cheque - Booking #${detailBooking.id} (${detailBooking.guest_name})`);
+                          }}
+                          style={{ width: '100px', height: '52px', objectFit: 'cover', borderRadius: '6px', cursor: 'pointer', border: '1px solid #cbd5e1' }}
+                          title="Click to zoom cheque"
+                        />
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#1e293b' }}>
+                            Physical Cheque Attached (Click to enlarge)
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                            Cheque No: <strong>{detailBooking.settlement_cheque_no || detailBooking.advance_cheque_no || 'Recorded'}</strong> • Bank: <strong>{detailBooking.settlement_cheque_bank || detailBooking.advance_cheque_bank || 'Bank'}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment & Cheque Activity Log */}
+                    {(() => {
+                      let logs = [];
+                      try {
+                        logs = detailBooking.extension_logs_json ? JSON.parse(detailBooking.extension_logs_json) : [];
+                      } catch (_) { logs = []; }
+                      if (!Array.isArray(logs)) logs = [];
+
+                      const paymentLogs = logs.filter(l => l.type === 'cheque_bounced' || l.type === 'payment_method_changed');
+                      const paymentsList = detailBooking.payments || [];
+
+                      if (paymentLogs.length === 0 && paymentsList.length === 0) return null;
+
+                      return (
+                        <div style={{ marginTop: '12px', padding: '12px 16px', background: '#ffffff', borderRadius: '10px', border: '1.5px solid #e2e8f0' }}>
+                          <div style={{ fontWeight: 850, fontSize: '0.86rem', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📜</span> Payment &amp; Cheque Audit Log
+                          </div>
+
+                          {paymentLogs.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: paymentsList.length > 0 ? '10px' : 0 }}>
+                              {paymentLogs.map((log, idx) => (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    background: log.type === 'cheque_bounced' ? '#fff1f2' : '#f0fdf4',
+                                    border: `1.5px solid ${log.type === 'cheque_bounced' ? '#fca5a5' : '#86efac'}`,
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    justifyContent: 'space-between',
+                                    gap: '12px'
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontWeight: 800, fontSize: '0.82rem', color: log.type === 'cheque_bounced' ? '#dc2626' : '#15803d' }}>
+                                      {log.type === 'cheque_bounced' ? '⚠️ Cheque Bounced' : '✓ Payment Method Changed'}
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#334155', marginTop: '2px' }}>
+                                      {log.note}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right', fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                    <div>{formatDateTime(log.timestamp)}</div>
+                                    <div style={{ fontWeight: 700 }}>by {log.changed_by || 'Staff'}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {paymentsList.length > 0 && (
+                            <div style={{ marginTop: '6px' }}>
+                              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', marginBottom: '5px', textTransform: 'uppercase' }}>
+                                Recorded Payment Transactions ({paymentsList.length})
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {paymentsList.map((p, idx) => (
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
+                                    <div>
+                                      <strong>{formatCurrency(p.amount)}</strong> via <span style={{ textTransform: 'uppercase', fontWeight: 800 }}>{p.payment_mode}</span>
+                                      {p.cheque_no ? ` • Cheque #${p.cheque_no}` : ''}
+                                      {p.cheque_status ? ` • Status: ${p.cheque_status.toUpperCase()}` : ''}
+                                      {p.transaction_id ? ` • Ref/UTR: ${p.transaction_id}` : ''}
+                                    </div>
+                                    <div style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                                      {formatDateTime(p.created_at)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                   {/* Guest Identity Card */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '18px', padding: '18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1px solid var(--border-color, #e2e8f0)' }}>
@@ -2413,19 +2774,37 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                               </div>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span
                               style={{
                                 padding: '4px 10px',
                                 borderRadius: '8px',
                                 fontSize: '0.78rem',
                                 fontWeight: 800,
-                                background: isChqPassed ? '#dcfce7' : '#fffbeb',
-                                color: isChqPassed ? '#166534' : '#b45309',
-                                border: `1px solid ${isChqPassed ? '#86efac' : '#fde68a'}`
+                                background: detailBooking.cheque_status === 'bounced' || detailBooking.advance_cheque_status === 'bounced'
+                                  ? '#fee2e2'
+                                  : isChqPassed
+                                    ? '#dcfce7'
+                                    : '#fffbeb',
+                                color: detailBooking.cheque_status === 'bounced' || detailBooking.advance_cheque_status === 'bounced'
+                                  ? '#b91c1c'
+                                  : isChqPassed
+                                    ? '#166534'
+                                    : '#b45309',
+                                border: `1px solid ${
+                                  detailBooking.cheque_status === 'bounced' || detailBooking.advance_cheque_status === 'bounced'
+                                    ? '#fca5a5'
+                                    : isChqPassed
+                                      ? '#86efac'
+                                      : '#fde68a'
+                                }`
                               }}
                             >
-                              {isChqPassed ? '✓ Cheque Realized (Credited to Account)' : '⏳ Pending Bank Clearance'}
+                              {detailBooking.cheque_status === 'bounced' || detailBooking.advance_cheque_status === 'bounced'
+                                ? '⚠️ Cheque Bounced / Dishonored'
+                                : isChqPassed
+                                  ? '✓ Cheque Realized (Credited to Account)'
+                                  : '⏳ Pending Bank Clearance'}
                             </span>
                             <button
                               type="button"
@@ -2443,25 +2822,64 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             >
                               {chqPhoto ? '🔍 View / Re-scan Cheque' : '📷 Scan Cheque'}
                             </button>
-                            {!isChqPassed && (
-                              <button
-                                type="button"
-                                onClick={() => handlePassCheque(detailBooking)}
-                                style={{
-                                  padding: '5px 14px',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 850,
-                                  background: '#16a34a',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
-                                }}
-                              >
-                                ✅ Pass Cheque (Credit Account)
-                              </button>
+                            {!isChqPassed && (detailBooking.cheque_status !== 'bounced' && detailBooking.advance_cheque_status !== 'bounced') && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePassCheque(detailBooking)}
+                                  style={{
+                                    padding: '5px 14px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 850,
+                                    background: '#16a34a',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
+                                  }}
+                                >
+                                  ✅ Pass Cheque (Credit Account)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkChequeBounced(detailBooking)}
+                                  style={{
+                                    padding: '5px 12px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    background: '#fee2e2',
+                                    color: '#b91c1c',
+                                    border: '1px solid #fca5a5',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Mark cheque as bounced / dishonored"
+                                >
+                                  ⚠️ Cheque Bounced
+                                </button>
+                              </>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChangePayment(detailBooking)}
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                background: '#fef3c7',
+                                color: '#b45309',
+                                border: '1px solid #fde68a',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Change payment method to Cash, UPI, Card, or NEFT"
+                            >
+                              <span>🔄</span> Change Payment Method
+                            </button>
                           </div>
                         </div>
 
@@ -2490,6 +2908,56 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                             </span>
                           </div>
                         )}
+
+                        {/* Payment & Cheque Audit Log directly below this cheque section */}
+                        {(() => {
+                          let logs = [];
+                          try {
+                            logs = detailBooking.extension_logs_json ? JSON.parse(detailBooking.extension_logs_json) : [];
+                          } catch (_) { logs = []; }
+                          if (!Array.isArray(logs)) logs = [];
+
+                          const paymentLogs = logs.filter(l => l.type === 'cheque_bounced' || l.type === 'payment_method_changed');
+                          if (paymentLogs.length === 0) return null;
+
+                          return (
+                            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1' }}>
+                              <div style={{ fontWeight: 850, fontSize: '0.84rem', color: '#1e293b', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>📜</span> Payment &amp; Cheque Audit Log
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {paymentLogs.map((log, idx) => (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      padding: '8px 12px',
+                                      borderRadius: '8px',
+                                      background: log.type === 'cheque_bounced' ? '#fff1f2' : '#f0fdf4',
+                                      border: `1.5px solid ${log.type === 'cheque_bounced' ? '#fca5a5' : '#86efac'}`,
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      justifyContent: 'space-between',
+                                      gap: '12px'
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: log.type === 'cheque_bounced' ? '#dc2626' : '#15803d' }}>
+                                        {log.type === 'cheque_bounced' ? '⚠️ Cheque Bounced' : '✓ Payment Method Changed'}
+                                      </div>
+                                      <div style={{ fontSize: '0.78rem', color: '#334155', marginTop: '2px' }}>
+                                        {log.note}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                      <div>{formatDateTime(log.timestamp)}</div>
+                                      <div style={{ fontWeight: 700 }}>by {log.changed_by || 'Staff'}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
@@ -2622,8 +3090,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
       {/* Settle BTC Payment Modal */}
       {settleBtcTarget && (
         <div className="modal-overlay active" style={{ zIndex: 10100 }}>
@@ -2767,45 +3234,24 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       />
                     </div>
                   </div>
-                  <div style={{ marginTop: '10px' }}>
-                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                      Cheque Status
+                  {/* Cheque Confirmation Box */}
+                  <div style={{ marginTop: '12px', padding: '12px 16px', background: settleBtcChequeStatus === 'realized' ? '#f0fdf4' : '#fffbeb', borderRadius: '10px', border: `1.5px solid ${settleBtcChequeStatus === 'realized' ? '#86efac' : '#fde68a'}` }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        id="settleBtcChequePassConfirm"
+                        checked={settleBtcChequeStatus === 'realized'}
+                        onChange={(e) => setSettleBtcChequeStatus(e.target.checked ? 'realized' : 'pending')}
+                        style={{ width: '18px', height: '18px', accentColor: '#16a34a', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: settleBtcChequeStatus === 'realized' ? '#15803d' : '#92400e' }}>
+                        ✓ Confirm Cheque Passed &amp; Cleared (Credit Accounts Ledger)
+                      </span>
                     </label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setSettleBtcChequeStatus('realized')}
-                        style={{
-                          flex: 1,
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: settleBtcChequeStatus === 'realized' ? '2px solid #16a34a' : '1px solid #cbd5e1',
-                          background: settleBtcChequeStatus === 'realized' ? '#f0fdf4' : '#ffffff',
-                          color: settleBtcChequeStatus === 'realized' ? '#15803d' : '#475569',
-                          fontWeight: 800,
-                          fontSize: '0.78rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ✓ Cleared / Realized (Inflow)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSettleBtcChequeStatus('pending')}
-                        style={{
-                          flex: 1,
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: settleBtcChequeStatus === 'pending' ? '2px solid #d97706' : '1px solid #cbd5e1',
-                          background: settleBtcChequeStatus === 'pending' ? '#fffbeb' : '#ffffff',
-                          color: settleBtcChequeStatus === 'pending' ? '#b45309' : '#475569',
-                          fontWeight: 800,
-                          fontSize: '0.78rem',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ⏳ Pending Clearing
-                      </button>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', marginLeft: '28px' }}>
+                      {settleBtcChequeStatus === 'realized'
+                        ? 'Cheque is confirmed passed. It will immediately credit hotel accounts and settle this stay.'
+                        : 'Cheque is pending clearing. Settle as pending until bank confirms.'}
                     </div>
                   </div>
 
@@ -2982,7 +3428,176 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                 disabled={settleBtcSubmitting}
                 style={{ padding: '8px 22px', fontWeight: 850, background: '#16a34a', border: 'none' }}
               >
-                ✓ {settleBtcSubmitting ? 'Settling...' : 'Confirm Settlement & Release Invoice'}
+                ✓ {settleBtcSubmitting ? 'Settling...' : (settleBtcMode === 'cheque' && settleBtcChequeStatus === 'realized' ? 'Pass Cheque & Settle BTC' : 'Confirm Settlement & Release Invoice')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Payment Method Modal (Bounced Cheque / Resettle) */}
+      {changePaymentTarget && (
+        <div className="modal-overlay active" style={{ zIndex: 10100 }}>
+          <div className="modal-container" style={{ maxWidth: '540px', width: '95%' }}>
+            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', background: 'var(--bg-surface, #ffffff)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.5rem', padding: '6px 10px', background: '#fef3c7', borderRadius: '10px', color: '#d97706' }}>🔄</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 850, color: 'var(--text-primary, #0f172a)' }}>
+                    Change Payment Method (Resettle)
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary, #64748b)' }}>
+                    Booking #{changePaymentTarget.id} • {changePaymentTarget.guest_name} • Prev Cheque: #{changePaymentTarget.settlement_cheque_no || changePaymentTarget.advance_cheque_no || 'Recorded'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setChangePaymentTarget(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '20px' }}>
+              {/* Amount to Settle */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Payment Amount Received (₹) *
+                </label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="1"
+                  step="any"
+                  value={changePaymentAmount}
+                  onChange={(e) => setChangePaymentAmount(e.target.value)}
+                  style={{ height: '42px', fontSize: '1rem', fontWeight: 800 }}
+                  required
+                />
+              </div>
+
+              {/* New Payment Mode Selection */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  New Payment Mode *
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                  {[
+                    { id: 'upi', label: 'Online / UPI', icon: '📱' },
+                    { id: 'bank_transfer', label: 'NEFT / RTGS', icon: '🏦' },
+                    { id: 'cash', label: 'Cash', icon: '💵' },
+                    { id: 'card', label: 'Card / POS', icon: '💳' },
+                    { id: 'cheque', label: 'New Cheque', icon: '🏛️' }
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setChangePaymentNewMode(m.id)}
+                      style={{
+                        padding: '10px 6px',
+                        borderRadius: '8px',
+                        border: changePaymentNewMode === m.id ? '2px solid #2563eb' : '1.5px solid var(--border-color, #e2e8f0)',
+                        background: changePaymentNewMode === m.id ? '#eff6ff' : 'var(--bg-surface, #ffffff)',
+                        color: changePaymentNewMode === m.id ? '#1d4ed8' : 'var(--text-primary, #0f172a)',
+                        fontWeight: 800,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <div style={{ fontSize: '1.2rem', marginBottom: '2px' }}>{m.icon}</div>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Conditional inputs */}
+              {(changePaymentNewMode === 'upi' || changePaymentNewMode === 'bank_transfer') && (
+                <div style={{ marginBottom: '14px', padding: '12px', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1e40af', display: 'block', marginBottom: '5px' }}>
+                    UTR / Bank Reference No. *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Enter 12-digit UTR or Bank Ref No."
+                    value={changePaymentRef}
+                    onChange={(e) => setChangePaymentRef(e.target.value)}
+                    style={{ height: '38px', background: '#ffffff', color: '#0f172a', fontWeight: 750 }}
+                    required
+                  />
+                </div>
+              )}
+
+              {changePaymentNewMode === 'cheque' && (
+                <div style={{ marginBottom: '14px', padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        New Cheque Number *
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. 000543"
+                        value={changePaymentChequeNo}
+                        onChange={(e) => setChangePaymentChequeNo(e.target.value)}
+                        style={{ height: '38px' }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        Bank &amp; Branch Name
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. SBI Bank"
+                        value={changePaymentChequeBank}
+                        onChange={(e) => setChangePaymentChequeBank(e.target.value)}
+                        style={{ height: '38px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reason / Notes */}
+              <div>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'block', marginBottom: '6px' }}>
+                  Change Reason / Audit Note
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={changePaymentReason}
+                  onChange={(e) => setChangePaymentReason(e.target.value)}
+                  style={{ height: '38px' }}
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border-color, #e2e8f0)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn-custom-cancel"
+                onClick={() => setChangePaymentTarget(null)}
+                style={{ padding: '8px 18px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleExecuteChangePayment}
+                disabled={changePaymentSubmitting}
+                style={{ padding: '8px 22px', fontWeight: 850, background: '#16a34a', border: 'none' }}
+              >
+                ✓ {changePaymentSubmitting ? 'Updating...' : 'Confirm & Settle Payment'}
               </button>
             </div>
           </div>
@@ -3396,41 +4011,22 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   onClick={() => handleSaveChequeScan(false)}
                   disabled={chequeScanSubmitting || !chequeScanPhoto}
                   style={{
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    background: '#ffffff',
-                    color: '#334155',
-                    border: '1.5px solid #cbd5e1',
-                    fontWeight: 800,
-                    fontSize: '0.84rem',
-                    cursor: chequeScanSubmitting || !chequeScanPhoto ? 'not-allowed' : 'pointer'
-                  }}
-                  title="Save attached cheque photo to booking record without passing yet"
-                >
-                  💾 {chequeScanSubmitting ? 'Saving...' : 'Save Scan Only'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSaveChequeScan(true)}
-                  disabled={chequeScanSubmitting}
-                  style={{
-                    padding: '8px 20px',
+                    padding: '8px 22px',
                     borderRadius: '8px',
                     background: '#16a34a',
                     color: '#ffffff',
                     border: 'none',
                     fontWeight: 850,
                     fontSize: '0.86rem',
-                    cursor: chequeScanSubmitting ? 'not-allowed' : 'pointer',
+                    cursor: chequeScanSubmitting || !chequeScanPhoto ? 'not-allowed' : 'pointer',
                     boxShadow: '0 2px 8px rgba(22, 163, 74, 0.35)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px'
                   }}
-                  title="Save cheque photo and immediately credit amount into hotel accounts ledger"
+                  title="Save attached cheque photo to booking record"
                 >
-                  <span>✅</span> {chequeScanSubmitting ? 'Processing...' : 'Pass Cheque (Credit Account)'}
+                  <span>💾</span> {chequeScanSubmitting ? 'Saving...' : 'Save Cheque Scan'}
                 </button>
               </div>
             </div>
