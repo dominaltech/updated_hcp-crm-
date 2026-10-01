@@ -83,15 +83,6 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const [isHardwareScanning, setIsHardwareScanning] = useState(false);
   const [detectedScanner, setDetectedScanner] = useState(null);
 
-  // Auto-detect attached flatbed / WIA hardware scanner on mount
-  useEffect(() => {
-    api.getScannerDevices().then(res => {
-      if (res && res.devices && res.devices.length > 0) {
-        setDetectedScanner(res.devices[0]);
-      }
-    }).catch(() => {});
-  }, []);
-
   // Image Lightbox State for Click-to-Zoom
   const [lightboxImg, setLightboxImg] = useState(null);
   const [lightboxTitle, setLightboxTitle] = useState('Document Preview');
@@ -308,8 +299,18 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
     setSettleBtcAmount(totalDue > 0 ? String(totalDue) : String(booking.total_room_charge || ''));
     setSettleBtcUtr('');
     setSettleBtcChequeNo(booking.settlement_cheque_no || booking.advance_cheque_no || '');
-    setSettleBtcChequeBank(booking.settlement_cheque_bank || booking.advance_cheque_bank || '');
-    setSettleBtcChequePhoto(booking.settlement_cheque_photo || booking.cheque_photo || null);
+    let initialPhoto = (typeof booking.settlement_cheque_photo === 'string' && booking.settlement_cheque_photo.length > 20)
+      ? booking.settlement_cheque_photo
+      : (typeof booking.cheque_photo === 'string' && booking.cheque_photo.length > 20 ? booking.cheque_photo : null);
+    setSettleBtcChequePhoto(initialPhoto);
+    if (!initialPhoto && (booking.cheque_photo || booking.settlement_cheque_photo || booking.has_cheque_photo)) {
+      api.getBookingDetails(booking.id).then(full => {
+        if (full?.booking) {
+          const loaded = full.booking.settlement_cheque_photo || full.booking.cheque_photo || null;
+          if (loaded) setSettleBtcChequePhoto(loaded);
+        }
+      }).catch(() => {});
+    }
     setSettleBtcChequeStatus('realized');
     setSettleBtcCashier(currentUser?.full_name || currentUser?.username || 'Accounts');
     setSettleBtcNotes(`Corporate BTC settlement for ${booking.guest_name || 'Guest'}${booking.btc_company_name ? ` (${booking.btc_company_name})` : ''}`);
@@ -443,7 +444,18 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   const handleOpenScanCheque = (booking) => {
     if (!booking) return;
     setChequeScanTarget(booking);
-    setChequeScanPhoto(booking.cheque_photo || booking.settlement_cheque_photo || null);
+    let initialPhoto = (typeof booking.cheque_photo === 'string' && booking.cheque_photo.length > 20)
+      ? booking.cheque_photo
+      : (typeof booking.settlement_cheque_photo === 'string' && booking.settlement_cheque_photo.length > 20 ? booking.settlement_cheque_photo : null);
+    setChequeScanPhoto(initialPhoto);
+    if (!initialPhoto && (booking.cheque_photo || booking.settlement_cheque_photo || booking.has_cheque_photo)) {
+      api.getBookingDetails(booking.id).then(full => {
+        if (full?.booking) {
+          const loaded = full.booking.settlement_cheque_photo || full.booking.cheque_photo || null;
+          if (loaded) setChequeScanPhoto(loaded);
+        }
+      }).catch(() => {});
+    }
     setChequeScanNo(booking.settlement_cheque_no || booking.advance_cheque_no || '');
     setChequeScanBank(booking.settlement_cheque_bank || booking.advance_cheque_bank || '');
     setChequeCamTargetMode('scan_modal');

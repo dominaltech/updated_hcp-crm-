@@ -1913,16 +1913,16 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     }, '2099-01-01 00:00:00');
     const validCheckinLocal = minCheckinLocal === '2099-01-01 00:00:00' ? '2000-01-01 00:00:00' : minCheckinLocal;
 
-    // Ensure all pending cloud charges for this room group are persisted in SQLite before querying
-    try {
-      const allRoomNums = room.all_group_room_numbers || [room.room_number];
-      for (const rNum of allRoomNums) {
-        const gb = groupBookings.find(g => g.room_number === rNum) || { booking_id: room.booking_id, room_id: room.id };
-        await importCloudRoomChargesToSqlite(db, rNum, gb.room_id, gb.booking_id, room.guest_name);
-      }
-    } catch (cErr) {
-      console.warn('[Supabase] Failed to persist cloud room charges for folio:', cErr.message);
-    }
+    // Non-blocking background sync of any cloud room charges (never blocks local folio delivery)
+    setImmediate(() => {
+      try {
+        const allRoomNums = room.all_group_room_numbers || [room.room_number];
+        for (const rNum of allRoomNums) {
+          const gb = groupBookings.find(g => g.room_number === rNum) || { booking_id: room.booking_id, room_id: room.id };
+          importCloudRoomChargesToSqlite(db, rNum, gb.room_id, gb.booking_id, room.guest_name).catch(() => {});
+        }
+      } catch (_) {}
+    });
 
     const restaurantOrders = db.prepare(`
       SELECT ro.*, r.room_number 
@@ -1942,48 +1942,6 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
          OR (bo.booking_id IS NULL AND bo.room_id IN (${roomPlaceholders}) AND datetime(bo.created_at) >= ?)
       ORDER BY bo.created_at ASC
     `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
-
-    // Merge any pending cloud charges from separate POS machines via Supabase
-    try {
-      const allRoomNums = room.all_group_room_numbers || [room.room_number];
-      for (const rNum of allRoomNums) {
-        const pending = await supabaseService.fetchPendingRoomCharges(rNum);
-        if (pending && pending.length > 0) {
-          for (const cc of pending) {
-            const totalAmt = parseFloat(cc.grand_total) || 0;
-            if (cc.department === 'bar') {
-              if (!barOrders.some(bo => bo.order_number === cc.bill_no)) {
-                barOrders.push({
-                  id: `cloud-${cc.id}`,
-                  order_number: cc.bill_no,
-                  total: totalAmt,
-                  is_paid: 0,
-                  created_at: cc.created_at,
-                  cashier_name: cc.cashier_name || 'Bar Cashier',
-                  is_cloud_synced: true,
-                  items_json: cc.items_summary || ''
-                });
-              }
-            } else {
-              if (!restaurantOrders.some(ro => ro.order_number === cc.bill_no)) {
-                restaurantOrders.push({
-                  id: `cloud-${cc.id}`,
-                  order_number: cc.bill_no,
-                  total: totalAmt,
-                  is_paid: 0,
-                  created_at: cc.created_at,
-                  cashier_name: cc.cashier_name || 'Restaurant Cashier',
-                  is_cloud_synced: true,
-                  items_json: cc.items_summary || ''
-                });
-              }
-            }
-          }
-        }
-      }
-    } catch (cErr) {
-      console.warn('[Supabase] Failed to fetch cloud room charges for folio:', cErr.message);
-    }
 
     // Only UNPAID orders add to running room folio due
     const pendingRestaurantOrders = restaurantOrders.filter(o => o.is_paid === 0);
@@ -5808,17 +5766,27 @@ app.get('/api/stats', (req, res) => {
 });
 
 // 16. HARDWARE SCANNER INTEGRATION (HP LASERJET / CANON WIA BRIDGE)
+let cachedScannerResult = null;
+let lastScannerCheckTime = 0;
+const SCANNER_CACHE_TTL = 60000; // 60 seconds
+
 app.get('/api/scanner/devices', (req, res) => {
+  const now = Date.now();
+  if (cachedScannerResult && (now - lastScannerCheckTime < SCANNER_CACHE_TTL)) {
+    return res.json(cachedScannerResult);
+  }
   const { exec } = require('child_process');
   const psCmd = `powershell -NoProfile -Command "$ErrorActionPreference = 'SilentlyContinue'; $dm = New-Object -ComObject WIA.DeviceManager; if ($dm) { $dm.DeviceInfos | Where-Object { $_.Type -eq 1 } | ForEach-Object { $_.Properties('Name').Value } }"`;
   
-  exec(psCmd, { timeout: 8000 }, (err, stdout, stderr) => {
+  exec(psCmd, { timeout: 3000 }, (err, stdout, stderr) => {
     const lines = (stdout || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    res.json({
+    cachedScannerResult = {
       success: true,
       devices: lines.length > 0 ? lines : ['HP LaserJet Pro MFP M125/M126', 'Canon MF3010 (WIA)'],
       connectedCount: lines.length
-    });
+    };
+    lastScannerCheckTime = Date.now();
+    res.json(cachedScannerResult);
   });
 });
 
@@ -7494,7 +7462,7 @@ app.get('/api/hospitality/history', (req, res) => {
         g.mobile,
         g.email,
         g.doc_type,
-        g.guest_photo,
+        CASE WHEN g.guest_photo IS NOT NULL AND length(g.guest_photo) > 0 THEN 1 ELSE 0 END as has_guest_photo,
         b.checkin_time,
         b.approx_checkout_time,
         b.actual_checkout_time,
@@ -7512,13 +7480,11 @@ app.get('/api/hospitality/history', (req, res) => {
         b.settlement_cheque_no,
         b.settlement_cheque_bank,
         b.settlement_cheque_date,
-        b.settlement_cheque_photo,
         b.advance_cheque_no,
         b.advance_cheque_bank,
         b.advance_cheque_status,
-        b.cheque_photo,
         COALESCE((SELECT p.cheque_status FROM payments p WHERE p.booking_id = b.id AND (p.payment_mode = 'cheque' OR p.split_cheque > 0) ORDER BY p.id DESC LIMIT 1), b.advance_cheque_status, 'pending') as cheque_status,
-        COALESCE(b.settlement_cheque_photo, b.cheque_photo, (SELECT p.cheque_photo FROM payments p WHERE p.booking_id = b.id AND p.cheque_photo IS NOT NULL ORDER BY p.id DESC LIMIT 1)) as effective_cheque_photo,
+        CASE WHEN b.settlement_cheque_photo IS NOT NULL OR b.cheque_photo IS NOT NULL OR EXISTS(SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.cheque_photo IS NOT NULL) THEN 1 ELSE 0 END as has_cheque_photo,
         b.payment_status,
         b.status as booking_status,
         b.is_prepaid,
@@ -7628,7 +7594,8 @@ app.get('/api/hospitality/history', (req, res) => {
           doc_type: row.doc_type,
           doc_front: null,
           doc_back: null,
-          guest_photo: row.guest_photo,
+          guest_photo: null,
+          has_guest_photo: Boolean(row.has_guest_photo),
           aadhar_number: row.aadhar_number,
           dob: row.dob,
           address: row.address,
@@ -7658,11 +7625,12 @@ app.get('/api/hospitality/history', (req, res) => {
           settlement_cheque_no: row.settlement_cheque_no || row.advance_cheque_no || null,
           settlement_cheque_bank: row.settlement_cheque_bank || row.advance_cheque_bank || null,
           settlement_cheque_date: row.settlement_cheque_date || null,
-          settlement_cheque_photo: row.effective_cheque_photo || row.settlement_cheque_photo || row.cheque_photo || null,
+          settlement_cheque_photo: row.has_cheque_photo ? 'present' : null,
           advance_cheque_no: row.advance_cheque_no || null,
           advance_cheque_bank: row.advance_cheque_bank || null,
           advance_cheque_status: row.advance_cheque_status || null,
-          cheque_photo: row.effective_cheque_photo || row.cheque_photo || row.settlement_cheque_photo || null,
+          cheque_photo: row.has_cheque_photo ? 'present' : null,
+          has_cheque_photo: Boolean(row.has_cheque_photo),
           cheque_status: row.cheque_status || 'pending',
           payment_status: row.payment_status,
           booking_source: row.booking_source,
@@ -10431,159 +10399,6 @@ function mountStaticDist() {
   });
 }
 
-// 16. HARDWARE SCANNER INTEGRATION (HP LASERJET / CANON WIA BRIDGE)
-app.get('/api/scanner/devices', (req, res) => {
-  const { exec } = require('child_process');
-  const psCmd = `powershell -NoProfile -Command "$ErrorActionPreference = 'SilentlyContinue'; $dm = New-Object -ComObject WIA.DeviceManager; if ($dm) { $dm.DeviceInfos | Where-Object { $_.Type -eq 1 } | ForEach-Object { $_.Properties('Name').Value } }"`;
-  
-  exec(psCmd, { timeout: 8000 }, (err, stdout, stderr) => {
-    const lines = (stdout || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    res.json({
-      success: true,
-      devices: lines.length > 0 ? lines : ['HP LaserJet Pro MFP M125/M126', 'Canon MF3010 (WIA)'],
-      connectedCount: lines.length
-    });
-  });
-});
-
-app.post('/api/scanner/scan', (req, res) => {
-  const { exec } = require('child_process');
-  const os = require('os');
-  const tempScanPath = path.join(os.tmpdir(), `crm_scan_${Date.now()}.jpg`);
-  const psScriptPath = path.join(os.tmpdir(), `crm_wia_scan_${Date.now()}.ps1`);
-  
-  const psScript = `
-$ErrorActionPreference = 'Stop'
-try {
-    $dm = New-Object -ComObject WIA.DeviceManager
-    $scannerInfo = $null
-    for ($i = 1; $i -le $dm.DeviceInfos.Count; $i++) {
-        $info = $dm.DeviceInfos.Item($i)
-        if ($info.Type -eq 1 -or $info.Properties.Item("Name").Value -like '*Scan*' -or $info.Properties.Item("Name").Value -like '*HP*' -or $info.Properties.Item("Name").Value -like '*Canon*') {
-            $scannerInfo = $info
-            break
-        }
-    }
-    if (-not $scannerInfo) {
-        Write-Output "NO_SCANNER_FOUND"
-        exit 1
-    }
-    $devName = $scannerInfo.Properties.Item("Name").Value
-    $device = $scannerInfo.Connect()
-    $item = $device.Items.Item(1)
-    
-    # Set 300 DPI for high-definition text clarity
-    try {
-        $item.Properties.Item("6147").Value = 300 # Horizontal Resolution
-        $item.Properties.Item("6148").Value = 300 # Vertical Resolution
-    } catch {}
-
-    # Transfer raw BMP from hardware scanner
-    $rawImage = $item.Transfer("{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}")
-    
-    # Convert & compress to crisp JPEG using WIA ImageProcess filter
-    $ip = New-Object -ComObject WIA.ImageProcess
-    $ip.Filters.Add($ip.FilterInfos.Item("Convert").FilterID)
-    $ip.Filters.Item(1).Properties.Item("FormatID").Value = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
-    $ip.Filters.Item(1).Properties.Item("Quality").Value = 88
-    
-    $jpgImage = $ip.Apply($rawImage)
-    $outPath = "${tempScanPath.replace(/\\/g, '\\\\')}"
-    if (Test-Path $outPath) { Remove-Item $outPath -Force }
-    $jpgImage.SaveFile($outPath)
-    
-    Write-Output ("SCAN_SUCCESS:" + $devName)
-} catch {
-    Write-Output ("ERROR:" + $_.Exception.Message)
-    exit 2
-}
-`;
-
-  fs.writeFileSync(psScriptPath, psScript, 'utf8');
-
-  exec(`powershell -ExecutionPolicy Bypass -File "${psScriptPath}"`, { timeout: 60000 }, (err, stdout, stderr) => {
-    try { if (fs.existsSync(psScriptPath)) fs.unlinkSync(psScriptPath); } catch (e) {}
-
-    if (fs.existsSync(tempScanPath)) {
-      try {
-        const fileBuf = fs.readFileSync(tempScanPath);
-        const base64 = `data:image/jpeg;base64,${fileBuf.toString('base64')}`;
-        try { fs.unlinkSync(tempScanPath); } catch (e) {}
-        return res.json({
-          success: true,
-          image: base64,
-          source: 'hardware_scanner',
-          message: 'Document successfully scanned from physical scanner!'
-        });
-      } catch (readErr) {
-        return res.status(500).json({ success: false, error: 'Failed to read scanned image file.' });
-      }
-    }
-
-    const outText = (stdout || '').trim();
-    if (outText.includes('NO_SCANNER_FOUND')) {
-      return res.status(404).json({ success: false, error: 'No hardware scanner connected or recognized by Windows.' });
-    }
-
-    return res.status(500).json({
-      success: false,
-      error: outText.replace('ERROR:', '') || stderr || 'Scanner acquisition timed out or scanner lid is not ready.'
-    });
-  });
-});
-
-app.get('/api/scanner/latest', (req, res) => {
-  const os = require('os');
-  const scanDirs = [
-    path.join(os.homedir(), 'Pictures', 'Scans'),
-    path.join(os.homedir(), 'Documents', 'Scans'),
-    path.join(os.homedir(), 'Pictures'),
-    path.join(os.homedir(), 'Documents')
-  ];
-
-  let latestFile = null;
-  let latestMtime = 0;
-
-  for (const dir of scanDirs) {
-    if (fs.existsSync(dir)) {
-      try {
-        const files = fs.readdirSync(dir);
-        for (const f of files) {
-          const ext = path.extname(f).toLowerCase();
-          if (['.jpg', '.jpeg', '.png', '.bmp'].includes(ext)) {
-            const fullPath = path.join(dir, f);
-            const stats = fs.statSync(fullPath);
-            // Must be within last 60 minutes
-            if (stats.mtimeMs > latestMtime && (Date.now() - stats.mtimeMs) < 60 * 60 * 1000) {
-              latestMtime = stats.mtimeMs;
-              latestFile = fullPath;
-            }
-          }
-        }
-      } catch (e) {}
-    }
-  }
-
-  if (latestFile) {
-    try {
-      const ext = path.extname(latestFile).toLowerCase();
-      const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-      const fileBuf = fs.readFileSync(latestFile);
-      const base64 = `data:${mime};base64,${fileBuf.toString('base64')}`;
-      return res.json({
-        success: true,
-        found: true,
-        filename: path.basename(latestFile),
-        modifiedAt: new Date(latestMtime).toISOString(),
-        image: base64
-      });
-    } catch (e) {
-      return res.json({ success: true, found: false });
-    }
-  }
-
-  return res.json({ success: true, found: false });
-});
 
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production' && fs.existsSync(path.join(__dirname, 'src'));

@@ -27,11 +27,68 @@ try {
   console.warn('[Supabase] Initialization warning:', err.message);
 }
 
+// Resilient Offline Protection & Circuit Breaker
+const REQUEST_TIMEOUT_MS = 1000; // 1 second max for any cloud call
+const OFFLINE_COOLDOWN_MS = 15000; // 15 seconds cooldown before retrying cloud if network dropped
+
+let isOffline = false;
+let lastOfflineTime = 0;
+
+function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
+  let timeoutId;
+  let isDone = false;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      if (!isDone) {
+        isDone = true;
+        reject(new Error('Supabase request timeout'));
+      }
+    }, ms);
+  });
+
+  const nativePromise = Promise.resolve(thenable).then(
+    res => {
+      isDone = true;
+      clearTimeout(timeoutId);
+      return res;
+    },
+    err => {
+      isDone = true;
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  );
+
+  // Prevent unhandled rejection if timeoutPromise triggers first
+  nativePromise.catch(() => {});
+
+  return Promise.race([nativePromise, timeoutPromise]);
+}
+
+function markNetworkFailure(err) {
+  isOffline = true;
+  lastOfflineTime = Date.now();
+  console.warn(`[Supabase] Offline mode engaged: ${err?.message || err}`);
+}
+
+function markNetworkSuccess() {
+  isOffline = false;
+}
+
+function canAttemptCloud() {
+  if (!supabase) return false;
+  if (isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)) {
+    return false; // Fast return 0ms when offline
+  }
+  return true;
+}
+
 /**
  * Upserts a live occupied room into Supabase active_occupancies.
  */
 async function syncActiveOccupancy(data) {
-  if (!supabase || !data || !data.room_number) return null;
+  if (!canAttemptCloud() || !data || !data.room_number) return null;
   try {
     const payload = {
       room_number: String(data.room_number),
@@ -44,18 +101,22 @@ async function syncActiveOccupancy(data) {
       updated_at: new Date().toISOString()
     };
 
-    const { data: result, error } = await supabase
-      .from('active_occupancies')
-      .upsert(payload, { onConflict: 'room_number' })
-      .select();
+    const { data: result, error } = await withTimeout(
+      supabase
+        .from('active_occupancies')
+        .upsert(payload, { onConflict: 'room_number' })
+        .select(),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn(`[Supabase] syncActiveOccupancy notice for Room ${data.room_number}:`, error.message);
       return null;
     }
+    markNetworkSuccess();
     return result;
   } catch (err) {
-    console.warn(`[Supabase] syncActiveOccupancy network notice:`, err.message);
+    markNetworkFailure(err);
     return null;
   }
 }
@@ -64,20 +125,24 @@ async function syncActiveOccupancy(data) {
  * Removes a checked-out room from Supabase active_occupancies.
  */
 async function removeActiveOccupancy(roomNumber) {
-  if (!supabase || !roomNumber) return false;
+  if (!canAttemptCloud() || !roomNumber) return false;
   try {
-    const { error } = await supabase
-      .from('active_occupancies')
-      .delete()
-      .eq('room_number', String(roomNumber));
+    const { error } = await withTimeout(
+      supabase
+        .from('active_occupancies')
+        .delete()
+        .eq('room_number', String(roomNumber)),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn(`[Supabase] removeActiveOccupancy notice for Room ${roomNumber}:`, error.message);
       return false;
     }
+    markNetworkSuccess();
     return true;
   } catch (err) {
-    console.warn(`[Supabase] removeActiveOccupancy network notice:`, err.message);
+    markNetworkFailure(err);
     return false;
   }
 }
@@ -86,7 +151,7 @@ async function removeActiveOccupancy(roomNumber) {
  * Pushes an F&B bill settled to room folio into Supabase room_charges_inbox.
  */
 async function pushRoomCharge(charge) {
-  if (!supabase || !charge || !charge.room_number) return null;
+  if (!canAttemptCloud() || !charge || !charge.room_number) return null;
   try {
     const payload = {
       room_number: String(charge.room_number),
@@ -103,18 +168,22 @@ async function pushRoomCharge(charge) {
       created_at: new Date().toISOString()
     };
 
-    const { data: result, error } = await supabase
-      .from('room_charges_inbox')
-      .insert(payload)
-      .select();
+    const { data: result, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .insert(payload)
+        .select(),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn(`[Supabase] pushRoomCharge notice for Room ${charge.room_number}:`, error.message);
       return null;
     }
+    markNetworkSuccess();
     return result;
   } catch (err) {
-    console.warn(`[Supabase] pushRoomCharge network notice:`, err.message);
+    markNetworkFailure(err);
     return null;
   }
 }
@@ -124,20 +193,24 @@ async function pushRoomCharge(charge) {
  * Used by Restaurant and Bar POS running on separate PCs to populate room dropdowns.
  */
 async function fetchActiveOccupancies() {
-  if (!supabase) return [];
+  if (!canAttemptCloud()) return [];
   try {
-    const { data, error } = await supabase
-      .from('active_occupancies')
-      .select('*')
-      .order('room_number', { ascending: true });
+    const { data, error } = await withTimeout(
+      supabase
+        .from('active_occupancies')
+        .select('*')
+        .order('room_number', { ascending: true }),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn('[Supabase] fetchActiveOccupancies notice:', error.message);
       return [];
     }
+    markNetworkSuccess();
     return data || [];
   } catch (err) {
-    console.warn('[Supabase] fetchActiveOccupancies network notice:', err.message);
+    markNetworkFailure(err);
     return [];
   }
 }
@@ -147,22 +220,26 @@ async function fetchActiveOccupancies() {
  * Used by Front Desk checkout folio to absorb charges from separate POS PCs.
  */
 async function fetchPendingRoomCharges(roomNumber) {
-  if (!supabase || !roomNumber) return [];
+  if (!canAttemptCloud() || !roomNumber) return [];
   try {
-    const { data, error } = await supabase
-      .from('room_charges_inbox')
-      .select('*')
-      .eq('room_number', String(roomNumber))
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
+    const { data, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .select('*')
+        .eq('room_number', String(roomNumber))
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true }),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn(`[Supabase] fetchPendingRoomCharges notice for Room ${roomNumber}:`, error.message);
       return [];
     }
+    markNetworkSuccess();
     return data || [];
   } catch (err) {
-    console.warn(`[Supabase] fetchPendingRoomCharges network notice:`, err.message);
+    markNetworkFailure(err);
     return [];
   }
 }
@@ -171,20 +248,24 @@ async function fetchPendingRoomCharges(roomNumber) {
  * Marks imported room charges as completed in Supabase.
  */
 async function markChargesImported(chargeIds) {
-  if (!supabase || !Array.isArray(chargeIds) || chargeIds.length === 0) return false;
+  if (!canAttemptCloud() || !Array.isArray(chargeIds) || chargeIds.length === 0) return false;
   try {
-    const { error } = await supabase
-      .from('room_charges_inbox')
-      .update({ status: 'imported' })
-      .in('id', chargeIds);
+    const { error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .update({ status: 'imported' })
+        .in('id', chargeIds),
+      REQUEST_TIMEOUT_MS
+    );
 
     if (error) {
       console.warn('[Supabase] markChargesImported notice:', error.message);
       return false;
     }
+    markNetworkSuccess();
     return true;
   } catch (err) {
-    console.warn('[Supabase] markChargesImported network notice:', err.message);
+    markNetworkFailure(err);
     return false;
   }
 }
@@ -194,7 +275,7 @@ async function markChargesImported(chargeIds) {
  * Runs non-blocking on server startup or on demand.
  */
 async function syncAllActiveRoomsFromLocal(localDb) {
-  if (!supabase || !localDb) return;
+  if (!canAttemptCloud() || !localDb) return;
   try {
     const activeBookings = localDb.prepare(`
       SELECT 
@@ -214,6 +295,7 @@ async function syncAllActiveRoomsFromLocal(localDb) {
     if (!activeBookings || activeBookings.length === 0) return;
 
     for (const b of activeBookings) {
+      if (!canAttemptCloud()) break; // Exit immediately if offline circuit breaker tripped
       await syncActiveOccupancy({
         room_number: b.room_number,
         room_id: b.room_id,
@@ -238,5 +320,6 @@ module.exports = {
   fetchPendingRoomCharges,
   markChargesImported,
   syncAllActiveRoomsFromLocal,
-  isConfigured: () => Boolean(supabase)
+  isConfigured: () => Boolean(supabase),
+  isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };
