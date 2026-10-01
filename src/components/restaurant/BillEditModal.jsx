@@ -496,7 +496,7 @@ export default function BillEditModal({
                   { value: 'cash', label: '💵 Cash' },
                   { value: 'card', label: '💳 Credit / Debit Card' },
                   { value: 'online', label: '📱 UPI / Online Transfer' },
-                  { value: 'room_folio', label: '🏨 Charge to Room Folio' }
+                  { value: 'room_folio', label: '🏨 Settled to Room' }
                 ]}
                 colorTheme="blue"
                 style={{ width: '100%', height: '38px' }}

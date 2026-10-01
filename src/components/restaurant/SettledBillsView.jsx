@@ -5,6 +5,26 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import BillEditModal from './BillEditModal';
 import ThemedDatePicker from '../common/ThemedDatePicker';
 
+export function getPaymentModeBadge(mode) {
+  const m = String(mode || 'cash').toLowerCase().trim();
+  if (m === 'room_folio' || m === 'room' || m.includes('folio') || m === 'settled to room') {
+    return { label: 'Settled to Room', cls: 'badge-room-folio', icon: '🏨' };
+  }
+  if (m === 'cash') {
+    return { label: 'Cash', cls: 'badge-cash', icon: '💵' };
+  }
+  if (m === 'online' || m === 'upi') {
+    return { label: 'Online / UPI', cls: 'badge-upi', icon: '📱' };
+  }
+  if (m === 'card') {
+    return { label: 'Card POS', cls: 'badge-card', icon: '💳' };
+  }
+  if (m === 'split') {
+    return { label: 'Split Payment', cls: 'badge-split', icon: '🔀' };
+  }
+  return { label: mode || 'Cash', cls: 'badge-default', icon: '💳' };
+}
+
 export default function SettledBillsView({ onPrintBill, onResettle, department = 'restaurant' }) {
   const { showToast, showConfirm } = useApp();
 
@@ -110,7 +130,7 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
       >
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>From:</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary, #64748b)' }}>From:</span>
             <ThemedDatePicker
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
@@ -118,7 +138,7 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
             />
           </div>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>To:</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary, #64748b)' }}>To:</span>
             <ThemedDatePicker
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
@@ -250,40 +270,35 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                   </td>
                   <td>{b.table_name || (b.table_number ? `Table ${b.table_number}` : 'Walk-in')}</td>
                   <td>
-                    <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.8rem' }}>
+                    <span className="settled-token-badge">
                       Token #{b.token_number || 1}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.82rem', color: '#475569', maxWidth: '240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <td className="settled-items-summary" style={{ maxWidth: '240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {b.items_summary || (Array.isArray(b.items) ? b.items.map((i) => `${i.name} (${i.qty || i.quantity || 1})`).join(', ') : 'Dining Items')}
                   </td>
-                  <td style={{ fontWeight: 850, color: isEdited ? '#b45309' : '#0f172a' }}>
+                  <td className="settled-grand-total" style={{ fontWeight: 850, color: isEdited ? '#f59e0b' : undefined }}>
                     {formatCurrency(b.grand_total || b.total || b.total_amount)}
                   </td>
                   <td>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.76rem', fontWeight: 800, background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>
-                      {b.payment_mode || 'Cash'}
-                    </span>
+                    {(() => {
+                      const badge = getPaymentModeBadge(b.payment_mode);
+                      return (
+                        <span className={`settled-paymode-badge ${badge.cls}`}>
+                          <span>{badge.icon}</span>
+                          <span>{badge.label}</span>
+                        </span>
+                      );
+                    })()}
                   </td>
-                  <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  <td className="settled-date-cell">
                     {formatDateTime(b.created_at || b.settled_at)}
                   </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      className="filter-chip"
+                      className={`settled-edit-btn ${isEdited ? 'is-edited' : ''}`}
                       onClick={() => setEditingBill(b)}
-                      style={{
-                        fontSize: '0.76rem',
-                        padding: '4px 10px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        marginRight: '6px',
-                        background: isEdited ? '#fef3c7' : '#f1f5f9',
-                        color: isEdited ? '#b45309' : '#0f172a',
-                        border: isEdited ? '1px solid #fde68a' : '1px solid #cbd5e1'
-                      }}
                       title="Edit this bill: add/remove items and resettle"
                     >
                       ✏️ Edit Bill

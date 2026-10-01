@@ -987,10 +987,10 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
             </div>
 
             {/* Card 5: In-House Room Folio */}
-            <div className="folio-card" style={{ background: '#ffffff', border: '1.5px solid #f59e0b', padding: '16px' }}>
+            <div className="folio-card" style={{ background: 'var(--bg-surface, #ffffff)', border: '1.5px solid #f59e0b', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase' }}>
-                  Room Folio (In-House)
+                  Settled to Room (In-House)
                 </div>
                 <span style={{ fontSize: '0.70rem', background: '#fef3c7', color: '#b45309', padding: '2px 7px', borderRadius: '6px', fontWeight: 850 }}>
                   Pay at Checkout
@@ -1362,16 +1362,16 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                           </td>
                           <td style={{ padding: '9px 10px' }}>
                             {isRoomFolio ? (
-                              <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.74rem' }}>
-                                ⏳ Room Folio
+                              <span className="settled-paymode-badge badge-room-folio" style={{ fontSize: '0.74rem', padding: '2px 8px' }}>
+                                🏨 Settled to Room
                               </span>
                             ) : ord.payment_mode === 'split' ? (
-                              <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.74rem' }}>
+                              <span className="settled-paymode-badge badge-split" style={{ fontSize: '0.74rem', padding: '2px 8px' }}>
                                 🔀 Split Payment
                               </span>
                             ) : ord.payment_mode === 'online' || ord.payment_mode === 'upi' ? (
                               <div>
-                                <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.74rem' }}>
+                                <span className="settled-paymode-badge badge-upi" style={{ fontSize: '0.74rem', padding: '2px 8px' }}>
                                   📱 UPI / QR
                                 </span>
                                 {hasUtr && (
@@ -1381,16 +1381,16 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                                 )}
                               </div>
                             ) : ord.payment_mode === 'card' ? (
-                              <span style={{ background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.74rem' }}>
+                              <span className="settled-paymode-badge badge-card" style={{ fontSize: '0.74rem', padding: '2px 8px' }}>
                                 💳 Card POS
                               </span>
                             ) : (
-                              <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, fontSize: '0.74rem' }}>
+                              <span className="settled-paymode-badge badge-cash" style={{ fontSize: '0.74rem', padding: '2px 8px' }}>
                                 💵 Cash
                               </span>
                             )}
                           </td>
-                          <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 900, color: '#0f172a', fontSize: '0.90rem' }}>
+                          <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 900, color: 'var(--text-primary, #0f172a)', fontSize: '0.90rem' }}>
                             {formatCurrency(ord.total || 0)}
                           </td>
                           <td style={{ padding: '9px 10px', textAlign: 'center' }}>

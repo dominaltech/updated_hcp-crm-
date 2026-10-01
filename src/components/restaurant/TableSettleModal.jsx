@@ -412,7 +412,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               </span>
             </div>
 
-            <div style={{ display: 'inline-flex', gap: '8px', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
+            <div style={{ display: 'inline-flex', gap: '8px', background: 'var(--bg-surface-secondary, #f1f5f9)', padding: '4px', borderRadius: '12px' }}>
               {/* Option 1: Walk-in / Outside diner (Default) */}
               <button
                 type="button"
@@ -666,6 +666,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           {/* If In-House Staying Guest & PENDING: Informational banner */}
           {isStayingGuest && roomBillStatus === 'pending' && (
             <div
+              className="settle-room-pending-banner"
               style={{
                 background: '#fffbeb',
                 padding: '20px 24px',
@@ -678,12 +679,12 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             >
               <span style={{ fontSize: '2rem' }}>🏨</span>
               <div>
-                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#92400e' }}>
-                  Bill Added to Room Folio (Pending at Checkout)
+                <h4 className="settle-room-pending-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#92400e' }}>
+                  Bill Added to Room (Pending at Checkout)
                 </h4>
-                <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: 'var(--text-secondary, #78350f)', fontWeight: 600 }}>
+                <p className="settle-room-pending-desc" style={{ margin: '4px 0 0', fontSize: '0.88rem', color: 'var(--text-secondary, #78350f)', fontWeight: 600 }}>
                   This order of <strong>{formatCurrency(grandTotal)}</strong> will be linked to <strong>Room #{selectedRoom?.room_number || '-'}</strong>.
-                  It will display as <span style={{ color: '#ef4444', fontWeight: 800 }}>PENDING</span> in the Room Folio and be settled during check-out.
+                  It will display as <span style={{ color: '#ef4444', fontWeight: 800 }}>PENDING</span> on the Room Folio and be settled during check-out.
                 </p>
               </div>
             </div>
@@ -961,6 +962,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               {/* Card Surcharge Alert when splitCard > 0 and cardPct > 0 */}
               {splitCard > 0 && cardPct > 0 && (
                 <div
+                  className="settle-card-fee-alert"
                   style={{
                     padding: '12px 18px',
                     background: '#fffbeb',
@@ -984,6 +986,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               {/* UPI Tax Alert when splitOnline > upiThresh and upiPct > 0 */}
               {splitOnline > upiThresh && upiPct > 0 && (
                 <div
+                  className="settle-upi-tax-alert"
                   style={{
                     padding: '12px 18px',
                     background: '#f0f9ff',
@@ -1020,7 +1023,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     <label style={{ fontSize: '0.9rem', fontWeight: 850, color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span>📱</span> Online / UPI Transaction UTR Reference ID <span style={{ color: '#dc2626' }}>* (Mandatory)</span>
                     </label>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px' }}>
+                    <span className="utr-amount-tag" style={{ fontSize: '0.78rem', fontWeight: 800, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px' }}>
                       Online Amount: {formatCurrency(splitOnline)}
                     </span>
                   </div>
@@ -1107,7 +1110,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             {!isStayingGuest ? (
               <span>Billing mode: <strong style={{ color: 'var(--text-primary)' }}>🍽️ Walk-in Diner (Direct Payment)</strong></span>
             ) : roomBillStatus === 'pending' ? (
-              <span>Billing mode: <strong style={{ color: '#d97706' }}>🏨 Room Folio (Pending at Checkout)</strong></span>
+              <span>Billing mode: <strong style={{ color: '#d97706' }}>🏨 Settled to Room (Pending at Checkout)</strong></span>
             ) : (
               <span>Billing mode: <strong style={{ color: '#16a34a' }}>🏨 In-House Guest (Paid at Counter)</strong></span>
             )}
@@ -1147,7 +1150,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               {isSubmitting
                 ? 'Settling...'
                 : (isStayingGuest && roomBillStatus === 'pending')
-                ? `🏨 Charge to Room Folio (${formatCurrency(grandTotal)})`
+                ? `🏨 Settled to Room (${formatCurrency(grandTotal)})`
                 : `🖨️ Settle & Print Bill Slip (${formatCurrency(grandTotal + cardSurcharge + upiTax)})`}
             </button>
           </div>
