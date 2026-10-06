@@ -64,7 +64,7 @@ describe('Bar VAT vs Restaurant GST & Isolated Panels Verification', () => {
 
       printPreBillSlip(table, cart, 'Bartender', 'bar');
       expect(lastPrintedHtml).toContain('VAT (5%):');
-      expect(lastPrintedHtml).toContain('₹ 25.00'); // 500 * 0.05
+      expect(lastPrintedHtml).toMatch(/₹\s*25\.00/); // 500 * 0.05
       expect(lastPrintedHtml).not.toContain('CGST');
       expect(lastPrintedHtml).not.toContain('SGST');
       expect(lastPrintedHtml).toMatch(/HOTEL CITY PARK - BAR (&|&amp;) LOUNGE/);
@@ -113,10 +113,10 @@ describe('Bar VAT vs Restaurant GST & Isolated Panels Verification', () => {
         payment_mode: 'cash'
       };
 
-      printCheckoutSlip(order, 'HOTEL CITY PARK - RESTAURANT');
+      printCheckoutSlip(order, 'Restaurant Bill/Cheque');
       expect(lastPrintedHtml).toContain('GST (5%):');
       expect(lastPrintedHtml).not.toContain('VAT (5%):');
-      expect(lastPrintedHtml).toContain('HOTEL CITY PARK - RESTAURANT');
+      expect(lastPrintedHtml).toContain('Restaurant Bill/Cheque');
     });
   });
 

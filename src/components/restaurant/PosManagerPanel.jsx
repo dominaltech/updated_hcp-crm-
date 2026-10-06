@@ -1132,7 +1132,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                   <strong style={{ color: '#b45309' }}>+ {formatCurrency(analyticsData?.summary?.totalCardSurcharge || 0)}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                  <span>UPI 0.4% Convenience Tax:</span>
+                  <span>UPI 0.4% MDR Fee:</span>
                   <strong style={{ color: '#0284c7' }}>+ {formatCurrency(analyticsData?.summary?.totalUpiTax || 0)}</strong>
                 </div>
 
@@ -1397,7 +1397,7 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                             <button
                               type="button"
                               className="btn-secondary"
-                              onClick={() => printThermalBillSlip(ord, department === 'bar' ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'HOTEL CITY PARK - RESTAURANT')}
+                              onClick={() => printThermalBillSlip(ord, department === 'bar' ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'Restaurant Bill/Cheque')}
                               style={{ padding: '4px 8px', fontSize: '0.74rem', borderRadius: '6px', fontWeight: 750, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                             >
                               <span>🖨️</span> Slip

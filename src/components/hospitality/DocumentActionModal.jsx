@@ -5,6 +5,8 @@ import {
   downloadGuestRegistrationPDF,
   printGuestPaymentSummary,
   downloadGuestPaymentSummaryPDF,
+  printGuestActivitiesSummary,
+  downloadGuestActivitiesSummaryPDF,
   printFinalBillA4,
   downloadFinalBillPDF,
   formatTaxInvoiceNumber
@@ -13,7 +15,7 @@ import {
 export default function DocumentActionModal({
   isOpen,
   onClose,
-  type = 'info', // 'checkin' | 'invoice' | 'info' | 'summary'
+  type = 'info', // 'checkin' | 'invoice' | 'info' | 'summary' | 'activities'
   data,
   onReprintRegForm
 }) {
@@ -54,6 +56,8 @@ export default function DocumentActionModal({
         return '🧾 Tax Invoice';
       case 'summary':
         return '📄 Payment Summary';
+      case 'activities':
+        return '📑 Activities Summary';
       case 'info':
       default:
         return '💾 Info';
@@ -90,7 +94,9 @@ export default function DocumentActionModal({
       chargedDays: room.charged_days || 1,
       billableDays: room.charged_days || 1,
       discountPct: room.discount_pct || 0,
-      discountAmount: room.discount_amount || 0
+      discountAmount: room.discount_amount || 0,
+      restaurantOrders: room.restaurantOrders || room.restaurant_orders || [],
+      barOrders: room.barOrders || room.bar_orders || []
     };
     const settlement = {
       settleAmt: room.final_settle_amount || room.total_paid || 0,
@@ -111,6 +117,8 @@ export default function DocumentActionModal({
         ok = await downloadGuestRegistrationPDF(data, { includePhotos: false });
       } else if (type === 'summary') {
         ok = await downloadGuestPaymentSummaryPDF(data);
+      } else if (type === 'activities') {
+        ok = await downloadGuestActivitiesSummaryPDF(data);
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         ok = await downloadFinalBillPDF(room, calc, settlement);
@@ -140,6 +148,8 @@ export default function DocumentActionModal({
         }
       } else if (type === 'summary') {
         printGuestPaymentSummary(data);
+      } else if (type === 'activities') {
+        printGuestActivitiesSummary(data);
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         printFinalBillA4(room, calc, settlement);
@@ -162,6 +172,8 @@ export default function DocumentActionModal({
         ok = await downloadGuestRegistrationPDF(data, { includePhotos: false });
       } else if (type === 'summary') {
         ok = await downloadGuestPaymentSummaryPDF(data);
+      } else if (type === 'activities') {
+        ok = await downloadGuestActivitiesSummaryPDF(data);
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         ok = await downloadFinalBillPDF(room, calc, settlement);
@@ -177,6 +189,8 @@ export default function DocumentActionModal({
           else printGuestRegistrationA4(data, { includePhotos: false });
         } else if (type === 'summary') {
           printGuestPaymentSummary(data);
+        } else if (type === 'activities') {
+          printGuestActivitiesSummary(data);
         } else if (type === 'invoice') {
           const { room, calc, settlement } = getInvoiceParams(data);
           printFinalBillA4(room, calc, settlement);

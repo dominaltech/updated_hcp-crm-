@@ -527,7 +527,7 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
             department="restaurant"
             onPrintBill={(bill) => {
               if (onPrintBillSlip) onPrintBillSlip(bill);
-              else printThermalBillSlip(bill, 'HOTEL CITY PARK - RESTAURANT');
+              else printThermalBillSlip(bill, 'Restaurant Bill/Cheque');
             }}
             onResettle={() => loadTables(true)}
           />
@@ -564,7 +564,7 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
           setActiveSessionTable(null);
           loadTables(true);
           if (onPrintBillSlip) onPrintBillSlip(res);
-          else printThermalBillSlip(res, 'HOTEL CITY PARK - RESTAURANT');
+          else printThermalBillSlip(res, 'Restaurant Bill/Cheque');
         }}
       />
     </section>

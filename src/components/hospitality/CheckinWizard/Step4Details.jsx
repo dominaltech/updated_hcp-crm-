@@ -522,17 +522,32 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
 
           <div className="checkin-form-grid-2" style={{ gap: '8px 12px' }}>
             <div className="form-group" style={{ margin: 0 }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
-                Email Address * (Mandatory)
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
+                  Email Address * (Mandatory)
+                </label>
+                {draft.email && draft.email.trim() && (
+                  /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(draft.email.trim()) ? (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#16a34a' }}>✓ Valid</span>
+                  ) : (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#dc2626' }}>Invalid email (e.g. name@gmail.com)</span>
+                  )
+                )}
+              </div>
               <input
                 type="email"
+                id="input-guest-email"
                 className="form-input"
-                placeholder="guest@example.com"
+                placeholder="guest@gmail.com"
                 required
                 value={draft.email || ''}
                 onChange={(e) => updateDraft({ email: e.target.value })}
-                style={{ height: '36px' }}
+                style={{
+                  height: '36px',
+                  borderColor: draft.email && draft.email.trim() && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(draft.email.trim())
+                    ? '#ef4444'
+                    : undefined
+                }}
               />
             </div>
             <div className="form-group" style={{ margin: 0 }}>

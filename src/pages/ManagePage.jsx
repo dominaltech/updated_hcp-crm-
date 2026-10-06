@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
-import { formatCurrency, formatDateTime } from '../utils/formatters';
+import { formatCurrency, formatDateTime, formatTaxInvoiceNumber } from '../utils/formatters';
 import ExpensesPage from './ExpensesPage';
 import ThemedSelect from '../components/common/ThemedSelect';
 import ThemedDatePicker from '../components/common/ThemedDatePicker';
 import { ExpenseCategoriesMasterContent } from '../components/common/ExpenseCategoriesMasterModal';
 import { blockNonNumericKeys, sanitizePhoneInput, blockNumericKeys, sanitizeNameInput } from '../utils/inputEnhancements';
-import { printAccountingAnalysisReport, exportAccountingAnalysisToExcel, exportAccountingAnalysisToCsv } from '../services/printService';
+import { printAccountingAnalysisReport, exportAccountingAnalysisToExcel, exportAccountingAnalysisToCsv, generateAccountingAnalysisExcelXml } from '../services/printService';
 
 export default function ManagePage({ onPrintClosingReport }) {
   const {
@@ -22,17 +22,20 @@ export default function ManagePage({ onPrintClosingReport }) {
     surchargeSettings,
     refreshSurcharges,
     minCheckinAdvancePct,
-    refreshCheckinPolicy
+    refreshCheckinPolicy,
+    manageSubTab,
+    setManageSubTab
   } = useApp();
+
+  const subTab = manageSubTab || 'analytics';
+  const setSubTab = setManageSubTab;
 
   // Auto popup lock if not unlocked
   useEffect(() => {
     if (!isManagerUnlocked) {
-      openManagerLock('hospitality');
+      openManagerLock('hospitality', manageSubTab || 'analytics');
     }
-  }, [isManagerUnlocked, openManagerLock]);
-
-  const [subTab, setSubTab] = useState('analytics');
+  }, [isManagerUnlocked, openManagerLock, manageSubTab]);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [analyticsFromDate, setAnalyticsFromDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [analyticsToDate, setAnalyticsToDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -52,13 +55,18 @@ export default function ManagePage({ onPrintClosingReport }) {
   const [accountingFromVoucher, setAccountingFromVoucher] = useState('');
   const [accountingToVoucher, setAccountingToVoucher] = useState('');
   const [accountingSearch, setAccountingSearch] = useState('');
+  const [accountingEmail, setAccountingEmail] = useState(() => localStorage.getItem('hcp_accounting_email') || '');
+  const [savedAccountingEmail, setSavedAccountingEmail] = useState(() => localStorage.getItem('hcp_accounting_email') || '');
+  const [isSendingAccountingEmail, setIsSendingAccountingEmail] = useState(false);
 
   // Rooms CRUD state
   const [rooms, setRooms] = useState([]);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState(null);
+  const [isDailyClosingIgst, setIsDailyClosingIgst] = useState(false);
   const [roomForm, setRoomForm] = useState({
     room_number: '',
+    floor: 'First Floor',
     room_type: 'Deluxe AC',
     price: 2000,
     price_single: '',
@@ -341,12 +349,104 @@ export default function ManagePage({ onPrintClosingReport }) {
     }
   }, [accountingFromDate, accountingToDate, accountingFromBill, accountingToBill, accountingFromVoucher, accountingToVoucher, accountingSearch, showToast]);
 
+  const handleSaveAccountingEmail = async () => {
+    const trimmed = (accountingEmail || '').trim();
+    if (!trimmed) {
+      showToast?.('Please enter an email ID first', 'warning');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      showToast?.('Please enter a valid email address (e.g. manager@hotel.com)', 'error');
+      return;
+    }
+    try {
+      localStorage.setItem('hcp_accounting_email', trimmed);
+      setSavedAccountingEmail(trimmed);
+      await api.saveAccountingEmail?.({ email: trimmed });
+      showToast?.('Email ID saved successfully!', 'success');
+    } catch (e) {
+      localStorage.setItem('hcp_accounting_email', trimmed);
+      setSavedAccountingEmail(trimmed);
+      showToast?.('Email ID saved locally!', 'success');
+    }
+  };
+
+  const handleSendAccountingEmail = () => {
+    const targetEmail = (accountingEmail || savedAccountingEmail || '').trim();
+    if (!targetEmail) {
+      showToast?.('Please enter a recipient email ID first', 'warning');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(targetEmail)) {
+      showToast?.('Please enter a valid email address (e.g. dominaltech@gmail.com)', 'error');
+      return;
+    }
+
+    try {
+      setIsSendingAccountingEmail(true);
+      const fromDt = accountingFromDate || 'Start';
+      const toDt = accountingToDate || 'Present';
+      const filename = `Accounting_Analysis_${fromDt}_to_${toDt}.xls`;
+
+      // 1. Download the formatted Excel spreadsheet directly
+      exportAccountingAnalysisToExcel(accountingRecords, accountingSummary, {
+        fromDate: accountingFromDate,
+        toDate: accountingToDate,
+        fromBillNo: accountingFromBill,
+        toBillNo: accountingToBill,
+        fromVoucherNo: accountingFromVoucher,
+        toVoucherNo: accountingToVoucher
+      });
+
+      // 2. Prepare email subject and summary body
+      const totalBills = accountingRecords.length || accountingSummary.total_records || 0;
+      const netTotal = Number(accountingSummary.total_grand || accountingSummary.total_room_rent_base || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const roomRent = Number(accountingSummary.total_room_rent_base || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const extraMattress = Number(accountingSummary.total_extra_mattress || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const extraBreakfast = Number(accountingSummary.total_visitor_breakfast || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const discount = Number(accountingSummary.total_discount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const totalTax = Number(accountingSummary.total_cgst_sgst || ((accountingSummary.total_cgst || 0) + (accountingSummary.total_sgst || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+      const subject = `Hotel City Park - Accounting & Analysis Audit (${fromDt} to ${toDt})`;
+      const body = `Hello,\n\nPlease find attached the Accounting & Analysis Audit Excel report for the period ${fromDt} to ${toDt}.\n\n--- Financial Summary ---\n• Total Invoices / Bills: ${totalBills}\n• Room Rent (Base): ₹${roomRent}\n• Extra Mattress (PAX): ₹${extraMattress}\n• Visitors Extra Breakfast: ₹${extraBreakfast}\n• Discounts Applied: -₹${discount}\n• CGST & SGST (5%): ₹${totalTax}\n• Net Payable Total: ₹${netTotal}\n\n(The Excel file "${filename}" has been downloaded to your computer — please attach it to this email and click Send)\n\nBest regards,\nHotel City Park Management Suite\nSolapur`;
+
+      // 3. Open Gmail web composer if Gmail or default mail client
+      if (targetEmail.toLowerCase().includes('@gmail.com')) {
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(targetEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.open(gmailUrl, '_blank');
+      } else {
+        const mailtoUrl = `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.open(mailtoUrl, '_blank');
+      }
+
+      showToast?.(`Excel report downloaded! Email compose opened for ${targetEmail}.`, 'success');
+    } catch (err) {
+      console.error('Failed to open email with report:', err);
+      showToast?.('Error preparing email: ' + (err.message || ''), 'error');
+    } finally {
+      setIsSendingAccountingEmail(false);
+    }
+  };
+
   useEffect(() => {
     if (!isManagerUnlocked && (!currentUser || (!currentUser.can_access_manager && currentUser.role !== 'manager'))) {
       return;
     }
     if (subTab === 'analytics' || subTab === 'btc') loadAnalytics(analyticsFromDate, analyticsToDate);
-    if (subTab === 'accounting') loadAccountingAnalysis();
+    if (subTab === 'accounting') {
+      loadAccountingAnalysis();
+      api.getAccountingEmail?.().then(res => {
+        if (res && res.email) {
+          setSavedAccountingEmail(res.email);
+          if (!localStorage.getItem('hcp_accounting_email')) {
+            setAccountingEmail(res.email);
+            localStorage.setItem('hcp_accounting_email', res.email);
+          }
+        }
+      }).catch(() => {});
+    }
     if (subTab === 'rooms') {
       loadRooms();
     }
@@ -373,8 +473,19 @@ export default function ManagePage({ onPrintClosingReport }) {
     if (r) {
       setEditingRoom(r);
       const roomGst = r.gst_pct !== undefined && r.gst_pct !== null ? Number(r.gst_pct) : 5;
+      const detectFloor = (num) => {
+        const s = String(num || '').trim();
+        if (/^b/i.test(s)) return 'Basement';
+        if (/^1/.test(s)) return 'First Floor';
+        if (/^2/.test(s)) return 'Second Floor';
+        if (/^3/.test(s)) return 'Third Floor';
+        if (/^4/.test(s)) return 'Fourth Floor';
+        if (/^5/.test(s)) return 'Fifth Floor';
+        return 'First Floor';
+      };
       setRoomForm({
         room_number: r.room_number,
+        floor: r.floor || detectFloor(r.room_number),
         room_type: r.room_type || 'Deluxe AC',
         price: r.price || 2000,
         price_single: r.price_single !== undefined && r.price_single !== null ? r.price_single : '',
@@ -404,6 +515,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       setEditingRoom(null);
       setRoomForm({
         room_number: '',
+        floor: 'First Floor',
         room_type: 'Deluxe AC',
         price: 2000,
         price_single: '',
@@ -439,6 +551,7 @@ export default function ManagePage({ onPrintClosingReport }) {
       const roomGst = parseFloat(roomForm.gst_pct) !== undefined && !isNaN(parseFloat(roomForm.gst_pct)) ? parseFloat(roomForm.gst_pct) : 5;
       const payload = {
         ...roomForm,
+        floor: roomForm.floor || 'First Floor',
         price: Number(roomForm.price) || 0,
         price_single: roomForm.price_single !== '' && roomForm.price_single !== null && !isNaN(Number(roomForm.price_single))
           ? Number(roomForm.price_single)
@@ -670,7 +783,7 @@ export default function ManagePage({ onPrintClosingReport }) {
   const handleCleanDemoData = async () => {
     const confirmed = await showConfirm({
       title: 'Purge Demo Transactions & Reset to Clean State?',
-      message: 'This will purge all demo bookings, test guests, test food/bar orders, and dummy rooms (771, 772, 881, 882).\n\nYour actual hotel rooms (101–106), staff accounts, menu items, and settings will remain safe and intact.\n\nUse this to leave the software 100% clean and ready for deployment or another computer.',
+      message: 'This will purge all demo bookings, check-ins/checkouts, guest records, order history, and temporary rooms.\n\nAll 26 official hotel rooms (102–401), staff accounts, menu items, and settings are preserved in clean Ready status.\n\nUse this to leave the software 100% clean and ready for deployment or another computer.',
       icon: '🧹',
       confirmText: 'Yes, Purge Demo Data',
       isDestructive: true
@@ -1200,7 +1313,17 @@ export default function ManagePage({ onPrintClosingReport }) {
       </div>
 
       {/* Top Manager Sub-Navigation Tabs */}
-      <div className="manager-subnav-bar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '22px' }}>
+      <div
+        className="manager-subnav-bar"
+        style={{
+          display: 'flex',
+          gap: '6px',
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          marginBottom: '20px',
+          alignItems: 'center'
+        }}
+      >
         {[
           { key: 'analytics', icon: '📊', label: 'Financial Analytics & Drawer' },
           { key: 'accounting', icon: '📑', label: 'Accounting & Analysis' },
@@ -1326,6 +1449,48 @@ export default function ManagePage({ onPrintClosingReport }) {
                 This Month
               </button>
 
+              {/* Option to calculate IGST vs CGST+SGST in Daily Closing */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '10px', padding: '3px', border: '1.5px solid #cbd5e1', height: '38px', boxSizing: 'border-box' }} title="Toggle between CGST+SGST (2.5%+2.5%) and IGST (5%) calculation in Daily Closing">
+                <button
+                  type="button"
+                  onClick={() => setIsDailyClosingIgst(false)}
+                  style={{
+                    height: '30px',
+                    padding: '0 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    borderRadius: '7px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: !isDailyClosingIgst ? '#ffffff' : 'transparent',
+                    color: !isDailyClosingIgst ? '#0f172a' : '#64748b',
+                    boxShadow: !isDailyClosingIgst ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  CGST+SGST
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDailyClosingIgst(true)}
+                  style={{
+                    height: '30px',
+                    padding: '0 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 850,
+                    borderRadius: '7px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: isDailyClosingIgst ? '#0284c7' : 'transparent',
+                    color: isDailyClosingIgst ? '#ffffff' : '#64748b',
+                    boxShadow: isDailyClosingIgst ? '0 1px 3px rgba(2,132,199,0.3)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  🏛️ IGST (5%)
+                </button>
+              </div>
+
               <button
                 type="button"
                 className="btn-primary"
@@ -1333,11 +1498,12 @@ export default function ManagePage({ onPrintClosingReport }) {
                   ...analyticsData,
                   fromDate: analyticsFromDate,
                   toDate: analyticsToDate,
-                  cashierName: currentUser?.full_name || currentUser?.name || currentUser?.username || ''
+                  cashierName: currentUser?.full_name || currentUser?.name || currentUser?.username || '',
+                  isIgst: isDailyClosingIgst
                 })}
                 style={{ fontWeight: 850, height: '38px', background: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '0 16px' }}
               >
-                <span>🖨️</span> Print Daily Closing
+                <span>🖨️</span> Print Daily Closing {isDailyClosingIgst ? '(IGST)' : ''}
               </button>
             </div>
           </div>
@@ -1463,7 +1629,9 @@ export default function ManagePage({ onPrintClosingReport }) {
                       <strong style={{ fontSize: '1.1rem', color: '#f87171' }}>- {formatCurrency(grandExpenses)}</strong>
                     </div>
                     <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
-                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>🏛️ GST Collection</div>
+                      <div style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 750 }}>
+                        {isDailyClosingIgst ? '🏛️ IGST Collection (5%)' : '🏛️ GST Collection'}
+                      </div>
                       <strong style={{ fontSize: '1.1rem', color: '#f59e0b' }}>{formatCurrency(grandGst)}</strong>
                     </div>
                     <div style={{ borderLeft: '1px solid #334155', paddingLeft: '14px' }}>
@@ -2327,13 +2495,104 @@ export default function ManagePage({ onPrintClosingReport }) {
               <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-primary)' }}>
                 <span>📑</span> Accounting &amp; Analysis Audit
               </h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
-                Itemised revenue audit of checkout bills, base tariffs, extra PAX mattresses, discounts, CGST &amp; SGST breakdown, and customer tax IDs.
-              </p>
             </div>
 
             {/* Export & Print Action Buttons */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Recipient Email & Dispatch Group (Left of Download Excel) */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'var(--bg-card, #ffffff)',
+                  border: '1.5px solid var(--border-color, #cbd5e1)',
+                  borderRadius: '10px',
+                  padding: '3px 8px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                }}
+              >
+                <span style={{ fontSize: '0.9rem', color: '#64748b' }}>✉️</span>
+                <input
+                  type="email"
+                  id="input-accounting-email"
+                  value={accountingEmail}
+                  onChange={(e) => setAccountingEmail(e.target.value)}
+                  placeholder="Enter email ID..."
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    fontSize: '0.84rem',
+                    fontWeight: 650,
+                    color: 'var(--text-primary, #0f172a)',
+                    width: '185px',
+                    padding: '4px 4px'
+                  }}
+                  title="Recipient email address for filtered Excel report"
+                />
+                {/* Save button: shown when user entered/changed email; once clicked, saves & disappears */}
+                {accountingEmail.trim() !== '' && accountingEmail.trim() !== savedAccountingEmail.trim() && (
+                  <button
+                    type="button"
+                    id="btn-accounting-save-email"
+                    onClick={handleSaveAccountingEmail}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '5px 10px',
+                      fontSize: '0.78rem',
+                      fontWeight: 750,
+                      borderRadius: '7px',
+                      background: '#10b981',
+                      color: '#ffffff',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(16,185,129,0.3)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Click to save recipient email ID"
+                  >
+                    <span>💾</span> Save
+                  </button>
+                )}
+                {/* Send button: sends currently filtered Excel report to this email */}
+                <button
+                  type="button"
+                  id="btn-accounting-send-email"
+                  onClick={handleSendAccountingEmail}
+                  disabled={isSendingAccountingEmail}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontWeight: 750,
+                    fontSize: '0.84rem',
+                    padding: '6px 13px',
+                    borderRadius: '8px',
+                    background: isSendingAccountingEmail ? '#94a3b8' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: isSendingAccountingEmail ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 4px rgba(37,99,235,0.25)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title={savedAccountingEmail ? `Send filtered Excel report to ${savedAccountingEmail}` : 'Send filtered Excel report to entered email'}
+                >
+                  {isSendingAccountingEmail ? (
+                    <>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>📤</span> Send
+                    </>
+                  )}
+                </button>
+              </div>
+
               <button
                 type="button"
                 className="btn-secondary"
@@ -2482,16 +2741,16 @@ export default function ManagePage({ onPrintClosingReport }) {
                 </div>
               </div>
 
-              {/* Filter 2: Bill Number to Number */}
+              {/* Filter 2: Voucher Number Range */}
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
-                  Bill Number Range
+                  Voucher Number Range
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <input
                     type="text"
                     id="filter-accounting-from-bill"
-                    placeholder="From Bill No (e.g. 1)"
+                    placeholder="From Voucher (e.g. 618)"
                     value={accountingFromBill}
                     onChange={(e) => setAccountingFromBill(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2500,7 +2759,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <input
                     type="text"
                     id="filter-accounting-to-bill"
-                    placeholder="To Bill No"
+                    placeholder="To Voucher"
                     value={accountingToBill}
                     onChange={(e) => setAccountingToBill(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2508,16 +2767,16 @@ export default function ManagePage({ onPrintClosingReport }) {
                 </div>
               </div>
 
-              {/* Filter 3: Voucher Number to Number */}
+              {/* Filter 3: Invoice Number Range */}
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
-                  Voucher Number Range
+                  Invoice Number Range (HCP..)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <input
                     type="text"
                     id="filter-accounting-from-voucher"
-                    placeholder="From Voucher (e.g. 001)"
+                    placeholder="From Invoice (e.g. HCP618)"
                     value={accountingFromVoucher}
                     onChange={(e) => setAccountingFromVoucher(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2526,7 +2785,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <input
                     type="text"
                     id="filter-accounting-to-voucher"
-                    placeholder="To Voucher"
+                    placeholder="To Invoice"
                     value={accountingToVoucher}
                     onChange={(e) => setAccountingToVoucher(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2606,7 +2865,7 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
 
             <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Room Rent (Base)</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Room rent (base)</div>
               <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0284c7', margin: '4px 0 2px' }}>
                 {formatCurrency(accountingSummary.total_room_rent_base || 0)}
               </div>
@@ -2614,11 +2873,19 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
 
             <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase' }}>Extra Mattress (PAX)</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase' }}>Extra mattress (PAX)(base)</div>
               <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
                 {formatCurrency(accountingSummary.total_extra_mattress || 0)}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Extra Bed Charges</div>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase' }}>Visitors extra Breakfast (Base)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#b45309', margin: '4px 0 2px' }}>
+                {formatCurrency(accountingSummary.total_visitor_breakfast || 0)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Extra Breakfast Base</div>
             </div>
 
             <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
@@ -2648,36 +2915,37 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
           </div>
 
-          {/* Audit Table with the 10 User-Specified Columns */}
+          {/* Audit Table with the 12 User-Specified Columns */}
           <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
             <div style={{ overflowX: 'auto', width: '100%' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }} id="table-accounting-analysis">
                 <thead>
                   <tr style={{ background: '#1e293b', color: '#ffffff', textAlign: 'left' }}>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Date of checkout</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Bill no</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>C/O</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Voucher No</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Invoice number</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Customer</th>
                     <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name of customer</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Room rent (base)</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Extra mattress (PAX)</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Extra mattress (PAX)(base)</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Visitors extra Breakfast (Base)</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Discount</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>CGST &amp; SGST</th>
-                    <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name Of Customer GST</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Customer</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>CGST</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>SGST</th>
+                    <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name Of Company</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Company</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoadingAccounting ? (
                     <tr>
-                      <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ display: 'inline-block', width: '26px', height: '26px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '8px' }}></div>
                         <div style={{ fontWeight: 600 }}>Loading accounting &amp; analysis records...</div>
                       </td>
                     </tr>
                   ) : accountingRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={11} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={12} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📑</div>
                         <div style={{ fontWeight: 750, fontSize: '0.96rem', color: '#334155' }}>No Accounting Records Found</div>
                         <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>Try widening your date range or clearing the filter inputs.</div>
@@ -2700,33 +2968,23 @@ export default function ManagePage({ onPrintClosingReport }) {
                           {/* 1. Date of checkout */}
                           <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: '#334155' }}>
                             {r.date_of_checkout}
-                            {!r.is_checked_out && (
-                              <span style={{ display: 'block', fontSize: '0.68rem', color: '#0284c7', fontWeight: 700 }}>Stay Active</span>
-                            )}
                           </td>
 
-                          {/* 2. Bill no */}
+                          {/* 2. Voucher No */}
                           <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                             <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '3px 8px', borderRadius: '6px', fontWeight: 750, fontFamily: 'monospace', fontSize: '0.82rem', border: '1px solid #cbd5e1' }}>
-                              {r.bill_no || '-'}
+                              {r.voucher_no || r.bill_no || '-'}
                             </span>
                           </td>
 
-                          {/* 3. Invoice number */}
+                          {/* 3. Invoice number (HCP..) */}
                           <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                             <span style={{ color: '#1e3a8a', fontWeight: 750, fontFamily: 'monospace', fontSize: '0.82rem' }}>
-                              {r.invoice_number || '-'}
+                              {formatTaxInvoiceNumber(r.invoice_number || r.voucher_no || r.bill_no)}
                             </span>
                           </td>
 
-                          {/* 4. GST No of Customer (Added after invoice number) */}
-                          <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontFamily: 'monospace', fontSize: '0.82rem', fontWeight: 750, color: r.gst_no_of_customer && r.gst_no_of_customer !== '-' ? '#1e40af' : '#94a3b8' }}>
-                              {r.gst_no_of_customer || '-'}
-                            </span>
-                          </td>
-
-                          {/* 5. Name of customer */}
+                          {/* 4. Name of customer */}
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ fontWeight: 750, color: '#0f172a' }}>{r.name_of_customer || 'Guest'}</div>
                             {r.rooms_str && (
@@ -2739,30 +2997,35 @@ export default function ManagePage({ onPrintClosingReport }) {
                             {formatCurrency(r.room_rent_base)}
                           </td>
 
-                          {/* 6. Extra mattress (PAX) */}
+                          {/* 6. Extra mattress (PAX)(base) */}
                           <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: r.extra_mattress_pax > 0 ? '#7c3aed' : '#64748b' }}>
                             {formatCurrency(r.extra_mattress_pax)}
                           </td>
 
-                          {/* 7. Discount */}
+                          {/* 7. Visitors extra Breakfast (Base) */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: (r.visitor_breakfast_base || 0) > 0 ? '#b45309' : '#64748b' }}>
+                            {formatCurrency(r.visitor_breakfast_base || 0)}
+                          </td>
+
+                          {/* 8. Discount */}
                           <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: r.discount > 0 ? '#dc2626' : '#64748b' }}>
                             {formatCurrency(r.discount)}
                           </td>
 
-                          {/* 8. CGST & SGST */}
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                            <div style={{ fontWeight: 750, fontFamily: 'monospace', color: '#059669' }}>
-                              {formatCurrency(r.cgst_sgst_total)}
-                            </div>
-                            <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                              C: {formatCurrency(r.cgst)} | S: {formatCurrency(r.sgst)}
-                            </div>
+                          {/* 9. CGST */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#059669' }}>
+                            {formatCurrency(r.cgst || 0)}
                           </td>
 
-                          {/* 9. Name Of Customer GST */}
+                          {/* 10. SGST */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#059669' }}>
+                            {formatCurrency(r.sgst || 0)}
+                          </td>
+
+                          {/* 11. Name Of Company */}
                           <td style={{ padding: '10px 14px' }}>
                             <span style={{ fontWeight: 650, color: '#0f172a' }}>
-                              {r.name_of_customer_gst || '-'}
+                              {r.name_of_company || r.name_of_customer_gst || '-'}
                             </span>
                             {r.booking_source === 'OTA' && (
                               <span style={{ marginLeft: '6px', fontSize: '0.66rem', background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontWeight: 750 }}>
@@ -2771,11 +3034,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                             )}
                           </td>
 
-                          {/* 10. GST No of Customer */}
+                          {/* 12. GST No of Company */}
                           <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                            {r.gst_no_of_customer && r.gst_no_of_customer !== '-' ? (
+                            {(r.gst_no_of_company || r.gst_no_of_customer) && (r.gst_no_of_company || r.gst_no_of_customer) !== '-' ? (
                               <span style={{ fontFamily: 'monospace', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
-                                {r.gst_no_of_customer}
+                                {r.gst_no_of_company || r.gst_no_of_customer}
                               </span>
                             ) : (
                               <span style={{ color: '#94a3b8', fontWeight: 600 }}>-</span>
@@ -2800,11 +3063,17 @@ export default function ManagePage({ onPrintClosingReport }) {
                       <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#7c3aed' }}>
                         {formatCurrency(accountingSummary.total_extra_mattress || 0)}
                       </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#b45309' }}>
+                        {formatCurrency(accountingSummary.total_visitor_breakfast || 0)}
+                      </td>
                       <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#dc2626' }}>
                         {formatCurrency(accountingSummary.total_discount || 0)}
                       </td>
                       <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#059669' }}>
-                        {formatCurrency(accountingSummary.total_cgst_sgst || 0)}
+                        {formatCurrency(accountingSummary.total_cgst || 0)}
+                      </td>
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#059669' }}>
+                        {formatCurrency(accountingSummary.total_sgst || 0)}
                       </td>
                       <td colSpan={2} style={{ padding: '12px 14px', textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
                         Net Payable: <strong>{formatCurrency(accountingSummary.total_grand || 0)}</strong>
@@ -4611,7 +4880,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                   </span>
                 </div>
                 <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, lineHeight: 1.5, maxWidth: '640px' }}>
-                  Remove all demo entries, test bookings, sample guests, and temporary rooms (771, 772, 881, 882). Real hotel rooms (101–106), staff accounts, menu items, and settings are preserved. Use this before transferring or copying the software to another computer.
+                  Remove all demo entries, test bookings, sample guests, and order history. All 26 official hotel rooms (102–401), staff accounts, menu items, and settings are preserved in clean Ready status. Use this before transferring or copying the software to another computer.
                 </p>
               </div>
 
@@ -4649,10 +4918,10 @@ export default function ManagePage({ onPrintClosingReport }) {
           <div
             className="modal-container"
             style={{
-              maxWidth: '820px',
-              width: '94%',
-              maxHeight: '90vh',
-              borderRadius: '20px',
+              maxWidth: '1260px',
+              width: '96%',
+              maxHeight: '94vh',
+              borderRadius: '18px',
               border: '1.5px solid #cbd5e1',
               boxShadow: '0 30px 60px -15px rgba(0,0,0,0.35)',
               overflow: 'hidden',
@@ -4660,14 +4929,14 @@ export default function ManagePage({ onPrintClosingReport }) {
               flexDirection: 'column'
             }}
           >
-            <div className="modal-header" style={{ padding: '20px 28px', background: 'var(--bg-surface, #ffffff)', borderBottom: '2px solid var(--border-color, #f1f5f9)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '2rem', padding: '8px 10px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '14px', border: '1.5px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🏨</span>
+            <div className="modal-header" style={{ padding: '12px 22px', background: 'var(--bg-surface, #ffffff)', borderBottom: '1.5px solid var(--border-color, #e2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '1.5rem', padding: '6px 8px', background: 'rgba(56, 189, 248, 0.15)', borderRadius: '10px', border: '1.5px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🏨</span>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.42rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.02em' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 950, color: 'var(--text-primary, #0f172a)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
                     {editingRoom ? `Edit Room #${editingRoom.room_number}` : 'Add New Room'}
                   </h3>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-secondary, #475569)' }}>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.80rem', fontWeight: 700, color: 'var(--text-secondary, #475569)' }}>
                     Configure room specifications, guest capacities, tariff, and add-on rates
                   </p>
                 </div>
@@ -4676,7 +4945,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 type="button"
                 className="modal-close-btn"
                 onClick={() => setIsRoomModalOpen(false)}
-                style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--bg-surface-secondary, #f1f5f9)', border: '1.5px solid var(--border-color, #e2e8f0)', cursor: 'pointer', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary, #475569)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease' }}
+                style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'var(--bg-surface-secondary, #f1f5f9)', border: '1.5px solid var(--border-color, #e2e8f0)', cursor: 'pointer', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary, #475569)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s ease' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-surface-secondary, #f1f5f9)'; e.currentTarget.style.color = 'var(--text-primary, #475569)'; }}
               >
@@ -4687,526 +4956,588 @@ export default function ManagePage({ onPrintClosingReport }) {
               <div
                 className="modal-body"
                 style={{
-                  padding: '20px 24px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '14px',
+                  padding: '12px 18px',
+                  display: 'grid',
+                  gridTemplateColumns: '1.02fr 1.18fr',
+                  gap: '12px',
                   overflowY: 'auto',
                   overflowX: 'hidden',
                   flex: 1,
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  alignItems: 'start'
                 }}
               >
 
-                {/* 1. Basic Room Info */}
-                <div style={{ background: 'var(--bg-surface-secondary, #f8fafc)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.05rem' }}>🏷️</span> ROOM IDENTIFICATION &amp; BASE TARIFF
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>Base &amp; GST Inputs</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Room Number *</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        required
-                        placeholder="e.g. 101"
-                        value={roomForm.room_number}
-                        onChange={(e) => setRoomForm({ ...roomForm, room_number: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Room Type / Category *</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        required
-                        placeholder="e.g. Deluxe AC"
-                        value={roomForm.room_type}
-                        onChange={(e) => setRoomForm({ ...roomForm, room_type: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-
-                    {/* Base Tariff (2+ Adults) with Base + GST */}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>Base Tariff (2+ Adults) *</label>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
-                          Total: ₹{Math.round((Number(roomForm.price) || 0) * (1 + (Number(roomForm.gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
-                        </span>
+                {/* Left Column: Room Info & Occupancy */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* 1. Basic Room Info */}
+                  <div style={{ background: 'var(--bg-surface-secondary, #f8fafc)', padding: '11px 13px', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.96rem' }}>🏷️</span> ROOM IDENTIFICATION &amp; BASE TARIFF
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            required
-                            placeholder="Base ₹"
-                            value={roomForm.price}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.08rem', fontWeight: 950, color: 'var(--apple-blue, #0071e3)', border: '2px solid var(--apple-blue)', borderRadius: '10px', padding: '0 10px', background: 'var(--bg-app, #ffffff)' }}
-                          />
-                        </div>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            max="28"
-                            step="0.5"
-                            className="form-input"
-                            required
-                            placeholder="GST %"
-                            value={roomForm.gst_pct}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 24px 0 10px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                          />
-                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>%</span>
-                        </div>
-                      </div>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '5px' }}>Base &amp; GST Inputs</span>
                     </div>
-
-                    {/* Single Occupancy (1 Adult) with Base + GST */}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>Single Occupancy (1 Adult)</label>
-                        {roomForm.price_single !== '' && roomForm.price_single !== null && Number(roomForm.price_single) > 0 && (
-                          <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0284c7', background: '#f0f9ff', padding: '1px 6px', borderRadius: '4px' }}>
-                            Total: ₹{Math.round(Number(roomForm.price_single) * (1 + (Number(roomForm.single_gst_pct || roomForm.gst_pct || 5)) / 100)).toLocaleString('en-IN')} for 24 hours
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            placeholder="Same as base"
-                            value={roomForm.price_single}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, price_single: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.02rem', fontWeight: 900, color: '#0284c7', border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 10px', background: 'var(--bg-app, #ffffff)' }}
-                          />
-                        </div>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="number"
-                            min="0"
-                            max="28"
-                            step="0.5"
-                            className="form-input"
-                            placeholder="GST %"
-                            value={roomForm.single_gst_pct}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, single_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 24px 0 10px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                          />
-                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>Max Discount Allowed (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        className="form-input"
-                        value={roomForm.max_discount_pct}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, max_discount_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '10px', padding: '0 12px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Occupancy Limits */}
-                <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid rgba(34, 197, 94, 0.3)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.05rem' }}>👥</span> CAPACITY &amp; OCCUPANCY LIMITS
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Max Adults 👥
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        className="form-input"
-                        required
-                        value={roomForm.max_adults}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, max_adults: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
-                      />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Max Child 🧒
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10"
-                        className="form-input"
-                        value={roomForm.max_children}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, max_children: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
-                      />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                        Max Extra Mattress 🛏️
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="5"
-                        className="form-input"
-                        value={roomForm.max_extra_beds}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) => setRoomForm({ ...roomForm, max_extra_beds: e.target.value === '' ? '' : Number(e.target.value) })}
-                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', fontSize: '1.05rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '10px', color: 'var(--text-primary)', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Add-on Rates (Base + GST Inputs) */}
-                <div style={{ background: 'rgba(168, 85, 247, 0.08)', padding: '16px 18px', borderRadius: '14px', border: '1.5px solid rgba(168, 85, 247, 0.3)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-purple, #86198f)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.05rem' }}>🛏️</span> EXTRA MATTRESS &amp; BREAKFAST RATES
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#7e22ce', background: '#f3e8ff', padding: '2px 8px', borderRadius: '6px' }}>Base + GST Split</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-
-                    {/* Extra Bed Rate: Base + GST */}
-                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>
-                          🛏️ Extra Mattress Rate
-                        </label>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#7e22ce', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>
-                          Total: ₹{Math.round((Number(roomForm.extra_bed_price) || 0) * (1 + (Number(roomForm.extra_bed_gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹ for 24 hours)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.extra_bed_price}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const val = raw === '' ? '' : Number(raw);
-                              setRoomForm({ ...roomForm, extra_bed_price: val, extra_bed_rate: val });
-                            }}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1.02rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 10px', color: 'var(--text-primary)' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="28"
-                              step="0.5"
-                              className="form-input"
-                              value={roomForm.extra_bed_gst_pct}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, extra_bed_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 24px 0 10px', color: 'var(--text-primary)' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Breakfast Price: Base + GST */}
-                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>
-                          🍳 Breakfast Price
-                        </label>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 850, color: '#b45309', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
-                          Total: ₹{Math.round((Number(roomForm.breakfast_price) || 0) * (1 + (Number(roomForm.breakfast_gst_pct) || 5) / 100)).toLocaleString('en-IN')}/guest
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹ / Guest)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.breakfast_price}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, breakfast_price: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1.02rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 10px', color: 'var(--text-primary)' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="28"
-                              step="0.5"
-                              className="form-input"
-                              value={roomForm.breakfast_gst_pct}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, breakfast_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '42px', fontSize: '1rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '8px', padding: '0 24px 0 10px', color: 'var(--text-primary)' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Stay Extension Hourly Slabs (Base + GST Inputs) */}
-                <div style={{ padding: '16px 18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.05rem' }}>⏱️</span> STAY EXTENSION HOURLY SLABS (₹)
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>Base + GST Split</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', width: '100%', boxSizing: 'border-box' }}>
-
-                    {/* Slab 1: 1–3 Hours */}
-                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>1–3 Hours</label>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
-                          Total: ₹{Math.round((Number(roomForm.ext_3h_rate) || 0) * (1 + (Number(roomForm.ext_3h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.ext_3h_rate}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ext_3h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="28"
-                              step="0.5"
-                              className="form-input"
-                              value={roomForm.ext_3h_gst_pct}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, ext_3h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Slab 2: 3–6 Hours */}
-                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>3–6 Hours</label>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
-                          Total: ₹{Math.round((Number(roomForm.ext_6h_rate) || 0) * (1 + (Number(roomForm.ext_6h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.ext_6h_rate}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ext_6h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="28"
-                              step="0.5"
-                              className="form-input"
-                              value={roomForm.ext_6h_gst_pct}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, ext_6h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Slab 3: 6–9 Hours */}
-                    <div style={{ minWidth: 0, background: '#ffffff', padding: '12px 14px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <label style={{ fontSize: '0.82rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>6–9 Hours</label>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
-                          Total: ₹{Math.round((Number(roomForm.ext_9h_rate) || 0) * (1 + (Number(roomForm.ext_9h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>BASE (₹)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.ext_9h_rate}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ext_9h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
-                          />
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '3px' }}>GST (%)</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="28"
-                              step="0.5"
-                              className="form-input"
-                              value={roomForm.ext_9h_gst_pct}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, ext_9h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. OTA Early Check-In Policy */}
-                <div style={{ padding: '16px 18px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '14px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.05rem' }}>🌅</span> OTA EARLY CHECK-IN POLICY
-                    </div>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>OTA Bookings Only</span>
-                  </div>
-                  
-                  <div style={{ background: '#ffffff', padding: '14px 16px', borderRadius: '12px', border: '1.5px solid #cbd5e1' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <span style={{ fontSize: '0.84rem', color: '#0f172a', fontWeight: 850 }}>
-                        Early Arrival Policy Configuration
-                      </span>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
-                        Total Extra: ₹{Math.round((Number(roomForm.ota_early_checkin_price) || 0) * (1 + (Number(roomForm.ota_early_checkin_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
-                      {/* Max Early Arrival Hours */}
-                      <div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>MAX EARLY HOURS</span>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="number"
-                            min="1"
-                            max="24"
-                            className="form-input"
-                            value={roomForm.ota_early_checkin_max_hours}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_max_hours: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 30px 0 10px', color: '#0f172a' }}
-                          />
-                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.78rem' }}>hrs</span>
-                        </div>
-                      </div>
-
-                      {/* Base Extra Rate (₹) */}
-                      <div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>EXTRA CHARGE (₹)</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>Room Number *</label>
                         <input
-                          type="number"
-                          min="0"
+                          type="text"
                           className="form-input"
-                          value={roomForm.ota_early_checkin_price}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_price: e.target.value === '' ? '' : Number(e.target.value) })}
-                          style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 10px', color: '#0f172a' }}
+                          required
+                          placeholder="e.g. 101"
+                          value={roomForm.room_number}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const s = String(val || '').trim();
+                            let autoFloor = roomForm.floor;
+                            if (/^b/i.test(s)) autoFloor = 'Basement';
+                            else if (/^1/.test(s)) autoFloor = 'First Floor';
+                            else if (/^2/.test(s)) autoFloor = 'Second Floor';
+                            else if (/^3/.test(s)) autoFloor = 'Third Floor';
+                            else if (/^4/.test(s)) autoFloor = 'Fourth Floor';
+                            else if (/^5/.test(s)) autoFloor = 'Fifth Floor';
+                            setRoomForm({ ...roomForm, room_number: val, floor: autoFloor });
+                          }}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.98rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 8px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                         />
                       </div>
 
-                      {/* GST (%) */}
-                      <div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '4px' }}>GST RATE (%)</span>
-                        <div style={{ position: 'relative' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>Floor *</label>
+                        <select
+                          className="form-input"
+                          required
+                          value={roomForm.floor || 'First Floor'}
+                          onChange={(e) => setRoomForm({ ...roomForm, floor: e.target.value })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.90rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 6px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                        >
+                          <option value="Basement">Basement</option>
+                          <option value="First Floor">First Floor</option>
+                          <option value="Second Floor">Second Floor</option>
+                          <option value="Third Floor">Third Floor</option>
+                          <option value="Fourth Floor">Fourth Floor</option>
+                          <option value="Fifth Floor">Fifth Floor</option>
+                        </select>
+                      </div>
+
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>Room Type / Category *</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          required
+                          placeholder="e.g. Deluxe AC"
+                          value={roomForm.room_type}
+                          onChange={(e) => setRoomForm({ ...roomForm, room_type: e.target.value })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.90rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 8px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
+                        />
+                      </div>
+
+                      {/* Base Tariff (2+ Adults) */}
+                      <div style={{ minWidth: 0, gridColumn: 'span 2' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0 }}>Base Tariff (2+ Adults) *</label>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 5px', borderRadius: '4px' }}>
+                            Total: ₹{Math.round((Number(roomForm.price) || 0) * (1 + (Number(roomForm.gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '6px' }}>
+                          <div>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              required
+                              placeholder="Base ₹"
+                              value={roomForm.price}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, price: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.98rem', fontWeight: 950, color: 'var(--apple-blue, #0071e3)', border: '2px solid var(--apple-blue)', borderRadius: '8px', padding: '0 8px', background: 'var(--bg-app, #ffffff)' }}
+                            />
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              required
+                              placeholder="GST %"
+                              value={roomForm.gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.90rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 20px 0 8px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.74rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Single Occupancy (1 Adult) */}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Single Occupancy</label>
+                          {roomForm.price_single !== '' && roomForm.price_single !== null && Number(roomForm.price_single) > 0 && (
+                            <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0284c7', background: '#f0f9ff', padding: '1px 4px', borderRadius: '3px', whiteSpace: 'nowrap' }}>
+                              Total: ₹{Math.round(Number(roomForm.price_single) * (1 + (Number(roomForm.single_gst_pct || roomForm.gst_pct || 5)) / 100)).toLocaleString('en-IN')} for 24 hours
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              placeholder="Base ₹"
+                              value={roomForm.price_single}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, price_single: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.92rem', fontWeight: 900, color: '#0284c7', border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 6px', background: 'var(--bg-app, #ffffff)' }}
+                            />
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              placeholder="GST %"
+                              value={roomForm.single_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, single_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.90rem', fontWeight: 900, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '8px', padding: '0 18px 0 6px', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
+                            />
+                            <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 850, color: 'var(--text-secondary)', fontSize: '0.72rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Max Discount Allowed */}
+                      <div style={{ minWidth: 0, gridColumn: 'span 3', marginTop: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>Max Discount Allowed (%):</label>
                           <input
                             type="number"
                             min="0"
-                            max="28"
-                            step="0.5"
+                            max="100"
                             className="form-input"
-                            value={roomForm.ota_early_checkin_gst_pct}
+                            value={roomForm.max_discount_pct}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '40px', fontSize: '1rem', fontWeight: 900, background: '#ffffff', border: '2px solid #cbd5e1', borderRadius: '8px', padding: '0 24px 0 10px', color: '#0f172a' }}
+                            onChange={(e) => setRoomForm({ ...roomForm, max_discount_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '64px', boxSizing: 'border-box', height: '32px', fontSize: '0.92rem', fontWeight: 850, border: '2px solid var(--border-color, #cbd5e1)', borderRadius: '6px', padding: '0 6px', textAlign: 'center', background: 'var(--bg-app, #ffffff)', color: 'var(--text-primary)' }}
                           />
-                          <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                          {/* Quick preset chips including 25% */}
+                          <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                            {[0, 5, 10, 15, 20, 25].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setRoomForm({ ...roomForm, max_discount_pct: pct })}
+                                style={{
+                                  flex: 1,
+                                  padding: '4px 0',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  borderRadius: '5px',
+                                  border: Number(roomForm.max_discount_pct) === pct ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                                  background: Number(roomForm.max_discount_pct) === pct ? '#eff6ff' : '#ffffff',
+                                  color: Number(roomForm.max_discount_pct) === pct ? '#1d4ed8' : '#475569',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 650, marginTop: '10px', lineHeight: 1.4 }}>
-                      💡 If an OTA guest checks in early (up to {roomForm.ota_early_checkin_max_hours || 6} hours early), this extra charge of ₹{roomForm.ota_early_checkin_price || 900} (+GST) is applied to the booking and payable at the hotel front desk.
+                  {/* 2. Occupancy Limits */}
+                  <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '10px 13px', borderRadius: '12px', border: '1.5px solid rgba(34, 197, 94, 0.3)', boxSizing: 'border-box', width: '100%' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.96rem' }}>👥</span> CAPACITY &amp; OCCUPANCY LIMITS
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>
+                          Max Adults 👥
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          className="form-input"
+                          required
+                          value={roomForm.max_adults}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setRoomForm({ ...roomForm, max_adults: e.target.value === '' ? '' : Number(e.target.value) })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.94rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
+                        />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>
+                          Max Child 🧒
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="10"
+                          className="form-input"
+                          value={roomForm.max_children}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setRoomForm({ ...roomForm, max_children: e.target.value === '' ? '' : Number(e.target.value) })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.94rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
+                        />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', display: 'block', marginBottom: '3px' }}>
+                          Max Extra Mattress 🛏️
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="5"
+                          className="form-input"
+                          value={roomForm.max_extra_beds}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setRoomForm({ ...roomForm, max_extra_beds: e.target.value === '' ? '' : Number(e.target.value) })}
+                          style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.94rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(34, 197, 94, 0.5)', borderRadius: '8px', color: 'var(--text-primary)', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Add-ons, Slabs & OTA Early Check-in */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* 3. Add-on Rates (Base + GST Inputs) */}
+                  <div style={{ background: 'rgba(168, 85, 247, 0.08)', padding: '10px 13px', borderRadius: '12px', border: '1.5px solid rgba(168, 85, 247, 0.3)', boxSizing: 'border-box', width: '100%' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: 'var(--apple-purple, #86198f)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.96rem' }}>🛏️</span> EXTRA MATTRESS &amp; BREAKFAST RATES
+                      </div>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#7e22ce', background: '#f3e8ff', padding: '1px 6px', borderRadius: '5px' }}>Base + GST Split</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
+                      {/* Extra Bed Rate: Base + GST */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '8px 10px', borderRadius: '10px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
+                            🛏️ Extra Mattress Rate
+                          </label>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 850, color: '#7e22ce', background: '#f5f3ff', padding: '1px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                            Total: ₹{Math.round((Number(roomForm.extra_bed_price) || 0) * (1 + (Number(roomForm.extra_bed_gst_pct) || 5) / 100)).toLocaleString('en-IN')} for 24 hours
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '6px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>BASE (₹)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.extra_bed_price}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const val = raw === '' ? '' : Number(raw);
+                                setRoomForm({ ...roomForm, extra_bed_price: val, extra_bed_rate: val });
+                              }}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.94rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', padding: '0 6px', color: 'var(--text-primary)' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>GST (%)</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.extra_bed_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, extra_bed_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.90rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', padding: '0 18px 0 6px', color: 'var(--text-primary)' }}
+                              />
+                              <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.70rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Breakfast Price: Base + GST */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '8px 10px', borderRadius: '10px', border: '1.5px solid rgba(168, 85, 247, 0.25)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 850, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
+                            🍳 Breakfast Price
+                          </label>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 850, color: '#b45309', background: '#fef3c7', padding: '1px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                            Total: ₹{Math.round((Number(roomForm.breakfast_price) || 0) * (1 + (Number(roomForm.breakfast_gst_pct) || 5) / 100)).toLocaleString('en-IN')}/guest
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '6px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>BASE (₹)</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.breakfast_price}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, breakfast_price: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.94rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', padding: '0 6px', color: 'var(--text-primary)' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>GST (%)</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.breakfast_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, breakfast_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '34px', fontSize: '0.90rem', fontWeight: 900, background: 'var(--bg-app, #ffffff)', border: '2px solid rgba(168, 85, 247, 0.5)', borderRadius: '6px', padding: '0 18px 0 6px', color: 'var(--text-primary)' }}
+                              />
+                              <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.70rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. Stay Extension Hourly Slabs (Base + GST Inputs) */}
+                  <div style={{ padding: '10px 13px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.96rem' }}>⏱️</span> STAY EXTENSION HOURLY SLABS (₹)
+                      </div>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '5px' }}>Base + GST Split</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '7px', width: '100%', boxSizing: 'border-box' }}>
+                      {/* Slab 1: 1–3 Hours */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>1–3 Hours</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ext_3h_rate) || 0) * (1 + (Number(roomForm.ext_3h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.ext_3h_rate}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_3h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ext_3h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ext_3h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Slab 2: 3–6 Hours */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>3–6 Hours</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ext_6h_rate) || 0) * (1 + (Number(roomForm.ext_6h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.ext_6h_rate}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_6h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ext_6h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ext_6h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Slab 3: 6–9 Hours */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>6–9 Hours</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ext_9h_rate) || 0) * (1 + (Number(roomForm.ext_9h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.ext_9h_rate}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ext_9h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ext_9h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ext_9h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. OTA Early Check-In Policy */}
+                  <div style={{ padding: '9px 13px', background: 'var(--bg-surface-secondary, #f8fafc)', borderRadius: '12px', border: '1.5px solid var(--border-color, #cbd5e1)', boxSizing: 'border-box', width: '100%' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: 'var(--apple-blue, #1e3a8a)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.96rem' }}>🌅</span> OTA EARLY CHECK-IN POLICY
+                      </div>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '5px' }}>OTA Bookings Only</span>
+                    </div>
+                    
+                    <div style={{ background: '#ffffff', padding: '7px 10px', borderRadius: '10px', border: '1.5px solid #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850 }}>
+                          Early Arrival Policy Configuration
+                        </span>
+                        <span style={{ fontSize: '0.66rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 5px', borderRadius: '4px' }}>
+                          Total Extra: ₹{Math.round((Number(roomForm.ota_early_checkin_price) || 0) * (1 + (Number(roomForm.ota_early_checkin_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
+                        {/* Max Early Arrival Hours */}
+                        <div>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>MAX EARLY HOURS</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="1"
+                              max="24"
+                              className="form-input"
+                              value={roomForm.ota_early_checkin_max_hours}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_max_hours: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 22px 0 6px', color: '#0f172a' }}
+                            />
+                            <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>hrs</span>
+                          </div>
+                        </div>
+
+                        {/* Base Extra Rate (₹) */}
+                        <div>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>EXTRA CHARGE (₹)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            value={roomForm.ota_early_checkin_price}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_price: e.target.value === '' ? '' : Number(e.target.value) })}
+                            style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 6px', color: '#0f172a' }}
+                          />
+                        </div>
+
+                        {/* GST (%) */}
+                        <div>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>GST RATE (%)</span>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              max="28"
+                              step="0.5"
+                              className="form-input"
+                              value={roomForm.ota_early_checkin_gst_pct}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 6px', color: '#0f172a' }}
+                            />
+                            <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 650, marginTop: '4px', lineHeight: 1.25 }}>
+                        💡 If an OTA guest checks in early (up to {roomForm.ota_early_checkin_max_hours || 6} hours early), this extra charge of ₹{roomForm.ota_early_checkin_price || 900} (+GST) is applied to the booking and payable at the hotel front desk.
+                      </div>
                     </div>
                   </div>
                 </div>
 
               </div>
-              <div className="modal-footer" style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '2px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
+              <div className="modal-footer" style={{ padding: '10px 20px', background: '#f8fafc', borderTop: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
                 <button
                   type="button"
                   className="btn-secondary"
                   onClick={() => setIsRoomModalOpen(false)}
-                  style={{ padding: '10px 24px', borderRadius: '10px', fontSize: '0.94rem', fontWeight: 850, cursor: 'pointer' }}
+                  style={{ padding: '8px 20px', borderRadius: '8px', fontSize: '0.90rem', fontWeight: 850, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
@@ -5214,12 +5545,12 @@ export default function ManagePage({ onPrintClosingReport }) {
                   type="submit"
                   className="btn-primary"
                   style={{
-                    padding: '10px 30px',
-                    borderRadius: '10px',
-                    fontSize: '1rem',
+                    padding: '8px 26px',
+                    borderRadius: '8px',
+                    fontSize: '0.94rem',
                     fontWeight: 950,
                     background: 'linear-gradient(135deg, #0071e3 0%, #0284c7 100%)',
-                    boxShadow: '0 4px 14px rgba(0, 113, 227, 0.35)',
+                    boxShadow: '0 4px 12px rgba(0, 113, 227, 0.35)',
                     cursor: 'pointer'
                   }}
                 >

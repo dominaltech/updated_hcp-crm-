@@ -26,6 +26,8 @@
     "html2pdf.js": "^0.14.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.3.0",
+    "nodemailer": "^10.0.14",
+    "pdfjs-dist": "^3.11.174",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.3",

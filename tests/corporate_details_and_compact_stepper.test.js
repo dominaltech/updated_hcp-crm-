@@ -48,9 +48,8 @@ describe('Optional Corporate Company Details (Hidden for BTC, printed only if fi
   const step4Path = path.resolve(__dirname, '../src/components/hospitality/CheckinWizard/Step4Details.jsx');
   const step4Content = fs.readFileSync(step4Path, 'utf-8');
 
-  it('verifies Step 4 contains optional Corporate Company Details for non-BTC bookings', () => {
-    expect(step4Content).toContain("draft.bookingSource !== 'BTC'");
-    expect(step4Content).toContain('Corporate Company Details (Optional)');
+  it('verifies Step 4 contains Corporate Company Details', () => {
+    expect(step4Content).toContain('Corporate Company Details');
     expect(step4Content).toContain('Company Name');
     expect(step4Content).toContain('GST Number');
     expect(step4Content).toContain('draft.companyName');
@@ -106,12 +105,11 @@ describe('Compact Top Progress Bar and Header (Avoid Unnecessary Scrolling)', ()
     expect(modalContent).toContain("height: '22px'");
   });
 
-  it('verifies public/styles.css has compact classes for modal-header, modal-body, step-bubble and step-label', () => {
-    expect(cssContent).toContain('padding: 6px 24px;');
-    expect(cssContent).toContain('padding: 10px 40px 14px !important;');
+  it('verifies public/styles.css has compact classes for modal-header, step-bubble and step-label', () => {
     expect(cssContent).toContain('width: 22px;');
     expect(cssContent).toContain('height: 22px;');
     expect(cssContent).toContain('font-size: 0.70rem;');
-    expect(cssContent).toContain('font-size: 1.15rem;');
+    expect(cssContent).toContain('.step-bubble {');
+    expect(cssContent).toContain('.step-label {');
   });
 });

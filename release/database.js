@@ -104,11 +104,21 @@ if (isServerless) {
 
 const db = new Database(dbPath);
 
-// Always enforce DELETE journal mode to avoid POSIX shared memory (mmap) segfaults on serverless
-try {
-  db.pragma('journal_mode = DELETE');
-} catch (e) {
-  try { db.pragma('journal_mode = TRUNCATE'); } catch (e2) {}
+// Enforce DELETE journal mode on serverless to avoid POSIX shared memory (mmap) segfaults;
+// Use ultra-fast WAL (Write-Ahead Logging) and NORMAL sync on desktop/Electron for instant startup
+if (isServerless) {
+  try {
+    db.pragma('journal_mode = DELETE');
+  } catch (e) {
+    try { db.pragma('journal_mode = TRUNCATE'); } catch (e2) {}
+  }
+} else {
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('temp_store = MEMORY');
+    db.pragma('cache_size = -64000');
+  } catch (e) {}
 }
 
 // Initialize Tables
@@ -127,6 +137,7 @@ db.exec(`
     ext_9h_rate REAL NOT NULL DEFAULT 1500,
     status TEXT NOT NULL DEFAULT 'ready', -- ready, occupied, needs_cleaning, maintenance
     gst_pct REAL NOT NULL DEFAULT 5,
+    floor TEXT DEFAULT 'First Floor',
     current_booking_id INTEGER DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -288,16 +299,19 @@ try { db.exec("ALTER TABLE guests ADD COLUMN email TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN shortcode TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN is_veg INTEGER DEFAULT 1;"); } catch (e) {}
 try {
-  db.exec(`
-    UPDATE menu_items 
-    SET is_veg = 0 
-    WHERE LOWER(name) LIKE '%murg%' 
-       OR LOWER(name) LIKE '%chicken%' 
-       OR LOWER(name) LIKE '%mutton%' 
-       OR LOWER(name) LIKE '%fish%' 
-       OR LOWER(name) LIKE '%prawn%' 
-       OR LOWER(name) LIKE '%egg%';
-  `);
+  const needsVegMigration = db.prepare("SELECT 1 FROM menu_items WHERE is_veg = 1 AND (LOWER(name) LIKE '%murg%' OR LOWER(name) LIKE '%chicken%' OR LOWER(name) LIKE '%mutton%' OR LOWER(name) LIKE '%fish%' OR LOWER(name) LIKE '%prawn%' OR LOWER(name) LIKE '%egg%') LIMIT 1").get();
+  if (needsVegMigration) {
+    db.exec(`
+      UPDATE menu_items 
+      SET is_veg = 0 
+      WHERE LOWER(name) LIKE '%murg%' 
+         OR LOWER(name) LIKE '%chicken%' 
+         OR LOWER(name) LIKE '%mutton%' 
+         OR LOWER(name) LIKE '%fish%' 
+         OR LOWER(name) LIKE '%prawn%' 
+         OR LOWER(name) LIKE '%egg%';
+    `);
+  }
 } catch (e) {}
 try { db.exec("ALTER TABLE restaurant_orders ADD COLUMN resettle_count INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE restaurant_orders ADD COLUMN split_details_json TEXT;"); } catch (e) {}
@@ -354,6 +368,18 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN ext_grace_mins INTEGER NOT NULL DEFA
 try { db.exec("ALTER TABLE rooms ADD COLUMN ext_3h_rate REAL NOT NULL DEFAULT 500;"); } catch (e) {}
 try { db.exec("ALTER TABLE rooms ADD COLUMN ext_6h_rate REAL NOT NULL DEFAULT 1000;"); } catch (e) {}
 try { db.exec("ALTER TABLE rooms ADD COLUMN ext_9h_rate REAL NOT NULL DEFAULT 1500;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN floor TEXT DEFAULT 'First Floor';"); } catch (e) {}
+try {
+  db.exec(`
+    UPDATE rooms SET floor = 'First Floor' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND room_number LIKE '1%';
+    UPDATE rooms SET floor = 'Second Floor' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND room_number LIKE '2%';
+    UPDATE rooms SET floor = 'Third Floor' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND room_number LIKE '3%';
+    UPDATE rooms SET floor = 'Fourth Floor' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND room_number LIKE '4%';
+    UPDATE rooms SET floor = 'Fifth Floor' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND room_number LIKE '5%';
+    UPDATE rooms SET floor = 'Basement' WHERE (floor IS NULL OR floor = '' OR floor = 'First Floor') AND (room_number LIKE 'B%' OR room_number LIKE 'b%');
+    UPDATE rooms SET floor = 'First Floor' WHERE floor IS NULL OR floor = '';
+  `);
+} catch (e) {}
 
 // Seed default categories & menu items for Restaurant and Bar if missing
 const seedDefaultMenus = () => {
@@ -497,7 +523,9 @@ const seedDefaultMenus = () => {
   }
 };
 
-seedDefaultMenus();
+if (!db.prepare("SELECT 1 FROM menu_items LIMIT 1").get()) {
+  seedDefaultMenus();
+}
 // Ensure default shortcodes for restaurant items if missing
 const unassignedShortcodes = db.prepare("SELECT id FROM menu_items WHERE department = 'restaurant' AND (shortcode IS NULL OR shortcode = '') ORDER BY id ASC").all();
 if (unassignedShortcodes.length > 0) {
@@ -548,6 +576,10 @@ db.exec(`
     checkin_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     checkout_time DATETIME,
     status TEXT DEFAULT 'IN_ROOM',
+    has_breakfast INTEGER DEFAULT 0,
+    breakfast_status TEXT DEFAULT 'pending',
+    breakfast_amount REAL DEFAULT 250,
+    fnb_order_id INTEGER DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -775,6 +807,7 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN last_cleaned_at DATETIME DEFAULT NUL
 try { db.exec("ALTER TABLE room_visitors ADD COLUMN has_breakfast INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE room_visitors ADD COLUMN breakfast_status TEXT DEFAULT 'pending';"); } catch (e) {}
 try { db.exec("ALTER TABLE room_visitors ADD COLUMN breakfast_amount REAL DEFAULT 250;"); } catch (e) {}
+try { db.exec("ALTER TABLE room_visitors ADD COLUMN fnb_order_id INTEGER DEFAULT NULL;"); } catch (e) {}
 
 // Housekeeping / Cleaner Staff Table (Options managed via Manager Panel)
 db.exec(`
@@ -861,6 +894,9 @@ try { db.exec("ALTER TABLE expenses ADD COLUMN bill_scan_photo TEXT DEFAULT NULL
 try { db.exec("ALTER TABLE expenses ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE expenses ADD COLUMN owner_phone TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE payments ADD COLUMN card_digits TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE payments ADD COLUMN particulars TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE payments ADD COLUMN voucher_number TEXT DEFAULT NULL;"); } catch (e) {}
 
 // Seed Default Debit / Expense Categories & Owners Config (Point 12)
 const defaultExpenseCategories = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('expense_categories_config');
@@ -943,6 +979,327 @@ try {
 } catch (e) {
   console.warn('Index creation notice:', e.message);
 }
+
+// Official Default 26 Hotel Rooms for Hotel City Park
+const DEFAULT_ROOMS_CATALOG = [
+  // Executive Rooms (21 rooms)
+  ...['102', '103', '104'].map(num => ({
+    room_number: String(num),
+    floor: 'First Floor',
+    room_type: 'Executive Room',
+    price_single: 2200,
+    price: 2500,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  ...['202', '203', '204', '205', '206', '207', '208', '209', '210', '211'].map(num => ({
+    room_number: String(num),
+    floor: 'Second Floor',
+    room_type: 'Executive Room',
+    price_single: 2200,
+    price: 2500,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  ...['302', '303', '304', '305', '306', '307', '308', '309'].map(num => ({
+    room_number: String(num),
+    floor: 'Third Floor',
+    room_type: 'Executive Room',
+    price_single: 2200,
+    price: 2500,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+
+  // Deluxe Rooms (3 rooms)
+  ...['201', '212'].map(num => ({
+    room_number: String(num),
+    floor: 'Second Floor',
+    room_type: 'Deluxe Room',
+    price_single: 2500,
+    price: 2800,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 2,
+    extra_bed_price: 600,
+  })),
+  {
+    room_number: '301',
+    floor: 'Third Floor',
+    room_type: 'Deluxe Room',
+    price_single: 2500,
+    price: 2800,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 2,
+    extra_bed_price: 600,
+  },
+
+  // Suit Room (1 room)
+  {
+    room_number: '310',
+    floor: 'Third Floor',
+    room_type: 'Suit Room',
+    price_single: 3600,
+    price: 4500,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 3,
+    extra_bed_price: 600,
+  },
+
+  // Pent Hosue (1 room)
+  {
+    room_number: '401',
+    floor: 'Fourth Floor',
+    room_type: 'Pent Hosue',
+    price_single: 4200,
+    price: 4800,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 3,
+    extra_bed_price: 600,
+  }
+];
+
+const seedDefaultRooms = (force = false) => {
+  try {
+    const checkStmt = db.prepare('SELECT id, status FROM rooms WHERE room_number = ?');
+    const insertStmt = db.prepare(`
+      INSERT INTO rooms (
+        room_number, floor, room_type, price, price_single, max_adults, max_children, max_discount_pct,
+        ext_grace_mins, ext_3h_rate, ext_6h_rate, ext_9h_rate,
+        breakfast_price, max_extra_beds, extra_bed_price, gst_pct,
+        extra_bed_gst_pct, breakfast_gst_pct, ext_3h_gst_pct, ext_6h_gst_pct, ext_9h_gst_pct, single_gst_pct,
+        ota_early_checkin_price, ota_early_checkin_max_hours, ota_early_checkin_gst_pct,
+        status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 60, 500, 1000, 1500, 250, ?, ?, 5, 5, 5, 5, 5, 5, 5, 900, 6, 5, 'ready')
+    `);
+
+    const updateStmt = db.prepare(`
+      UPDATE rooms
+      SET floor = COALESCE(?, floor), room_type = ?, price = ?, price_single = ?, max_discount_pct = ?, max_adults = ?, max_children = ?, max_extra_beds = ?, extra_bed_price = ?
+      WHERE room_number = ?
+    `);
+
+    const runTx = db.transaction(() => {
+      for (const r of DEFAULT_ROOMS_CATALOG) {
+        const existing = checkStmt.get(r.room_number);
+        if (!existing) {
+          insertStmt.run(
+            r.room_number,
+            r.floor || 'First Floor',
+            r.room_type,
+            r.price,
+            r.price_single,
+            r.max_adults,
+            r.max_children,
+            r.max_discount_pct,
+            r.max_extra_beds,
+            r.extra_bed_price
+          );
+        } else if (force) {
+          updateStmt.run(
+            r.floor || 'First Floor',
+            r.room_type,
+            r.price,
+            r.price_single,
+            r.max_discount_pct,
+            r.max_adults,
+            r.max_children,
+            r.max_extra_beds,
+            r.extra_bed_price,
+            r.room_number
+          );
+        }
+      }
+    });
+
+    runTx();
+  } catch (err) {
+    console.warn('Notice seeding default rooms:', err.message);
+  }
+};
+
+seedDefaultRooms();
+
+// Automatically migrate any legacy composite split payment records to individual payment rows
+const migrateSplitPaymentsToIndividualLedgers = (dbInstance) => {
+  try {
+    const splitPayments = dbInstance.prepare(`
+      SELECT * FROM payments 
+      WHERE (payment_mode = 'split' OR (split_cash > 0 AND (split_online > 0 OR split_card > 0 OR split_cheque > 0)))
+      ORDER BY id ASC
+    `).all();
+
+    if (!splitPayments || splitPayments.length === 0) return;
+
+    const getNextSeqFor = (prefix) => {
+      const row = dbInstance.prepare("SELECT last_seq FROM monthly_voucher_sequences WHERE prefix = ? AND year_month = 'ALL'").get('RECEIPT_' + prefix);
+      const nextSeq = (row && row.last_seq !== undefined ? row.last_seq : 0) + 1;
+      dbInstance.prepare(`
+        INSERT INTO monthly_voucher_sequences (prefix, year_month, last_seq)
+        VALUES (?, 'ALL', ?)
+        ON CONFLICT(prefix, year_month) DO UPDATE SET last_seq = ?
+      `).run('RECEIPT_' + prefix, nextSeq, nextSeq);
+      return `${prefix}${String(nextSeq).padStart(2, '0')}`;
+    };
+
+    const insertPayment = dbInstance.prepare(`
+      INSERT INTO payments (
+        receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+        amount, cheque_no, bank_name, cheque_date, cheque_status, realized_at,
+        cashier_name, notes, utr_number, card_surcharge, upi_tax,
+        split_cash, split_card, split_online, split_cheque, cheque_photo, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const updatePayment = dbInstance.prepare(`
+      UPDATE payments 
+      SET receipt_no = ?, payment_mode = ?, amount = ?, notes = ?,
+          split_cash = ?, split_card = 0, split_online = 0, split_cheque = 0
+      WHERE id = ?
+    `);
+
+    const runTx = dbInstance.transaction(() => {
+      for (const p of splitPayments) {
+        const sCash = parseFloat(p.split_cash) || 0;
+        const sOnline = parseFloat(p.split_online) || 0;
+        const sCard = parseFloat(p.split_card) || 0;
+        const sCheque = parseFloat(p.split_cheque) || 0;
+
+        let cashReceiptNo = p.receipt_no;
+        if (!cashReceiptNo || !cashReceiptNo.toUpperCase().startsWith('CR')) {
+          cashReceiptNo = getNextSeqFor('CR');
+        }
+
+        // Update original payment row to be purely Cash
+        updatePayment.run(
+          cashReceiptNo,
+          'cash',
+          sCash,
+          `${p.notes || 'In-Stay Advance Payment'} (Cash)`,
+          sCash,
+          p.id
+        );
+
+        // Insert separate row for Online UPI
+        if (sOnline > 0) {
+          const upiNo = getNextSeqFor('UPI');
+          insertPayment.run(
+            upiNo,
+            p.booking_id,
+            p.room_id,
+            p.department || 'hospitality',
+            p.payment_type || 'advance',
+            'upi',
+            sOnline,
+            null,
+            null,
+            p.cheque_date || null,
+            'realized',
+            p.realized_at || p.created_at,
+            p.cashier_name,
+            `${p.notes || 'In-Stay Advance Payment'} (Online UPI)`,
+            p.utr_number,
+            0,
+            p.upi_tax || 0,
+            0,
+            0,
+            sOnline,
+            0,
+            null,
+            p.created_at
+          );
+        }
+
+        // Insert separate row for Card POS
+        if (sCard > 0) {
+          const posNo = getNextSeqFor('POS');
+          insertPayment.run(
+            posNo,
+            p.booking_id,
+            p.room_id,
+            p.department || 'hospitality',
+            p.payment_type || 'advance',
+            'card',
+            sCard,
+            null,
+            null,
+            p.cheque_date || null,
+            'realized',
+            p.realized_at || p.created_at,
+            p.cashier_name,
+            `${p.notes || 'In-Stay Advance Payment'} (Card POS)`,
+            null,
+            p.card_surcharge || 0,
+            0,
+            0,
+            sCard,
+            0,
+            0,
+            null,
+            p.created_at
+          );
+        }
+
+        // Insert separate row for Cheque
+        if (sCheque > 0) {
+          const chqNo = getNextSeqFor('CHQ');
+          insertPayment.run(
+            chqNo,
+            p.booking_id,
+            p.room_id,
+            p.department || 'hospitality',
+            p.payment_type || 'advance',
+            'cheque',
+            sCheque,
+            p.cheque_no,
+            p.bank_name,
+            p.cheque_date || null,
+            p.cheque_status || 'realized',
+            p.realized_at || p.created_at,
+            p.cashier_name,
+            `${p.notes || 'In-Stay Advance Payment'} (Cheque)`,
+            null,
+            0,
+            0,
+            0,
+            0,
+            0,
+            sCheque,
+            p.cheque_photo,
+            p.created_at
+          );
+        }
+      }
+    });
+
+    runTx();
+  } catch (err) {
+    console.warn('Notice migrating split payments to individual records:', err.message);
+  }
+};
+
+migrateSplitPaymentsToIndividualLedgers(db);
+
+db.DEFAULT_ROOMS_CATALOG = DEFAULT_ROOMS_CATALOG;
+db.seedDefaultRooms = seedDefaultRooms;
+db.migrateSplitPaymentsToIndividualLedgers = migrateSplitPaymentsToIndividualLedgers;
 
 module.exports = db;
 

@@ -122,6 +122,15 @@ body.dark-theme {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  caret-color: transparent !important;
+}
+
+/* Caret blinking cursor ONLY allowed in editable text fields */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  caret-color: auto !important;
 }
 
 body {
@@ -541,69 +550,215 @@ body {
 }
 
 /* ==========================================================================
-   HOSPITALITY ROOM CARDS GRID - MINIMALIST APPLE AESTHETIC
+   HOSPITALITY ROOM CARDS GRID - ONE-FRAME COMPACT AESTHETIC
    ========================================================================== */
+.app-container:has(#view-hospitality.active) {
+  padding: 2px 18px 2px !important;
+  box-sizing: border-box;
+  height: calc(100dvh - 68px) !important;
+  max-height: calc(100dvh - 68px) !important;
+  overflow: hidden !important;
+  background: var(--bg-app, #f5f5f7) !important;
+}
+
+body.dark-theme .app-container:has(#view-hospitality.active),
+[data-theme="dark"] .app-container:has(#view-hospitality.active) {
+  background: var(--bg-app, #0c0e12) !important;
+}
+
+/* ==========================================================================
+   DEDICATED ROOM FOLIO & CHECKOUT SCREEN - MUST SCROLL SMOOTHLY
+   ========================================================================== */
+.app-container:has(#view-room-folio),
+.app-container:has(#view-room-folio.active),
+.app-container.hospitality-container:has(#view-room-folio),
+.app-container.hospitality-container:has(#view-room-folio.active),
+.app-container.folio-active-container {
+  height: auto !important;
+  max-height: none !important;
+  min-height: calc(100dvh - 68px) !important;
+  overflow-y: visible !important;
+  overflow-x: hidden !important;
+  display: block !important;
+  padding: 2px 18px 80px !important;
+  background: var(--bg-app, #f5f5f7) !important;
+}
+
+body.dark-theme .app-container:has(#view-room-folio),
+[data-theme="dark"] .app-container:has(#view-room-folio) {
+  background: var(--bg-app, #0c0e12) !important;
+}
+
+#view-hospitality.active {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.dark-theme #view-hospitality.active,
+[data-theme="dark"] #view-hospitality.active {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.hosp-sub-content.active {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.floor-sections-container {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+  max-width: 1720px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 1px 16px 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.floor-section {
+  margin-bottom: 0 !important;
+  overflow: visible !important;
+}
+
+.floor-section + .floor-section,
+.floor-section:not(:first-child) {
+  margin-top: 3px !important;
+}
+
+.floor-section-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  margin: 1px 0 2px 0 !important;
+  padding: 0 !important;
+  text-align: center !important;
+  line-height: 1 !important;
+}
+
+.floor-section:first-child .floor-section-header {
+  margin: 0 0 2px 0 !important;
+}
+
+.floor-divider-line {
+  flex: 1 !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, #cbd5e1 30%, #cbd5e1 70%, transparent) !important;
+}
+
+body.dark-theme .floor-divider-line,
+[data-theme="dark"] .floor-divider-line {
+  background: linear-gradient(90deg, transparent, #334155 30%, #334155 70%, transparent) !important;
+}
+
+.floor-section-badge {
+  font-size: 0.58rem !important;
+  font-weight: 850 !important;
+  color: #334155 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  padding: 1px 7px !important;
+  border-radius: 8px !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.dark-theme .floor-section-badge,
+[data-theme="dark"] .floor-section-badge {
+  background: #171a21 !important;
+  border-color: #334155 !important;
+  color: #94a3af !important;
+}
+
+.floor-icon {
+  font-size: 0.65rem !important;
+}
+
+.floor-name {
+  font-weight: 850 !important;
+}
+
+.floor-room-count {
+  font-size: 0.54rem !important;
+  font-weight: 850 !important;
+  color: #0284c7 !important;
+  background: #ffffff !important;
+  padding: 0 4px !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body.dark-theme .floor-room-count,
+[data-theme="dark"] .floor-room-count {
+  background: #0c0e12 !important;
+  color: #38bdf8 !important;
+  border-color: #1e293b !important;
+}
+
 .rooms-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 14px;
-}
-
-@media (max-width: 1300px) {
-  .rooms-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1050px) {
-  .rooms-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .rooms-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
-  .rooms-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  gap: 5px 8px !important;
+  width: 100% !important;
+  padding: 0 4px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
 }
 
 .room-card {
-  border: 1.5px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 2px;
-  height: 168px;
-  min-height: 168px;
-  max-height: 168px;
-  box-sizing: border-box;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease;
-  user-select: none;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  padding: 3px 6px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  gap: 2px !important;
+  height: clamp(90px, 11.5vh, 102px) !important;
+  min-height: 88px !important;
+  max-height: 104px !important;
+  box-sizing: border-box !important;
+  cursor: pointer !important;
+  position: relative !important;
+  overflow: hidden !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+  user-select: none !important;
 }
 
 .room-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px) !important;
+  z-index: 10 !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.05) !important;
 }
 
-/* Light colour palettes for room status */
+/* Darker, richer colour palettes for room status */
 .room-card.status-ready {
-  background: linear-gradient(180deg, #f2fcf5 0%, #ebfbf0 100%);
-  border-color: #bbf7d0;
+  background: linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%) !important;
+  border: 1.5px solid #059669 !important;
+  box-shadow: 0 1px 3px rgba(5, 150, 105, 0.16) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -611,57 +766,63 @@ body {
 }
 
 .room-card.status-ready:hover {
-  border-color: #4ade80;
-  box-shadow: 0 12px 28px rgba(34, 197, 94, 0.18), 0 2px 6px rgba(34, 197, 94, 0.06);
+  border-color: #047857 !important;
+  z-index: 10 !important;
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.28), 0 2px 5px rgba(5, 150, 105, 0.12) !important;
 }
 
 .room-card.status-occupied {
-  background: linear-gradient(180deg, #f8fafc 0%, #f0f7ff 100%);
-  border-color: #cbd5e1;
+  background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%) !important;
+  border: 1.5px solid #2563eb !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.16) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
 .room-card.status-occupied:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.16), 0 2px 6px rgba(59, 130, 246, 0.06);
+  border-color: #1d4ed8 !important;
+  z-index: 10 !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.28), 0 2px 5px rgba(37, 99, 235, 0.12) !important;
 }
 
 .room-card.status-needs_cleaning {
-  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
-  border-color: #fde68a;
+  background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%) !important;
+  border: 1.5px solid #d97706 !important;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.18) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
 .room-card.status-needs_cleaning:hover {
-  border-color: #fbbf24;
-  box-shadow: 0 12px 28px rgba(245, 158, 11, 0.18), 0 2px 6px rgba(245, 158, 11, 0.06);
+  border-color: #b45309 !important;
+  z-index: 10 !important;
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.28), 0 2px 5px rgba(217, 119, 6, 0.12) !important;
 }
 
 .room-card.status-maintenance {
-  background: #f8fafc !important;
-  border: 1.5px dashed #94a3b8 !important;
-  color: #64748b !important;
+  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%) !important;
+  border: 1.5px dashed #475569 !important;
+  color: #1e3a8a !important;
   cursor: not-allowed !important;
-  opacity: 0.85;
+  opacity: 0.95;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
 .room-card.status-maintenance:hover {
-  border-color: #64748b !important;
+  border-color: #334155 !important;
   box-shadow: none !important;
-  background: #f1f5f9 !important;
-  transform: none;
+  background: #cbd5e1 !important;
+  transform: none !important;
+  z-index: 1 !important;
 }
 
 /* Combined / Multi-Room Card Indicator */
 .room-card.is-combined {
-  border-color: #93c5fd;
+  border-color: #1d4ed8 !important;
 }
 
 .room-group-indicator {
@@ -708,50 +869,54 @@ body {
 
 /* Room number & status badge */
 .room-number-badge {
-  font-size: 1.90rem;
+  font-size: 1.15rem;
   font-weight: 900;
   letter-spacing: -0.04em;
   line-height: 1;
   color: #0f172a;
-  margin-top: 2px;
-  margin-bottom: 3px;
+  margin-top: 1px;
+  margin-bottom: 1px;
 }
 
 .status-pill {
-  padding: 2px 10px;
-  border-radius: 12px;
-  font-size: 0.70rem;
-  font-weight: 850;
-  letter-spacing: 0.04em;
+  padding: 1.5px 7px;
+  border-radius: 10px;
+  font-size: 0.60rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .status-pill.ready { 
-  background: #dcfce7; 
-  color: #15803d; 
-  border: 1px solid #bbf7d0; 
+  background: #047857 !important; 
+  color: #ffffff !important; 
+  border: 1px solid #065f46 !important; 
+  font-weight: 900 !important;
 }
 
 .status-pill.occupied { 
-  background: #dbeafe; 
-  color: #1d4ed8; 
-  border: 1px solid #bfdbfe; 
+  background: #1d4ed8 !important; 
+  color: #ffffff !important; 
+  border: 1px solid #1e40af !important; 
+  font-weight: 900 !important;
 }
 
 .status-pill.needs_cleaning { 
-  background: #fef3c7; 
-  color: #b45309; 
-  border: 1px solid #fde68a; 
+  background: #b45309 !important; 
+  color: #ffffff !important; 
+  border: 1px solid #92400e !important; 
+  font-weight: 900 !important;
 }
 
 .status-pill.maintenance { 
-  background: #e2e8f0; 
-  color: #475569; 
-  border: 1px solid #cbd5e1; 
+  background: #475569 !important; 
+  color: #ffffff !important; 
+  border: 1px solid #334155 !important; 
+  font-weight: 900 !important;
 }
 
 /* Card Body Containers */
@@ -761,16 +926,16 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-top: 3px;
+  margin-top: 1px;
 }
 
 /* Ready Body */
 .ready-body {
-  gap: 3px;
+  gap: 2px;
 }
 
 .room-ready-type {
-  font-size: 0.74rem;
+  font-size: 0.70rem;
   font-weight: 700;
   color: #475569;
   max-width: 95%;
@@ -780,24 +945,24 @@ body {
 }
 
 .room-ready-tariff {
-  font-size: 0.74rem;
+  font-size: 0.70rem;
   font-weight: 800;
   color: #15803d;
   background: #dcfce7;
   border: 1px solid #bbf7d0;
-  padding: 1px 8px;
-  border-radius: 8px;
+  padding: 1px 6px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   gap: 1px;
 }
 
 .room-ready-tariff .tariff-currency {
-  font-size: 0.70rem;
+  font-size: 0.66rem;
 }
 
 .room-ready-tariff .tariff-period {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   color: #166534;
   margin-left: 1px;
 }
@@ -809,7 +974,7 @@ body {
   justify-content: center;
   height: 100%;
   width: 100%;
-  gap: 8px;
+  gap: 3px !important;
   margin: 0;
   padding: 0;
 }
@@ -821,17 +986,17 @@ body {
   justify-content: center;
   height: 100%;
   width: 100%;
-  gap: 2px;
+  gap: 1px;
   margin: 0;
   padding: 0;
 }
 
 .ready-big-number {
-  font-size: 3.3rem !important;
-  font-weight: 900 !important;
+  font-size: 2.05rem !important;
+  font-weight: 950 !important;
   letter-spacing: -0.04em !important;
   line-height: 1 !important;
-  color: #0f172a !important;
+  color: #064e3b !important;
   margin: 0 !important;
   padding: 0 !important;
   text-align: center !important;
@@ -851,50 +1016,52 @@ body {
 
 /* Occupied Body */
 .occupied-body {
-  gap: 2px;
+  gap: 2px !important;
 }
 
 .room-guest-pill {
-  font-size: 0.72rem;
-  font-weight: 750;
-  color: #1e293b;
-  max-width: 95%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 2px;
+  font-size: 0.70rem !important;
+  font-weight: 750 !important;
+  color: #1e293b !important;
+  max-width: 96% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  margin: 1px 0 2px 0 !important;
+  line-height: 1.2 !important;
 }
 
 .room-mobile-pill {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #2563eb;
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
-  padding: 1px 7px;
-  border-radius: 8px;
-  max-width: 95%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  font-size: 0.63rem !important;
+  font-weight: 700 !important;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border: 1px solid #bfdbfe !important;
+  padding: 1.5px 7px !important;
+  border-radius: 6px !important;
+  max-width: 96% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  line-height: 1.2 !important;
 }
 
 .room-checkout-pill {
-  font-size: 0.69rem;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-  max-width: 95%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  padding: 1.5px 7px !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  max-width: 96% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
 }
 
 .room-checkout-pill.standard {
@@ -904,36 +1071,44 @@ body {
 }
 
 .room-checkout-pill.imminent {
-  background: #fee2e2;
-  color: #b91c1c;
-  border: 1px solid #fca5a5;
-  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.12);
-  font-weight: 800;
+  background: #ffffff !important;
+  color: #b91c1c !important;
+  border: 1.5px solid #ef4444 !important;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.12) !important;
+  font-weight: 800 !important;
+}
+
+.room-checkout-pill.imminent.is-upcoming {
+  border: 1.5px solid #f59e0b !important;
+  color: #b45309 !important;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.12) !important;
 }
 
 .room-card.group-linked-hover {
-  border-color: #0071e3 !important;
-  box-shadow: 0 0 0 3.5px rgba(0, 113, 227, 0.35), 0 10px 28px rgba(0, 113, 227, 0.22) !important;
-  transform: translateY(-4px) scale(1.02);
+  border-color: #1d4ed8 !important;
+  box-shadow: 0 0 0 2px #2563eb, 0 6px 18px rgba(37, 99, 235, 0.25) !important;
+  transform: translateY(-2px) !important;
+  z-index: 10 !important;
 }
 
-/* Reddish Blinking / Soft Breathing Pulse for Imminent Checkout */
+/* Reddish Blinking / Soft Breathing Pulse for Imminent Checkout Pill & Entire Card */
 @keyframes redishBlinkPulse {
   0%, 100% {
-    border-color: #f87171;
-    background: #fff8f8;
-    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2), 0 4px 14px rgba(239, 68, 68, 0.08);
+    border-color: #ef4444 !important;
+    background: #fef2f2 !important;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 2px 8px rgba(239, 68, 68, 0.22) !important;
   }
   50% {
-    border-color: #ef4444;
-    background: #fee2e2;
-    box-shadow: 0 0 0 3.5px rgba(239, 68, 68, 0.25), 0 8px 20px rgba(239, 68, 68, 0.16);
+    border-color: #dc2626 !important;
+    background: #fee2e2 !important;
+    box-shadow: 0 0 0 2.5px rgba(220, 38, 38, 0.65), 0 4px 14px rgba(239, 68, 68, 0.4) !important;
   }
 }
 
 .room-card.checkout-imminent {
-  animation: redishBlinkPulse 2s infinite ease-in-out !important;
   border: 2px solid #ef4444 !important;
+  background: #fef2f2 !important;
+  animation: redishBlinkPulse 1.8s infinite ease-in-out !important;
 }
 
 /* Cleaning & Maintenance Body */
@@ -3499,12 +3674,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   #print-registration-sheet.print-active,
   #print-registration-sheet.print-active *,
   #print-payment-summary-sheet.print-active,
-  #print-payment-summary-sheet.print-active * {
+  #print-payment-summary-sheet.print-active *,
+  #print-activities-summary-sheet.print-active,
+  #print-activities-summary-sheet.print-active * {
     visibility: visible !important;
   }
 
   #print-registration-sheet.print-active,
-  #print-payment-summary-sheet.print-active {
+  #print-payment-summary-sheet.print-active,
+  #print-activities-summary-sheet.print-active {
     display: block !important;
     position: static !important;
     width: 100% !important;
@@ -4064,25 +4242,29 @@ body.dark-theme .doc-action-card {
    ========================================================================== */
 #view-room-folio {
   animation: fadeIn 0.3s ease;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: visible !important;
+  padding-bottom: 80px;
 }
 
 .folio-page-header {
-  position: sticky;
-  top: 68px;
-  z-index: 90;
+  position: relative !important;
+  top: auto !important;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 22px;
+  margin-top: 0 !important;
+  margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 10px 0 12px 0;
-  background: rgba(245, 245, 247, 0.94);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  padding: 4px 0 8px 0 !important;
+  background: transparent !important;
   border-bottom: 1.5px solid var(--border-light);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
-  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  box-shadow: none !important;
+  transition: border-color var(--transition-fast);
 }
 
 .folio-header-left {
@@ -4119,11 +4301,11 @@ body.dark-theme .doc-action-card {
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: rgba(18, 21, 28, 0.95) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: none !important;
 }
 
 .btn-back-rooms {
@@ -6144,11 +6326,14 @@ body.table-pos-mode .app-container {
 
 /* Manager Subnav & Content */
 .manager-subnav-bar {
-  display: flex;
-  gap: 10px;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  overflow-x: auto !important;
   border-bottom: 2px solid var(--border-light);
   padding-bottom: 12px;
   margin-bottom: 20px;
+  scrollbar-width: thin;
 }
 
 .manager-nav-btn {
@@ -7098,7 +7283,9 @@ body.table-pos-mode .table-session-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-top: 0 !important;
+  margin-bottom: 16px !important;
+  padding: 4px 0 8px 0 !important;
   flex-wrap: nowrap !important;
   gap: 12px;
 }
@@ -9783,19 +9970,21 @@ body.dark-theme .history-fullscreen-view {
    MANAGER SUB-NAVIGATION TABS & PANELS
    ========================================================================== */
 .manager-subnav-btn {
-  padding: 8px 16px;
-  font-size: 0.84rem;
+  padding: 6.5px 12px !important;
+  font-size: 0.81rem !important;
   font-weight: 750;
-  border-radius: 10px;
+  border-radius: 9px;
   border: 1.5px solid transparent;
   background: #f1f5f9;
   color: #475569;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.18s ease;
   user-select: none;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .manager-subnav-btn:hover {
@@ -9944,7 +10133,7 @@ body.dark-theme .manager-subnav-btn.active {
     print-color-adjust: exact !important;
   }
 
-  /* Fallback: Ensure Registration, Receipt, Petty Cash, and Payment Summary Sheets are visible in print */
+  /* Fallback: Ensure Registration, Receipt, Petty Cash, Payment Summary, and Activities Summary Sheets are visible in print */
   #print-registration-sheet,
   #print-registration-sheet *,
   #print-registration-sheet.print-active,
@@ -9953,6 +10142,10 @@ body.dark-theme .manager-subnav-btn.active {
   #print-payment-summary-sheet *,
   #print-payment-summary-sheet.print-active,
   #print-payment-summary-sheet.print-active *,
+  #print-activities-summary-sheet,
+  #print-activities-summary-sheet *,
+  #print-activities-summary-sheet.print-active,
+  #print-activities-summary-sheet.print-active *,
   #print-money-receipt-sheet.print-active,
   #print-money-receipt-sheet.print-active *,
   #print-petty-cash-sheet.print-active,
@@ -11073,28 +11266,12 @@ body.dark-theme .manager-subnav-btn.active {
 }
 
 .room-fnb-overdue-indicator {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 10;
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-  color: #ffffff;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.68rem;
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.45);
-  animation: fnbBlinkFlash 1.2s infinite ease-in-out;
-  border: 1px solid #fca5a5;
-  letter-spacing: 0.2px;
+  display: none !important;
 }
 
 .fnb-pulse-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #ffffff;
   box-shadow: 0 0 6px #ffffff;
@@ -11102,28 +11279,31 @@ body.dark-theme .manager-subnav-btn.active {
 }
 
 .fnb-pulse-dot-red {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #dc2626;
   box-shadow: 0 0 6px rgba(220, 38, 38, 0.8);
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .room-fnb-blinking-pill {
   background: #fef2f2;
   color: #991b1b;
   border: 1.5px solid #f87171;
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 0.72rem;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 0.60rem;
   font-weight: 850;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 3px;
+  line-height: 1.15;
   animation: fnbBlinkFlash 1.4s infinite ease-in-out;
   box-shadow: 0 1px 4px rgba(220, 38, 38, 0.15);
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -11360,29 +11540,30 @@ body.dark-theme .room-card.status-occupied:hover {
   box-shadow: 0 10px 25px rgba(59, 130, 246, 0.35), 0 2px 6px rgba(59, 130, 246, 0.16) !important;
 }
 
-/* Imminent Checkout (<4h) & Overdue Rooms: Pulsing VIBRANT RED Border */
+/* Imminent Checkout (<4h) Pill Pulse for Dark Theme */
+@keyframes redishBlinkPulseDark {
+  0%, 100% {
+    border-color: #ef4444 !important;
+    background: #200d0f !important;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.4), 0 2px 8px rgba(239, 68, 68, 0.25) !important;
+  }
+  50% {
+    border-color: #f87171 !important;
+    background: #311115 !important;
+    box-shadow: 0 0 0 2.5px rgba(239, 68, 68, 0.7), 0 4px 14px rgba(239, 68, 68, 0.45) !important;
+  }
+}
+
 [data-theme="dark"] .room-card.checkout-imminent,
 body.dark-theme .room-card.checkout-imminent {
   border: 2px solid #ef4444 !important;
-  animation: redishBlinkPulseDark 2s infinite ease-in-out !important;
+  background: #200d0f !important;
+  animation: redishBlinkPulseDark 1.8s infinite ease-in-out !important;
 }
 
 [data-theme="dark"] .room-card.has-overdue-fnb,
 body.dark-theme .room-card.has-overdue-fnb {
-  border: 2.5px solid #ef4444 !important;
-}
-
-@keyframes redishBlinkPulseDark {
-  0%, 100% {
-    border-color: #f87171 !important;
-    background: linear-gradient(180deg, #281215 0%, #1a0b0d 100%) !important;
-    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3), 0 4px 14px rgba(239, 68, 68, 0.2) !important;
-  }
-  50% {
-    border-color: #ef4444 !important;
-    background: linear-gradient(180deg, #38151a 0%, #240c10 100%) !important;
-    box-shadow: 0 0 0 3.5px rgba(239, 68, 68, 0.45), 0 8px 22px rgba(239, 68, 68, 0.35) !important;
-  }
+  border: 2px solid #ef4444 !important;
 }
 
 [data-theme="dark"] .room-card.status-needs_cleaning,
@@ -13620,31 +13801,30 @@ body.dark-theme .stay-metric-pill {
    ROOM FOLIO PAGE HEADER & CONTROLS (HIGH CONTRAST DARK & LIGHT MODES)
    ========================================================================== */
 .folio-page-header {
-  position: sticky;
-  top: 68px;
-  z-index: 90;
+  position: relative !important;
+  top: auto !important;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 22px;
+  margin-top: 0 !important;
+  margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 10px 0 12px 0;
-  background: rgba(245, 245, 247, 0.94);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  padding: 4px 0 8px 0 !important;
+  background: transparent !important;
   border-bottom: 1.5px solid var(--border-light, #e2e8f0);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  box-shadow: none !important;
 }
 
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: rgba(18, 21, 28, 0.95) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45) !important;
+  box-shadow: none !important;
 }
 
 /* Folio Room Heading ("Room 103") */
@@ -13853,6 +14033,8 @@ html.dark-theme .btn-folio-visitors-action {
   #print-registration-sheet *,
   #print-payment-summary-sheet,
   #print-payment-summary-sheet *,
+  #print-activities-summary-sheet,
+  #print-activities-summary-sheet *,
   #print-money-receipt-sheet,
   #print-money-receipt-sheet *,
   #print-petty-cash-sheet,
@@ -13864,7 +14046,10 @@ html.dark-theme .btn-folio-visitors-action {
   .printable-full-a4-sheet:only-child,
   #print-payment-summary-sheet,
   #print-payment-summary-sheet.print-active,
-  .guest-payment-summary-sheet {
+  #print-activities-summary-sheet,
+  #print-activities-summary-sheet.print-active,
+  .guest-payment-summary-sheet,
+  .guest-activities-summary-sheet {
     min-height: auto !important;
     max-height: 276mm !important;
     height: auto !important;
@@ -14068,6 +14253,23 @@ html.dark-theme .btn-folio-visitors-action {
     flex-shrink: 0 !important;
   }
 
+  #print-payment-summary-sheet.print-active .guest-payment-summary-sheet,
+  .guest-payment-summary-sheet {
+    width: 100% !important;
+    height: 262mm !important;
+    min-height: 250mm !important;
+    max-height: 264mm !important;
+    box-sizing: border-box !important;
+    border: 3.5px solid #1e3a8a !important;
+    border-bottom: 3.5px solid #1e3a8a !important;
+    padding: 8px 12px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    overflow: hidden !important;
+  }
+
   #print-registration-sheet.print-active .tax-invoice-a4-sheet {
     height: 268mm !important;
     min-height: 268mm !important;
@@ -14126,3 +14328,164 @@ html.dark-theme .btn-folio-visitors-action {
   border-color: #a855f7 !important;
   background: linear-gradient(145deg, #f3e8ff 0%, #e9d5ff 100%) !important;
 }
+
+/* ==========================================================================
+   ROOM SERVICE CHOOSER MODAL - OCCUPIED ROOMS GRID & CARDS FIX
+   ========================================================================== */
+.modal-backdrop-fixed .rooms-grid,
+#room-service-rooms-grid,
+.room-service-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  gap: 18px !important;
+  width: 100% !important;
+  padding: 4px 6px 20px 2px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}
+
+.modal-backdrop-fixed .rooms-grid .room-card,
+#room-service-rooms-grid .room-service-card,
+.room-service-card {
+  height: auto !important;
+  min-height: 148px !important;
+  max-height: none !important;
+  border-radius: 16px !important;
+  padding: 18px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  text-align: left !important;
+  gap: 10px !important;
+  box-sizing: border-box !important;
+  cursor: pointer !important;
+  position: relative !important;
+  overflow: visible !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  user-select: auto !important;
+}
+
+.modal-backdrop-fixed .rooms-grid .room-card.status-occupied,
+.room-service-card {
+  background: var(--bg-surface, #ffffff) !important;
+  border: 1.5px solid var(--border-color, #cbd5e1) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+}
+
+.modal-backdrop-fixed .rooms-grid .room-card.status-occupied:hover,
+.room-service-card:hover {
+  transform: translateY(-3px) !important;
+  border-color: var(--apple-blue, #0071e3) !important;
+  box-shadow: 0 10px 26px rgba(0, 113, 227, 0.14) !important;
+}
+
+/* Dark mode styling for room service chooser */
+body.dark-theme .modal-backdrop-fixed .rooms-grid .room-card.status-occupied,
+[data-theme="dark"] .modal-backdrop-fixed .rooms-grid .room-card.status-occupied,
+body.dark-theme .room-service-card,
+[data-theme="dark"] .room-service-card {
+  background: var(--bg-surface, #1e293b) !important;
+  border-color: var(--border-color, #334155) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+body.dark-theme .modal-backdrop-fixed .rooms-grid .room-card.status-occupied:hover,
+[data-theme="dark"] .modal-backdrop-fixed .rooms-grid .room-card.status-occupied:hover,
+body.dark-theme .room-service-card:hover,
+[data-theme="dark"] .room-service-card:hover {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.18) !important;
+}
+
+/* ==========================================================================
+   ROOM TRANSFER DRAG & DROP STYLES
+   ========================================================================== */
+.room-transfer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-surface, #ffffff);
+  border: 1.5px solid var(--border-color, #e2e8f0);
+  border-radius: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.btn-room-transfer-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-weight: 800;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-room-transfer-mode:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.btn-room-transfer-mode.active {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+  color: #ffffff !important;
+  border-color: #6d28d9 !important;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35) !important;
+}
+
+.room-card.transfer-source {
+  border: 2.5px solid #7c3aed !important;
+  box-shadow: 0 0 18px rgba(124, 58, 237, 0.45) !important;
+  transform: scale(1.02) !important;
+  cursor: grab !important;
+}
+
+.room-card.transfer-source:active {
+  cursor: grabbing !important;
+}
+
+/* Valid drop target: Empty room of SAME room type */
+.room-card.transfer-droppable-target {
+  border: 2.5px dashed #059669 !important;
+  background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%) !important;
+  box-shadow: 0 0 16px rgba(5, 150, 105, 0.35) !important;
+  animation: pulse-drop-target 1.6s infinite ease-in-out !important;
+  cursor: pointer !important;
+}
+
+@keyframes pulse-drop-target {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(5, 150, 105, 0.3);
+    border-color: #059669;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(5, 150, 105, 0.6);
+    border-color: #10b981;
+  }
+}
+
+.room-card.transfer-droppable-target.transfer-droppable-hover {
+  border: 3px solid #047857 !important;
+  background: #a7f3d0 !important;
+  transform: scale(1.06) !important;
+  box-shadow: 0 8px 24px rgba(4, 120, 87, 0.45) !important;
+  z-index: 25 !important;
+}
+
+.room-card.transfer-dimmed {
+  opacity: 0.32 !important;
+  filter: grayscale(0.5) !important;
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+}
+
+

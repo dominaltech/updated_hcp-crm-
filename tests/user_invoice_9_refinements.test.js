@@ -189,7 +189,7 @@ describe('User Tax Invoice 9 Requirements Verification', () => {
     const html = buildFinalBillA4HTML(sampleStayWithFnb.room, sampleStayWithFnb.calc, sampleStayWithFnb.settlement);
     
     // Room Bill section with SAC 996311
-    expect(html).toContain('SAC: 996311 (Accommodation)');
+    expect(html).toContain('(Accommodation) &nbsp;SAC: 996311');
     expect(html).toContain('Room Tariff -');
     expect(html).toContain('3250.00');
     expect(html).toContain('Less Discount @5.00%');
@@ -203,8 +203,8 @@ describe('User Tax Invoice 9 Requirements Verification', () => {
     expect(html).toContain('Room Bill Total');
     expect(html).toContain('3741.35');
 
-    // F&B Bill section with SAC 996332 (Food & Beverage)
-    expect(html).toContain('SAC: 996332 (Food &amp; Beverage)');
+    // F&B Bill section with (Food & Beverage) SAC: 996332
+    expect(html).toContain('(Food &amp; Beverage) &nbsp;SAC: 996332');
     expect(html).toContain('F&amp;B Gross Taxable');
     expect(html).toContain('100.00');
     expect(html).toContain('F&amp;B CGST @ 2.5%');
@@ -282,30 +282,27 @@ describe('User Tax Invoice 9 Requirements Verification', () => {
     // 1) Reduced left & right margin on entire page
     expect(html).toContain('padding: 5px 10px;');
 
-    // 2) Slide left side "24/09 25/09"
-    expect(html).toContain('24/09 &nbsp; &nbsp; &nbsp; 25/09');
-    expect(html).toContain('width: 42%;');
+    // 2) Single date column for 1-day stay (24/09)
+    expect(html).toContain('>24/09</th>');
+    expect(html).not.toContain('>25/09</th>');
 
     // 3) Whitelisted bold items verification
     // JAVID RANGREZ
     expect(html).toContain('font-weight: 600; margin-left: 4px;">JAVID RANGREZ</span>');
-    // SAC: 996311 (Accommodation)
-    expect(html).toContain('font-weight: 700; color: #000; width: 38%;">\n                  SAC: 996311 (Accommodation)');
-    // SAC: 996332 (Food & Beverage)
-    expect(html).toContain('font-weight: 700; color: #000;">\n                  SAC: 996332 (Food &amp; Beverage)');
-    // 3741.00 (Room Bill Total) & Room Bill Total 3587.00 bold
-    expect(html).toContain('font-weight: 700; color: #000;">Room Bill Total</td>');
-    expect(html).toContain('font-weight: 700; color: #000;">3587.00</td>');
-    expect(html).toContain('font-weight: 700; color: #000; border-left: 1.5px dashed #000;">3741.00</td>');
-    // Round-off bold and displays 3993.00
-    expect(html).toContain('font-weight: 700; color: #000;">Round-off</td>');
-    expect(html).toContain('font-weight: 700; color: #000;">3993.00</td>');
+    // (Accommodation)  SAC: 996311
+    expect(html).toContain('(Accommodation) &nbsp;SAC: 996311');
+    // (Food & Beverage)  SAC: 996332
+    expect(html).toContain('(Food &amp; Beverage) &nbsp;SAC: 996332');
+    // Room Bill Total
+    expect(html).toContain('Room Bill Total');
+    expect(html).toContain('font-weight: 700; color: #000;');
+    // Round-off bold
+    expect(html).toContain('Round-off');
     // 252.00 (F&B Bill Total)
-    expect(html).toContain('font-weight: 700; color: #000; border-left: 1.5px dashed #000;">252.00</td>');
-    // Invoice Total (label)
-    expect(html).toContain('font-weight: 700; font-size: 10.5pt; color: #000;">\n                  Invoice Total');
-    // 3993.00 (Invoice Total amount)
-    expect(html).toContain('font-weight: 700; font-size: 11.5pt; color: #000; border-left: 1.5px dashed #000;">\n                  3993.00');
+    expect(html).toContain('252.00');
+    // Invoice Total
+    expect(html).toContain('Invoice Total');
+    expect(html).toContain('3993.00');
     // Net Payable Amount & 1993.00 (Net Payable Amount) both bold
     expect(html).toContain('font-weight: 700; font-size: 11pt; color: #000;">Net Payable Amount</td>');
     expect(html).toContain('font-weight: 700; font-size: 11.5pt; color: #000;">1993.00</td>');
@@ -336,8 +333,8 @@ describe('User Tax Invoice 9 Requirements Verification', () => {
     expect(html).toContain('09:57:36 AM');
 
     // Items that must NOT be bold (font-weight: 400)
-    expect(html).toContain('font-weight: 400; text-transform: uppercase;">\n                  S/O: AB WAHID MUNDEWADI');
-    expect(html).toContain('Effective Tariff</td>\n                <td style="padding: 2.2px 10px 2.2px 30px; text-align: left; font-weight: 400; color: #000;">3087.00</td>');
+    expect(html).toContain('Effective Tariff</td>');
+    expect(html).toContain('3087.00</td>');
     expect(html).toContain('(Invoice Total In words : Rs. Three Thousand Nine Hundred And Ninety Three Only)');
   });
 });

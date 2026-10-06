@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { printThermalBillSlip } from '../../services/printService';
-import ThemedSelect from '../common/ThemedSelect';
+import OccupiedRoomPickerModal from './OccupiedRoomPickerModal';
 
 export default function TableSettleModal({ isOpen, session, onClose, onSettleSuccess, department = 'restaurant' }) {
   const { showToast, currentUser, surchargeSettings } = useApp();
@@ -17,10 +17,11 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
   const [splitCard, setSplitCard] = useState(0);
   const [utrNumber, setUtrNumber] = useState('');
   const [isStayingGuest, setIsStayingGuest] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState(''); // MUST NOT select any room by default
   const [occupiedRooms, setOccupiedRooms] = useState([]);
-  const [roomBillStatus, setRoomBillStatus] = useState('paid'); // 'pending' | 'paid' (default paid for walk-in)
-  const [roomServiceFor, setRoomServiceFor] = useState(null); // 'room_mates' | 'visitor' (must not select by default)
+  const [isRoomPickerOpen, setIsRoomPickerOpen] = useState(false);
+  const [roomBillStatus, setRoomBillStatus] = useState(null); // 'pending' | 'paid' (MUST be unselected by default!)
+  const [roomServiceFor, setRoomServiceFor] = useState(null); // 'room_mates' | 'visitor' (MUST be unselected by default!)
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const grandTotal = session ? session.grandTotal : 0;
@@ -34,12 +35,24 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
       setSplitCard(0);
       setUtrNumber('');
 
-      const initialRoom = session.chargeToRoomId || session.table?.room_id || '';
-      const initialIsStaying = Boolean(isRS || initialRoom);
+      const isRoomService = session?.table?.table_type === 'room_service' || String(session?.table?.table_number || '').startsWith('RS-');
+      const initialIsStaying = Boolean(isRoomService);
 
       setIsStayingGuest(initialIsStaying);
+
+      // Pre-select room if already selected before (e.g. Room Service or chargeToRoomId on table)
+      let initialRoomId = '';
+      if (session.chargeToRoomId) {
+        initialRoomId = String(session.chargeToRoomId);
+      } else if (session.table?.room_id) {
+        initialRoomId = String(session.table.room_id);
+      } else if (isRoomService && session.table?.table_number) {
+        initialRoomId = String(session.table.table_number).replace(/^RS-/i, '').trim();
+      }
+
+      setSelectedRoomId(initialRoomId);
+      setRoomServiceFor(initialIsStaying ? 'room_mates' : null);
       setRoomBillStatus(initialIsStaying ? 'pending' : 'paid');
-      setRoomServiceFor(isRS ? null : 'room_mates');
 
       api.getRooms()
         .then(async (rooms) => {
@@ -61,28 +74,14 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
           }
 
           setOccupiedRooms(occ);
-
-          let resolvedId = '';
-          if (initialRoom) {
-            resolvedId = String(initialRoom);
-            const foundInitial = roomList.find((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId);
-            if (foundInitial && !occ.some((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId)) {
-              setOccupiedRooms((prev) => [foundInitial, ...prev]);
+          // If room was already selected before (e.g. Room Service), resolve and retain it
+          if (initialRoomId) {
+            const matched = occ.find((r) => String(r.id) === String(initialRoomId) || String(r.room_number) === String(initialRoomId));
+            if (matched) {
+              setSelectedRoomId(String(matched.id));
+            } else {
+              setSelectedRoomId(initialRoomId);
             }
-          } else if (isRS) {
-            const rNum = String(session.table?.table_number || '').replace(/^RS-/i, '').trim();
-            const found = roomList.find((r) => String(r.room_number) === rNum);
-            if (found) {
-              resolvedId = String(found.id || found.room_number);
-              if (!occ.some((r) => String(r.id) === resolvedId || String(r.room_number) === resolvedId)) {
-                setOccupiedRooms((prev) => [found, ...prev]);
-              }
-            } else if (occ.length > 0) {
-              resolvedId = String(occ[0].id || occ[0].room_number);
-            }
-          }
-          if (resolvedId && initialIsStaying) {
-            setSelectedRoomId(resolvedId);
           } else {
             setSelectedRoomId('');
           }
@@ -159,17 +158,27 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
 
   const selectedRoom = occupiedRooms.find((r) => String(r.id) === String(selectedRoomId) || String(r.room_number) === String(selectedRoomId));
 
+  const isStayingGuestMissingAny = isStayingGuest && (!selectedRoomId || !roomServiceFor || !roomBillStatus);
+  const isDirectPaymentInvalid = (!isStayingGuest || roomBillStatus === 'paid') && (!isAllocationValid || (splitOnline > 0 && !utrNumber.trim()));
+  const isSettleDisabled = Boolean(isSubmitting || (roomBillStatus === 'paid' && isDirectPaymentInvalid));
+
   const handleSettle = async () => {
     const isRS = session.table?.table_type === 'room_service' || String(session.table?.table_number || '').startsWith('RS-');
 
     if (isStayingGuest) {
       if (!selectedRoomId) {
-        showToast('Please select an occupied room.', 'red');
+        setIsRoomPickerOpen(true);
+        showToast('Please select an in-house occupied room to settle.', 'info');
         return;
       }
 
       if (!roomServiceFor) {
-        showToast(`Please select who this order is for: ${isRS ? '"For room mates" or "For visitor"' : '"For in-house guest" or "For visitor"'} (Mandatory).`, 'red');
+        showToast(`Please select ${isRS ? 'Room Service Consumption ("For room mates" or "For visitor")' : 'Dining Bill Attribution ("For in-house guest" or "For visitor")'} (Mandatory).`, 'red');
+        return;
+      }
+
+      if (!roomBillStatus) {
+        showToast('Please select Bill Settlement Option ("Pending at Checkout" or "Paid Now") (Mandatory).', 'red');
         return;
       }
     }
@@ -267,7 +276,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
         if (onSettleSuccess) {
           onSettleSuccess(res);
         } else {
-          printThermalBillSlip(res, isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'HOTEL CITY PARK - RESTAURANT');
+          printThermalBillSlip(res, isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'Restaurant Bill/Cheque');
         }
       } else {
         showToast('Settlement failed: ' + (res?.message || 'Server error'), 'red');
@@ -448,10 +457,10 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                 type="button"
                 onClick={() => {
                   setIsStayingGuest(true);
-                  if (!selectedRoomId && occupiedRooms.length > 0) {
-                    setSelectedRoomId(String(occupiedRooms[0].id));
-                  }
-                  setRoomBillStatus('pending');
+                  // By default, room, attribution, and settlement option must be unselected!
+                  setSelectedRoomId('');
+                  setRoomServiceFor(null);
+                  setRoomBillStatus(null);
                 }}
                 style={{
                   padding: '9px 20px',
@@ -492,7 +501,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     <span>🏨</span> Link / Attribute to Occupied Room:
                   </label>
                   <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', fontWeight: 600 }}>
-                    Select the in-house guest room for this dining bill
+                    Select the in-house guest room for this dining bill (Mandatory)
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -512,28 +521,127 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       <span>⚠️</span> No occupied rooms currently checked in
                     </div>
                   ) : (
-                    <ThemedSelect
-                      value={selectedRoomId}
-                      onChange={(val) => setSelectedRoomId(val)}
-                      placeholder="-- Select In-House Guest Room --"
-                      options={[
-                        { value: '', label: '-- Select In-House Guest Room --' },
-                        ...occupiedRooms.map((r) => ({
-                          value: r.id,
-                          label: `Room #${r.room_number} • ${r.guest_name || 'In-House Guest'} (${r.room_type || 'Room'})`
-                        }))
-                      ]}
-                      colorTheme="blue"
-                      style={{ height: '42px', minWidth: '280px' }}
-                    />
+                    <button
+                      type="button"
+                      id="btn-choose-room-mandatory"
+                      onClick={() => setIsRoomPickerOpen(true)}
+                      style={{
+                        height: '42px',
+                        padding: '0 20px',
+                        background: selectedRoom ? '#1e40af' : '#2563eb',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '10px',
+                        fontWeight: 900,
+                        fontSize: '0.90rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        boxShadow: '0 2px 10px rgba(37, 99, 235, 0.30)',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>🏨</span>
+                      <span>{selectedRoom ? 'Change Room' : 'Choose Room (mandatory)'}</span>
+                    </button>
                   )}
                 </div>
               </div>
 
+              {/* Detailed Selected Room Info or Prompt to Pick Room */}
+              {selectedRoom ? (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '12px 18px',
+                    borderRadius: '12px',
+                    background: 'rgba(37, 99, 235, 0.07)',
+                    border: '1.5px solid rgba(37, 99, 235, 0.3)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        padding: '4px 10px',
+                        borderRadius: '8px',
+                        fontSize: '0.92rem'
+                      }}
+                    >
+                      Room #{selectedRoom.room_number}
+                    </span>
+                    <span style={{ fontWeight: 850, color: 'var(--text-primary, #0f172a)', fontSize: '0.95rem' }}>
+                      👤 {selectedRoom.guest_name || selectedRoom.customer_name || selectedRoom.name || 'In-House Guest'}
+                    </span>
+                    <span style={{ color: '#1e293b', fontSize: '0.88rem', fontWeight: 700 }}>
+                      📞 {selectedRoom.guest_mobile || selectedRoom.mobile || selectedRoom.phone || 'N/A'}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary, #64748b)', fontSize: '0.85rem', fontWeight: 600 }}>
+                      📅 Check-in: <strong>{selectedRoom.checkin_time ? formatDateTime(selectedRoom.checkin_time) : 'Active Stay'}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsRoomPickerOpen(true)}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      borderRadius: '8px',
+                      border: '1.5px solid #2563eb',
+                      background: '#ffffff',
+                      color: '#2563eb',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Change Room
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginTop: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsRoomPickerOpen(true)}
+                    style={{
+                      width: '100%',
+                      padding: '14px 20px',
+                      borderRadius: '12px',
+                      background: 'rgba(37, 99, 235, 0.06)',
+                      border: '2px dashed #2563eb',
+                      color: '#1d4ed8',
+                      fontWeight: 850,
+                      fontSize: '0.94rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>🏨</span> Click to <strong>Choose Room (mandatory)</strong> — {occupiedRooms.length} Occupied Rooms Checked In
+                  </button>
+                </div>
+              )}
+
               {/* Sub-Option: Room Mates / In-House Guest vs Visitor */}
               <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-                  {isRS ? 'Room Service Consumption:' : 'Dining Bill Attribution:'}
+                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span>{isRS ? 'Room Service Consumption:' : 'Dining Bill Attribution:'}</span>
+                  {!roomServiceFor && (
+                    <span style={{ fontSize: '0.74rem', color: '#b91c1c', fontWeight: 800, background: '#fef2f2', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '6px' }}>
+                      (Mandatory)
+                    </span>
+                  )}
                 </label>
                 <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                   {/* Option 1: For room mates / In-house guest */}
@@ -602,8 +710,13 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
 
               {/* Room Folio Settle Option: PENDING vs PAID NOW */}
               <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '12px' }}>
-                  Bill Settlement Option:
+                <label style={{ fontSize: '0.85rem', fontWeight: 900, color: 'var(--text-secondary, #334155)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <span>Bill Settlement Option:</span>
+                  {!roomBillStatus && (
+                    <span style={{ fontSize: '0.74rem', color: '#b91c1c', fontWeight: 800, background: '#fef2f2', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '6px' }}>
+                      (Mandatory)
+                    </span>
+                  )}
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
                   {/* ⏳ PENDING */}
@@ -658,6 +771,33 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                       Guest pays now via Cash, Online UPI, or Card Swipe.
                     </div>
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* If In-House Staying Guest & missing any field: Guidance banner */}
+          {isStayingGuest && isStayingGuestMissingAny && (
+            <div
+              style={{
+                background: '#fff1f2',
+                padding: '16px 20px',
+                borderRadius: '14px',
+                border: '1.5px solid #fecdd3',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px'
+              }}
+            >
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#9f1239' }}>
+                  Action Required to Settle Room Bill
+                </div>
+                <div style={{ fontSize: '0.84rem', color: '#be123c', fontWeight: 650, marginTop: '3px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <span>1. Room: <strong>{selectedRoom ? `✓ Room #${selectedRoom.room_number}` : '❌ Choose Room (mandatory)'}</strong></span>
+                  <span>2. Attribution: <strong>{roomServiceFor === 'room_mates' ? '✓ For in-house guest' : roomServiceFor === 'visitor' ? '✓ For visitor' : '❌ Select Attribution'}</strong></span>
+                  <span>3. Settlement Option: <strong>{roomBillStatus === 'pending' ? '✓ Pending (Room Folio)' : roomBillStatus === 'paid' ? '✓ Paid Now' : '❌ Select Settlement Option'}</strong></span>
                 </div>
               </div>
             </div>
@@ -729,6 +869,33 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                     style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-surface-secondary)', color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer' }}
                   >
                     100% Card
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-quick-settle-to-room"
+                    onClick={() => {
+                      setIsStayingGuest(true);
+                      setRoomBillStatus('pending');
+                      setRoomServiceFor('room_mates');
+                      if (!selectedRoomId) {
+                        setIsRoomPickerOpen(true);
+                      }
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #d97706',
+                      background: (isStayingGuest && roomBillStatus === 'pending') ? '#d97706' : 'rgba(217, 119, 6, 0.1)',
+                      color: (isStayingGuest && roomBillStatus === 'pending') ? '#ffffff' : '#b45309',
+                      fontWeight: 850,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <span>🏨</span> Settled to Room
                   </button>
                 </div>
               </div>
@@ -999,7 +1166,7 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
                   }}
                 >
                   <span style={{ fontWeight: 800, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>📱</span> {upiPct}% UPI Convenience Tax (&gt; ₹{upiThresh.toLocaleString('en-IN')}): <strong>+₹{upiTax}</strong>
+                    <span>📱</span> UPI MDR Fee ({upiPct}%) (&gt; ₹{upiThresh.toLocaleString('en-IN')}): <strong>+₹{upiTax}</strong>
                   </span>
                   <span style={{ fontWeight: 950, color: '#0284c7', fontSize: '1.05rem' }}>
                     Total UPI Payment: {formatCurrency(upiTotalPay)}
@@ -1111,8 +1278,10 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
               <span>Billing mode: <strong style={{ color: 'var(--text-primary)' }}>🍽️ Walk-in Diner (Direct Payment)</strong></span>
             ) : roomBillStatus === 'pending' ? (
               <span>Billing mode: <strong style={{ color: '#d97706' }}>🏨 Settled to Room (Pending at Checkout)</strong></span>
-            ) : (
+            ) : roomBillStatus === 'paid' ? (
               <span>Billing mode: <strong style={{ color: '#16a34a' }}>🏨 In-House Guest (Paid at Counter)</strong></span>
+            ) : (
+              <span>Billing mode: <strong style={{ color: '#dc2626' }}>🏨 In-House Guest (Selections Required)</strong></span>
             )}
           </div>
 
@@ -1127,34 +1296,63 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             </button>
             <button
               type="button"
+              id="btn-settle-room"
               className="btn-primary"
-              onClick={handleSettle}
-              disabled={
-                isSubmitting ||
-                (isStayingGuest && !selectedRoomId) ||
-                (isStayingGuest && !roomServiceFor) ||
-                ((!isStayingGuest || roomBillStatus === 'paid') && (!isAllocationValid || (splitOnline > 0 && !utrNumber.trim())))
-              }
+              onClick={() => {
+                if (isStayingGuest && !selectedRoomId) {
+                  setIsRoomPickerOpen(true);
+                  showToast('Please select an in-house occupied room to settle.', 'info');
+                  return;
+                }
+                if (isStayingGuest && !roomServiceFor) {
+                  showToast(`Please select ${isRS ? 'Room Service Consumption ("For room mates" or "For visitor")' : 'Dining Bill Attribution ("For in-house guest" or "For visitor")'} (Mandatory).`, 'red');
+                  return;
+                }
+                if (isStayingGuest && !roomBillStatus) {
+                  showToast('Please select Bill Settlement Option ("Pending at Checkout" or "Paid Now") (Mandatory).', 'red');
+                  return;
+                }
+                handleSettle();
+              }}
+              disabled={isSettleDisabled}
               style={{
                 padding: '12px 36px',
                 fontSize: '1.1rem',
                 fontWeight: 900,
                 borderRadius: '12px',
-                background: (isStayingGuest && roomBillStatus === 'pending') ? '#d97706' : '#16a34a',
+                background: (isStayingGuest && (roomBillStatus === 'pending' || !roomBillStatus)) ? '#d97706' : '#16a34a',
                 color: '#ffffff',
-                boxShadow: (isStayingGuest && roomBillStatus === 'pending') ? '0 4px 16px rgba(217, 119, 6, 0.3)' : '0 4px 16px rgba(22, 163, 74, 0.3)',
-                cursor: (isSubmitting || (isStayingGuest && (!selectedRoomId || !roomServiceFor)) || ((!isStayingGuest || roomBillStatus === 'paid') && (!isAllocationValid || (splitOnline > 0 && !utrNumber.trim())))) ? 'not-allowed' : 'pointer',
-                opacity: (isSubmitting || (isStayingGuest && (!selectedRoomId || !roomServiceFor)) || ((!isStayingGuest || roomBillStatus === 'paid') && (!isAllocationValid || (splitOnline > 0 && !utrNumber.trim())))) ? 0.6 : 1
+                boxShadow: isSettleDisabled ? 'none' : ((isStayingGuest && (roomBillStatus === 'pending' || !roomBillStatus)) ? '0 4px 16px rgba(217, 119, 6, 0.3)' : '0 4px 16px rgba(22, 163, 74, 0.3)'),
+                cursor: isSettleDisabled ? 'not-allowed' : 'pointer',
+                opacity: isSettleDisabled ? 0.5 : 1
               }}
             >
               {isSubmitting
                 ? 'Settling...'
-                : (isStayingGuest && roomBillStatus === 'pending')
+                : (isStayingGuest && roomBillStatus === 'paid')
+                ? `🖨️ Settle & Print Bill Slip (${formatCurrency(grandTotal + cardSurcharge + upiTax)})`
+                : (isStayingGuest)
                 ? `🏨 Settled to Room (${formatCurrency(grandTotal)})`
                 : `🖨️ Settle & Print Bill Slip (${formatCurrency(grandTotal + cardSurcharge + upiTax)})`}
             </button>
           </div>
         </div>
+
+        {/* Occupied Room Selection Popup */}
+        <OccupiedRoomPickerModal
+          isOpen={isRoomPickerOpen}
+          onClose={() => setIsRoomPickerOpen(false)}
+          occupiedRooms={occupiedRooms}
+          selectedRoomId={selectedRoomId}
+          onSelectRoom={(room) => {
+            setSelectedRoomId(String(room.id));
+            if (!roomServiceFor) setRoomServiceFor('room_mates');
+            if (!roomBillStatus) setRoomBillStatus('pending');
+            showToast(`Selected Room #${room.room_number} (${room.guest_name || 'Guest'})`, 'green', 2500);
+          }}
+          tableName={session.table?.name || (session.table?.table_number ? `Table ${session.table.table_number}` : 'Table')}
+          billAmount={grandTotal}
+        />
       </div>
     </div>
   );

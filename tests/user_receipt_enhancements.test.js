@@ -93,8 +93,8 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     expect(html).not.toContain('by Cash / Cheque');
     expect(html).toContain('₹ 2,000.00');
 
-    // Table: Row 1 = Paid while checking, Row 2 = Payment Mode: Cash
-    expect(html).toContain('Room 101 - Paid while checking');
+    // Table: Row 1 = Paid for Check In, Row 2 = Payment Mode: Cash
+    expect(html).toContain('Room 101 - Paid for Check In');
     expect(html).toContain('Payment Mode: Cash');
     expect(html).not.toContain('Room #101');
     expect(html).toContain('Two Thousand Rupees Only');
@@ -139,8 +139,8 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     const line3Slice = html.slice(html.indexOf('by Online UPI'), html.indexOf('Room No.'));
     expect(line3Slice).not.toContain('UTR');
 
-    // Table rows: Row 1 = Paid while checking, Row 2 = Payment Mode: Online UPI (UTR: ...)
-    expect(html).toContain('Room 104 - Paid while checking');
+    // Table rows: Row 1 = Paid for Check In, Row 2 = Payment Mode: Online UPI (UTR: ...)
+    expect(html).toContain('Room 104 - Paid for Check In');
     expect(html).toContain('Payment Mode: Online UPI (UTR: UTR-9876543210)');
     expect(html).not.toContain('(Cash Payment)');
 
@@ -182,7 +182,7 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     expect(html).toContain('₹ 2,050.00');
 
     // Table row with fee (Card POS, not Cash Payment!)
-    expect(html).toContain('Room 104 - Paid while checking');
+    expect(html).toContain('Room 104 - Paid for Check In');
     expect(html).toContain('Payment Mode: Card POS [Fee: ₹50]');
     expect(html).not.toContain('(Cash Payment)');
 
@@ -221,7 +221,7 @@ describe('User Receipt Enhancements (Logo 50%, Mode-Prefixed No, Stacked Date-Ti
     expect(html).not.toContain('by Cash / Cheque');
 
     // Cheque details in Row 2
-    expect(html).toContain('Room 104 - Paid while checking');
+    expect(html).toContain('Room 104 - Paid for Check In');
     expect(html).toContain('Payment Mode: Cheque (#CHQ-889900 - State Bank of India)');
   });
 });

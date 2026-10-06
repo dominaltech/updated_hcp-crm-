@@ -49,6 +49,7 @@ export function AppProvider({ children }) {
   // Active panel
   const [activePanel, setActivePanelState] = useState(() => {
     const path = window.location.pathname.replace('/', '').toLowerCase();
+    if (path === 'accounting') return 'manage';
     if (['hospitality', 'restaurant', 'bar', 'manage', 'expenses'].includes(path)) {
       return path;
     }
@@ -58,6 +59,10 @@ export function AppProvider({ children }) {
   const [previousPanel, setPreviousPanel] = useState(null);
   const [restaurantSubTab, setRestaurantSubTab] = useState('tables');
   const [barSubTab, setBarSubTab] = useState('tables');
+  const [manageSubTab, setManageSubTab] = useState(() => {
+    const path = window.location.pathname.replace('/', '').toLowerCase();
+    return path === 'accounting' ? 'accounting' : 'analytics';
+  });
 
   // Dark Theme Management ('light' | 'dark')
   const [theme, setThemeState] = useState(() => {
@@ -466,14 +471,17 @@ export function AppProvider({ children }) {
   const [isManagerUnlocked, setIsManagerUnlocked] = useState(false);
   const [isManagerLockModalOpen, setIsManagerLockModalOpen] = useState(false);
   const [managerLockTargetDept, setManagerLockTargetDept] = useState('hospitality');
+  const [managerLockTargetTab, setManagerLockTargetTab] = useState(null);
 
-  const openManagerLock = useCallback((dept = 'hospitality') => {
+  const openManagerLock = useCallback((dept = 'hospitality', targetTab = null) => {
     setManagerLockTargetDept(dept);
+    setManagerLockTargetTab(targetTab);
     setIsManagerLockModalOpen(true);
   }, []);
 
   const closeManagerLock = useCallback(() => {
     setIsManagerLockModalOpen(false);
+    setManagerLockTargetTab(null);
   }, []);
 
   const unlockManager = useCallback((authenticatedUser, token) => {
@@ -497,15 +505,20 @@ export function AppProvider({ children }) {
       setBarSubTab('manager');
       window.history.pushState({}, '', '/bar');
     } else {
+      if (managerLockTargetTab) {
+        setManageSubTab(managerLockTargetTab);
+        setManagerLockTargetTab(null);
+      }
       setActivePanelState('manage');
       window.history.pushState({}, '', '/manage');
     }
 
     showToast('🔓 Manager Panel unlocked', 'green');
-  }, [managerLockTargetDept, loginDepartmentStaff, showToast]);
+  }, [managerLockTargetDept, managerLockTargetTab, loginDepartmentStaff, showToast]);
 
   const lockManager = useCallback((manual = false) => {
     setIsManagerUnlocked(false);
+    setManageSubTab('analytics');
 
     setActivePanelState((prev) => {
       if (prev === 'manage') {
@@ -539,7 +552,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.replace('/', '').toLowerCase();
-      if (['hospitality', 'restaurant', 'bar', 'manage', 'expenses'].includes(path)) {
+      if (path === 'accounting') {
+        setActivePanelState('manage');
+        setManageSubTab('accounting');
+      } else if (['hospitality', 'restaurant', 'bar', 'manage', 'expenses'].includes(path)) {
         setActivePanelState(path);
       }
     };
@@ -582,6 +598,8 @@ export function AppProvider({ children }) {
     setRestaurantSubTab,
     barSubTab,
     setBarSubTab,
+    manageSubTab,
+    setManageSubTab,
     isManagerUnlocked,
     isManagerLockModalOpen,
     managerLockTargetDept,

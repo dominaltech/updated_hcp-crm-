@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { compressImageFile, compressBase64Image } from '../../../utils/imageCompressor';
+import { compressImageFile, compressBase64Image, autoCropDocument } from '../../../utils/imageCompressor';
 import { api } from '../../../services/api';
 import { useApp } from '../../../context/AppContext';
 
@@ -36,15 +36,37 @@ export default function Step3BackScan({ draft, updateDraft, onSkipBack, onPrevie
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      const isPdf = file.type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+      if (isPdf) {
+        showToast('📄 Reading PDF and extracting back document page...', 'info', 3000);
+      }
       const compressed = await compressImageFile(file);
       if (compressed) {
         updateDraft({ docBack: compressed });
         setScanError(null);
-        showToast('✓ Back document uploaded successfully!', 'green');
+        showToast(`✓ Back document ${isPdf ? 'PDF extracted & ' : ''}uploaded successfully!`, 'green');
       }
     } catch (err) {
-      console.warn('Image upload compression error:', err);
-      showToast('Failed to process uploaded image.', 'red');
+      console.warn('Document upload compression error:', err);
+      showToast('Failed to process uploaded file.', 'red');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleManualAutoCrop = async () => {
+    if (!draft.docBack) return;
+    try {
+      showToast('✂️ Auto-cropping document borders...', 'info', 1500);
+      const cropped = await autoCropDocument(draft.docBack);
+      if (cropped && cropped !== draft.docBack) {
+        updateDraft({ docBack: cropped });
+        showToast('✓ Auto-cropped document borders successfully!', 'green');
+      } else {
+        showToast('✓ Document borders are already optimal.', 'info');
+      }
+    } catch (e) {
+      showToast('Could not crop document.', 'red');
     }
   };
 
@@ -308,22 +330,6 @@ export default function Step3BackScan({ draft, updateDraft, onSkipBack, onPrevie
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              disabled={isScanning}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.85rem',
-                fontWeight: 750
-              }}
-            >
-              <span>📁</span> Choose Scanned File from PC
-            </button>
-
-            <button
-              type="button"
-              className="btn-secondary"
               onClick={handleGrabLatest}
               disabled={isScanning}
               style={{
@@ -338,6 +344,45 @@ export default function Step3BackScan({ draft, updateDraft, onSkipBack, onPrevie
             >
               <span>📥</span> Grab Recent PC Scan
             </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              disabled={isScanning}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.85rem',
+                fontWeight: 750
+              }}
+              title="Upload image or PDF document"
+            >
+              <span>📁</span> Choose Image / PDF File
+            </button>
+
+            {draft.docBack && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleManualAutoCrop}
+                disabled={isScanning}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.85rem',
+                  fontWeight: 750,
+                  color: '#166534',
+                  background: '#f0fdf4',
+                  border: '1.5px solid #86efac'
+                }}
+                title="Automatically trim white margins and flatbed borders"
+              >
+                <span>✂️</span> Auto Crop Doc
+              </button>
+            )}
 
             <button
               type="button"
@@ -378,7 +423,7 @@ export default function Step3BackScan({ draft, updateDraft, onSkipBack, onPrevie
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,.pdf"
+              accept="image/*,application/pdf,.pdf"
               style={{ display: 'none' }}
               onChange={handleFileUpload}
             />

@@ -383,7 +383,8 @@ app.get('/api/rooms', (req, res) => {
 app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
   try {
     const { 
-      room_number, 
+      room_number,
+      floor,
       room_type, 
       price, 
       price_single,
@@ -420,18 +421,19 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
 
     const stmt = db.prepare(`
       INSERT INTO rooms (
-        room_number, room_type, price, price_single, max_adults, max_children, max_discount_pct, 
+        room_number, floor, room_type, price, price_single, max_adults, max_children, max_discount_pct, 
         ext_grace_mins, ext_3h_rate, ext_6h_rate, ext_9h_rate,
         breakfast_price, max_extra_beds, extra_bed_price, gst_pct,
         extra_bed_gst_pct, breakfast_gst_pct, ext_3h_gst_pct, ext_6h_gst_pct, ext_9h_gst_pct, single_gst_pct,
         ota_early_checkin_price, ota_early_checkin_max_hours, ota_early_checkin_gst_pct,
         status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
     `);
 
     const result = stmt.run(
       room_number,
+      floor || 'First Floor',
       room_type || 'Deluxe Room',
       parseFloat(price),
       price_single !== undefined && price_single !== '' && price_single !== null ? parseFloat(price_single) : null,
@@ -468,7 +470,8 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
   try {
     const { id } = req.params;
     const { 
-      room_number, 
+      room_number,
+      floor,
       room_type, 
       price, 
       price_single,
@@ -516,6 +519,7 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       UPDATE rooms 
       SET 
         room_number = COALESCE(?, room_number),
+        floor = COALESCE(?, floor),
         room_type = COALESCE(?, room_type),
         price = COALESCE(?, price),
         price_single = ?,
@@ -545,6 +549,7 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
 
     stmt.run(
       room_number,
+      floor !== undefined && floor !== '' ? floor : null,
       room_type,
       price !== undefined ? parseFloat(price) : null,
       resolvedPriceSingle,
@@ -681,6 +686,131 @@ app.post('/api/rooms/:id/status', requireAuth, requireRole('manager', 'hospitali
     res.json({ success: true, status });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 6.5. ROOM TRANSFER (Shift occupied room to an available empty room of the same room type)
+app.post('/api/rooms/transfer', optionalAuth, (req, res) => {
+  try {
+    const { from_room_id, to_room_id, fromRoomId, toRoomId, reason } = req.body || {};
+    const srcId = from_room_id || fromRoomId;
+    const destId = to_room_id || toRoomId;
+
+    if (!srcId || !destId) {
+      return res.status(400).json({ success: false, error: 'Both source room and destination room are required.' });
+    }
+
+    if (String(srcId) === String(destId)) {
+      return res.status(400).json({ success: false, error: 'Source room and destination room cannot be the same.' });
+    }
+
+    const fromRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(srcId);
+    if (!fromRoom) {
+      return res.status(404).json({ success: false, error: `Source room (ID ${srcId}) not found.` });
+    }
+
+    if (fromRoom.status !== 'occupied' || !fromRoom.current_booking_id) {
+      return res.status(400).json({ success: false, error: `Source room #${fromRoom.room_number} is not currently occupied.` });
+    }
+
+    const toRoom = db.prepare('SELECT * FROM rooms WHERE id = ?').get(destId);
+    if (!toRoom) {
+      return res.status(404).json({ success: false, error: `Destination room (ID ${destId}) not found.` });
+    }
+
+    if (toRoom.status !== 'ready') {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Destination room #${toRoom.room_number} is not available (Status: ${toRoom.status}). Only empty/ready rooms can be transferred into.` 
+      });
+    }
+
+    // USER REQUIREMENT: "same room type to same room type (there price will bw same just room number will be changed )"
+    const srcType = String(fromRoom.room_type || '').trim().toLowerCase();
+    const destType = String(toRoom.room_type || '').trim().toLowerCase();
+    if (srcType !== destType) {
+      return res.status(400).json({
+        success: false,
+        error: `Room transfer is only permitted between rooms of the same room type. Source Room #${fromRoom.room_number} is "${fromRoom.room_type}", but Destination Room #${toRoom.room_number} is "${toRoom.room_type}".`
+      });
+    }
+
+    const booking = db.prepare('SELECT * FROM bookings WHERE id = ? AND status = ?').get(fromRoom.current_booking_id, 'active');
+    if (!booking) {
+      return res.status(404).json({ success: false, error: `Active booking not found for room #${fromRoom.room_number}.` });
+    }
+
+    const guest = db.prepare('SELECT * FROM guests WHERE id = ?').get(booking.guest_id);
+    const transferredBy = req.user?.full_name || req.user?.username || req.body?.transferred_by || 'Front Desk';
+
+    const transferTx = db.transaction(() => {
+      // 1. Move active booking to new destination room
+      db.prepare(`UPDATE bookings SET room_id = ? WHERE id = ?`).run(toRoom.id, booking.id);
+
+      // 2. Mark destination room as occupied with this booking
+      db.prepare(`UPDATE rooms SET status = 'occupied', current_booking_id = ? WHERE id = ?`).run(booking.id, toRoom.id);
+
+      // 3. Mark source room vacated (needs cleaning)
+      db.prepare(`UPDATE rooms SET status = 'needs_cleaning', current_booking_id = NULL WHERE id = ?`).run(fromRoom.id);
+
+      // 4. Update payments to reference new room
+      db.prepare(`UPDATE payments SET room_id = ? WHERE booking_id = ?`).run(toRoom.id, booking.id);
+
+      // 5. Update room service / unpaid folio restaurant orders to new room
+      db.prepare(`
+        UPDATE restaurant_orders 
+        SET room_id = ?, table_number = ? 
+        WHERE booking_id = ? AND payment_mode = 'room_folio'
+      `).run(toRoom.id, `Room ${toRoom.room_number}`, booking.id);
+
+      // 6. Update room service / unpaid folio bar orders to new room
+      db.prepare(`
+        UPDATE bar_orders 
+        SET room_id = ? 
+        WHERE booking_id = ? AND payment_mode = 'room_folio'
+      `).run(toRoom.id, booking.id);
+
+      // 7. Update active room visitors to new room
+      db.prepare(`
+        UPDATE room_visitors 
+        SET room_id = ? 
+        WHERE booking_id = ?
+      `).run(toRoom.id, booking.id);
+
+      // 8. Record audit log entry in booking extension_logs_json
+      let extLogs = [];
+      try {
+        extLogs = booking.extension_logs_json ? JSON.parse(booking.extension_logs_json) : [];
+      } catch (e) {
+        extLogs = [];
+      }
+      extLogs.push({
+        type: 'room_transfer',
+        from_room_id: fromRoom.id,
+        from_room_number: fromRoom.room_number,
+        to_room_id: toRoom.id,
+        to_room_number: toRoom.room_number,
+        room_type: fromRoom.room_type,
+        transferred_at: new Date().toISOString(),
+        transferred_by: transferredBy,
+        reason: reason || 'Room shift (same room type)'
+      });
+      db.prepare(`UPDATE bookings SET extension_logs_json = ? WHERE id = ?`).run(JSON.stringify(extLogs), booking.id);
+    });
+
+    transferTx();
+
+    res.json({
+      success: true,
+      message: `Room transferred successfully from Room #${fromRoom.room_number} to Room #${toRoom.room_number}`,
+      from_room: { id: fromRoom.id, room_number: fromRoom.room_number, room_type: fromRoom.room_type },
+      to_room: { id: toRoom.id, room_number: toRoom.room_number, room_type: toRoom.room_type },
+      guest_name: guest ? guest.name : 'Guest',
+      booking_id: booking.id
+    });
+  } catch (err) {
+    console.error('Room transfer error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1352,11 +1482,40 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
 
     // Fetch all recorded payments for this booking
     const payments = db.prepare('SELECT * FROM payments WHERE booking_id = ? ORDER BY created_at ASC').all(id);
+
+    // Fetch Restaurant & Bar orders during stay if any
+    let restaurantOrders = [];
+    let barOrders = [];
+    try {
+      restaurantOrders = db.prepare(`
+        SELECT ro.*, r.room_number 
+        FROM restaurant_orders ro
+        LEFT JOIN rooms r ON ro.room_id = r.id
+        WHERE ro.booking_id = ?
+           OR (ro.booking_id IS NULL AND ro.room_id = ? AND datetime(ro.created_at) >= ? AND datetime(ro.created_at) <= datetime(?, '+2 hours'))
+        ORDER BY ro.created_at ASC
+      `).all(id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
+    } catch (_) {}
+
+    try {
+      barOrders = db.prepare(`
+        SELECT bo.*, r.room_number 
+        FROM bar_orders bo
+        LEFT JOIN rooms r ON bo.room_id = r.id
+        WHERE bo.booking_id = ?
+           OR (bo.booking_id IS NULL AND bo.room_id = ? AND datetime(bo.created_at) >= ? AND datetime(bo.created_at) <= datetime(?, '+2 hours'))
+        ORDER BY bo.created_at ASC
+      `).all(id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
+    } catch (_) {}
+
     const formattedBooking = {
       ...booking,
       member_documents: memberDocs,
       memberDocuments: memberDocs,
-      payments: payments || []
+      payments: payments || [],
+      restaurantOrders: restaurantOrders || [],
+      barOrders: barOrders || [],
+      orders: [...restaurantOrders.map(o => ({ ...o, dept: 'Restaurant' })), ...barOrders.map(o => ({ ...o, dept: 'Bar Lounge' }))]
     };
 
     res.json({
@@ -1370,11 +1529,13 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
   }
 });
 
-// 8b. EXTEND CHECKOUT TIME & LOG AUDIT TRAIL (Updates all linked group rooms)
+// 8b. EXTEND CHECKOUT TIME & LOG AUDIT TRAIL (Updates all linked group rooms, charges extended amount & records split payments)
 app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
-    const { approx_checkout_time } = req.body;
+    const { approx_checkout_time, payments } = req.body;
+    const extended_amount = parseFloat(req.body.extended_amount) || 0;
+    const paid_amount = parseFloat(req.body.paid_amount) || 0;
     const extended_by = (req.body.extended_by || req.body.cashier_name || req.user?.full_name || req.user?.username || 'Front Desk').trim();
     if (!approx_checkout_time) {
       return res.status(400).json({ success: false, error: 'approx_checkout_time is required' });
@@ -1382,6 +1543,24 @@ app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager'
 
     const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
     if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+    const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(booking.room_id) || {};
+    const roomNumber = room.room_number || String(booking.room_id || '');
+
+    // User requirement: If extended amount > 0, min 50% must be paid to confirm extension
+    const paymentItems = Array.isArray(payments) ? payments : [];
+    const sumPaymentItems = paymentItems.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
+    const effectivePaid = Math.max(paid_amount, sumPaymentItems);
+
+    if (extended_amount > 0) {
+      const minRequired = Math.ceil(extended_amount * 0.5);
+      if (effectivePaid < minRequired) {
+        return res.status(400).json({
+          success: false,
+          error: `Minimum 50% advance payment required to confirm extension. (Required: ₹${minRequired}, Received: ₹${effectivePaid})`
+        });
+      }
+    }
 
     const fromTime = booking.approx_checkout_time || booking.checkin_time;
     const toTime = approx_checkout_time;
@@ -1400,10 +1579,98 @@ app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager'
       extended_by,
       from_time: fromTime,
       to_time: toTime,
+      extended_amount,
+      paid_amount: effectivePaid,
       created_at: nowIso
     };
     logs.push(newLogEntry);
     const logsJson = JSON.stringify(logs);
+
+    // Record individual payment transactions (Cash, UPI, Card POS) with official serial numbers
+    const createdReceipts = [];
+    let addedCash = 0;
+    let addedCard = 0;
+    let addedOnline = 0;
+
+    if (paymentItems.length > 0) {
+      const insertPaymentStmt = db.prepare(`
+        INSERT INTO payments (
+          receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+          amount, realized_at, cashier_name, notes, particulars, utr_number,
+          card_digits, split_cash, split_card, split_online, voucher_number
+        ) VALUES (?, ?, ?, 'hospitality', 'advance', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const p of paymentItems) {
+        const pAmt = parseFloat(p.amount) || 0;
+        if (pAmt <= 0) continue;
+
+        const rawMode = String(p.mode || p.payment_mode || 'cash').toLowerCase();
+        let modeKey = 'cash';
+        let label = 'Cash';
+        if (rawMode.includes('upi') || rawMode.includes('online')) {
+          modeKey = 'upi';
+          label = 'Online UPI';
+        } else if (rawMode.includes('card') || rawMode.includes('pos')) {
+          modeKey = 'card';
+          label = 'Card POS';
+        }
+
+        const receiptNo = getReceiptNumberWithMode(modeKey);
+        const sCash = modeKey === 'cash' ? pAmt : 0;
+        const sCard = modeKey === 'card' ? pAmt : 0;
+        const sOnline = modeKey === 'upi' ? pAmt : 0;
+
+        addedCash += sCash;
+        addedCard += sCard;
+        addedOnline += sOnline;
+
+        const particulars = `Room #${roomNumber} - Stay Extension Advance Payment (${label})`;
+        const note = `Stay Extension Payment (${label})`;
+
+        insertPaymentStmt.run(
+          receiptNo,
+          booking.id,
+          booking.room_id,
+          modeKey,
+          pAmt,
+          nowIso,
+          extended_by,
+          note,
+          particulars,
+          p.utr_number || null,
+          p.card_digits || null,
+          sCash,
+          sCard,
+          sOnline,
+          booking.voucher_number || null
+        );
+
+        createdReceipts.push({
+          receipt_no: receiptNo,
+          mode: modeKey,
+          label,
+          amount: pAmt,
+          base_amount: pAmt,
+          voucher_number: booking.voucher_number || `V-${booking.id}`,
+          guest_name: booking.guest_name || 'Guest',
+          room_number: roomNumber,
+          particulars,
+          utr_number: p.utr_number || null,
+          card_digits: p.card_digits || null,
+          cashier_name: extended_by,
+          checkin_time: nowIso
+        });
+      }
+    }
+
+    // Calculate updated booking financial totals
+    const totalPaymentsRecorded = addedCash + addedCard + addedOnline;
+    const newTotalPaid = (Number(booking.total_paid) || 0) + totalPaymentsRecorded;
+    const newSplitCash = (Number(booking.split_cash) || 0) + addedCash;
+    const newSplitCard = (Number(booking.split_card) || 0) + addedCard;
+    const newSplitOnline = (Number(booking.split_online) || 0) + addedOnline;
+    const newRoomCharge = (Number(booking.total_room_charge) || 0) + extended_amount;
 
     // Update approx_checkout_time & extension_logs_json for ALL active bookings sharing the same guest_id (combined group)
     if (booking.guest_id) {
@@ -1411,6 +1678,17 @@ app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager'
     } else {
       db.prepare('UPDATE bookings SET approx_checkout_time = ?, extension_logs_json = ? WHERE id = ?').run(approx_checkout_time, logsJson, id);
     }
+
+    // Update financial fields on the specific booking
+    db.prepare(`
+      UPDATE bookings
+      SET total_room_charge = ?,
+          total_paid = ?,
+          split_cash = ?,
+          split_card = ?,
+          split_online = ?
+      WHERE id = ?
+    `).run(newRoomCharge, newTotalPaid, newSplitCash, newSplitCard, newSplitOnline, id);
 
     // Insert into checkout_extension_logs audit table
     try {
@@ -1426,6 +1704,9 @@ app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager'
       success: true,
       message: 'Checkout date extended successfully',
       approx_checkout_time,
+      extended_amount,
+      paid_amount: effectivePaid,
+      receipts: createdReceipts,
       extension_log: newLogEntry,
       extensionLogs: logs
     });
@@ -1924,6 +2205,66 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       } catch (_) {}
     });
 
+    // Auto-sync any visitor breakfast records into restaurant_orders if not yet created
+    try {
+      const visitorsWithBreakfast = db.prepare(`
+        SELECT * FROM room_visitors 
+        WHERE booking_id IN (${bookingPlaceholders}) AND has_breakfast = 1
+      `).all(...groupBookingIds);
+
+      for (const v of visitorsWithBreakfast) {
+        let orderExists = false;
+        if (v.fnb_order_id) {
+          const existing = db.prepare('SELECT id FROM restaurant_orders WHERE id = ?').get(v.fnb_order_id);
+          if (existing) orderExists = true;
+        }
+        if (!orderExists) {
+          const vRoom = groupBookings.find(gb => gb.booking_id === v.booking_id) || room;
+          const vPrice = parseFloat(v.breakfast_amount) || 250;
+          const vGstPct = getFnbGstRate('restaurant');
+          const vTax = Math.round(vPrice * (vGstPct / 100));
+          const vTotal = vPrice + vTax;
+          const vIsPaid = (String(v.breakfast_status || '').toLowerCase() === 'paid') ? 1 : 0;
+          const vMode = vIsPaid ? 'cash' : 'room_folio';
+          const vOrderNum = 'RES-V' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 90 + 10);
+          const vItems = [
+            {
+              id: 'visitor-breakfast',
+              name: `Visitor Breakfast Plan (${(v.visitor_name || 'Visitor').trim()})`,
+              price: vPrice,
+              quantity: 1,
+              total: vPrice
+            }
+          ];
+
+          const inserted = db.prepare(`
+            INSERT INTO restaurant_orders (
+              order_number, room_id, booking_id, customer_name, order_type, table_number,
+              waiter_name, items_json, subtotal, tax, discount, total,
+              payment_mode, is_paid, cashier_name, status, created_at
+            ) VALUES (?, ?, ?, ?, 'room', ?, 'Visitor Breakfast', ?, ?, ?, 0, ?, ?, ?, 'Front Desk', 'completed', ?)
+          `).run(
+            vOrderNum,
+            v.room_id || room.id,
+            v.booking_id,
+            `Room ${vRoom.room_number || room.room_number} - Visitor: ${(v.visitor_name || '').trim()}`,
+            `Room ${vRoom.room_number || room.room_number}`,
+            JSON.stringify(vItems),
+            vPrice,
+            vTax,
+            vTotal,
+            vMode,
+            vIsPaid,
+            v.checkin_time || new Date().toISOString()
+          );
+
+          db.prepare('UPDATE room_visitors SET fnb_order_id = ? WHERE id = ?').run(inserted.lastInsertRowid, v.id);
+        }
+      }
+    } catch (e) {
+      console.warn('Visitor breakfast auto-sync error:', e.message);
+    }
+
     const restaurantOrders = db.prepare(`
       SELECT ro.*, r.room_number 
       FROM restaurant_orders ro
@@ -2321,45 +2662,171 @@ app.post('/api/rooms/:id/payments', requireAuth, (req, res) => {
       return res.status(400).json({ success: false, error: 'Cheque payment option is only allowed for corporate BTC bookings.' });
     }
 
-    const receiptNo = getReceiptNumberWithMode(cleanMode);
-    const cleanCashier = (cashier_name || req.user?.username || req.user?.name || 'Front Desk Cashier').trim();
+    const sCash = parseFloat(split_cash) || 0;
+    const sCard = parseFloat(split_card) || 0;
+    const sOnline = parseFloat(split_online) || 0;
+    const sCheque = isBtcBooking ? (parseFloat(split_cheque) || 0) : 0;
 
-    // Insert into payments ledger table
-    const result = db.prepare(`
+    const activeSplits = [];
+    const receiptNumbers = {};
+
+    if (sCash > 0) {
+      const no = getReceiptNumberWithMode('cash');
+      activeSplits.push({
+        mode: 'cash',
+        amount: sCash,
+        base_amount: sCash,
+        label: 'Cash',
+        receipt_no: no,
+        utr: null,
+        cheque_no: null,
+        bank_name: null,
+        cheque_photo: null,
+        card_surcharge: 0,
+        upi_tax: 0,
+        split_cash: sCash,
+        split_card: 0,
+        split_online: 0,
+        split_cheque: 0
+      });
+      receiptNumbers.cash = no;
+    }
+    if (sOnline > 0) {
+      const no = getReceiptNumberWithMode('upi');
+      const curUpiTax = parseFloat(upi_tax) || 0;
+      activeSplits.push({
+        mode: 'upi',
+        amount: sOnline + curUpiTax,
+        base_amount: sOnline,
+        label: 'Online UPI',
+        receipt_no: no,
+        utr: utr_number || null,
+        cheque_no: null,
+        bank_name: null,
+        cheque_photo: null,
+        card_surcharge: 0,
+        upi_tax: curUpiTax,
+        split_cash: 0,
+        split_card: 0,
+        split_online: sOnline,
+        split_cheque: 0
+      });
+      receiptNumbers.upi = no;
+    }
+    if (sCard > 0) {
+      const no = getReceiptNumberWithMode('card');
+      const curCardSurcharge = parseFloat(card_surcharge) || 0;
+      activeSplits.push({
+        mode: 'card',
+        amount: sCard + curCardSurcharge,
+        base_amount: sCard,
+        label: 'Card POS',
+        receipt_no: no,
+        utr: null,
+        cheque_no: null,
+        bank_name: null,
+        cheque_photo: null,
+        card_surcharge: curCardSurcharge,
+        upi_tax: 0,
+        split_cash: 0,
+        split_card: sCard,
+        split_online: 0,
+        split_cheque: 0
+      });
+      receiptNumbers.card = no;
+    }
+    if (sCheque > 0 && isBtcBooking) {
+      const no = getReceiptNumberWithMode('cheque');
+      activeSplits.push({
+        mode: 'cheque',
+        amount: sCheque,
+        base_amount: sCheque,
+        label: 'Cheque',
+        receipt_no: no,
+        utr: null,
+        cheque_no: cheque_no || null,
+        bank_name: bank_name || null,
+        cheque_photo: cheque_photo || null,
+        card_surcharge: 0,
+        upi_tax: 0,
+        split_cash: 0,
+        split_card: 0,
+        split_online: 0,
+        split_cheque: sCheque
+      });
+      receiptNumbers.cheque = no;
+    }
+
+    if (activeSplits.length === 0) {
+      const no = getReceiptNumberWithMode(cleanMode);
+      activeSplits.push({
+        mode: cleanMode,
+        amount: numAmount,
+        base_amount: numAmount,
+        label: cleanMode.toUpperCase(),
+        receipt_no: no,
+        utr: utr_number || null,
+        cheque_no: cheque_no || null,
+        bank_name: bank_name || null,
+        cheque_photo: cheque_photo || null,
+        card_surcharge: parseFloat(card_surcharge) || 0,
+        upi_tax: parseFloat(upi_tax) || 0,
+        split_cash: cleanMode === 'cash' ? numAmount : 0,
+        split_card: cleanMode === 'card' ? numAmount : 0,
+        split_online: (cleanMode === 'upi' || cleanMode === 'online') ? numAmount : 0,
+        split_cheque: cleanMode === 'cheque' ? numAmount : 0
+      });
+      receiptNumbers[cleanMode] = no;
+    }
+
+    const cleanCashier = (cashier_name || req.user?.username || req.user?.name || 'Front Desk Cashier').trim();
+    const isMultiMethod = activeSplits.length > 1;
+    const insertedPaymentRows = [];
+
+    const insertStmt = db.prepare(`
       INSERT INTO payments (
         receipt_no, booking_id, room_id, department, payment_type, payment_mode,
         amount, cheque_no, bank_name, cheque_date, cheque_status, realized_at,
         cashier_name, notes, utr_number, card_surcharge, upi_tax,
         split_cash, split_card, split_online, split_cheque, cheque_photo
       ) VALUES (?, ?, ?, 'hospitality', 'advance', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      receiptNo,
-      booking.id,
-      id,
-      cleanMode,
-      numAmount,
-      cheque_no || null,
-      bank_name || null,
-      new Date().toISOString().split('T')[0],
-      cleanMode === 'cheque' ? 'pending' : 'realized',
-      cleanMode === 'cheque' ? null : new Date().toISOString(),
-      cleanCashier,
-      notes,
-      utr_number || null,
-      parseFloat(card_surcharge) || 0,
-      parseFloat(upi_tax) || 0,
-      parseFloat(split_cash) || 0,
-      parseFloat(split_card) || 0,
-      parseFloat(split_online) || 0,
-      parseFloat(split_cheque) || 0,
-      cheque_photo || null
-    );
+    `);
+
+    for (const splitItem of activeSplits) {
+      const splitNote = isMultiMethod
+        ? `${notes} (${splitItem.label})`
+        : notes;
+      const resInsert = insertStmt.run(
+        splitItem.receipt_no,
+        booking.id,
+        id,
+        splitItem.mode,
+        splitItem.amount,
+        splitItem.cheque_no,
+        splitItem.bank_name,
+        new Date().toISOString().split('T')[0],
+        splitItem.mode === 'cheque' ? 'pending' : 'realized',
+        splitItem.mode === 'cheque' ? null : new Date().toISOString(),
+        cleanCashier,
+        splitNote,
+        splitItem.utr,
+        splitItem.card_surcharge,
+        splitItem.upi_tax,
+        splitItem.split_cash,
+        splitItem.split_card,
+        splitItem.split_online,
+        splitItem.split_cheque,
+        splitItem.cheque_photo
+      );
+      const row = db.prepare('SELECT * FROM payments WHERE id = ?').get(resInsert.lastInsertRowid);
+      insertedPaymentRows.push(row);
+    }
 
     // Update booking paid aggregates
     const newTotalPaid = (Number(booking.total_paid) || 0) + numAmount;
-    const newSplitCash = (Number(booking.split_cash) || 0) + (parseFloat(split_cash) || (cleanMode === 'cash' ? numAmount : 0));
-    const newSplitCard = (Number(booking.split_card) || 0) + (parseFloat(split_card) || (cleanMode === 'card' ? numAmount : 0));
-    const newSplitOnline = (Number(booking.split_online) || 0) + (parseFloat(split_online) || (cleanMode === 'upi' || cleanMode === 'online' ? numAmount : 0));
+    const newSplitCash = (Number(booking.split_cash) || 0) + (sCash || (cleanMode === 'cash' ? numAmount : 0));
+    const newSplitCard = (Number(booking.split_card) || 0) + (sCard || (cleanMode === 'card' ? numAmount : 0));
+    const newSplitOnline = (Number(booking.split_online) || 0) + (sOnline || (cleanMode === 'upi' || cleanMode === 'online' ? numAmount : 0));
 
     db.prepare(`
       UPDATE bookings
@@ -2370,14 +2837,17 @@ app.post('/api/rooms/:id/payments', requireAuth, (req, res) => {
       WHERE id = ?
     `).run(newTotalPaid, newSplitCash, newSplitCard, newSplitOnline, booking.id);
 
-    const paymentRow = db.prepare('SELECT * FROM payments WHERE id = ?').get(result.lastInsertRowid);
+    const primaryReceiptNo = insertedPaymentRows.map(p => p.receipt_no).join(', ');
 
     res.json({
       success: true,
-      payment: paymentRow,
-      receipt_no: receiptNo,
+      payment: insertedPaymentRows[0],
+      payments: insertedPaymentRows,
+      receipt_no: primaryReceiptNo,
+      receiptNumbers,
+      receipt_numbers: receiptNumbers,
       total_paid: newTotalPaid,
-      message: `Advance payment of ₹${numAmount.toLocaleString('en-IN')} recorded successfully with Receipt #${receiptNo}`
+      message: `Advance payment of ₹${numAmount.toLocaleString('en-IN')} recorded successfully with Receipt #${primaryReceiptNo}`
     });
   } catch (err) {
     console.error('In-stay payment error:', err);
@@ -2427,30 +2897,75 @@ app.post('/api/rooms/:id/visitors', requireAuth, requireRole('manager', 'hospita
       return res.status(400).json({ success: false, error: 'Visitor name is required.' });
     }
 
-    const room = db.prepare('SELECT current_booking_id FROM rooms WHERE id = ?').get(id);
+    const room = db.prepare('SELECT id, room_number, current_booking_id FROM rooms WHERE id = ?').get(id);
     const bookingId = room ? room.current_booking_id : null;
     if (!bookingId) {
       return res.status(400).json({ success: false, error: 'Cannot log visitor: Room is not currently occupied.' });
     }
 
+    const isBreakfast = Boolean(has_breakfast && has_breakfast !== '0' && has_breakfast !== 'false');
+    const vStatus = (breakfast_status || 'pending').toLowerCase();
+    const vPrice = parseFloat(breakfast_amount) || 250;
+    let fnbOrderId = null;
+
+    if (isBreakfast) {
+      const vGstPct = getFnbGstRate('restaurant');
+      const vTax = Math.round(vPrice * (vGstPct / 100));
+      const vTotal = vPrice + vTax;
+      const vIsPaid = (vStatus === 'paid') ? 1 : 0;
+      const vMode = vIsPaid ? 'cash' : 'room_folio';
+      const vOrderNum = 'RES-V' + Date.now().toString().slice(-5) + Math.floor(Math.random() * 90 + 10);
+      const vItems = [
+        {
+          id: 'visitor-breakfast',
+          name: `Visitor Breakfast Plan (${visitor_name.trim()})`,
+          price: vPrice,
+          quantity: 1,
+          total: vPrice
+        }
+      ];
+
+      const inserted = db.prepare(`
+        INSERT INTO restaurant_orders (
+          order_number, room_id, booking_id, customer_name, order_type, table_number,
+          waiter_name, items_json, subtotal, tax, discount, total,
+          payment_mode, is_paid, cashier_name, status, created_at
+        ) VALUES (?, ?, ?, ?, 'room', ?, 'Visitor Breakfast', ?, ?, ?, 0, ?, ?, ?, 'Front Desk', 'completed', datetime('now', 'localtime'))
+      `).run(
+        vOrderNum,
+        room.id,
+        bookingId,
+        `Room ${room.room_number} - Visitor: ${visitor_name.trim()}`,
+        `Room ${room.room_number}`,
+        JSON.stringify(vItems),
+        vPrice,
+        vTax,
+        vTotal,
+        vMode,
+        vIsPaid
+      );
+      fnbOrderId = inserted.lastInsertRowid;
+    }
+
     const stmt = db.prepare(`
       INSERT INTO room_visitors (
-        booking_id, room_id, visitor_name, phone, relation, custom_relation, purpose, visitor_photo, has_breakfast, breakfast_status, breakfast_amount, checkin_time, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), 'IN_ROOM')
+        booking_id, room_id, visitor_name, phone, relation, custom_relation, purpose, visitor_photo, has_breakfast, breakfast_status, breakfast_amount, fnb_order_id, checkin_time, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), 'IN_ROOM')
     `);
 
     const result = stmt.run(
       bookingId,
-      id,
+      room.id,
       visitor_name.trim(),
       (phone || '').trim(),
       (relation || 'Friend').trim(),
       (custom_relation || '').trim(),
       (purpose || '').trim(),
       visitor_photo || '',
-      has_breakfast ? 1 : 0,
-      (breakfast_status || 'pending').toLowerCase(),
-      parseFloat(breakfast_amount) || 250
+      isBreakfast ? 1 : 0,
+      vStatus,
+      vPrice,
+      fnbOrderId
     );
 
     const newVisitor = db.prepare('SELECT * FROM room_visitors WHERE id = ?').get(result.lastInsertRowid);
@@ -2482,6 +2997,13 @@ app.post('/api/visitors/:id/checkout', requireAuth, requireRole('manager', 'hosp
 app.delete('/api/visitors/:id', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
+    const visitor = db.prepare('SELECT * FROM room_visitors WHERE id = ?').get(id);
+    if (visitor && visitor.fnb_order_id) {
+      const order = db.prepare('SELECT is_paid FROM restaurant_orders WHERE id = ?').get(visitor.fnb_order_id);
+      if (order && !order.is_paid) {
+        db.prepare('DELETE FROM restaurant_orders WHERE id = ?').run(visitor.fnb_order_id);
+      }
+    }
     db.prepare('DELETE FROM room_visitors WHERE id = ?').run(id);
     res.json({ success: true });
   } catch (err) {
@@ -2598,6 +3120,14 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       WHERE ((booking_id IN (${activeBookingPlaceholders})) OR (booking_id IS NULL AND room_id IN (${placeholders}) AND datetime(created_at) >= ?))
         AND is_paid = 0
     `).run(checkoutTime, cleanCheckedOutBy, ...activeBookingIds, ...groupRoomIds, checkinLocal);
+
+    try {
+      db.prepare(`
+        UPDATE room_visitors 
+        SET breakfast_status = 'paid' 
+        WHERE booking_id IN (${activeBookingPlaceholders}) AND has_breakfast = 1
+      `).run(...activeBookingIds);
+    } catch (_) {}
 
     const netSettle = parseFloat(settle_amount) || 0;
     const netRefund = parseFloat(refund_amount) || 0;
@@ -6357,15 +6887,18 @@ app.post(['/api/save-invoice-pdf', '/api/auto-save-receipt'], async (req, res) =
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const safeFilename = filename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const baseName = filename.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeFilename = `${baseName}.pdf`;
     const targetPath = path.join(targetDir, safeFilename);
 
     if (pdfBase64) {
-      const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+      const cleanBase64 = pdfBase64.includes(';base64,')
+        ? pdfBase64.split(';base64,').pop()
+        : pdfBase64.replace(/^data:[^,]+,/, '');
       const buffer = Buffer.from(cleanBase64, 'base64');
       fs.writeFileSync(targetPath, buffer);
     } else if (htmlContent) {
-      const htmlPath = targetPath.endsWith('.html') ? targetPath : targetPath.replace(/\.pdf$/i, '.html');
+      const htmlPath = path.join(targetDir, `${baseName}.html`);
       fs.writeFileSync(htmlPath, htmlContent, 'utf8');
     } else {
       return res.status(400).json({ success: false, error: 'No pdfBase64 or htmlContent provided to save' });
@@ -6496,9 +7029,10 @@ app.post('/api/settings/ai-key', requireAuth, requireRole('manager'), (req, res)
 });
 
 // Clean Slate / Purge Demo Transactions Endpoint
-const { cleanDemoData } = require('./services/dbCleanService');
 app.post('/api/settings/clean-demo-data', requireAuth, requireRole('manager'), async (req, res) => {
   try {
+    delete require.cache[require.resolve('./services/dbCleanService')];
+    const { cleanDemoData } = require('./services/dbCleanService');
     const stats = cleanDemoData(db);
     // Clear Supabase cloud occupancies as well
     try {
@@ -7791,24 +8325,27 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
         b.status as booking_status,
         b.is_igst,
         b.tax_type,
-        b.created_at
+        b.created_at,
+        b.is_early_checkin,
+        b.early_checkin_charge,
+        b.extension_logs_json
       FROM bookings b
       JOIN guests g ON b.guest_id = g.id
       JOIN rooms r ON b.room_id = r.id
       LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
-      WHERE 1=1
+      WHERE (b.status = 'checked_out' OR (b.actual_checkout_time IS NOT NULL AND b.status != 'cancelled'))
     `;
 
     const params = [];
 
-    // Filter by checkout date (or fallback to checkin date)
+    // Filter strictly by checkout date
     if (startDate) {
-      sql += ` AND DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time)) >= ?`;
-      params.push(startDate);
+      sql += ` AND (DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time), 'localtime') >= DATE(?) OR DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time)) >= DATE(?))`;
+      params.push(startDate, startDate);
     }
     if (endDate) {
-      sql += ` AND DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time)) <= ?`;
-      params.push(endDate);
+      sql += ` AND (DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time), 'localtime') <= DATE(?) OR DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time)) <= DATE(?))`;
+      params.push(endDate, endDate);
     }
 
     if (searchQuery) {
@@ -7825,18 +8362,52 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
         g.company_name LIKE ? OR 
         g.gst_number LIKE ? OR 
         b.ota_platform LIKE ? OR 
-        b.btc_company_name LIKE ?
+        b.btc_company_name LIKE ? OR
+        c.company_name LIKE ? OR
+        c.gst_number LIKE ?
       )`;
-      for (let i = 0; i < 12; i++) params.push(s);
+      for (let i = 0; i < 14; i++) params.push(s);
     }
 
-    sql += ` ORDER BY COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time) DESC, b.id DESC`;
+    sql += ` ORDER BY COALESCE(b.actual_checkout_time, b.approx_checkout_time) DESC, b.id DESC`;
     if (limit && parseInt(limit) > 0) {
       sql += ` LIMIT ?`;
       params.push(parseInt(limit));
     }
 
     const rows = db.prepare(sql).all(...params);
+
+    // Helper to format Tax Invoice Number (e.g. 261002-618 -> HCP618)
+    const formatTaxInvoiceNumberLocal = (val) => {
+      if (!val) return 'HCP1';
+      const str = String(val).trim();
+      if (/^HCP\d+$/i.test(str)) {
+        return str.toUpperCase();
+      }
+      if (/^L\d+$/i.test(str)) {
+        return `HCP${str.slice(1)}`;
+      }
+      const match = str.match(/-(\d+)$/);
+      if (match) {
+        return `HCP${match[1]}`;
+      }
+      if (/^\d{1,4}$/.test(str)) {
+        return `HCP${str}`;
+      }
+      return str;
+    };
+
+    // Pre-fetch visitors breakfast amounts grouped by booking_id
+    const visitorsBreakfastRows = db.prepare(`
+      SELECT booking_id, SUM(breakfast_amount) as total_visitor_breakfast 
+      FROM room_visitors 
+      WHERE has_breakfast = 1 
+      GROUP BY booking_id
+    `).all();
+    const visitorBreakfastMap = new Map();
+    visitorsBreakfastRows.forEach(v => {
+      visitorBreakfastMap.set(v.booking_id, Number(v.total_visitor_breakfast || 0));
+    });
 
     // Group multi-room bookings by voucher number / stay session so each Bill = 1 row
     const billMap = new Map();
@@ -7850,57 +8421,83 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       const checkoutDate = row.actual_checkout_time ? new Date(row.actual_checkout_time) : (row.approx_checkout_time ? new Date(row.approx_checkout_time) : new Date());
       const stayDays = Math.max(1, Math.round(Math.max(0, checkoutDate.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24)));
 
+      const isOta = (row.booking_source || '').toUpperCase() === 'OTA' || Boolean(row.ota_platform);
+
+      // Pre-checkin fees (early checkin charge) pre-tax base:
+      const earlyCheckinAmt = Number(row.early_checkin_charge || 0);
+      const earlyCheckinBase = earlyCheckinAmt > 0
+        ? (isOta ? Math.round(earlyCheckinAmt * 0.95 * 100) / 100 : Math.round((earlyCheckinAmt / 1.05) * 100) / 100)
+        : 0;
+
+      // Extra hours / stay extension pre-tax base:
+      let extensionBase = 0;
+      if (row.extension_logs_json) {
+        try {
+          const extLogs = typeof row.extension_logs_json === 'string' ? JSON.parse(row.extension_logs_json) : row.extension_logs_json;
+          if (Array.isArray(extLogs)) {
+            extLogs.forEach(ext => {
+              const extAmt = Number(ext.amount || ext.charge || ext.cost || ext.extension_charge || 0);
+              if (extAmt > 0) {
+                extensionBase += isOta ? (extAmt * 0.95) : (extAmt / 1.05);
+              }
+            });
+            extensionBase = Math.round(extensionBase * 100) / 100;
+          }
+        } catch (_) {}
+      }
+
       // Base room rent calculation
       const extraMattressRow = Number(row.extra_bed_charge > 0 ? row.extra_bed_charge : ((row.extra_beds || 0) * 500));
+      const visitorBreakfastRow = (visitorBreakfastMap.get(row.booking_id) || 0) + Number(row.extra_breakfast_charge || 0);
       const discountRow = Number(row.discount_amount || 0);
       
       let baseRentRow = 0;
       if (row.room_rate && row.room_rate > 0) {
-        baseRentRow = Number(row.room_rate) * stayDays;
+        baseRentRow = (Number(row.room_rate) * stayDays) + earlyCheckinBase + extensionBase;
       } else if (row.total_room_charge > 0) {
         const taxablePortion = Math.round((row.total_room_charge / 1.05) * 100) / 100;
-        baseRentRow = Math.max(0, taxablePortion - extraMattressRow + discountRow);
+        baseRentRow = Math.max(0, taxablePortion - extraMattressRow - visitorBreakfastRow + discountRow);
       }
 
-      if (!billMap.has(groupKey)) {
-        // Name Of Customer GST resolution:
-        // "if choosed ota then its name / or insert comapany name & gst number in form then it will show here , if not any simply name of customer willl appear here"
-        const isOta = (row.booking_source || '').toUpperCase() === 'OTA' || Boolean(row.ota_platform);
-        let nameOfCustomerGst = '';
-        if (isOta) {
-          nameOfCustomerGst = row.ota_platform || 'OTA';
-        } else if (row.booking_company_name && row.booking_company_name.trim()) {
-          nameOfCustomerGst = row.booking_company_name.trim();
-        } else if (row.btc_company_name && row.btc_company_name.trim()) {
-          nameOfCustomerGst = row.btc_company_name.trim();
-        } else if (row.guest_company_name && row.guest_company_name.trim()) {
-          nameOfCustomerGst = row.guest_company_name.trim();
-        } else {
-          nameOfCustomerGst = row.guest_name || 'Guest';
-        }
+      // Name Of Company resolution:
+      let nameOfCompany = '';
+      if (isOta) {
+        nameOfCompany = row.ota_platform ? row.ota_platform.trim() : 'OTA';
+      } else if (row.booking_company_name && row.booking_company_name.trim()) {
+        nameOfCompany = row.booking_company_name.trim();
+      } else if (row.btc_company_name && row.btc_company_name.trim()) {
+        nameOfCompany = row.btc_company_name.trim();
+      } else if (row.btc_ref_company_name && row.btc_ref_company_name.trim()) {
+        nameOfCompany = row.btc_ref_company_name.trim();
+      } else if (row.guest_company_name && row.guest_company_name.trim()) {
+        nameOfCompany = row.guest_company_name.trim();
+      } else {
+        nameOfCompany = '-';
+      }
 
-        // GST No of Customer resolution:
-        // "if ota choosed there gst number, if inserted in form then it will appear here , if not anything then nothingwill here just give '-'"
-        let gstNoOfCustomer = '';
-        if (isOta) {
-          gstNoOfCustomer = row.booking_gst_number || row.guest_gst_number || '';
-          if (!gstNoOfCustomer) {
-            if (/makemytrip|mmt|goibibo/i.test(row.ota_platform || '')) {
-              gstNoOfCustomer = '27AABCM6906E1ZW';
-            } else if (/booking\.?com/i.test(row.ota_platform || '')) {
-              gstNoOfCustomer = '27AAGCB6887F1Z8';
-            } else if (/agoda/i.test(row.ota_platform || '')) {
-              gstNoOfCustomer = '9919SGP29004OS2';
-            }
+      // GST No of Company resolution:
+      let gstNoOfCompany = '';
+      if (isOta) {
+        gstNoOfCompany = (row.booking_gst_number || row.guest_gst_number || '').trim();
+        if (!gstNoOfCompany) {
+          if (/makemytrip|mmt|goibibo/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '27AABCM6906E1ZW';
+          } else if (/booking\.?com/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '27AAGCB6887F1Z8';
+          } else if (/agoda/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '9919SGP29004OS2';
           }
-        } else {
-          gstNoOfCustomer = row.booking_gst_number || row.guest_gst_number || row.btc_gst_number || '';
         }
-        gstNoOfCustomer = (gstNoOfCustomer && gstNoOfCustomer.trim()) ? gstNoOfCustomer.trim() : '-';
+      } else {
+        gstNoOfCompany = (row.booking_gst_number || row.btc_gst_number || row.guest_gst_number || '').trim();
+      }
+      gstNoOfCompany = gstNoOfCompany || '-';
 
-        // Bill No & Invoice No resolution:
-        const billNo = cleanVoucher;
-        const invoiceNo = row.final_receipt_no ? String(row.final_receipt_no).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : cleanVoucher;
+      if (!billMap.has(groupKey)) {
+        // Voucher No & Invoice No (HCP..) resolution:
+        const voucherNo = cleanVoucher;
+        const rawReceipt = row.final_receipt_no || cleanVoucher;
+        const invoiceNo = formatTaxInvoiceNumberLocal(rawReceipt);
 
         // Date of checkout
         const rawCheckout = row.actual_checkout_time || row.approx_checkout_time || row.checkin_time;
@@ -7915,15 +8512,19 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
           booking_ids: [row.booking_id],
           checkout_date_raw: rawCheckout,
           date_of_checkout: formattedDate,
-          is_checked_out: Boolean(row.actual_checkout_time),
-          bill_no: billNo,
+          is_checked_out: true,
+          bill_no: voucherNo,
+          voucher_no: voucherNo,
           invoice_number: invoiceNo,
           name_of_customer: row.guest_name || 'Guest',
           room_rent_base: baseRentRow,
           extra_mattress_pax: extraMattressRow,
+          visitor_breakfast_base: visitorBreakfastRow,
           discount: discountRow,
-          name_of_customer_gst: nameOfCustomerGst,
-          gst_no_of_customer: gstNoOfCustomer,
+          name_of_customer_gst: nameOfCompany,
+          name_of_company: nameOfCompany,
+          gst_no_of_customer: gstNoOfCompany,
+          gst_no_of_company: gstNoOfCompany,
           rooms: [row.room_number],
           room_type: row.room_type,
           booking_source: row.booking_source,
@@ -7940,9 +8541,19 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
         }
         item.room_rent_base += baseRentRow;
         item.extra_mattress_pax += extraMattressRow;
+        item.visitor_breakfast_base += visitorBreakfastRow;
         item.discount += discountRow;
         item.total_room_charge += (row.total_room_charge || 0);
         item.total_paid += (row.total_paid || 0);
+
+        if (item.name_of_company === '-' && nameOfCompany !== '-') {
+          item.name_of_company = nameOfCompany;
+          item.name_of_customer_gst = nameOfCompany;
+        }
+        if (item.gst_no_of_company === '-' && gstNoOfCompany !== '-') {
+          item.gst_no_of_company = gstNoOfCompany;
+          item.gst_no_of_customer = gstNoOfCompany;
+        }
       }
     });
 
@@ -7950,7 +8561,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
 
     // Calculate CGST & SGST for each bill item
     records.forEach(item => {
-      const taxable = Math.max(0, item.room_rent_base + item.extra_mattress_pax - item.discount);
+      const taxable = Math.max(0, item.room_rent_base + item.extra_mattress_pax + (item.visitor_breakfast_base || 0) - item.discount);
       const totalGst = Number((taxable * 0.05).toFixed(2));
       const cgst = Number((totalGst / 2).toFixed(2));
       const sgst = Number((totalGst - cgst).toFixed(2));
@@ -7989,14 +8600,14 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       return true;
     };
 
-    // Apply Bill No range filter if provided
+    // Apply Bill No / Voucher No range filter if provided
     if (startBill || endBill) {
-      records = records.filter(item => filterByNumberRange(item.bill_no, startBill, endBill));
+      records = records.filter(item => filterByNumberRange(item.voucher_no || item.bill_no, startBill, endBill));
     }
 
-    // Apply Voucher No range filter if provided
+    // Apply Voucher / Invoice No range filter if provided
     if (startVoucher || endVoucher) {
-      records = records.filter(item => filterByNumberRange(item.invoice_number, startVoucher, endVoucher) || filterByNumberRange(item.bill_no, startVoucher, endVoucher));
+      records = records.filter(item => filterByNumberRange(item.invoice_number, startVoucher, endVoucher) || filterByNumberRange(item.voucher_no || item.bill_no, startVoucher, endVoucher));
     }
 
     // Calculate Summary Totals
@@ -8004,6 +8615,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       acc.total_records += 1;
       acc.total_room_rent_base += it.room_rent_base;
       acc.total_extra_mattress += it.extra_mattress_pax;
+      acc.total_visitor_breakfast += (it.visitor_breakfast_base || 0);
       acc.total_discount += it.discount;
       acc.total_cgst += it.cgst;
       acc.total_sgst += it.sgst;
@@ -8014,6 +8626,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       total_records: 0,
       total_room_rent_base: 0,
       total_extra_mattress: 0,
+      total_visitor_breakfast: 0,
       total_discount: 0,
       total_cgst: 0,
       total_sgst: 0,
@@ -8023,6 +8636,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
 
     summary.total_room_rent_base = Number(summary.total_room_rent_base.toFixed(2));
     summary.total_extra_mattress = Number(summary.total_extra_mattress.toFixed(2));
+    summary.total_visitor_breakfast = Number(summary.total_visitor_breakfast.toFixed(2));
     summary.total_discount = Number(summary.total_discount.toFixed(2));
     summary.total_cgst = Number(summary.total_cgst.toFixed(2));
     summary.total_sgst = Number(summary.total_sgst.toFixed(2));
@@ -8038,6 +8652,334 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
   } catch (err) {
     console.error('Accounting analysis fetch error:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 17C. MANAGER ACCOUNTING EMAIL DISPATCH & RECIPIENT SETTINGS
+// -------------------------------------------------------------
+function escapeHtmlAccountingEmail(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+app.get('/api/manager/accounting-email', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (_) {}
+    const row = db.prepare("SELECT value FROM system_settings WHERE key = 'accounting_recipient_email'").get();
+    res.json({ success: true, email: row?.value || '' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/manager/accounting-email', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (_) {}
+    const { email } = req.body;
+    const cleanEmail = (email || '').trim();
+    db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('accounting_recipient_email', ?, CURRENT_TIMESTAMP)").run(cleanEmail);
+    res.json({ success: true, email: cleanEmail });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/manager/smtp-settings', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const getVal = (k) => db.prepare("SELECT value FROM system_settings WHERE key = ?").get(k)?.value;
+    const smtpHost = getVal('smtp_host') || process.env.SMTP_HOST || 'smtp.gmail.com';
+    const smtpPort = getVal('smtp_port') || process.env.SMTP_PORT || '587';
+    const smtpUser = getVal('smtp_user') || process.env.SMTP_USER || process.env.EMAIL_USER || '';
+    const smtpPass = getVal('smtp_pass') || process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+    const smtpFrom = getVal('smtp_from') || process.env.SMTP_FROM || '';
+
+    res.json({
+      success: true,
+      configured: Boolean(smtpUser && smtpPass),
+      smtpHost,
+      smtpPort,
+      smtpUser,
+      hasPassword: Boolean(smtpPass),
+      smtpFrom
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/manager/smtp-settings', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom } = req.body;
+
+    const setSetting = (k, v) => {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)").run(k, String(v));
+    };
+
+    if (smtpHost !== undefined && smtpHost !== '') {
+      setSetting('smtp_host', smtpHost.trim());
+      process.env.SMTP_HOST = smtpHost.trim();
+    }
+    if (smtpPort !== undefined && smtpPort !== '') {
+      setSetting('smtp_port', String(smtpPort).trim());
+      process.env.SMTP_PORT = String(smtpPort).trim();
+    }
+    if (smtpUser !== undefined) {
+      setSetting('smtp_user', smtpUser.trim());
+      process.env.SMTP_USER = smtpUser.trim();
+    }
+    if (smtpPass !== undefined && smtpPass.trim() !== '') {
+      setSetting('smtp_pass', smtpPass.trim());
+      process.env.SMTP_PASS = smtpPass.trim();
+    }
+    if (smtpFrom !== undefined) {
+      setSetting('smtp_from', smtpFrom.trim());
+      process.env.SMTP_FROM = smtpFrom.trim();
+    }
+
+    // Persist to .env file
+    try {
+      const envPath = path.join(__dirname, '.env');
+      if (fs.existsSync(envPath)) {
+        let envContent = fs.readFileSync(envPath, 'utf8');
+        const updateOrAppend = (key, val) => {
+          if (!val) return;
+          const regex = new RegExp(`^${key}=.*$`, 'm');
+          if (regex.test(envContent)) {
+            envContent = envContent.replace(regex, `${key}=${val}`);
+          } else {
+            envContent += `\n${key}=${val}`;
+          }
+        };
+        if (smtpHost) updateOrAppend('SMTP_HOST', smtpHost.trim());
+        if (smtpPort) updateOrAppend('SMTP_PORT', String(smtpPort).trim());
+        if (smtpUser) updateOrAppend('SMTP_USER', smtpUser.trim());
+        if (smtpPass && smtpPass.trim()) updateOrAppend('SMTP_PASS', smtpPass.trim());
+        if (smtpFrom) updateOrAppend('SMTP_FROM', smtpFrom.trim());
+        fs.writeFileSync(envPath, envContent.trim() + '\n', 'utf8');
+      }
+    } catch (_) {}
+
+    res.json({ success: true, message: 'SMTP settings updated successfully!' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/manager/send-accounting-email', requireAuth, requireRole('manager', 'hospitality'), async (req, res) => {
+  try {
+    const { email, filename, excelXml, summary = {}, filters = {}, recordsCount } = req.body;
+    const recipientEmail = (email || '').trim();
+    if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      return res.status(400).json({ success: false, error: 'Valid recipient email address is required' });
+    }
+
+    if (!excelXml || typeof excelXml !== 'string') {
+      return res.status(400).json({ success: false, error: 'Excel file data is required' });
+    }
+
+    // Save as current recipient email in system_settings
+    try {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('accounting_recipient_email', ?, CURRENT_TIMESTAMP)").run(recipientEmail);
+    } catch (_) {}
+
+    // Check system_settings or process.env for SMTP config
+    let smtpHost = process.env.SMTP_HOST;
+    let smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : null;
+    let smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+    let smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    let smtpFrom = process.env.SMTP_FROM;
+
+    try {
+      const getVal = (k) => db.prepare("SELECT value FROM system_settings WHERE key = ?").get(k)?.value;
+      if (!smtpHost) smtpHost = getVal('smtp_host') || 'smtp.gmail.com';
+      if (!smtpPort) smtpPort = parseInt(getVal('smtp_port') || '587', 10);
+      if (!smtpUser) smtpUser = getVal('smtp_user');
+      if (!smtpPass) smtpPass = getVal('smtp_pass');
+      if (!smtpFrom) smtpFrom = getVal('smtp_from');
+    } catch (_) {}
+
+    if (!smtpHost) smtpHost = 'smtp.gmail.com';
+    if (!smtpPort) smtpPort = 587;
+    if (!smtpFrom) {
+      smtpFrom = smtpUser ? `"Hotel City Park" <${smtpUser}>` : '"Hotel City Park" <hcitypark@rediffmail.com>';
+    }
+
+    const fromDt = filters.fromDate || filters.from_date || 'Start';
+    const toDt = filters.toDate || filters.to_date || 'Present';
+    const totalBills = recordsCount || summary.total_records || '0';
+    const netTotal = summary.net_payable_total || summary.total_grand || summary.total_room_rent_base || '0.00';
+    const roomRentBase = summary.total_room_rent_base || '0.00';
+    const extraMattress = summary.total_extra_mattress || '0.00';
+    const extraBreakfast = summary.total_visitor_breakfast || '0.00';
+    const totalDiscount = summary.total_discount || '0.00';
+    const totalCgst = summary.total_cgst || '0.00';
+    const totalSgst = summary.total_sgst || '0.00';
+
+    const safeFilename = filename || `Accounting_Analysis_${new Date().toISOString().slice(0, 10)}.xls`;
+
+    const htmlBody = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 24px; border: 1.5px solid #e2e8f0; border-radius: 14px; background-color: #ffffff; color: #1e293b;">
+        <div style="border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 20px;">
+          <h2 style="margin: 0; color: #1e3a8a; font-size: 22px; font-weight: 850;">HOTEL CITY PARK - SOLAPUR</h2>
+          <p style="margin: 4px 0 0; color: #64748b; font-size: 13px;">Hospitality &amp; POS Suite • Accounting &amp; Analysis Audit</p>
+        </div>
+
+        <p style="font-size: 14px; line-height: 1.5; color: #334155;">
+          Hello,<br/><br/>
+          Attached is the requested <strong>Accounting &amp; Analysis Audit Excel spreadsheet</strong> for the period <strong>${escapeHtmlAccountingEmail(fromDt)} to ${escapeHtmlAccountingEmail(toDt)}</strong>.
+        </p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 20px 0;">
+          <h3 style="margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #475569; font-weight: 800;">Filtered Financial Summary</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">Total Invoices / Bills:</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #0f172a;">${escapeHtmlAccountingEmail(String(totalBills))}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">Room Rent (Base):</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #0f172a;">₹${Number(roomRentBase).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">Extra Mattress (PAX):</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #0f172a;">₹${Number(extraMattress).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">Visitors Extra Breakfast:</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #0f172a;">₹${Number(extraBreakfast).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">Discounts Applied:</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #dc2626;">-₹${Number(totalDiscount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #64748b;">CGST &amp; SGST:</td>
+              <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #16a34a;">₹${(Number(totalCgst) + Number(totalSgst)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top: 1.5px solid #cbd5e1;">
+              <td style="padding: 10px 0 4px; font-weight: 850; font-size: 15px; color: #1e3a8a;">Net Payable Total:</td>
+              <td style="padding: 10px 0 4px; text-align: right; font-weight: 850; font-size: 15px; color: #1e3a8a;">₹${Number(netTotal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="font-size: 13px; color: #64748b; line-height: 1.4;">
+          The full spreadsheet with customer tax IDs, voucher numbers, and tariff breakdowns is attached as <strong>${escapeHtmlAccountingEmail(safeFilename)}</strong>.
+        </p>
+
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; text-align: center;">
+          Sent automatically from Hotel City Park Management Suite • Solapur
+        </div>
+      </div>
+    `;
+
+    // Ensure audit log table exists
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS email_audit_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          recipient_email TEXT NOT NULL,
+          subject TEXT,
+          filename TEXT,
+          status TEXT,
+          error_message TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (_) {}
+
+    if (!smtpUser || !smtpPass) {
+      try {
+        db.prepare(`
+          INSERT INTO email_audit_logs (recipient_email, subject, filename, status, error_message)
+          VALUES (?, ?, ?, 'PENDING_CONFIG', 'SMTP credentials (SMTP_USER / SMTP_PASS) not configured in .env')
+        `).run(recipientEmail, `Hotel City Park - Accounting & Analysis Audit (${fromDt} to ${toDt})`, safeFilename);
+      } catch (_) {}
+
+      return res.status(400).json({
+        success: false,
+        smtpConfigRequired: true,
+        error: 'SMTP credentials not configured. Please add SMTP_USER and SMTP_PASS to your .env file or system settings to dispatch live emails directly from the server.'
+      });
+    }
+
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: {
+        user: smtpUser.trim(),
+        pass: String(smtpPass || '').replace(/\s+/g, '').trim()
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    const mailOptions = {
+      from: smtpFrom,
+      to: recipientEmail,
+      subject: `Hotel City Park - Accounting & Analysis Report (${fromDt} to ${toDt})`,
+      html: htmlBody,
+      attachments: [
+        {
+          filename: safeFilename,
+          content: Buffer.from(excelXml, 'utf-8'),
+          contentType: 'application/vnd.ms-excel'
+        }
+      ]
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+
+    try {
+      db.prepare(`
+        INSERT INTO email_audit_logs (recipient_email, subject, filename, status, error_message)
+        VALUES (?, ?, ?, 'SENT', ?)
+      `).run(recipientEmail, mailOptions.subject, safeFilename, info.messageId || 'OK');
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: `Accounting analysis report successfully sent to ${recipientEmail}`,
+      messageId: info.messageId
+    });
+  } catch (err) {
+    console.error('Error sending accounting email:', err);
+    try {
+      db.prepare(`
+        INSERT INTO email_audit_logs (recipient_email, subject, filename, status, error_message)
+        VALUES (?, ?, ?, 'ERROR', ?)
+      `).run(req.body?.email || 'unknown', 'Accounting & Analysis Report', req.body?.filename || 'report.xls', err.message || 'Error');
+    } catch (_) {}
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to send email: ' + (err.message || 'SMTP transmission error')
+    });
   }
 });
 
@@ -10025,6 +10967,12 @@ app.post('/api/hospitality/settle-fnb-order', requireAuth, (req, res) => {
       }
     }
 
+    if (!isBar) {
+      try {
+        db.prepare("UPDATE room_visitors SET breakfast_status = 'paid' WHERE fnb_order_id = ?").run(orderId);
+      } catch (_) {}
+    }
+
     // Generate receipt number
     const receiptNo = `RCP-${isBar ? 'BAR' : 'RES'}-${Date.now().toString().slice(-6)}`;
 
@@ -10391,7 +11339,7 @@ function mountStaticDist() {
     }));
   }
   // Direct Screen Routes for Multi-Screen setups (serving React app)
-  app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses'], (req, res) => {
+  app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses', '/accounting'], (req, res) => {
     const indexPath = fs.existsSync(path.join(distDir, 'index.html'))
       ? path.join(distDir, 'index.html')
       : path.join(__dirname, 'index.html');
@@ -10401,9 +11349,10 @@ function mountStaticDist() {
 
 
 async function startServer() {
-  const isDev = process.env.NODE_ENV !== 'production' && fs.existsSync(path.join(__dirname, 'src'));
+  const hasDist = fs.existsSync(path.join(distDir, 'index.html'));
+  const isDev = process.env.VITE_DEV === '1' || (process.env.NODE_ENV === 'development' && !hasDist);
 
-  if (isDev) {
+  if (isDev && fs.existsSync(path.join(__dirname, 'src'))) {
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({

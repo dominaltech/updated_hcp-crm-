@@ -71,6 +71,7 @@ export default function RoomServiceChooserModal({
       onClick={onClose}
     >
       <div
+        id="room-service-chooser-modal"
         className="modal-card modal-container"
         style={{
           width: '100vw',
@@ -236,10 +237,11 @@ export default function RoomServiceChooserModal({
             </div>
           ) : (
             <div
-              className="rooms-grid"
+              id="room-service-rooms-grid"
+              className="room-service-grid"
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
                 gap: '18px'
               }}
             >
@@ -250,7 +252,7 @@ export default function RoomServiceChooserModal({
                 return (
                   <div
                     key={room.id}
-                    className="room-card status-occupied"
+                    className="room-service-card"
                     style={{
                       cursor: 'pointer',
                       border: activeOrder ? '2.5px solid var(--apple-blue, #0071e3)' : '2px solid var(--border-color, #e2e8f0)',

@@ -39,18 +39,20 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(managePageContent).toContain("icon: '📑'");
   });
 
-  it('2. Verifies ManagePage renders Accounting & Analysis subview with 10 exact specified columns', () => {
+  it('2. Verifies ManagePage renders Accounting & Analysis subview with 12 exact specified columns', () => {
     expect(managePageContent).toContain("subTab === 'accounting'");
-    expect(managePageContent).toContain('Date of checkout');
-    expect(managePageContent).toContain('Bill no');
+    expect(managePageContent).toContain('C/O');
+    expect(managePageContent).toContain('Voucher No');
     expect(managePageContent).toContain('Invoice number');
     expect(managePageContent).toContain('Name of customer');
     expect(managePageContent).toContain('Room rent (base)');
-    expect(managePageContent).toContain('Extra mattress (PAX)');
+    expect(managePageContent).toContain('Extra mattress (PAX)(base)');
+    expect(managePageContent).toContain('Visitors extra Breakfast (Base)');
     expect(managePageContent).toContain('Discount');
-    expect(managePageContent).toContain('CGST &amp; SGST');
-    expect(managePageContent).toContain('Name Of Customer GST');
-    expect(managePageContent).toContain('GST No of Customer');
+    expect(managePageContent).toContain('CGST');
+    expect(managePageContent).toContain('SGST');
+    expect(managePageContent).toContain('Name Of Company');
+    expect(managePageContent).toContain('GST No of Company');
   });
 
   it('3. Verifies Filter Toolbar supports Date range, Bill number range, Voucher number range, and live Search', () => {
@@ -103,30 +105,42 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(printServiceContent).toContain('exportAccountingAnalysisToCsv');
   });
 
-  it('8. Verifies print layout HTML builder correctly populates all 10 columns and totals', () => {
+  it('8. Verifies print layout HTML builder correctly populates all 12 columns and totals', () => {
     const mockRecords = [
       {
         date_of_checkout: '25-09-2026',
+        voucher_no: '260924-001',
         bill_no: '260924-001',
         invoice_number: '260924-001',
         name_of_customer: 'JAVID RANGREZ',
         room_rent_base: 3250.00,
         extra_mattress_pax: 500.00,
+        visitor_breakfast_base: 150.00,
         discount: 163.00,
+        cgst: 89.68,
+        sgst: 89.67,
         cgst_sgst_total: 179.35,
+        name_of_company: 'JAVID RANGREZ',
         name_of_customer_gst: 'JAVID RANGREZ',
+        gst_no_of_company: '-',
         gst_no_of_customer: '-'
       },
       {
         date_of_checkout: '25-09-2026',
+        voucher_no: '260924-013',
         bill_no: '260924-013',
         invoice_number: '260924-013',
         name_of_customer: 'Group Agoda Guest',
         room_rent_base: 2000.00,
         extra_mattress_pax: 0,
+        visitor_breakfast_base: 0,
         discount: 0,
+        cgst: 50.00,
+        sgst: 50.00,
         cgst_sgst_total: 100.00,
+        name_of_company: 'Agoda',
         name_of_customer_gst: 'Agoda',
+        gst_no_of_company: '9919SGP29004OS2',
         gst_no_of_customer: '9919SGP29004OS2'
       }
     ];
@@ -135,7 +149,10 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
       total_records: 2,
       total_room_rent_base: 5250.00,
       total_extra_mattress: 500.00,
+      total_visitor_breakfast: 150.00,
       total_discount: 163.00,
+      total_cgst: 139.68,
+      total_sgst: 139.67,
       total_cgst_sgst: 279.35,
       total_grand: 5866.35
     };
@@ -150,11 +167,13 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(html).toContain('27AAUFJ0434H1Z7');
     expect(html).toContain('Accounting &amp; Analysis Audit');
     expect(html).toContain('JAVID RANGREZ');
-    expect(html).toContain('260924-001');
+    expect(html).toContain('HCP001');
     expect(html).toContain('3250.00');
     expect(html).toContain('500.00');
+    expect(html).toContain('150.00');
     expect(html).toContain('163.00');
-    expect(html).toContain('179.35');
+    expect(html).toContain('89.68');
+    expect(html).toContain('89.67');
     expect(html).toContain('Group Agoda Guest');
     expect(html).toContain('Agoda');
     expect(html).toContain('9919SGP29004OS2');
@@ -162,43 +181,163 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(html).toContain('TOTAL (2 Bills / Invoices)');
   });
 
-  it('9. Verifies Name Of Customer GST and GST No of Customer rules (OTA vs Company vs Customer fallback and hyphen)', () => {
+  it('9. Verifies Name Of Company and GST No of Company rules (OTA vs Company vs BTC vs Hyphen)', () => {
+    // Helper replicating server logic
+    const resolveCompanyAndGst = (row) => {
+      const isOta = (row.booking_source || '').toUpperCase() === 'OTA' || Boolean(row.ota_platform);
+      let nameOfCompany = '';
+      if (isOta) {
+        nameOfCompany = row.ota_platform ? row.ota_platform.trim() : 'OTA';
+      } else if (row.booking_company_name && row.booking_company_name.trim()) {
+        nameOfCompany = row.booking_company_name.trim();
+      } else if (row.company_name && row.company_name.trim()) {
+        nameOfCompany = row.company_name.trim();
+      } else if (row.btc_company_name && row.btc_company_name.trim()) {
+        nameOfCompany = row.btc_company_name.trim();
+      } else if (row.guest_company_name && row.guest_company_name.trim()) {
+        nameOfCompany = row.guest_company_name.trim();
+      } else {
+        nameOfCompany = '-';
+      }
+
+      let gstNoOfCompany = '';
+      if (isOta) {
+        gstNoOfCompany = (row.booking_gst_number || row.guest_gst_number || '').trim();
+        if (!gstNoOfCompany) {
+          if (/makemytrip|mmt|goibibo/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '27AABCM6906E1ZW';
+          } else if (/booking\.?com/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '27AAGCB6887F1Z8';
+          } else if (/agoda/i.test(row.ota_platform || '')) {
+            gstNoOfCompany = '9919SGP29004OS2';
+          }
+        }
+      } else {
+        gstNoOfCompany = (row.booking_gst_number || row.gst_number || row.btc_gst_number || row.guest_gst_number || '').trim();
+      }
+      gstNoOfCompany = gstNoOfCompany || '-';
+
+      return { nameOfCompany, gstNoOfCompany };
+    };
+
     // Test rule 1: OTA booking
-    const otaRow = {
+    const otaRes = resolveCompanyAndGst({
       booking_source: 'OTA',
       ota_platform: 'MakeMyTrip',
-      guest_name: 'Amit Patel',
-      company_name: null,
-      booking_gst_number: null
-    };
-    const isOta = (otaRow.booking_source || '').toUpperCase() === 'OTA' || Boolean(otaRow.ota_platform);
-    const otaGstName = isOta ? (otaRow.ota_platform || 'OTA') : otaRow.guest_name;
-    expect(otaGstName).toBe('MakeMyTrip');
+      guest_name: 'Amit Patel'
+    });
+    expect(otaRes.nameOfCompany).toBe('MakeMyTrip');
+    expect(otaRes.gstNoOfCompany).toBe('27AABCM6906E1ZW');
 
-    // Test rule 2: Company name inserted in form
-    const corpRow = {
+    // Test rule 2: Corporate details entered in stage 4 or booking
+    const corpRes = resolveCompanyAndGst({
       booking_source: 'Walk-in',
-      ota_platform: null,
       company_name: 'Tata Consultancy Services',
       gst_number: '27AAACT0000A1Z5',
       guest_name: 'Rajesh Kumar'
-    };
-    const corpGstName = corpRow.company_name || corpRow.guest_name;
-    const corpGstNo = corpRow.gst_number || '-';
-    expect(corpGstName).toBe('Tata Consultancy Services');
-    expect(corpGstNo).toBe('27AAACT0000A1Z5');
+    });
+    expect(corpRes.nameOfCompany).toBe('Tata Consultancy Services');
+    expect(corpRes.gstNoOfCompany).toBe('27AAACT0000A1Z5');
 
-    // Test rule 3: Standard walk-in guest without company or GST
-    const walkinRow = {
+    // Test rule 3: BTC Corporate company
+    const btcRes = resolveCompanyAndGst({
+      booking_source: 'BTC',
+      btc_company_name: 'Infosys BPM',
+      btc_gst_number: '27AAACI1234F1Z0',
+      guest_name: 'Anjali Sharma'
+    });
+    expect(btcRes.nameOfCompany).toBe('Infosys BPM');
+    expect(btcRes.gstNoOfCompany).toBe('27AAACI1234F1Z0');
+
+    // Test rule 4: Standard walk-in guest without company or GST -> MUST BE '-' and NEVER guest's personal name
+    const walkinRes = resolveCompanyAndGst({
       booking_source: 'Walk-in',
-      ota_platform: null,
       company_name: null,
       gst_number: null,
-      guest_name: 'Suresh Patil'
-    };
-    const walkinGstName = walkinRow.company_name || walkinRow.guest_name;
-    const walkinGstNo = walkinRow.gst_number || '-';
-    expect(walkinGstName).toBe('Suresh Patil');
-    expect(walkinGstNo).toBe('-');
+      guest_name: 'Md Yahya Ab Wahid Mundewadi'
+    });
+    expect(walkinRes.nameOfCompany).toBe('-');
+    expect(walkinRes.gstNoOfCompany).toBe('-');
+  });
+
+  it('10. Verifies only checked out bookings enter the Accounting & Analysis report', () => {
+    const freshServer = fs.readFileSync(serverPath, 'utf-8');
+    const freshReleaseServer = fs.readFileSync(releaseServerPath, 'utf-8');
+    [freshServer, freshReleaseServer].forEach((content) => {
+      expect(content).toContain("b.status = 'checked_out' OR (b.actual_checkout_time IS NOT NULL AND b.status != 'cancelled')");
+      expect(content).toContain("nameOfCompany = '-'");
+    });
+  });
+
+  it('11. Verifies top navigation in Header includes Accounting & Analysis button linking to ManagePage accounting tab', () => {
+    const headerPath = path.resolve(__dirname, '../src/layouts/Header.jsx');
+    const headerContent = fs.readFileSync(headerPath, 'utf-8');
+
+    expect(headerContent).toContain('id="tab-hosp-accounting"');
+    expect(headerContent).toContain('Accounting &amp; Analysis');
+    expect(headerContent).toContain("manageSubTab === 'accounting'");
+    expect(headerContent).toContain("setManageSubTab('accounting')");
+
+    const appContextPath = path.resolve(__dirname, '../src/context/AppContext.jsx');
+    const appContextContent = fs.readFileSync(appContextPath, 'utf-8');
+
+    expect(appContextContent).toContain('manageSubTab');
+    expect(appContextContent).toContain('setManageSubTab');
+    expect(appContextContent).toContain("openManagerLock = useCallback((dept = 'hospitality', targetTab = null)");
+
+    expect(managePageContent).toContain('manageSubTab');
+    expect(managePageContent).toContain('setManageSubTab');
+  });
+
+  it('12. Verifies subtitle "Itemised revenue audit..." is removed from ManagePage.jsx', () => {
+    const freshManage = fs.readFileSync(managePagePath, 'utf-8');
+    expect(freshManage).not.toContain('Itemised revenue audit of checkout bills, base tariffs, extra PAX mattresses, discounts, CGST &amp; SGST breakdown, and customer tax IDs.');
+    expect(freshManage).not.toContain('Itemised revenue audit of checkout bills');
+  });
+
+  it('13. Verifies email input, Save button, and Send button are placed to the left of Download Excel', () => {
+    const freshManage = fs.readFileSync(managePagePath, 'utf-8');
+    expect(freshManage).toContain('id="input-accounting-email"');
+    expect(freshManage).toContain('id="btn-accounting-save-email"');
+    expect(freshManage).toContain('id="btn-accounting-send-email"');
+    expect(freshManage).toContain('btn-accounting-download-excel');
+
+    // Verify ordering: input-accounting-email precedes btn-accounting-download-excel
+    const emailInputIdx = freshManage.indexOf('id="input-accounting-email"');
+    const sendBtnIdx = freshManage.indexOf('id="btn-accounting-send-email"');
+    const downloadExcelIdx = freshManage.indexOf('id="btn-accounting-download-excel"');
+
+    expect(emailInputIdx).toBeGreaterThan(-1);
+    expect(sendBtnIdx).toBeGreaterThan(-1);
+    expect(downloadExcelIdx).toBeGreaterThan(-1);
+    expect(emailInputIdx).toBeLessThan(downloadExcelIdx);
+    expect(sendBtnIdx).toBeLessThan(downloadExcelIdx);
+  });
+
+  it('14. Verifies server.js, release/server.js and api.js define accounting email endpoints and methods', () => {
+    const freshServer = fs.readFileSync(serverPath, 'utf-8');
+    const freshReleaseServer = fs.readFileSync(releaseServerPath, 'utf-8');
+    const freshApi = fs.readFileSync(apiPath, 'utf-8');
+
+    [freshServer, freshReleaseServer].forEach((content) => {
+      expect(content).toContain("app.get('/api/manager/accounting-email'");
+      expect(content).toContain("app.post('/api/manager/accounting-email'");
+      expect(content).toContain("app.post('/api/manager/send-accounting-email'");
+      expect(content).toContain('accounting_recipient_email');
+    });
+
+    expect(freshApi).toContain('getAccountingEmail:');
+    expect(freshApi).toContain('saveAccountingEmail:');
+    expect(freshApi).toContain('sendAccountingEmail:');
+  });
+
+  it('15. Verifies manual email workflow: downloads Excel, opens Gmail/mailto compose without SMTP configuration popup', () => {
+    const freshManage = fs.readFileSync(managePagePath, 'utf-8');
+    expect(freshManage).not.toContain('showEmailConfigModal');
+    expect(freshManage).not.toContain('Email Dispatch Configuration');
+    expect(freshManage).toContain('exportAccountingAnalysisToExcel(accountingRecords, accountingSummary');
+    expect(freshManage).toContain('mail.google.com/mail/?view=cm');
+    expect(freshManage).toContain('mailto:');
   });
 });
+

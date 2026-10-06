@@ -59,8 +59,8 @@ if (fs.existsSync(rootCssPath)) {
   console.log('  ✓ styles.css synchronized across public, dist, and release.');
 }
 
-// Copy public assets (images, icons) to release/public and release/dist
-const assetFilter = (_, name, isDir) => isDir || /\.(png|ico|jpg|jpeg|svg|webp|gif|css|html|txt)$/i.test(name);
+// Copy public assets (images, icons, worker scripts) to release/public and release/dist
+const assetFilter = (_, name, isDir) => isDir || /\.(png|ico|jpg|jpeg|svg|webp|gif|css|html|txt|js)$/i.test(name);
 copyDirSync(publicDir, path.join(releaseDir, 'public'), assetFilter);
 copyDirSync(publicDir, path.join(releaseDir, 'dist'), assetFilter);
 console.log('✅ Static assets synchronized.\n');
@@ -72,7 +72,7 @@ if (fs.existsSync(releaseAssetsDir)) {
   // Remove old JS chunks to avoid stale file accumulation
   const oldFiles = fs.readdirSync(releaseAssetsDir);
   for (const f of oldFiles) {
-    if (f.startsWith('index-') && f.endsWith('.js')) {
+    if ((f.startsWith('index-') || f.startsWith('pdf-')) && f.endsWith('.js')) {
       fs.unlinkSync(path.join(releaseAssetsDir, f));
       console.log(`  - Removed stale asset: ${f}`);
     }
@@ -130,6 +130,47 @@ if (cscExe && fs.existsSync(launcherSource)) {
     console.warn('  ⚠️ Note: Could not recompile Launcher.cs with csc:', err.message);
   }
 }
+// Also sync to standalone Electron package if present
+const electronAppDir = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64', 'resources', 'app');
+if (fs.existsSync(electronAppDir)) {
+  console.log('⚡ Synchronizing Electron desktop application bundle (release-electron)...');
+  copyDirSync(publicDir, path.join(electronAppDir, 'public'), assetFilter);
+  copyDirSync(publicDir, path.join(electronAppDir, 'dist'), assetFilter);
+  
+  const electronAssetsDir = path.join(electronAppDir, 'dist', 'assets');
+  if (fs.existsSync(electronAssetsDir)) {
+    const oldFiles = fs.readdirSync(electronAssetsDir);
+    for (const f of oldFiles) {
+      if (f.startsWith('index-') && f.endsWith('.js')) {
+        fs.unlinkSync(path.join(electronAssetsDir, f));
+      }
+    }
+  } else {
+    fs.mkdirSync(electronAssetsDir, { recursive: true });
+  }
+  copyDirSync(path.join(distDir, 'assets'), electronAssetsDir);
+  fs.copyFileSync(path.join(distDir, 'index.html'), path.join(electronAppDir, 'dist', 'index.html'));
+
+  fs.copyFileSync(path.join(rootDir, 'server.js'), path.join(electronAppDir, 'server.js'));
+  fs.copyFileSync(path.join(rootDir, 'database.js'), path.join(electronAppDir, 'database.js'));
+  fs.copyFileSync(path.join(rootDir, 'package.json'), path.join(electronAppDir, 'package.json'));
+  copyDirSync(path.join(rootDir, 'services'), path.join(electronAppDir, 'services'));
+  copyDirSync(path.join(rootDir, 'middleware'), path.join(electronAppDir, 'middleware'));
+  copyDirSync(path.join(rootDir, 'electron'), path.join(electronAppDir, 'electron'));
+  if (fs.existsSync(path.join(rootDir, '.env'))) {
+    fs.copyFileSync(path.join(rootDir, '.env'), path.join(electronAppDir, '.env'));
+  }
+  // Remove src folder in packaged app so it runs pure compiled production code
+  const electronSrcDir = path.join(electronAppDir, 'src');
+  if (fs.existsSync(electronSrcDir)) {
+    try {
+      fs.rmSync(electronSrcDir, { recursive: true, force: true });
+      console.log('  ✓ Cleaned src directory from release-electron package for ultra-fast startup');
+    } catch (e) {}
+  }
+  console.log('  ✓ release-electron desktop bundle updated.');
+}
+
 console.log('✅ Backend code and configurations synchronized.\n');
 
 // 5. Verification & Integrity Check

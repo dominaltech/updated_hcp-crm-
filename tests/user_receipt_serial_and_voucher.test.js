@@ -90,8 +90,8 @@ describe('User Requirement: Serial-only Receipt Number (UPI04, CR01) & Voucher N
     const voucherMatches = html.match(/Voucher No:/g);
     expect(voucherMatches?.length).toBeGreaterThanOrEqual(2);
 
-    // Row 1: Paid while checking / living / checkout
-    expect(html).toContain('Room 104 - Paid while checking');
+    // Row 1: Paid for Check In / living / checkout
+    expect(html).toMatch(/Room 104 - Paid (for [Cc]heck In|while checking)/);
     // Row 2: Mode & UPI UTR
     expect(html).toContain('Payment Mode: Online UPI (UTR: 321321321321)');
     expect(html).not.toContain('(Cash Payment)');

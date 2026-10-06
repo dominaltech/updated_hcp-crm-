@@ -99,6 +99,7 @@ export const api = {
   createRoom: (data) => request('/rooms', { method: 'POST', body: data }),
   updateRoom: (id, data) => request(`/rooms/${id}`, { method: 'PUT', body: data }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
+  transferRoom: (data) => request('/rooms/transfer', { method: 'POST', body: data }),
 
   // Cleaner / Housekeeping Staff
   getCleaners: () => request('/cleaners'),
@@ -285,6 +286,11 @@ export const api = {
     const qs = new URLSearchParams(cleanParams).toString();
     return request(`/manager/accounting-analysis${qs ? '?' + qs : ''}`);
   },
+  getAccountingEmail: () => request('/manager/accounting-email'),
+  saveAccountingEmail: (data) => request('/manager/accounting-email', { method: 'POST', body: data }),
+  sendAccountingEmail: (data) => request('/manager/send-accounting-email', { method: 'POST', body: data }),
+  getSmtpSettings: () => request('/manager/smtp-settings'),
+  saveSmtpSettings: (data) => request('/manager/smtp-settings', { method: 'POST', body: data }),
 
   // Hardware Scanner Integration
   getScannerDevices: async () => {

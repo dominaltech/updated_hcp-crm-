@@ -4,6 +4,7 @@ import ThemedSelect from '../common/ThemedSelect';
 
 export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSuccess }) {
   const [cleanerName, setCleanerName] = useState('');
+  const [customCleanerName, setCustomCleanerName] = useState('');
   const [cleaners, setCleaners] = useState([]);
   const [isLoadingCleaners, setIsLoadingCleaners] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -12,6 +13,7 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
   useEffect(() => {
     if (isOpen) {
       setCleanerName('');
+      setCustomCleanerName('');
       setErrorNotice('');
       setIsLoadingCleaners(true);
       api.getCleaners()
@@ -20,11 +22,16 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
             setCleaners(res.cleaners);
             if (res.cleaners.length === 1) {
               setCleanerName(res.cleaners[0].name);
+            } else if (res.cleaners.length === 0) {
+              setCleanerName('__OTHER__');
             }
+          } else {
+            setCleanerName('__OTHER__');
           }
         })
         .catch((err) => {
           console.error('Error fetching cleaners list:', err);
+          setCleanerName('__OTHER__');
         })
         .finally(() => setIsLoadingCleaners(false));
     }
@@ -34,9 +41,9 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const trimmed = cleanerName.trim();
-    if (!trimmed) {
-      setErrorNotice('Please select a cleaner staff name.');
+    const finalCleanerName = cleanerName === '__OTHER__' ? customCleanerName.trim() : cleanerName.trim();
+    if (!finalCleanerName) {
+      setErrorNotice(cleanerName === '__OTHER__' ? 'Please type the cleaner staff name.' : 'Please select a cleaner staff name.');
       return;
     }
 
@@ -44,10 +51,11 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
     setErrorNotice('');
     try {
       const data = await api.markRoomClean(room.id, {
-        cleaner_name: trimmed
+        cleaner_name: finalCleanerName
       });
       if (data && data.success) {
         setCleanerName('');
+        setCustomCleanerName('');
         onCleanSuccess && onCleanSuccess(data);
         onClose();
       } else {
@@ -59,6 +67,21 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
       setIsSubmitting(false);
     }
   };
+
+  const cleanerOptions = [
+    ...cleaners.map((c) => ({
+      value: c.name,
+      label: c.name,
+      subtitle: c.phone || null,
+      icon: '🧹'
+    })),
+    {
+      value: '__OTHER__',
+      label: '➕ Other (Type Custom Name)',
+      subtitle: 'Enter cleaner name manually',
+      icon: '✍️'
+    }
+  ];
 
   return (
     <div
@@ -174,14 +197,47 @@ export default function RoomCleaningModal({ isOpen, room, onClose, onCleanSucces
               colorTheme="emerald"
               placeholder={isLoadingCleaners ? 'Loading cleaner staff...' : '-- Select Cleaner Staff Name --'}
               required
-              options={cleaners.map((c) => ({
-                value: c.name,
-                label: c.name,
-                subtitle: c.phone || null,
-                icon: '🧹'
-              }))}
-              emptyMessage={isLoadingCleaners ? 'Loading cleaner staff...' : 'No cleaner staff found. Please add in Manager Panel.'}
+              options={cleanerOptions}
+              emptyMessage={isLoadingCleaners ? 'Loading cleaner staff...' : 'No cleaner staff found. Select Other to type name.'}
             />
+
+            {cleanerName === '__OTHER__' && (
+              <div style={{ marginTop: '12px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.84rem',
+                    fontWeight: 800,
+                    color: '#059669',
+                    marginBottom: '6px'
+                  }}
+                >
+                  Enter Cleaner / Staff Name *
+                </label>
+                <input
+                  type="text"
+                  id="input-custom-cleaner-name"
+                  placeholder="Type cleaner / staff name (e.g. Ramesh, Sunita)..."
+                  value={customCleanerName}
+                  onChange={(e) => {
+                    setCustomCleanerName(e.target.value);
+                    if (errorNotice) setErrorNotice('');
+                  }}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #059669',
+                    fontSize: '0.95rem',
+                    fontWeight: 700,
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Buttons */}

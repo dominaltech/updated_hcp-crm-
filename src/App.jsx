@@ -9,12 +9,12 @@ import BarPage from './pages/BarPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ManagePage from './pages/ManagePage';
 import CheckinWizardModal from './components/hospitality/CheckinWizard/CheckinWizardModal';
+import CheckinSplitReceiptsModal from './components/hospitality/CheckinSplitReceiptsModal';
 import RoomVisitorsModal from './components/hospitality/RoomVisitorsModal';
 import CapacityModal from './components/common/CapacityModal';
 import PrintTemplatesContainer from './components/common/PrintTemplatesContainer';
 import {
   printGuestRegistrationA4,
-  printAdvanceMoneyReceipt,
   printPettyCashVoucher,
   printDailyClosingReport,
   printKOTSlip,
@@ -33,6 +33,7 @@ function AppContent() {
   // Checkin Wizard Modal State
   const [checkinRoom, setCheckinRoom] = useState(null);
   const [checkinAdditionalRooms, setCheckinAdditionalRooms] = useState([]);
+  const [splitReceiptsData, setSplitReceiptsData] = useState(null);
 
   // Room Visitors Modal State
   const [visitorsRoom, setVisitorsRoom] = useState(null);
@@ -41,6 +42,7 @@ function AppContent() {
   const isAnyModalOpen = Boolean(
     checkinRoom ||
     visitorsRoom ||
+    splitReceiptsData ||
     (confirmState && confirmState.isOpen) ||
     (capacityModal && capacityModal.isOpen)
   );
@@ -73,7 +75,7 @@ function AppContent() {
     setVisitorsRoom(room);
   };
 
-  const handleCheckinSuccess = async (bookingData) => {
+  const handleCheckinSuccess = async (bookingData, splitReceipts) => {
     if (typeof refreshRooms === 'function') {
       refreshRooms();
     } else if (typeof loadRooms === 'function') {
@@ -82,30 +84,8 @@ function AppContent() {
     setCheckinRoom(null);
     setCheckinAdditionalRooms([]);
 
-    // Advance money receipt prompt if payment collected
-    const totalAdvance = bookingData.initial_paid || bookingData.total_paid || bookingData.totalPaid || 0;
-    const bookingId = bookingData.id || bookingData.booking_id || bookingData.bookingId;
-
-    if (totalAdvance > 0 && bookingId) {
-      setTimeout(async () => {
-        const wantPrint = await showConfirm({
-          title: 'Print Money Receipt',
-          message: `Advance payment of ₹${totalAdvance} collected. Would you like to print the Official Money Receipt (2-per-A4 sheet)?`,
-          icon: '🖨️',
-          confirmText: 'Print Money Receipt',
-          cancelText: 'Skip'
-        });
-        if (wantPrint) {
-          try {
-            const res = await api.get(`/receipts/advance/${bookingId}`);
-            if (res && res.receipt) {
-              printAdvanceMoneyReceipt(res.receipt);
-            }
-          } catch (e) {
-            console.warn('Error fetching advance receipt for print:', e);
-          }
-        }
-      }, 1200);
+    if (splitReceipts && Array.isArray(splitReceipts.receipts) && splitReceipts.receipts.length >= 1) {
+      setSplitReceiptsData(splitReceipts);
     }
   };
 
@@ -133,7 +113,7 @@ function AppContent() {
   };
 
   return (
-    <MainLayout>
+    <MainLayout hasActiveFolio={Boolean(activeFolioRoom)}>
       {/* Hospitality Panel */}
       {activePanel === 'hospitality' && (
         activeFolioRoom ? (
@@ -158,7 +138,7 @@ function AppContent() {
       {activePanel === 'restaurant' && (
         <RestaurantPage
           onPrintKOTSlip={(kotData) => printKOTSlip(kotData?.kot || kotData, kotData?.tableNumber, kotData?.waiterName)}
-          onPrintBillSlip={(bill) => printThermalBillSlip(bill, 'HOTEL CITY PARK - RESTAURANT')}
+          onPrintBillSlip={(bill) => printThermalBillSlip(bill, 'Restaurant Bill/Cheque')}
         />
       )}
 
@@ -195,6 +175,15 @@ function AppContent() {
             setCheckinAdditionalRooms([]);
           }}
           onCheckinSuccess={handleCheckinSuccess}
+        />
+      )}
+
+      {/* Checkin Split Payment Receipts Modal */}
+      {splitReceiptsData && (
+        <CheckinSplitReceiptsModal
+          isOpen={Boolean(splitReceiptsData)}
+          data={splitReceiptsData}
+          onClose={() => setSplitReceiptsData(null)}
         />
       )}
 

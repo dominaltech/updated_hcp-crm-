@@ -552,8 +552,16 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                         />
                         <span>🍳 Visitor Breakfast Plan (₹{breakfastAmount})</span>
                       </label>
+                    </div>
 
-                      {hasBreakfast && (
+                    {hasBreakfast && (
+                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          <span style={{ display: 'inline-block', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '6px', fontWeight: 700, marginRight: '6px' }}>
+                            🍽️ F&amp;B Bill
+                          </span>
+                          ₹{breakfastAmount} + 5% GST (₹{Math.round(breakfastAmount * 0.05)}) = <strong style={{ color: 'var(--text-primary)' }}>₹{Number(breakfastAmount) + Math.round(Number(breakfastAmount) * 0.05)}</strong> (Without discount)
+                        </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <span style={{ fontSize: '0.78rem', fontWeight: 750, color: 'var(--text-secondary)' }}>Status:</span>
                           <button
@@ -586,11 +594,11 @@ export default function RoomVisitorsModal({ isOpen, onClose, room, onVisitorUpda
                               color: breakfastStatus === 'pending' ? '#ffffff' : 'var(--text-secondary)'
                             }}
                           >
-                            ⏳ Pending
+                            ⏳ Pending (Folio)
                           </button>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </form>
               </div>

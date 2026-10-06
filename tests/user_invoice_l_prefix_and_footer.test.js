@@ -217,7 +217,7 @@ describe('User Requirement: Tax Invoice No L-prefix and Bottom Footer Pinning', 
     const departureIndex = html.indexOf('Departure Date :');
     const companyNameIndex = html.indexOf('Company Name :');
     const companyAddressIndex = html.indexOf('Company Address :&nbsp;');
-    const sacRowIndex = html.indexOf('SAC: 996311 (Accommodation)');
+    const sacRowIndex = html.indexOf('(Accommodation) &nbsp;SAC: 996311');
 
     expect(departureIndex).toBeGreaterThan(-1);
     expect(companyNameIndex).toBeGreaterThan(departureIndex);

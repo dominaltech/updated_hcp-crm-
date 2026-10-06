@@ -237,6 +237,7 @@ namespace HotelCityParkLauncher
                     RedirectStandardError = false
                 };
                 psi.EnvironmentVariables["USE_APPDATA"] = "1";
+                psi.EnvironmentVariables["NODE_ENV"] = "production";
 
                 serverProcess = Process.Start(psi);
             }

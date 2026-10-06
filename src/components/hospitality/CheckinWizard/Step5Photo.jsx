@@ -87,7 +87,10 @@ export default function Step5Photo({ draft, updateDraft, onSkip, onPreviewDoc })
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: '0 6px 20px rgba(0, 0, 0, 0.25)',
-            border: '2px solid #1e293b'
+            border: '2px solid #1e293b',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            caretColor: 'transparent'
           }}
         >
           {/* Live Video Feed */}
@@ -210,7 +213,7 @@ export default function Step5Photo({ draft, updateDraft, onSkip, onPreviewDoc })
           {/* Photo Preview when captured (Matches live video 100% seamlessly) */}
           {draft.guestPhoto && (
             <div
-              style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', caretColor: 'transparent' }}
               onClick={() => onPreviewDoc && onPreviewDoc(draft.guestPhoto, 'Captured Guest Portrait')}
               title="Click to view full photo and zoom (Scroll to zoom)"
             >

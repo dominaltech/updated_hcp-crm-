@@ -55,6 +55,43 @@ export default function ThemedDatePicker({
     }
   }, [value]);
 
+  const [typedDateText, setTypedDateText] = useState(null);
+
+  useEffect(() => {
+    setTypedDateText(null);
+  }, [value]);
+
+  const parseAndCommitText = (text) => {
+    if (!text || !text.trim()) {
+      if (onChange) onChange({ target: { value: '', name } });
+      return;
+    }
+    const clean = text.trim();
+    let y, m, d;
+    const dmyMatch = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    const ymdMatch = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (dmyMatch) {
+      d = parseInt(dmyMatch[1], 10);
+      m = parseInt(dmyMatch[2], 10) - 1;
+      y = parseInt(dmyMatch[3], 10);
+    } else if (ymdMatch) {
+      y = parseInt(ymdMatch[1], 10);
+      m = parseInt(ymdMatch[2], 10) - 1;
+      d = parseInt(ymdMatch[3], 10);
+    }
+    if (y && m !== undefined && d) {
+      const dt = new Date(y, m, d);
+      if (!isNaN(dt.getTime()) && dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d) {
+        const iso = formatIsoDate(y, m, d);
+        if (min && iso < min) return;
+        if (max && iso > max) return;
+        if (onChange) onChange({ target: { value: iso, name } });
+        setViewYear(y);
+        setViewMonth(m);
+      }
+    }
+  };
+
   // Close calendar popover on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -287,9 +324,62 @@ export default function ThemedDatePicker({
           userSelect: 'none'
         }}
       >
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <span style={{ fontSize: '0.90rem', color: 'var(--apple-blue, #0071e3)' }}>📅</span>
-          <span>{displayFormattedDate || placeholder}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!disabled) {
+                setIsOpen((prev) => !prev);
+                setIsMonthYearPickerOpen(false);
+              }
+            }}
+            title="Toggle Calendar"
+            style={{ fontSize: '0.90rem', color: 'var(--apple-blue, #0071e3)', cursor: 'pointer', flexShrink: 0 }}
+          >
+            📅
+          </span>
+          <input
+            type="text"
+            placeholder={placeholder || 'DD-MM-YYYY'}
+            disabled={disabled}
+            value={typedDateText !== null ? typedDateText : (displayFormattedDate || '')}
+            onFocus={(e) => {
+              setTypedDateText(displayFormattedDate || '');
+              e.target.select();
+            }}
+            onChange={(e) => {
+              const val = e.target.value;
+              setTypedDateText(val);
+              if (val.length === 10) {
+                parseAndCommitText(val);
+              }
+            }}
+            onBlur={() => {
+              if (typedDateText !== null) {
+                parseAndCommitText(typedDateText);
+                setTypedDateText(null);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                parseAndCommitText(e.target.value);
+                setTypedDateText(null);
+                setIsOpen(false);
+              }
+            }}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: displayFormattedDate ? 'var(--text-primary, #0f172a)' : 'var(--text-tertiary, #94a3b8)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              width: '100%',
+              outline: 'none',
+              cursor: disabled ? 'not-allowed' : 'text',
+              fontFamily: 'inherit',
+              padding: 0
+            }}
+          />
         </span>
 
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -315,9 +405,11 @@ export default function ThemedDatePicker({
               ✕
             </button>
           )}
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary, #64748b)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
-            ▼
-          </span>
+          {!disabled && (
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary, #64748b)', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+              ▼
+            </span>
+          )}
         </span>
       </div>
 

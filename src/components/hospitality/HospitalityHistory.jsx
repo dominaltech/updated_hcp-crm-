@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime, formatTaxInvoiceNumber, cleanVoucherNumber } from '../../utils/formatters';
-import { printCashReceipt, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary } from '../../services/printService';
+import { printCashReceipt, downloadReceiptPDF, printPettyCashVoucher, printGuestRegistrationA4, printFinalBillA4, downloadGuestRegistrationPDF, printGuestPaymentSummary, printGuestActivitiesSummary, downloadGuestActivitiesSummaryPDF } from '../../services/printService';
 import ImageLightbox from '../common/ImageLightbox';
 import DocumentActionModal from './DocumentActionModal';
 import DocumentScannerModal from '../common/DocumentScannerModal';
@@ -1943,6 +1943,56 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       </div>
                     )}
 
+                    {/* Room Shift / Transfer Activity Log */}
+                    {(() => {
+                      let logs = [];
+                      try {
+                        logs = detailBooking.extension_logs_json ? JSON.parse(detailBooking.extension_logs_json) : [];
+                      } catch (_) { logs = []; }
+                      if (!Array.isArray(logs)) logs = [];
+
+                      const transferLogs = logs.filter((l) => l.type === 'room_transfer');
+                      if (transferLogs.length === 0) return null;
+
+                      return (
+                        <div style={{ marginTop: '12px', padding: '12px 16px', background: '#f5f3ff', borderRadius: '10px', border: '1.5px solid #c4b5fd' }}>
+                          <div style={{ fontWeight: 850, fontSize: '0.86rem', color: '#5b21b6', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>🔄</span> Room Shift / Transfer Audit Log ({transferLogs.length})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {transferLogs.map((log, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  background: '#ffffff',
+                                  border: '1px solid #ddd6fe',
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  justifyContent: 'space-between',
+                                  gap: '12px'
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#6d28d9' }}>
+                                    Room Shift: #{log.from_room_number} ➔ #{log.to_room_number}
+                                  </div>
+                                  <div style={{ fontSize: '0.78rem', color: '#4c1d95', marginTop: '2px' }}>
+                                    {log.room_type ? `Room Type: ${log.room_type} • ` : ''}{log.reason || 'Guest room shift (same room type)'}
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: '0.72rem', color: '#6b21a8', whiteSpace: 'nowrap' }}>
+                                  <div>{formatDateTime(log.transferred_at || log.created_at)}</div>
+                                  <div style={{ fontWeight: 700 }}>by {log.transferred_by || 'Front Desk'}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Payment & Cheque Activity Log */}
                     {(() => {
                       let logs = [];
@@ -2503,6 +2553,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                           ✓ Prepaid Online (No Receipt)
                                         </span>
                                       ) : (
+                                        <>
                                         <button
                                           type="button"
                                           className="filter-chip"
@@ -2549,7 +2600,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                               ? `Room #${detailBooking.room_number} - Checkout Settlement`
                                               : (p.payment_type === 'advance' ? `Room #${detailBooking.room_number} - Check-In Advance` : `Room #${detailBooking.room_number} - Stay Payment`);
 
-                                            printCashReceipt({
+                                            const receiptObj = {
                                               receipt_no: serialNo,
                                               voucher_number: detailBooking.voucher_number || detailBooking.voucherNumber,
                                               receipt_date: p.created_at,
@@ -2570,13 +2621,48 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                               particulars: stageDescription,
                                               payment_stage: paymentStage,
                                               cashier_name: p.cashier_name || p.cashier || detailBooking.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
-                                            });
+                                            };
+                                            printCashReceipt(receiptObj);
                                           }}
                                           style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
                                           title="Print Official Cash Receipt (2-on-A4)"
                                         >
                                           🖨️ Receipt
                                         </button>
+                                        <button
+                                          type="button"
+                                          className="filter-chip"
+                                          onClick={() => {
+                                            const receiptObj = {
+                                              receipt_no: serialNo,
+                                              voucher_number: detailBooking.voucher_number || detailBooking.voucherNumber,
+                                              receipt_date: p.created_at,
+                                              guest_name: detailBooking.guest_name,
+                                              amount: entireAmt,
+                                              base_amount: baseAmt,
+                                              card_surcharge: cardFee,
+                                              upi_tax: upiFee,
+                                              payment_mode: p.payment_mode,
+                                              split_cash: p.split_cash,
+                                              split_online: p.split_online,
+                                              split_card: p.split_card,
+                                              split_cheque: p.split_cheque,
+                                              utr_number: p.utr_number,
+                                              cheque_no: p.cheque_no,
+                                              bank_name: p.bank_name,
+                                              room_numbers: detailBooking.room_number,
+                                              particulars: stageDescription,
+                                              payment_stage: paymentStage,
+                                              cashier_name: p.cashier_name || p.cashier || detailBooking.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
+                                            };
+                                            downloadReceiptPDF(receiptObj);
+                                          }}
+                                          style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#047857', borderColor: '#a7f3d0', background: '#ecfdf5', marginLeft: '6px' }}
+                                          title="Download Official Receipt PDF"
+                                        >
+                                          📥 Download
+                                        </button>
+                                        </>
                                       )}
                                     </td>
                                   </tr>
@@ -2718,6 +2804,50 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                                     title="Print Official Cash Receipt (2-on-A4)"
                                   >
                                     🖨️ Receipt
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="filter-chip"
+                                    onClick={() => {
+                                      const sMode = (detailBooking.final_settlement_mode || detailBooking.final_payment_mode || detailBooking.advance_payment_mode || 'Cash').toLowerCase();
+                                      const serialNo = (detailBooking.advance_receipt_no && !detailBooking.advance_receipt_no.includes('/') && /^(CR|UPI|POS|CHQ|BTC)\d+/i.test(detailBooking.advance_receipt_no))
+                                        ? detailBooking.advance_receipt_no
+                                        : (sMode.includes('upi') ? 'UPI01' : sMode.includes('card') ? 'POS01' : sMode.includes('cheque') ? 'CHQ01' : 'CR01');
+
+                                      const cardFee = Number(detailBooking.final_card_surcharge || detailBooking.card_surcharge || detailBooking.advance_card_surcharge || 0);
+                                      const upiFee = Number(detailBooking.final_upi_tax || detailBooking.upi_tax || 0);
+                                      const rawAmt = Number(detailBooking.total_paid || detailBooking.total_room_charge || 0);
+                                      let baseAmt = rawAmt;
+                                      if (cardFee > 0 && rawAmt > cardFee) baseAmt = rawAmt - cardFee;
+                                      else if (upiFee > 0 && rawAmt > upiFee) baseAmt = rawAmt - upiFee;
+
+                                      downloadReceiptPDF({
+                                        receipt_no: serialNo,
+                                        voucher_number: detailBooking.voucher_number || detailBooking.voucherNumber,
+                                        receipt_date: detailBooking.checkout_time || detailBooking.checkin_time,
+                                        guest_name: detailBooking.guest_name,
+                                        amount: rawAmt,
+                                        base_amount: baseAmt,
+                                        card_surcharge: cardFee,
+                                        upi_tax: upiFee,
+                                        payment_mode: detailBooking.final_settlement_mode || detailBooking.final_payment_mode || 'Cash',
+                                        split_cash: detailBooking.split_cash || detailBooking.final_split_cash,
+                                        split_online: detailBooking.split_online || detailBooking.final_split_online,
+                                        split_card: detailBooking.split_card || detailBooking.final_split_card,
+                                        split_cheque: detailBooking.split_cheque || detailBooking.final_split_cheque,
+                                        utr_number: detailBooking.utr_number || detailBooking.advance_utr_number || detailBooking.final_settlement_utr,
+                                        cheque_no: detailBooking.cheque_no || detailBooking.advance_cheque_no,
+                                        bank_name: detailBooking.bank_name || detailBooking.advance_cheque_bank,
+                                        room_numbers: detailBooking.room_number,
+                                        particulars: `Stay Settlement - Room ${detailBooking.room_number}`,
+                                        payment_stage: 'checkout',
+                                        cashier_name: detailBooking.checked_out_by || detailBooking.checked_in_by || (currentUser ? (currentUser.full_name || currentUser.username) : '')
+                                      });
+                                    }}
+                                    style={{ fontSize: '0.74rem', padding: '4px 10px', fontWeight: 750, color: '#047857', borderColor: '#a7f3d0', background: '#ecfdf5', marginLeft: '6px' }}
+                                    title="Download Official Receipt PDF"
+                                  >
+                                    📥 Download
                                   </button>
                                 </td>
                               </tr>
@@ -2896,6 +3026,56 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                           </div>
                         )}
 
+                        {/* Room Shift / Transfer Activity Log */}
+                        {(() => {
+                          let logs = [];
+                          try {
+                            logs = detailBooking.extension_logs_json ? JSON.parse(detailBooking.extension_logs_json) : [];
+                          } catch (_) { logs = []; }
+                          if (!Array.isArray(logs)) logs = [];
+
+                          const transferLogs = logs.filter((l) => l.type === 'room_transfer');
+                          if (transferLogs.length === 0) return null;
+
+                          return (
+                            <div style={{ marginTop: '14px', padding: '12px 16px', background: '#f5f3ff', borderRadius: '10px', border: '1.5px solid #c4b5fd' }}>
+                              <div style={{ fontWeight: 850, fontSize: '0.84rem', color: '#5b21b6', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>🔄</span> Room Shift / Transfer Audit Log ({transferLogs.length})
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {transferLogs.map((log, idx) => (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      padding: '8px 12px',
+                                      borderRadius: '8px',
+                                      background: '#ffffff',
+                                      border: '1px solid #ddd6fe',
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      justifyContent: 'space-between',
+                                      gap: '12px'
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#6d28d9' }}>
+                                        Room Shift: #{log.from_room_number} ➔ #{log.to_room_number}
+                                      </div>
+                                      <div style={{ fontSize: '0.78rem', color: '#4c1d95', marginTop: '2px' }}>
+                                        {log.room_type ? `Room Type: ${log.room_type} • ` : ''}{log.reason || 'Guest room shift (same room type)'}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', fontSize: '0.72rem', color: '#6b21a8', whiteSpace: 'nowrap' }}>
+                                      <div>{formatDateTime(log.transferred_at || log.created_at)}</div>
+                                      <div style={{ fontWeight: 700 }}>by {log.transferred_by || 'Front Desk'}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Payment & Cheque Audit Log directly below this cheque section */}
                         {(() => {
                           let logs = [];
@@ -3007,6 +3187,17 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                         title="Customer Payment Summary Statement (Save, Print, or Save & Print)"
                       >
                         📄 Payment Summary
+                      </button>
+                      <button
+                        type="button"
+                        className="filter-chip"
+                        onClick={() => {
+                          setDocActionModal({ isOpen: true, type: 'activities', data: detailBooking });
+                        }}
+                        style={{ fontWeight: 800, padding: '8px 14px', fontSize: '0.85rem', background: '#f5f3ff', color: '#6d28d9', borderColor: '#c4b5fd' }}
+                        title="Comprehensive Guest Activities & Financial Summary Statement (Save, Print, or Save & Print)"
+                      >
+                        📑 Activities Summary
                       </button>
                       {isDetailBtcPending ? (
                         <button

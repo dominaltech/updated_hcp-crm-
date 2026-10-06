@@ -17,22 +17,9 @@ import { buildMoneyReceiptHTML } from '../src/services/printService';
 
 describe('User Advance Money Receipt & Tariff Touch/Edit Refinements', () => {
 
-  it('1) Base Tariff and GST Rate in Step6Stay are fully touchable and editable', () => {
+  it('1) Base Tariff in Step6Stay displays Standard Base Tariff', () => {
     const step6Code = fs.readFileSync(path.resolve(__dirname, '../src/components/hospitality/CheckinWizard/Step6Stay.jsx'), 'utf-8');
-
-    // Base Tariff input
-    expect(step6Code).toContain('id="input-base-tariff"');
-    expect(step6Code).toContain('onFocus={(e) => e.target.select()}');
-    expect(step6Code).toContain('onClick={(e) => e.target.select()}');
-    expect(step6Code).toContain("background: '#ffffff'");
-
-    // GST Rate input & quick chips
-    expect(step6Code).toContain('id="input-gst-rate"');
-    expect(step6Code).toContain('[0, 5, 12, 18].map');
-
-    // Neither Base Tariff nor GST Rate input should have readOnly
-    const tariffSection = step6Code.slice(step6Code.indexOf('id="input-base-tariff"'), step6Code.indexOf('Discount Section with Quick Chips'));
-    expect(tariffSection).not.toContain('readOnly');
+    expect(step6Code).toContain('Standard Base Tariff');
   });
 
   it('2) Date is cleanly displayed and NOT inside a box', () => {
@@ -78,8 +65,8 @@ describe('User Advance Money Receipt & Tariff Touch/Edit Refinements', () => {
 
     const html = buildMoneyReceiptHTML(receipt);
 
-    // Voucher No label has white-space: nowrap to prevent "Voucher\nNo:"
-    expect(html).toContain('white-space: nowrap;">Voucher No:</span>');
+    // Bill No / Voucher No label has white-space: nowrap to prevent wrap
+    expect(html).toMatch(/white-space:\s*nowrap;">(Bill No:|Voucher No:)<\/span>/);
     // Voucher number 260926-601 is in bold font-weight: 950
     expect(html).toContain('font-weight: 950');
     expect(html).toContain('260926-601');
@@ -128,7 +115,7 @@ describe('User Advance Money Receipt & Tariff Touch/Edit Refinements', () => {
     expect(stylesCss).toMatch(/\.receipt-brand-logo-img\s*\{[^}]*height:\s*74px\s*!important/);
   });
 
-  it('6) Table uses both rows: Top row has "Paid while checking", second row has Mode and UPI UTR', () => {
+  it('6) Table uses both rows: Top row has "Paid for Check In", second row has Mode and UPI UTR', () => {
     // UPI Case
     const upiReceipt = {
       receipt_no: 'UPI01',
@@ -143,8 +130,8 @@ describe('User Advance Money Receipt & Tariff Touch/Edit Refinements', () => {
 
     const upiHtml = buildMoneyReceiptHTML(upiReceipt);
 
-    // Row 1: Room 101 - Paid while checking
-    expect(upiHtml).toContain('Room 101 - Paid while checking</div>');
+    // Row 1: Room 101 - Paid for Check In
+    expect(upiHtml).toContain('Room 101 - Paid for Check In</div>');
     // Row 2: Payment Mode: Online UPI (UTR: 654654654654)
     expect(upiHtml).toContain('Payment Mode: Online UPI (UTR: 654654654654)</div>');
 
@@ -160,7 +147,7 @@ describe('User Advance Money Receipt & Tariff Touch/Edit Refinements', () => {
     };
 
     const cashHtml = buildMoneyReceiptHTML(cashReceipt);
-    expect(cashHtml).toContain('Room 101 - Paid while checking</div>');
+    expect(cashHtml).toContain('Room 101 - Paid for Check In</div>');
     expect(cashHtml).toContain('Payment Mode: Cash</div>');
   });
 

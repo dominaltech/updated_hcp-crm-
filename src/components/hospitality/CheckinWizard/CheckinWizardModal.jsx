@@ -12,7 +12,7 @@ import Step6Stay from './Step6Stay';
 import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
-import { printGuestRegistrationA4, downloadGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
+import { printGuestRegistrationA4, autoSaveGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
 import { getLocalIsoDateTime, timeToMinutes, getMinCheckoutDate } from '../../../utils/formatters';
 
 export default function CheckinWizardModal({
@@ -264,10 +264,8 @@ export default function CheckinWizardModal({
       }, 0);
   const basePrice = (!isOta && totalGuests === 0)
     ? 0
-    : ((draft.baseRate !== undefined && draft.baseRate !== '' && !isNaN(Number(draft.baseRate)))
-        ? Number(draft.baseRate)
-        : combinedRoomsTariff);
-  const discountPct = Math.min(Number(draft.discountPct) || 0, room.max_discount_pct || 15);
+    : combinedRoomsTariff;
+  const discountPct = Math.min(Number(draft.discountPct) || 0, room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25);
   const extraBeds = draft.roomExtraBeds !== undefined && Object.keys(draft.roomExtraBeds).length > 0
     ? allSelectedRooms.reduce((sum, r) => {
         return sum + (Number(draft.roomExtraBeds?.[r.id]) || 0);
@@ -356,7 +354,7 @@ export default function CheckinWizardModal({
 
   const discountAmount = isOta ? 0 : Math.round((totalBaseRate * effectiveDiscountPct) / 100);
   const netChargeBeforeTax = Math.round(totalBaseRate - discountAmount);
-  const effectiveGstPct = (draft.gstPct !== undefined && draft.gstPct !== '' && !isNaN(Number(draft.gstPct))) ? Number(draft.gstPct) : (Number(roomGstPct) || 5);
+  const effectiveGstPct = Number(roomGstPct) || 5;
   const gstAmount = isOta ? otaGstTariff : Math.round(netChargeBeforeTax * (effectiveGstPct / 100));
   let totalDue = isOta
     ? (otaPackageAmt + extraBedCharge + extraRoomsCharge + extraBreakfastCharge + extensionCharge + otaEarlyCheckinCharge)
@@ -437,8 +435,14 @@ export default function CheckinWizardModal({
         showToast('Valid 10-digit mobile number is required.', 'red');
         return false;
       }
-      if (!draft.email.trim()) {
+      const emailVal = (draft.email || '').trim();
+      if (!emailVal) {
         showToast('Email address is mandatory.', 'red');
+        return false;
+      }
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailVal)) {
+        showToast('Please enter a valid email address (e.g. name@gmail.com).', 'red');
         return false;
       }
       if (!draft.address.trim()) {
@@ -611,6 +615,19 @@ export default function CheckinWizardModal({
       return;
     }
 
+    const emailVal = (draft.email || '').trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailVal) {
+      showToast('Email address is mandatory.', 'red');
+      setCurrentStep(4);
+      return;
+    }
+    if (!emailRegex.test(emailVal)) {
+      showToast('Please enter a valid email address (e.g. name@gmail.com).', 'red');
+      setCurrentStep(4);
+      return;
+    }
+
     if (!draft.guestPhoto) {
       showToast('Guest photo is mandatory. Please capture or upload a guest photo.', 'red');
       setCurrentStep(5);
@@ -754,12 +771,12 @@ export default function CheckinWizardModal({
         btcCompanyName: draft.bookingSource === 'BTC' ? draft.btcCompanyName : null,
         btc_company_name: draft.bookingSource === 'BTC' ? draft.btcCompanyName : null,
         btcVoucherNo: draft.bookingSource === 'BTC' ? draft.btcVoucherNo : null,
-        companyName: (draft.companyName || draft.company_name || '').trim(),
-        company_name: (draft.companyName || draft.company_name || '').trim(),
-        gstNumber: (draft.gstNumber || draft.gst_number || '').trim(),
-        gst_number: (draft.gstNumber || draft.gst_number || '').trim(),
-        companyAddress: (draft.companyAddress || draft.company_address || '').trim(),
-        company_address: (draft.companyAddress || draft.company_address || '').trim(),
+        companyName: (draft.companyName || draft.company_name || draft.btcCompanyName || '').trim(),
+        company_name: (draft.companyName || draft.company_name || draft.btcCompanyName || '').trim(),
+        gstNumber: (draft.gstNumber || draft.gst_number || draft.btcCompanyGst || '').trim(),
+        gst_number: (draft.gstNumber || draft.gst_number || draft.btcCompanyGst || '').trim(),
+        companyAddress: (draft.companyAddress || draft.company_address || draft.btcCompanyAddress || '').trim(),
+        company_address: (draft.companyAddress || draft.company_address || draft.btcCompanyAddress || '').trim(),
         taxType: draft.taxType || (draft.isIgst ? 'IGST' : 'CGST_SGST'),
         tax_type: draft.taxType || (draft.isIgst ? 'IGST' : 'CGST_SGST'),
         isIgst: Boolean(draft.isIgst || draft.is_igst),
@@ -811,7 +828,7 @@ export default function CheckinWizardModal({
 
       const res = await api.checkin(payload);
       if (res && res.success) {
-        showToast(`Guest ${draft.guestName} checked into Room #${room.room_number}!`, 'green', 4000);
+        showToast(`Guest ${draft.guestName} checked into Room No: ${room.room_number}!`, 'green', 4000);
         const splitCash = Number(draft.splitCash) || 0;
         const splitOnline = Number(draft.splitOnline) || 0;
         const splitCard = Number(draft.splitCard) || 0;
@@ -930,18 +947,101 @@ export default function CheckinWizardModal({
           // User Requirement: When checked in, print the check-in form (Registration Card), NOT the receipt
           printGuestRegistrationA4(regData, { includePhotos: false });
 
-          // Defer heavy PDF digital archive export so it doesn't freeze the main thread or print preview
+          // Background silent auto-save to configured system folder (no Windows Save-As or browser download popup)
           setTimeout(() => {
-            downloadGuestRegistrationPDF(regData).catch(err => {
-              console.warn('Auto PDF download notice:', err);
+            autoSaveGuestRegistrationPDF(regData, { includePhotos: true }).catch(err => {
+              console.warn('Auto PDF silent save notice:', err);
             });
-          }, 2000);
+          }, 1500);
         } catch (printErr) {
           console.warn('Auto check-in form print notice:', printErr);
         }
 
+        const serverReceipts = res.data?.paymentReceipts || res.paymentReceipts || res.data?.receipts || res.receipts || [];
+        const receiptNumbers = res.data?.receiptNumbers || res.receiptNumbers || res.data?.receipt_numbers || res.receipt_numbers || {};
+
+        const activeReceipts = [];
+        if (Array.isArray(serverReceipts) && serverReceipts.length > 0) {
+          serverReceipts.forEach(sr => activeReceipts.push(sr));
+        } else {
+          if (splitCash > 0) {
+            activeReceipts.push({
+              receipt_no: receiptNumbers.cash || (advReceiptNo && /^CR\d+/i.test(advReceiptNo) ? advReceiptNo : 'CR01'),
+              mode: 'cash',
+              label: 'Cash',
+              amount: splitCash,
+              base_amount: splitCash
+            });
+          }
+          if (splitOnline > 0) {
+            const upiTax = (splitOnline > upiThresh && upiPct > 0) ? Math.round((splitOnline * upiPct) / 100) : 0;
+            activeReceipts.push({
+              receipt_no: receiptNumbers.upi || (advReceiptNo && /^UPI\d+/i.test(advReceiptNo) ? advReceiptNo : 'UPI01'),
+              mode: 'upi',
+              label: 'Online UPI',
+              amount: splitOnline + upiTax,
+              base_amount: splitOnline,
+              utr_number: (draft.onlineUtr || draft.utrNumber || '').trim(),
+              upi_tax: upiTax
+            });
+          }
+          if (splitCard > 0) {
+            const cardSurcharge = (splitCard > 0 && cardPct > 0) ? Math.round((splitCard * cardPct) / 100) : 0;
+            activeReceipts.push({
+              receipt_no: receiptNumbers.card || (advReceiptNo && /^POS\d+/i.test(advReceiptNo) ? advReceiptNo : 'POS01'),
+              mode: 'card',
+              label: 'Card POS',
+              amount: splitCard + cardSurcharge,
+              base_amount: splitCard,
+              card_digits: (draft.cardDigits || draft.card_digits || '').trim(),
+              card_surcharge: cardSurcharge
+            });
+          }
+          if (splitCheque > 0) {
+            activeReceipts.push({
+              receipt_no: receiptNumbers.cheque || (advReceiptNo && /^CHQ\d+/i.test(advReceiptNo) ? advReceiptNo : 'CHQ01'),
+              mode: 'cheque',
+              label: 'Cheque',
+              amount: splitCheque,
+              base_amount: splitCheque,
+              cheque_no: draft.chequeNo || '',
+              bank_name: draft.chequeBank || ''
+            });
+          }
+        }
+
+        if (activeReceipts.length === 0 && totalPaid > 0) {
+          const rawMode = String(draft.paymentMode || draft.payment_mode || 'cash').toLowerCase();
+          const modeKey = (rawMode.includes('upi') || rawMode.includes('online')) ? 'upi' : (rawMode.includes('card') ? 'card' : (rawMode.includes('cheque') ? 'cheque' : 'cash'));
+          const modeLabel = modeKey === 'upi' ? 'Online UPI' : (modeKey === 'card' ? 'Card POS' : (modeKey === 'cheque' ? 'Cheque' : 'Cash'));
+          activeReceipts.push({
+            receipt_no: advReceiptNo || (modeKey === 'upi' ? 'UPI01' : (modeKey === 'card' ? 'POS01' : (modeKey === 'cheque' ? 'CHQ01' : 'CR01'))),
+            mode: modeKey,
+            label: modeLabel,
+            amount: totalPaid,
+            base_amount: totalPaid,
+            utr_number: (draft.onlineUtr || draft.utrNumber || '').trim(),
+            card_digits: (draft.cardDigits || draft.card_digits || '').trim(),
+            cheque_no: draft.chequeNo || '',
+            bank_name: draft.chequeBank || ''
+          });
+        }
+
+        const isSplitPayment = activeReceipts.length > 1;
+        const hasReceipts = activeReceipts.length >= 1 && totalPaid > 0;
+        const splitReceiptsData = hasReceipts ? {
+          guestName: draft.guestName,
+          roomNumber: room.room_number,
+          voucherNumber: standardVoucher,
+          checkinTime: res.data?.checkinTime || draft.checkinTime,
+          totalPaid: totalPaid,
+          cashierName: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk',
+          receipts: activeReceipts,
+          title: isSplitPayment ? 'Print Payment Receipts (Split Payment)' : 'Print Payment Receipt'
+        } : null;
+
         onClose();
-        if (onCheckinSuccess) onCheckinSuccess(res.booking || res);
+        if (onCheckinSuccess) onCheckinSuccess(res.booking || res, splitReceiptsData);
       } else {
         showToast('Check-in error: ' + (res?.message || 'Server error'), 'red');
       }
@@ -1174,33 +1274,6 @@ export default function CheckinWizardModal({
               </svg>
             </button>
           )}
-
-          {currentStep === 3 && (
-            <button
-              type="button"
-              className="wizard-side-nav-btn nav-skip-back"
-              id="btn-side-skip-back"
-              title="Skip Back Scan (Single-Sided ID)"
-              onClick={handleSkipBack}
-            >
-              <svg
-                className="skip-btn-svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
-                <line x1="19" y1="5" x2="19" y2="19" />
-              </svg>
-              <span className="skip-btn-title">Skip Back Scan</span>
-              <span className="skip-btn-pill">Single-Sided</span>
-            </button>
-          )}
-
-
 
           {/* Modal Body */}
           <div className="modal-body" ref={modalBodyRef}>

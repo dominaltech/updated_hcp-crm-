@@ -103,6 +103,7 @@ async function startServerAndNavigate() {
       cwd: rootDir,
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         USE_APPDATA: '1',
         PORT: String(PORT)
       },
@@ -118,7 +119,7 @@ async function startServerAndNavigate() {
   }
 
   // 3. Fast poll (every 35ms) until server accepts connections
-  const maxAttempts = 120; // ~4.2 seconds max timeout
+  const maxAttempts = 200; // ~7 seconds max timeout
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(r => setTimeout(r, 35));
     if (await isPortActive(PORT)) {

@@ -23,3 +23,6 @@ propmpt.txt
 backup-file/
 *.zip
 *.lnk
+*firebase*.json
+google-services*.json
+firebase-service-account.json

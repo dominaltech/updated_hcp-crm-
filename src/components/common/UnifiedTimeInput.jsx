@@ -26,6 +26,8 @@ export default function UnifiedTimeInput({
   const [openMenu, setOpenMenu] = useState(null); // 'hour' | 'minute' | null
   const [periodOverride, setPeriodOverride] = useState(null);
   const [customMinute, setCustomMinute] = useState('');
+  const [typedHour, setTypedHour] = useState(null);
+  const [typedMinute, setTypedMinute] = useState(null);
   const containerRef = useRef(null);
   const hourInputRef = useRef(null);
   const minuteInputRef = useRef(null);
@@ -34,6 +36,13 @@ export default function UnifiedTimeInput({
   const currentMinutes = useMemo(() => timeToMinutes(value), [value]);
   const isBeforeMin = Boolean(minMinutes !== null && currentMinutes !== null && currentMinutes <= minMinutes);
   const effectiveError = Boolean(hasError || isBeforeMin);
+
+  // Sync / reset overrides when external value prop changes
+  useEffect(() => {
+    setPeriodOverride(null);
+    setTypedHour(null);
+    setTypedMinute(null);
+  }, [value]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -183,18 +192,30 @@ export default function UnifiedTimeInput({
   };
 
   const handleHourInputChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '');
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+    setTypedHour(raw);
     if (!raw) {
-      emitChange('', parsed.minute, currentPeriod);
       return;
     }
-    let num = parseInt(raw, 10);
-    if (num > 12) num = 12;
-    if (num === 0) num = 1;
-    emitChange(String(num), parsed.minute || '00', currentPeriod);
-    if (raw.length >= 2) {
-      if (minuteInputRef.current) minuteInputRef.current.focus();
+    const num = parseInt(raw, 10);
+    if (raw === '0') {
+      return; // allow user to type '0' while waiting for second digit like '08' or '09'
     }
+    // Auto-advance if 2 digits (e.g. '01'..'12') or single digit 2..9 (which cannot start a 2-digit 12h hour)
+    if (raw.length === 2 && num >= 1 && num <= 12) {
+      emitChange(String(num), parsed.minute || '00', currentPeriod);
+      if (minuteInputRef.current) {
+        minuteInputRef.current.focus();
+        minuteInputRef.current.select();
+      }
+    } else if (raw.length === 1 && num >= 2 && num <= 9) {
+      emitChange(String(num), parsed.minute || '00', currentPeriod);
+      if (minuteInputRef.current) {
+        minuteInputRef.current.focus();
+        minuteInputRef.current.select();
+      }
+    }
+    // If raw is '1', do not auto-emit yet so user can type '0' (10), '1' (11), or '2' (12)!
   };
 
   const handleHourKeyDown = (e) => {
@@ -203,27 +224,46 @@ export default function UnifiedTimeInput({
       const cur = parseInt(parsed.hour12 || '12', 10);
       const next = cur >= 12 ? 1 : cur + 1;
       emitChange(String(next), parsed.minute || '00', currentPeriod);
+      setTypedHour(null);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       const cur = parseInt(parsed.hour12 || '12', 10);
       const next = cur <= 1 ? 12 : cur - 1;
       emitChange(String(next), parsed.minute || '00', currentPeriod);
-    } else if (e.key === 'ArrowRight' || e.key === ':') {
+      setTypedHour(null);
+    } else if (e.key === 'ArrowRight' || e.key === ':' || e.key === 'Enter') {
       e.preventDefault();
-      if (minuteInputRef.current) minuteInputRef.current.focus();
+      if (minuteInputRef.current) {
+        minuteInputRef.current.focus();
+        minuteInputRef.current.select();
+      }
+    }
+  };
+
+  const handleHourBlur = () => {
+    if (typedHour !== null) {
+      if (typedHour !== '') {
+        const num = parseInt(typedHour, 10);
+        if (!isNaN(num) && num >= 1 && num <= 12) {
+          emitChange(String(num), parsed.minute || '00', currentPeriod);
+        }
+      }
+      setTypedHour(null);
     }
   };
 
   const handleMinuteInputChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '');
+    const raw = e.target.value.replace(/\D/g, '').slice(0, 2);
+    setTypedMinute(raw);
     if (!raw) {
-      emitChange(parsed.hour12 || '12', '', currentPeriod);
       return;
     }
-    let num = parseInt(raw, 10);
-    if (num > 59) num = 59;
-    const formatted = raw.length >= 2 ? String(num).padStart(2, '0') : String(num);
-    emitChange(parsed.hour12 || '12', formatted, currentPeriod);
+    const num = parseInt(raw, 10);
+    if (raw.length === 2 && num >= 0 && num <= 59) {
+      emitChange(parsed.hour12 || '12', raw, currentPeriod);
+    } else if (raw.length === 1 && num >= 6 && num <= 9) {
+      emitChange(parsed.hour12 || '12', `0${raw}`, currentPeriod);
+    }
   };
 
   const handleMinuteKeyDown = (e) => {
@@ -232,20 +272,31 @@ export default function UnifiedTimeInput({
       const cur = parseInt(parsed.minute || '00', 10);
       const next = cur >= 59 ? 0 : cur + 1;
       emitChange(parsed.hour12 || '12', String(next).padStart(2, '0'), currentPeriod);
+      setTypedMinute(null);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       const cur = parseInt(parsed.minute || '00', 10);
       const next = cur <= 0 ? 59 : cur - 1;
       emitChange(parsed.hour12 || '12', String(next).padStart(2, '0'), currentPeriod);
+      setTypedMinute(null);
     } else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) {
       e.preventDefault();
-      if (hourInputRef.current) hourInputRef.current.focus();
+      if (hourInputRef.current) {
+        hourInputRef.current.focus();
+        hourInputRef.current.select();
+      }
     }
   };
 
   const handleMinuteBlur = () => {
-    if (parsed.minute && parsed.minute.length === 1) {
-      emitChange(parsed.hour12 || '12', parsed.minute.padStart(2, '0'), currentPeriod);
+    if (typedMinute !== null) {
+      if (typedMinute !== '') {
+        const num = parseInt(typedMinute, 10);
+        if (!isNaN(num) && num >= 0 && num <= 59) {
+          emitChange(parsed.hour12 || '12', String(num).padStart(2, '0'), currentPeriod);
+        }
+      }
+      setTypedMinute(null);
     }
   };
 
@@ -254,6 +305,8 @@ export default function UnifiedTimeInput({
     e.stopPropagation();
     setOpenMenu(null);
     setPeriodOverride(null);
+    setTypedHour(null);
+    setTypedMinute(null);
     if (onChange) onChange('');
   };
 
@@ -292,9 +345,14 @@ export default function UnifiedTimeInput({
           maxLength={2}
           disabled={disabled}
           placeholder="HH"
-          value={parsed.hour12 ? String(parsed.hour12).padStart(2, '0') : ''}
+          value={typedHour !== null ? typedHour : (parsed.hour12 ? String(parsed.hour12).padStart(2, '0') : '')}
+          onFocus={(e) => {
+            setTypedHour(parsed.hour12 ? String(parsed.hour12).padStart(2, '0') : '');
+            e.target.select();
+          }}
           onChange={handleHourInputChange}
           onKeyDown={handleHourKeyDown}
+          onBlur={handleHourBlur}
           style={{
             width: '28px',
             textAlign: 'center',
@@ -302,7 +360,7 @@ export default function UnifiedTimeInput({
             background: 'transparent',
             fontSize: '0.92rem',
             fontWeight: 850,
-            color: parsed.hour12 ? (effectiveError ? '#b91c1c' : 'var(--text-primary, #0f172a)') : 'var(--text-tertiary, #94a3b8)',
+            color: (typedHour !== null ? typedHour : parsed.hour12) ? (effectiveError ? '#b91c1c' : 'var(--text-primary, #0f172a)') : 'var(--text-tertiary, #94a3b8)',
             padding: 0,
             outline: 'none',
             fontFamily: 'inherit',
@@ -310,23 +368,25 @@ export default function UnifiedTimeInput({
           }}
           title="Type Hour or Click Arrow for Dropdown"
         />
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpenMenu(prev => prev === 'hour' ? null : 'hour')}
-          style={{
-            border: 'none',
-            background: openMenu === 'hour' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
-            color: 'var(--text-secondary, #64748b)',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            padding: '2px 2px',
-            borderRadius: '4px',
-            fontSize: '0.60rem'
-          }}
-          title="Open Hour Menu"
-        >
-          ▼
-        </button>
+        {!disabled && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setOpenMenu(prev => prev === 'hour' ? null : 'hour')}
+            style={{
+              border: 'none',
+              background: openMenu === 'hour' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
+              color: 'var(--text-secondary, #64748b)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              padding: '2px 2px',
+              borderRadius: '4px',
+              fontSize: '0.60rem'
+            }}
+            title="Open Hour Menu"
+          >
+            ▼
+          </button>
+        )}
       </div>
 
       <span style={{ fontWeight: 900, color: 'var(--text-tertiary, #94a3b8)', margin: '0 1px' }}>:</span>
@@ -340,7 +400,12 @@ export default function UnifiedTimeInput({
           maxLength={2}
           disabled={disabled}
           placeholder="MM"
-          value={parsed.minute || ''}
+          value={typedMinute !== null ? typedMinute : (parsed.minute || '')}
+          onFocus={(e) => {
+            if (disabled) return;
+            setTypedMinute(parsed.minute || '');
+            e.target.select();
+          }}
           onChange={handleMinuteInputChange}
           onKeyDown={handleMinuteKeyDown}
           onBlur={handleMinuteBlur}
@@ -351,7 +416,7 @@ export default function UnifiedTimeInput({
             background: 'transparent',
             fontSize: '0.92rem',
             fontWeight: 850,
-            color: parsed.minute ? (effectiveError ? '#b91c1c' : 'var(--text-primary, #0f172a)') : 'var(--text-tertiary, #94a3b8)',
+            color: (typedMinute !== null ? typedMinute : parsed.minute) ? (effectiveError ? '#b91c1c' : 'var(--text-primary, #0f172a)') : 'var(--text-tertiary, #94a3b8)',
             padding: 0,
             outline: 'none',
             fontFamily: 'inherit',
@@ -359,23 +424,25 @@ export default function UnifiedTimeInput({
           }}
           title="Type Any Minute (00 - 59) or Click Arrow for Dropdown"
         />
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpenMenu(prev => prev === 'minute' ? null : 'minute')}
-          style={{
-            border: 'none',
-            background: openMenu === 'minute' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
-            color: 'var(--text-secondary, #64748b)',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            padding: '2px 2px',
-            borderRadius: '4px',
-            fontSize: '0.60rem'
-          }}
-          title="Open Minute Menu"
-        >
-          ▼
-        </button>
+        {!disabled && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setOpenMenu(prev => prev === 'minute' ? null : 'minute')}
+            style={{
+              border: 'none',
+              background: openMenu === 'minute' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
+              color: 'var(--text-secondary, #64748b)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              padding: '2px 2px',
+              borderRadius: '4px',
+              fontSize: '0.60rem'
+            }}
+            title="Open Minute Menu"
+          >
+            ▼
+          </button>
+        )}
       </div>
 
       {/* AM / PM Segmented Switch */}

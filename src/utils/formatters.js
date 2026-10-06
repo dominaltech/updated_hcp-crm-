@@ -61,6 +61,14 @@ export function formatCurrency(amount) {
   return `₹${num.toLocaleString('en-IN')}`;
 }
 
+export function formatSlipAmount(amount) {
+  const num = Number(amount) || 0;
+  if (Math.abs(num - Math.round(num)) < 0.005) {
+    return `${Math.round(num)}/-`;
+  }
+  return `${num.toFixed(2)}/-`;
+}
+
 export function amountToWordsIndian(num) {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
