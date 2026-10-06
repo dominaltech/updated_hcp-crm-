@@ -30,22 +30,23 @@ describe('OTA Early Check-In Pricing and Manager Panel Policy', () => {
   const printPath = path.resolve(__dirname, '../src/services/printService.js');
   const printContent = fs.readFileSync(printPath, 'utf-8');
 
-  it('verifies database migration adds ota_early_checkin_price, max_hours, gst_pct to rooms and early_checkin_charge to bookings', () => {
+  it('verifies database migration adds ota early check-in slabs to rooms and early_checkin_charge to bookings', () => {
     expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_checkin_price REAL DEFAULT 900');
-    expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_checkin_max_hours INTEGER DEFAULT 6');
-    expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_checkin_gst_pct REAL DEFAULT 5');
+    expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_6h_rate REAL DEFAULT 900');
+    expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_9h_rate REAL DEFAULT 1200');
+    expect(databaseContent).toContain('ALTER TABLE rooms ADD COLUMN ota_early_12h_rate REAL DEFAULT 1500');
     expect(databaseContent).toContain('ALTER TABLE bookings ADD COLUMN early_checkin_charge REAL DEFAULT 0');
     expect(databaseContent).toContain('ALTER TABLE bookings ADD COLUMN early_checkin_gst REAL DEFAULT 0');
   });
 
-  it('verifies Manager Panel ManagePage includes OTA early check-in policy inputs in Room Modal', () => {
-    expect(managePageContent).toContain('ota_early_checkin_price: 900');
-    expect(managePageContent).toContain('ota_early_checkin_max_hours: 6');
-    expect(managePageContent).toContain('ota_early_checkin_gst_pct: 5');
+  it('verifies Manager Panel ManagePage includes OTA early check-in policy slabs in Room Modal', () => {
+    expect(managePageContent).toContain('ota_early_6h_rate: 900');
+    expect(managePageContent).toContain('ota_early_9h_rate: 1200');
+    expect(managePageContent).toContain('ota_early_12h_rate: 1500');
     expect(managePageContent).toContain('OTA EARLY CHECK-IN POLICY');
-    expect(managePageContent).toContain('EXTRA CHARGE (₹)');
-    expect(managePageContent).toContain('MAX EARLY HOURS');
-    expect(managePageContent).toContain('GST RATE (%)');
+    expect(managePageContent).toContain('6hour Early');
+    expect(managePageContent).toContain('9hour Early');
+    expect(managePageContent).toContain('12hour Early');
   });
 
   it('verifies Manager Panel room table displays OTA Early C/I column', () => {

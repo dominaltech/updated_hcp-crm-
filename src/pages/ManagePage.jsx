@@ -89,8 +89,14 @@ export default function ManagePage({ onPrintClosingReport }) {
     ext_9h_rate: 1500,
     ext_9h_gst_pct: 5,
     ota_early_checkin_price: 900,
-    ota_early_checkin_max_hours: 6,
-    ota_early_checkin_gst_pct: 5
+    ota_early_checkin_max_hours: 12,
+    ota_early_checkin_gst_pct: 5,
+    ota_early_6h_rate: 900,
+    ota_early_6h_gst_pct: 5,
+    ota_early_9h_rate: 1200,
+    ota_early_9h_gst_pct: 5,
+    ota_early_12h_rate: 1500,
+    ota_early_12h_gst_pct: 5
   });
 
   // Staff CRUD state
@@ -507,9 +513,15 @@ export default function ManagePage({ onPrintClosingReport }) {
         ext_6h_gst_pct: r.ext_6h_gst_pct !== undefined && r.ext_6h_gst_pct !== null ? Number(r.ext_6h_gst_pct) : roomGst,
         ext_9h_rate: r.ext_9h_rate || 1500,
         ext_9h_gst_pct: r.ext_9h_gst_pct !== undefined && r.ext_9h_gst_pct !== null ? Number(r.ext_9h_gst_pct) : roomGst,
-        ota_early_checkin_price: r.ota_early_checkin_price !== undefined && r.ota_early_checkin_price !== null ? r.ota_early_checkin_price : 900,
-        ota_early_checkin_max_hours: r.ota_early_checkin_max_hours !== undefined && r.ota_early_checkin_max_hours !== null ? r.ota_early_checkin_max_hours : 6,
-        ota_early_checkin_gst_pct: r.ota_early_checkin_gst_pct !== undefined && r.ota_early_checkin_gst_pct !== null ? Number(r.ota_early_checkin_gst_pct) : 5
+        ota_early_checkin_price: r.ota_early_6h_rate ?? r.ota_early_checkin_price ?? 900,
+        ota_early_checkin_max_hours: 12,
+        ota_early_checkin_gst_pct: r.ota_early_6h_gst_pct !== undefined && r.ota_early_6h_gst_pct !== null ? Number(r.ota_early_6h_gst_pct) : (r.ota_early_checkin_gst_pct !== undefined && r.ota_early_checkin_gst_pct !== null ? Number(r.ota_early_checkin_gst_pct) : 5),
+        ota_early_6h_rate: r.ota_early_6h_rate !== undefined && r.ota_early_6h_rate !== null ? Number(r.ota_early_6h_rate) : (r.ota_early_checkin_price !== undefined && r.ota_early_checkin_price !== null ? Number(r.ota_early_checkin_price) : 900),
+        ota_early_6h_gst_pct: r.ota_early_6h_gst_pct !== undefined && r.ota_early_6h_gst_pct !== null ? Number(r.ota_early_6h_gst_pct) : (r.ota_early_checkin_gst_pct !== undefined && r.ota_early_checkin_gst_pct !== null ? Number(r.ota_early_checkin_gst_pct) : 5),
+        ota_early_9h_rate: r.ota_early_9h_rate !== undefined && r.ota_early_9h_rate !== null ? Number(r.ota_early_9h_rate) : 1200,
+        ota_early_9h_gst_pct: r.ota_early_9h_gst_pct !== undefined && r.ota_early_9h_gst_pct !== null ? Number(r.ota_early_9h_gst_pct) : 5,
+        ota_early_12h_rate: r.ota_early_12h_rate !== undefined && r.ota_early_12h_rate !== null ? Number(r.ota_early_12h_rate) : 1500,
+        ota_early_12h_gst_pct: r.ota_early_12h_gst_pct !== undefined && r.ota_early_12h_gst_pct !== null ? Number(r.ota_early_12h_gst_pct) : 5
       });
     } else {
       setEditingRoom(null);
@@ -538,8 +550,14 @@ export default function ManagePage({ onPrintClosingReport }) {
         ext_9h_rate: 1500,
         ext_9h_gst_pct: 5,
         ota_early_checkin_price: 900,
-        ota_early_checkin_max_hours: 6,
-        ota_early_checkin_gst_pct: 5
+        ota_early_checkin_max_hours: 12,
+        ota_early_checkin_gst_pct: 5,
+        ota_early_6h_rate: 900,
+        ota_early_6h_gst_pct: 5,
+        ota_early_9h_rate: 1200,
+        ota_early_9h_gst_pct: 5,
+        ota_early_12h_rate: 1500,
+        ota_early_12h_gst_pct: 5
       });
     }
     setIsRoomModalOpen(true);
@@ -549,6 +567,13 @@ export default function ManagePage({ onPrintClosingReport }) {
     e.preventDefault();
     try {
       const roomGst = parseFloat(roomForm.gst_pct) !== undefined && !isNaN(parseFloat(roomForm.gst_pct)) ? parseFloat(roomForm.gst_pct) : 5;
+      const early6hRate = Number(roomForm.ota_early_6h_rate) !== undefined && !isNaN(Number(roomForm.ota_early_6h_rate)) ? Number(roomForm.ota_early_6h_rate) : 900;
+      const early6hGst = parseFloat(roomForm.ota_early_6h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ota_early_6h_gst_pct)) ? parseFloat(roomForm.ota_early_6h_gst_pct) : 5;
+      const early9hRate = Number(roomForm.ota_early_9h_rate) !== undefined && !isNaN(Number(roomForm.ota_early_9h_rate)) ? Number(roomForm.ota_early_9h_rate) : 1200;
+      const early9hGst = parseFloat(roomForm.ota_early_9h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ota_early_9h_gst_pct)) ? parseFloat(roomForm.ota_early_9h_gst_pct) : 5;
+      const early12hRate = Number(roomForm.ota_early_12h_rate) !== undefined && !isNaN(Number(roomForm.ota_early_12h_rate)) ? Number(roomForm.ota_early_12h_rate) : 1500;
+      const early12hGst = parseFloat(roomForm.ota_early_12h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ota_early_12h_gst_pct)) ? parseFloat(roomForm.ota_early_12h_gst_pct) : 5;
+
       const payload = {
         ...roomForm,
         floor: roomForm.floor || 'First Floor',
@@ -573,9 +598,15 @@ export default function ManagePage({ onPrintClosingReport }) {
         ext_6h_gst_pct: parseFloat(roomForm.ext_6h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ext_6h_gst_pct)) ? parseFloat(roomForm.ext_6h_gst_pct) : roomGst,
         ext_9h_rate: Number(roomForm.ext_9h_rate) || 0,
         ext_9h_gst_pct: parseFloat(roomForm.ext_9h_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ext_9h_gst_pct)) ? parseFloat(roomForm.ext_9h_gst_pct) : roomGst,
-        ota_early_checkin_price: Number(roomForm.ota_early_checkin_price) !== undefined && !isNaN(Number(roomForm.ota_early_checkin_price)) ? Number(roomForm.ota_early_checkin_price) : 900,
-        ota_early_checkin_max_hours: Number(roomForm.ota_early_checkin_max_hours) !== undefined && !isNaN(Number(roomForm.ota_early_checkin_max_hours)) ? Number(roomForm.ota_early_checkin_max_hours) : 6,
-        ota_early_checkin_gst_pct: parseFloat(roomForm.ota_early_checkin_gst_pct) !== undefined && !isNaN(parseFloat(roomForm.ota_early_checkin_gst_pct)) ? parseFloat(roomForm.ota_early_checkin_gst_pct) : 5
+        ota_early_6h_rate: early6hRate,
+        ota_early_6h_gst_pct: early6hGst,
+        ota_early_9h_rate: early9hRate,
+        ota_early_9h_gst_pct: early9hGst,
+        ota_early_12h_rate: early12hRate,
+        ota_early_12h_gst_pct: early12hGst,
+        ota_early_checkin_price: early6hRate,
+        ota_early_checkin_max_hours: 12,
+        ota_early_checkin_gst_pct: early6hGst
       };
       if (editingRoom) {
         await api.updateRoom(editingRoom.id, payload);
@@ -3317,12 +3348,14 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <td>{formatCurrency(r.extra_bed_price || r.extra_bed_rate || 500)}</td>
                   <td>{formatCurrency(r.breakfast_price || 250)}</td>
                   <td>
-                    <span style={{ fontWeight: 800, color: '#0369a1', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                      ₹{r.ota_early_checkin_price ?? 900}
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
-                        (≤{r.ota_early_checkin_max_hours ?? 6}h)
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '1px', lineHeight: 1.2 }}>
+                      <span style={{ fontWeight: 800, color: '#0369a1', fontSize: '0.82rem' }}>
+                        ₹{r.ota_early_6h_rate ?? r.ota_early_checkin_price ?? 900} <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>(6h)</span>
                       </span>
-                    </span>
+                      <span style={{ fontSize: '0.70rem', color: '#475569', fontWeight: 700 }}>
+                        ₹{r.ota_early_9h_rate ?? 1200} <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>(9h)</span> • ₹{r.ota_early_12h_rate ?? 1500} <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>(12h)</span>
+                      </span>
+                    </div>
                   </td>
                   <td>
                     <span className={`status-pill ${r.status}`} style={{ fontSize: '0.72rem' }}>
@@ -5458,74 +5491,131 @@ export default function ManagePage({ onPrintClosingReport }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '0.96rem' }}>🌅</span> OTA EARLY CHECK-IN POLICY
                       </div>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '5px' }}>OTA Bookings Only</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '5px' }}>OTA SLABS (BASE + GST)</span>
                     </div>
-                    
-                    <div style={{ background: '#ffffff', padding: '7px 10px', borderRadius: '10px', border: '1.5px solid #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850 }}>
-                          Early Arrival Policy Configuration
-                        </span>
-                        <span style={{ fontSize: '0.66rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 5px', borderRadius: '4px' }}>
-                          Total Extra: ₹{Math.round((Number(roomForm.ota_early_checkin_price) || 0) * (1 + (Number(roomForm.ota_early_checkin_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
-                        </span>
-                      </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
-                        {/* Max Early Arrival Hours */}
-                        <div>
-                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>MAX EARLY HOURS</span>
-                          <div style={{ position: 'relative' }}>
-                            <input
-                              type="number"
-                              min="1"
-                              max="24"
-                              className="form-input"
-                              value={roomForm.ota_early_checkin_max_hours}
-                              onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_max_hours: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 22px 0 6px', color: '#0f172a' }}
-                            />
-                            <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>hrs</span>
-                          </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      {/* Slab 1: 6hour Early */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>6hour Early</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ota_early_6h_rate) || 0) * (1 + (Number(roomForm.ota_early_6h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
                         </div>
-
-                        {/* Base Extra Rate (₹) */}
-                        <div>
-                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>EXTRA CHARGE (₹)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            className="form-input"
-                            value={roomForm.ota_early_checkin_price}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_price: e.target.value === '' ? '' : Number(e.target.value) })}
-                            style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 6px', color: '#0f172a' }}
-                          />
-                        </div>
-
-                        {/* GST (%) */}
-                        <div>
-                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '2px' }}>GST RATE (%)</span>
-                          <div style={{ position: 'relative' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
                             <input
                               type="number"
                               min="0"
-                              max="28"
-                              step="0.5"
                               className="form-input"
-                              value={roomForm.ota_early_checkin_gst_pct}
+                              value={roomForm.ota_early_6h_rate}
                               onFocus={(e) => e.target.select()}
-                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_checkin_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
-                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 6px', color: '#0f172a' }}
+                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_6h_rate: e.target.value === '' ? '' : Number(e.target.value), ota_early_checkin_price: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
                             />
-                            <span style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ota_early_6h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ota_early_6h_gst_pct: e.target.value === '' ? '' : Number(e.target.value), ota_early_checkin_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 650, marginTop: '4px', lineHeight: 1.25 }}>
-                        💡 If an OTA guest checks in early (up to {roomForm.ota_early_checkin_max_hours || 6} hours early), this extra charge of ₹{roomForm.ota_early_checkin_price || 900} (+GST) is applied to the booking and payable at the hotel front desk.
+                      {/* Slab 2: 9hour Early */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>9hour Early</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ota_early_9h_rate) || 0) * (1 + (Number(roomForm.ota_early_9h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.ota_early_9h_rate}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_9h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ota_early_9h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ota_early_9h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Slab 3: 12hour Early */}
+                      <div style={{ minWidth: 0, background: '#ffffff', padding: '7px 9px', borderRadius: '9px', border: '1.5px solid #cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                          <label style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 850, margin: 0 }}>12hour Early</label>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 850, color: '#0369a1', background: '#e0f2fe', padding: '1px 4px', borderRadius: '3px' }}>
+                            ₹{Math.round((Number(roomForm.ota_early_12h_rate) || 0) * (1 + (Number(roomForm.ota_early_12h_gst_pct) || 5) / 100)).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '5px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>BASE</span>
+                            <input
+                              type="number"
+                              min="0"
+                              className="form-input"
+                              value={roomForm.ota_early_12h_rate}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setRoomForm({ ...roomForm, ota_early_12h_rate: e.target.value === '' ? '' : Number(e.target.value) })}
+                              style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.90rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 5px', color: '#0f172a' }}
+                            />
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '1px' }}>GST</span>
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                max="28"
+                                step="0.5"
+                                className="form-input"
+                                value={roomForm.ota_early_12h_gst_pct}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setRoomForm({ ...roomForm, ota_early_12h_gst_pct: e.target.value === '' ? '' : Number(e.target.value) })}
+                                style={{ width: '100%', boxSizing: 'border-box', height: '32px', fontSize: '0.86rem', fontWeight: 900, background: '#ffffff', border: '1.5px solid #cbd5e1', borderRadius: '6px', padding: '0 16px 0 5px', color: '#0f172a' }}
+                              />
+                              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: '#64748b', fontSize: '0.68rem' }}>%</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

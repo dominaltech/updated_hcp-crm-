@@ -407,7 +407,13 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       single_gst_pct,
       ota_early_checkin_price,
       ota_early_checkin_max_hours,
-      ota_early_checkin_gst_pct
+      ota_early_checkin_gst_pct,
+      ota_early_6h_rate,
+      ota_early_6h_gst_pct,
+      ota_early_9h_rate,
+      ota_early_9h_gst_pct,
+      ota_early_12h_rate,
+      ota_early_12h_gst_pct
     } = req.body;
     
     if (!room_number || !price) {
@@ -419,6 +425,25 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       return res.status(400).json({ success: false, error: `Room ${room_number} already exists` });
     }
 
+    const resolved6hRate = ota_early_6h_rate !== undefined && !isNaN(parseFloat(ota_early_6h_rate))
+      ? parseFloat(ota_early_6h_rate)
+      : (parseFloat(ota_early_checkin_price) !== undefined && !isNaN(parseFloat(ota_early_checkin_price)) ? parseFloat(ota_early_checkin_price) : 900);
+    const resolved6hGst = ota_early_6h_gst_pct !== undefined && !isNaN(parseFloat(ota_early_6h_gst_pct))
+      ? parseFloat(ota_early_6h_gst_pct)
+      : (parseFloat(ota_early_checkin_gst_pct) !== undefined && !isNaN(parseFloat(ota_early_checkin_gst_pct)) ? parseFloat(ota_early_checkin_gst_pct) : 5);
+    const resolved9hRate = ota_early_9h_rate !== undefined && !isNaN(parseFloat(ota_early_9h_rate))
+      ? parseFloat(ota_early_9h_rate)
+      : 1200;
+    const resolved9hGst = ota_early_9h_gst_pct !== undefined && !isNaN(parseFloat(ota_early_9h_gst_pct))
+      ? parseFloat(ota_early_9h_gst_pct)
+      : 5;
+    const resolved12hRate = ota_early_12h_rate !== undefined && !isNaN(parseFloat(ota_early_12h_rate))
+      ? parseFloat(ota_early_12h_rate)
+      : 1500;
+    const resolved12hGst = ota_early_12h_gst_pct !== undefined && !isNaN(parseFloat(ota_early_12h_gst_pct))
+      ? parseFloat(ota_early_12h_gst_pct)
+      : 5;
+
     const stmt = db.prepare(`
       INSERT INTO rooms (
         room_number, floor, room_type, price, price_single, max_adults, max_children, max_discount_pct, 
@@ -426,9 +451,10 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
         breakfast_price, max_extra_beds, extra_bed_price, gst_pct,
         extra_bed_gst_pct, breakfast_gst_pct, ext_3h_gst_pct, ext_6h_gst_pct, ext_9h_gst_pct, single_gst_pct,
         ota_early_checkin_price, ota_early_checkin_max_hours, ota_early_checkin_gst_pct,
+        ota_early_6h_rate, ota_early_6h_gst_pct, ota_early_9h_rate, ota_early_9h_gst_pct, ota_early_12h_rate, ota_early_12h_gst_pct,
         status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
     `);
 
     const result = stmt.run(
@@ -454,9 +480,15 @@ app.post('/api/rooms', requireAuth, requireRole('manager'), (req, res) => {
       parseFloat(ext_6h_gst_pct) !== undefined && !isNaN(parseFloat(ext_6h_gst_pct)) ? parseFloat(ext_6h_gst_pct) : 5,
       parseFloat(ext_9h_gst_pct) !== undefined && !isNaN(parseFloat(ext_9h_gst_pct)) ? parseFloat(ext_9h_gst_pct) : 5,
       parseFloat(single_gst_pct) !== undefined && !isNaN(parseFloat(single_gst_pct)) ? parseFloat(single_gst_pct) : (parseFloat(gst_pct) || 5),
-      parseFloat(ota_early_checkin_price) !== undefined && !isNaN(parseFloat(ota_early_checkin_price)) ? parseFloat(ota_early_checkin_price) : 900,
-      parseInt(ota_early_checkin_max_hours) !== undefined && !isNaN(parseInt(ota_early_checkin_max_hours)) ? parseInt(ota_early_checkin_max_hours) : 6,
-      parseFloat(ota_early_checkin_gst_pct) !== undefined && !isNaN(parseFloat(ota_early_checkin_gst_pct)) ? parseFloat(ota_early_checkin_gst_pct) : 5
+      resolved6hRate,
+      parseInt(ota_early_checkin_max_hours) !== undefined && !isNaN(parseInt(ota_early_checkin_max_hours)) ? parseInt(ota_early_checkin_max_hours) : 12,
+      resolved6hGst,
+      resolved6hRate,
+      resolved6hGst,
+      resolved9hRate,
+      resolved9hGst,
+      resolved12hRate,
+      resolved12hGst
     );
 
     res.json({ success: true, roomId: result.lastInsertRowid });
@@ -495,6 +527,12 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       ota_early_checkin_price,
       ota_early_checkin_max_hours,
       ota_early_checkin_gst_pct,
+      ota_early_6h_rate,
+      ota_early_6h_gst_pct,
+      ota_early_9h_rate,
+      ota_early_9h_gst_pct,
+      ota_early_12h_rate,
+      ota_early_12h_gst_pct,
       status 
     } = req.body;
 
@@ -543,6 +581,12 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
         ota_early_checkin_price = COALESCE(?, ota_early_checkin_price),
         ota_early_checkin_max_hours = COALESCE(?, ota_early_checkin_max_hours),
         ota_early_checkin_gst_pct = COALESCE(?, ota_early_checkin_gst_pct),
+        ota_early_6h_rate = COALESCE(?, ota_early_6h_rate),
+        ota_early_6h_gst_pct = COALESCE(?, ota_early_6h_gst_pct),
+        ota_early_9h_rate = COALESCE(?, ota_early_9h_rate),
+        ota_early_9h_gst_pct = COALESCE(?, ota_early_9h_gst_pct),
+        ota_early_12h_rate = COALESCE(?, ota_early_12h_rate),
+        ota_early_12h_gst_pct = COALESCE(?, ota_early_12h_gst_pct),
         status = COALESCE(?, status)
       WHERE id = ?
     `);
@@ -570,9 +614,19 @@ app.put('/api/rooms/:id', requireAuth, requireRole('manager'), (req, res) => {
       ext_6h_gst_pct !== undefined ? parseFloat(ext_6h_gst_pct) : null,
       ext_9h_gst_pct !== undefined ? parseFloat(ext_9h_gst_pct) : null,
       single_gst_pct !== undefined ? parseFloat(single_gst_pct) : null,
-      ota_early_checkin_price !== undefined && ota_early_checkin_price !== '' && ota_early_checkin_price !== null ? parseFloat(ota_early_checkin_price) : null,
-      ota_early_checkin_max_hours !== undefined && ota_early_checkin_max_hours !== '' && ota_early_checkin_max_hours !== null ? parseInt(ota_early_checkin_max_hours) : null,
-      ota_early_checkin_gst_pct !== undefined && ota_early_checkin_gst_pct !== '' && ota_early_checkin_gst_pct !== null ? parseFloat(ota_early_checkin_gst_pct) : null,
+      ota_early_checkin_price !== undefined && ota_early_checkin_price !== '' && ota_early_checkin_price !== null
+        ? parseFloat(ota_early_checkin_price)
+        : (ota_early_6h_rate !== undefined && ota_early_6h_rate !== '' && ota_early_6h_rate !== null ? parseFloat(ota_early_6h_rate) : null),
+      ota_early_checkin_max_hours !== undefined && ota_early_checkin_max_hours !== '' && ota_early_checkin_max_hours !== null ? parseInt(ota_early_checkin_max_hours) : 12,
+      ota_early_checkin_gst_pct !== undefined && ota_early_checkin_gst_pct !== '' && ota_early_checkin_gst_pct !== null
+        ? parseFloat(ota_early_checkin_gst_pct)
+        : (ota_early_6h_gst_pct !== undefined && ota_early_6h_gst_pct !== '' && ota_early_6h_gst_pct !== null ? parseFloat(ota_early_6h_gst_pct) : null),
+      ota_early_6h_rate !== undefined && ota_early_6h_rate !== '' && ota_early_6h_rate !== null ? parseFloat(ota_early_6h_rate) : null,
+      ota_early_6h_gst_pct !== undefined && ota_early_6h_gst_pct !== '' && ota_early_6h_gst_pct !== null ? parseFloat(ota_early_6h_gst_pct) : null,
+      ota_early_9h_rate !== undefined && ota_early_9h_rate !== '' && ota_early_9h_rate !== null ? parseFloat(ota_early_9h_rate) : null,
+      ota_early_9h_gst_pct !== undefined && ota_early_9h_gst_pct !== '' && ota_early_9h_gst_pct !== null ? parseFloat(ota_early_9h_gst_pct) : null,
+      ota_early_12h_rate !== undefined && ota_early_12h_rate !== '' && ota_early_12h_rate !== null ? parseFloat(ota_early_12h_rate) : null,
+      ota_early_12h_gst_pct !== undefined && ota_early_12h_gst_pct !== '' && ota_early_12h_gst_pct !== null ? parseFloat(ota_early_12h_gst_pct) : null,
       status,
       id
     );

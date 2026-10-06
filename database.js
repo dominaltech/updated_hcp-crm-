@@ -763,6 +763,21 @@ try { db.exec("UPDATE rooms SET ota_early_checkin_price = 900 WHERE ota_early_ch
 try { db.exec("UPDATE rooms SET ota_early_checkin_max_hours = 6 WHERE ota_early_checkin_max_hours IS NULL;"); } catch (e) {}
 try { db.exec("UPDATE rooms SET ota_early_checkin_gst_pct = 5 WHERE ota_early_checkin_gst_pct IS NULL;"); } catch (e) {}
 
+// OTA Early Check-In Slabs: 6hour, 9hour, 12hour (Base + GST % inputs per room)
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_6h_rate REAL DEFAULT 900;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_6h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_9h_rate REAL DEFAULT 1200;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_9h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_12h_rate REAL DEFAULT 1500;"); } catch (e) {}
+try { db.exec("ALTER TABLE rooms ADD COLUMN ota_early_12h_gst_pct REAL DEFAULT 5;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN early_checkin_slab TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_6h_rate = COALESCE(ota_early_checkin_price, 900) WHERE ota_early_6h_rate IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_6h_gst_pct = COALESCE(ota_early_checkin_gst_pct, 5) WHERE ota_early_6h_gst_pct IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_9h_rate = 1200 WHERE ota_early_9h_rate IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_9h_gst_pct = 5 WHERE ota_early_9h_gst_pct IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_12h_rate = 1500 WHERE ota_early_12h_rate IS NULL;"); } catch (e) {}
+try { db.exec("UPDATE rooms SET ota_early_12h_gst_pct = 5 WHERE ota_early_12h_gst_pct IS NULL;"); } catch (e) {}
+
 // Card Surcharge (2.5%) and UPI Tax (0.4% > ₹2000) Tracking Columns
 try { db.exec("ALTER TABLE payments ADD COLUMN upi_tax REAL DEFAULT 0;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN split_cash REAL DEFAULT 0;"); } catch (e) {}

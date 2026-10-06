@@ -149,9 +149,10 @@ function cleanDemoData(db) {
       breakfast_price, max_extra_beds, extra_bed_price, gst_pct,
       extra_bed_gst_pct, breakfast_gst_pct, ext_3h_gst_pct, ext_6h_gst_pct, ext_9h_gst_pct, single_gst_pct,
       ota_early_checkin_price, ota_early_checkin_max_hours, ota_early_checkin_gst_pct,
+      ota_early_6h_rate, ota_early_6h_gst_pct, ota_early_9h_rate, ota_early_9h_gst_pct, ota_early_12h_rate, ota_early_12h_gst_pct,
       status, current_booking_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 60, 500, 1000, 1500, 250, ?, ?, 5, 5, 5, 5, 5, 5, 5, 900, 6, 5, 'ready', NULL)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 60, 500, 1000, 1500, 250, ?, ?, 5, 5, 5, 5, 5, 5, 5, 900, 12, 5, 900, 5, 1200, 5, 1500, 5, 'ready', NULL)
   `);
   const updateRoom = db.prepare(`
     UPDATE rooms 
