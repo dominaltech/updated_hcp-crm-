@@ -118,10 +118,11 @@ export default function FolioSettlementModal({
   // - Room Tariff is 100% covered by OTA voucher
   // - If no extend, no restaurant, no bar bill, and no extra mattress: balanceDue is strictly 0
   // - If F&B bill exists (or extension/extras): balanceDue is ONLY that unpaid amount!
-  const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal) - effectiveAdvancePaid);
+  const extraExpensesVal = Number(folioData?.expensesTotal || folioData?.extraExpensesTotal || 0);
+  const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal + extraExpensesVal) - effectiveAdvancePaid);
   const balanceDue = isOtaPrepaid
     ? otaPrepaidBalanceDue
-    : (folioData ? Math.max(0, folioData.stayCalcNow?.balanceDue ?? folioData.balanceDue ?? 0) : 0);
+    : (folioData ? Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (folioData.stayCalcNow?.balanceDue ?? 0)) : 0);
 
   const summaryRefund = folioData?.summary?.refundAmount || folioData?.refundAmount || 0;
   const isRefund = !isOtaPrepaid && ((folioData && (folioData.stayCalcNow?.refundDue > 0 || folioData.balanceDue < 0 || summaryRefund > 0)) || false);
@@ -669,6 +670,12 @@ export default function FolioSettlementModal({
               <span className="sub-label">Bar:</span>
               <strong>{formatCurrency(effectiveBarTotal)}</strong>
             </div>
+            {extraExpensesVal > 0 && (
+              <div>
+                <span className="sub-label">Damages / Extras:</span>
+                <strong style={{ color: '#b91c1c' }}>{formatCurrency(extraExpensesVal)}</strong>
+              </div>
+            )}
             <div>
               <span className="sub-label">Advance Paid:</span>
               <strong style={{ color: 'var(--apple-green)' }}>- {formatCurrency(effectiveAdvancePaid)}</strong>
@@ -698,16 +705,21 @@ export default function FolioSettlementModal({
           }}>
             {isOtaPrepaid ? (
               <span>
-                💡 <strong>Prepaid Reconciliation:</strong> Room Stay Covered by {folioData.otaPlatform || 'OTA'} Voucher + {formatCurrency(hotelExtrasChargeVal + extensionChargeVal)} (Extras/Ext) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Desk Advance) = <strong style={{ color: balanceDue > 0 ? '#b91c1c' : '#15803d' }}>{balanceDue === 0 ? '₹0.00 Fully Settled' : `${formatCurrency(balanceDue)} Remaining Due (${effectiveFnbTotal > 0 ? 'F&B' : 'Extras'})`}</strong>
+                💡 <strong>Prepaid Reconciliation:</strong> Room Stay Covered by {folioData.otaPlatform || 'OTA'} Voucher + {formatCurrency(hotelExtrasChargeVal + extensionChargeVal)} (Extras/Ext) + {formatCurrency(effectiveFnbTotal)} (F&amp;B){extraExpensesVal > 0 ? ` + ${formatCurrency(extraExpensesVal)} (Damages/Extras)` : ''} - {formatCurrency(effectiveAdvancePaid)} (Desk Advance) = <strong style={{ color: balanceDue > 0 ? '#b91c1c' : '#15803d' }}>{balanceDue === 0 ? '₹0.00 Fully Settled' : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
               </span>
             ) : (
               <span>
-                💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B) - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: isRefund ? '#15803d' : (balanceDue > 0 ? '#b91c1c' : '#15803d') }}>{isRefund ? `Refund: ${formatCurrency(refundAmount)}` : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
+                💡 <strong>Reconciliation:</strong> {formatCurrency(effectiveRoomTariff)} (Room) + {formatCurrency(effectiveStayTax)} (Tax) + {formatCurrency(effectiveFnbTotal)} (F&amp;B){extraExpensesVal > 0 ? ` + ${formatCurrency(extraExpensesVal)} (Damages/Extras)` : ''} - {formatCurrency(effectiveAdvancePaid)} (Advance) = <strong style={{ color: isRefund ? '#15803d' : (balanceDue > 0 ? '#b91c1c' : '#15803d') }}>{isRefund ? `Refund: ${formatCurrency(refundAmount)}` : `${formatCurrency(balanceDue)} Remaining Due`}</strong>
               </span>
             )}
             {effectiveFnbTotal > 0 && (
               <span style={{ fontWeight: 750, color: '#d97706' }}>
                 ✓ Includes {formatCurrency(effectiveFnbTotal)} Restaurant &amp; Bar Orders
+              </span>
+            )}
+            {extraExpensesVal > 0 && (
+              <span style={{ fontWeight: 750, color: '#b91c1c' }}>
+                ✓ Includes {formatCurrency(extraExpensesVal)} Damages &amp; Extra Expenses
               </span>
             )}
           </div>

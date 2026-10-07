@@ -2345,6 +2345,14 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const pendingBarOrders = barOrders.filter(o => o.is_paid === 0);
     const barTotal = pendingBarOrders.reduce((sum, o) => sum + (o.total || 0), 0);
 
+    // Fetch all extra expenses (damages, losses, incidentals) strictly for this active booking session
+    const extraExpenses = db.prepare(`
+      SELECT * FROM booking_extra_expenses 
+      WHERE booking_id IN (${bookingPlaceholders})
+      ORDER BY created_at ASC
+    `).all(...groupBookingIds);
+    const expensesTotal = extraExpenses.reduce((sum, e) => sum + (parseFloat(e.total_amount) || 0), 0);
+
     // Fetch all payments ledger records strictly for this active booking session
     const payments = db.prepare(`
       SELECT * FROM payments 
@@ -2467,22 +2475,22 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       }
     }
 
-    let effectiveGrandTotal = effectiveRoomCharge + foodTotal + barTotal;
+    let effectiveGrandTotal = effectiveRoomCharge + foodTotal + barTotal + expensesTotal;
     let effectiveBalanceDue = effectiveGrandTotal - effectivePaid;
 
     if (isOtaPrepaid) {
       // For OTA Pre-Paid, room tariff is settled by OTA voucher.
-      // Guest liability at hotel is strictly hotel extras + F&B.
+      // Guest liability at hotel is strictly hotel extras + F&B + Extra Expenses.
       const stayExtrasPayable = Math.max(hotelExtrasCharge, effectivePaid);
       effectiveRoomCharge = stayExtrasPayable;
-      effectiveGrandTotal = stayExtrasPayable + foodTotal + barTotal;
+      effectiveGrandTotal = stayExtrasPayable + foodTotal + barTotal + expensesTotal;
       // Balance due by guest: if desk payment covers extras, balance is 0 (or F&B balance if any)
-      effectiveBalanceDue = Math.max(0, (hotelExtrasCharge + foodTotal + barTotal) - effectivePaid);
+      effectiveBalanceDue = Math.max(0, (hotelExtrasCharge + foodTotal + barTotal + expensesTotal) - effectivePaid);
     } else if (isOtaPayAtHotel && otaBillAmount > 0) {
-      // For OTA Pay at Hotel, guest pays OTA contract rate + hotel extras + F&B
+      // For OTA Pay at Hotel, guest pays OTA contract rate + hotel extras + F&B + Extra Expenses
       const otaTotalStay = otaBillAmount + hotelExtrasCharge;
       effectiveRoomCharge = otaTotalStay;
-      effectiveGrandTotal = otaTotalStay + foodTotal + barTotal;
+      effectiveGrandTotal = otaTotalStay + foodTotal + barTotal + expensesTotal;
       effectiveBalanceDue = Math.max(0, effectiveGrandTotal - effectivePaid);
     }
 
@@ -2541,8 +2549,8 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
           const fnbTaxable = Math.round(fnbCombinedTotal / 1.05);
           const fnbGst = fnbCombinedTotal - fnbTaxable;
 
-          const nowGrandTotal = nowRoomCharge + fnbCombinedTotal;
-          const decGrandTotal = decRoomCharge + fnbCombinedTotal;
+          const nowGrandTotal = nowRoomCharge + fnbCombinedTotal + expensesTotal;
+          const decGrandTotal = decRoomCharge + fnbCombinedTotal + expensesTotal;
 
           return res.json({
             success: true,
@@ -2550,9 +2558,13 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
               room,
               restaurantOrders,
               barOrders,
+              extraExpenses: extraExpenses || [],
+              expensesTotal: expensesTotal || 0,
               visitors: visitors || [],
               payments: payments || [],
               summary: {
+                extraExpenses: extraExpenses || [],
+                expensesTotal: expensesTotal || 0,
                 grossTariff: roomGrossTariff,
                 roomGrossTariff,
                 roomTaxable: combinedPreTaxRoomCharge,
@@ -3065,6 +3077,81 @@ app.delete('/api/visitors/:id', requireAuth, requireRole('manager', 'hospitality
   }
 });
 
+// 9.5 EXTRA EXPENSES, LOSS & DAMAGE MANAGEMENT FOR ROOM FOLIO
+app.get('/api/bookings/:bookingId/extra-expenses', requireAuth, (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const expenses = db.prepare(`
+      SELECT * FROM booking_extra_expenses 
+      WHERE booking_id = ? 
+      ORDER BY created_at ASC
+    `).all(bookingId);
+    res.json({ success: true, expenses });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/bookings/:bookingId/extra-expenses', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { reason, amount, gst_pct } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'Reason/Item description is required' });
+    }
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid expense amount is required' });
+    }
+
+    const booking = db.prepare('SELECT id, room_id FROM bookings WHERE id = ?').get(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+
+    const parsedGstPct = gst_pct !== undefined && gst_pct !== null ? parseFloat(gst_pct) : 5;
+    const taxableAmount = Math.round((parsedAmount / (1 + (parsedGstPct / 100))) * 100) / 100;
+    const gstAmount = Math.round((parsedAmount - taxableAmount) * 100) / 100;
+    const addedBy = req.user?.full_name || req.user?.username || 'Staff';
+
+    const insertStmt = db.prepare(`
+      INSERT INTO booking_extra_expenses (
+        booking_id, room_id, reason, amount, gst_pct, gst_amount, total_amount, added_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insertStmt.run(
+      booking.id,
+      booking.room_id,
+      reason.trim(),
+      taxableAmount,
+      parsedGstPct,
+      gstAmount,
+      parsedAmount,
+      addedBy
+    );
+
+    const inserted = db.prepare('SELECT * FROM booking_extra_expenses WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ success: true, expense: inserted });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/bookings/:bookingId/extra-expenses/:expenseId', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+  try {
+    const { bookingId, expenseId } = req.params;
+    const existing = db.prepare('SELECT * FROM booking_extra_expenses WHERE id = ? AND booking_id = ?').get(expenseId, bookingId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Expense record not found' });
+    }
+    db.prepare('DELETE FROM booking_extra_expenses WHERE id = ?').run(expenseId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 10. CHECKOUT ROOM (Settle balance or process refund, log into payments ledger, mark all linked rooms as needs_cleaning)
 app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality'), async (req, res) => {
   try {
@@ -3231,7 +3318,14 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       effectiveRestUnpaid = clientFnb - effectiveBarUnpaid;
     }
 
-    const totalGroupBill = currentGroupRoomCharge + effectiveRestUnpaid + effectiveBarUnpaid;
+    const expensesRow = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total 
+      FROM booking_extra_expenses 
+      WHERE booking_id IN (${activeBookingPlaceholders})
+    `).get(...activeBookingIds);
+    const groupExpensesTotal = expensesRow ? expensesRow.total : 0;
+
+    const totalGroupBill = currentGroupRoomCharge + effectiveRestUnpaid + effectiveBarUnpaid + groupExpensesTotal;
     const computedMaxBalanceDue = Math.max(0, totalGroupBill - currentGroupTotalPaid);
     const clientBalanceDue = parseFloat(b.balance_due ?? b.balanceDue ?? b.remaining_balance ?? b.remainingBalance);
     const maxBalanceDue = Math.max(computedMaxBalanceDue, !isNaN(clientBalanceDue) ? clientBalanceDue : 0);

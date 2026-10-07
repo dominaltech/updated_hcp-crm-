@@ -584,6 +584,25 @@ db.exec(`
   );
 `);
 
+// Room Extra Expenses Table (Room Loss, Damages, and Incidentals with configurable GST)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS booking_extra_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL,
+    room_id INTEGER,
+    reason TEXT NOT NULL,
+    amount REAL NOT NULL,
+    gst_pct REAL DEFAULT 5,
+    gst_amount REAL NOT NULL,
+    total_amount REAL NOT NULL,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_booking_extra_expenses_booking_id ON booking_extra_expenses(booking_id);
+  CREATE INDEX IF NOT EXISTS idx_booking_extra_expenses_room_id ON booking_extra_expenses(room_id);
+`);
+
 // Staff Accounts Table for Role-Based Access & Cashier Auditing
 db.exec(`
   CREATE TABLE IF NOT EXISTS staff_users (

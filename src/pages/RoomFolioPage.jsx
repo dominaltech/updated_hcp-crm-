@@ -152,9 +152,12 @@ const buildInitialFromRoom = (r) => {
     advancePaid: advPaid,
     roomCharge: roomCharge,
     voucherNumber: r.voucher_number || '',
+    extraExpenses: [],
+    expensesTotal: 0,
     summary: {
       foodTotal: 0,
       barTotal: 0,
+      expensesTotal: 0,
       roomCharge: roomCharge,
       advancePaid: advPaid,
       balanceDue: balDue
@@ -223,6 +226,16 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [isExtensionReceiptsOpen, setIsExtensionReceiptsOpen] = useState(false);
   const [extensionSplitReceiptsData, setExtensionSplitReceiptsData] = useState(null);
 
+  // Extra Expenses / Loss / Damage State
+  const [activeFolioTab, setActiveFolioTab] = useState('all'); // 'all' | 'stay' | 'fnb' | 'expenses' | 'payments'
+  const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
+  const [expenseReason, setExpenseReason] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('damage');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseGstPct, setExpenseGstPct] = useState(5);
+  const [expenseNotes, setExpenseNotes] = useState('');
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+
   useEffect(() => {
     if (selectedFnbOrder) {
       setFnbPayMode('cash');
@@ -241,7 +254,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     selectedFnbOrder ||
     isAddPaymentOpen ||
     isExtendPaymentModalOpen ||
-    isExtensionReceiptsOpen
+    isExtensionReceiptsOpen ||
+    isAddExpenseModalOpen
   );
   useEffect(() => {
     if (isAnySubModalOpen) {
@@ -285,6 +299,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
       const foodTotal = Number(summary.foodTotal ?? 0);
       const barTotal = Number(summary.barTotal ?? 0);
+      const expensesTotal = Number(summary.expensesTotal ?? raw.expensesTotal ?? 0);
       const roomCharge = isBookingOta
         ? Number(summary.roomCharge ?? (r.total_room_charge || 0))
         : Number(summary.stayCalcNow?.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
@@ -305,7 +320,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         ? Number(summary.stayTax ?? Math.max(0, Number((roomCharge - roomTaxable).toFixed(2))))
         : Number(summary.stayCalcNow?.roomGst ?? summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
       const grossTariff = roomGrossTariff;
-      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal)));
+      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal + expensesTotal)));
       const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
       const balanceDue = Number(summary.stayCalcNow?.balanceDue ?? summary.balanceDue ?? (netTotalCharge - advancePaid));
       const visitors = Array.isArray(raw.visitors) ? raw.visitors : [];
@@ -385,6 +400,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         foodTotal,
         barTotal,
         fnbTotal: foodTotal + barTotal,
+        extraExpenses: raw.extraExpenses || [],
+        expensesTotal,
         grandTotal: netTotalCharge,
         visitorsCount,
         restaurantOrders: raw.restaurantOrders || [],
@@ -1057,6 +1074,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       rate_type: isOtaPayAtHotel ? 'pay_at_hotel' : (isOtaPrepaid ? 'prepaid' : 'standard'),
       foodTotal: Number(summary.foodTotal ?? folioData.foodTotal ?? 0),
       barTotal: Number(summary.barTotal ?? folioData.barTotal ?? 0),
+      extraExpenses: folioData.extraExpenses || [],
+      expensesTotal: Number(folioData.expensesTotal || 0),
       foodPending: fnbPendingTotal,
       fnbPendingTotal,
       roomTariffNet: Number(summary.roomCharge ?? folioData.roomCharge ?? r.total_room_charge ?? 0),
@@ -1120,7 +1139,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const globalRawStayBalance = isOtaPrepaid
     ? (hotelExtrasChargeVal - globalAdvancePaid)
     : (globalStayNet - globalAdvancePaid);
-  const globalNetFolioBalance = globalRawStayBalance + globalFnbPending;
+  const globalExpensesTotal = Number(folioData.expensesTotal || (folioData.extraExpenses || []).reduce((sum, e) => sum + Number(e.total || e.amount || 0), 0));
+  const globalNetFolioBalance = globalRawStayBalance + globalFnbPending + globalExpensesTotal;
   const folioDueAmount = Math.max(0, globalNetFolioBalance);
   const folioRefundAmount = globalNetFolioBalance < 0 ? Math.abs(globalNetFolioBalance) : 0;
 
@@ -1158,6 +1178,131 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     setAddPayChequePhoto(null);
     setAddPayNotes('In-Stay Advance Payment');
     setIsAddPaymentOpen(true);
+  };
+
+  // Extra Expenses / Loss / Damage Presets & Handlers
+  const EXPENSE_PRESETS = [
+    { label: '🍷 Mini Bar', reason: 'Mini Bar Consumables', category: 'minibar', amount: '', gstPct: 5 },
+    { label: '🧺 Laundry Service', reason: 'Laundry & Dry Cleaning', category: 'laundry', amount: '', gstPct: 5 },
+    { label: '🔑 Lost Key Card', reason: 'Room Key Card Replacement', category: 'loss', amount: 300, gstPct: 18 },
+    { label: '🛏️ Stained Linen', reason: 'Stained Bed Linen / Towels', category: 'damage', amount: 500, gstPct: 5 },
+    { label: '🍽️ Broken Glassware', reason: 'Broken Crockery / Glassware', category: 'damage', amount: 250, gstPct: 18 },
+    { label: '🧹 Smoking / Deep Clean', reason: 'Smoking Fine / Deep Cleaning', category: 'cleaning', amount: 1500, gstPct: 18 },
+    { label: '📺 Damaged Appliance', reason: 'Damaged Remote / TV / Appliance', category: 'damage', amount: 1000, gstPct: 18 },
+    { label: '⚡ Miscellaneous Extra', reason: 'Miscellaneous Extra Charge', category: 'other', amount: '', gstPct: 5 }
+  ];
+
+  const getExpenseCategoryMeta = (cat) => {
+    switch (cat) {
+      case 'damage':
+        return { label: 'Property Damage', icon: '🪟', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' };
+      case 'loss':
+        return { label: 'Lost Item / Key', icon: '🔑', bg: '#fff7ed', color: '#c2410c', border: '#ffedd5' };
+      case 'minibar':
+        return { label: 'Mini Bar', icon: '🍷', bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe' };
+      case 'laundry':
+        return { label: 'Laundry Service', icon: '🧺', bg: '#eff6ff', color: '#1d4ed8', border: '#dbeafe' };
+      case 'cleaning':
+        return { label: 'Cleaning / Smoke Fine', icon: '🧹', bg: '#fefce8', color: '#a16207', border: '#fef08a' };
+      case 'amenity':
+        return { label: 'Extra Amenities', icon: '✨', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' };
+      default:
+        return { label: 'Miscellaneous', icon: '⚡', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' };
+    }
+  };
+
+  const handleOpenAddExpense = (preset = null) => {
+    if (preset) {
+      setExpenseReason(preset.reason || '');
+      setExpenseCategory(preset.category || 'damage');
+      setExpenseAmount(preset.amount ? String(preset.amount) : '');
+      setExpenseGstPct(preset.gstPct !== undefined ? preset.gstPct : 5);
+      setExpenseNotes(preset.notes || '');
+    } else {
+      setExpenseReason('');
+      setExpenseCategory('damage');
+      setExpenseAmount('');
+      setExpenseGstPct(5);
+      setExpenseNotes('');
+    }
+    setIsAddExpenseModalOpen(true);
+  };
+
+  const handleSaveExtraExpense = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const parsedAmt = parseFloat(expenseAmount);
+    if (isNaN(parsedAmt) || parsedAmt <= 0) {
+      showToast('Please enter a valid expense amount greater than 0', 'error');
+      return;
+    }
+    if (!expenseReason.trim()) {
+      showToast('Please provide a reason or description for this expense/damage', 'error');
+      return;
+    }
+
+    const bookingId = folioData?.bookingId || folioData?.booking_id || folioData?.current_booking_id || folioData?.room?.current_booking_id || roomId;
+    if (!bookingId) {
+      showToast('Cannot identify active booking ID for this room', 'error');
+      return;
+    }
+
+    setIsSubmittingExpense(true);
+    try {
+      const addedBy = currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk';
+      const payload = {
+        reason: expenseReason.trim(),
+        category: expenseCategory,
+        amount: parsedAmt,
+        gst_pct: Number(expenseGstPct) || 0,
+        notes: expenseNotes.trim(),
+        added_by: addedBy
+      };
+
+      const res = await api.addExtraExpense(bookingId, payload);
+      if (res && res.success !== false) {
+        showToast(`Extra expense of ${formatCurrency(res.expense?.total || parsedAmt)} recorded successfully!`, 'success');
+        setIsAddExpenseModalOpen(false);
+        setExpenseReason('');
+        setExpenseAmount('');
+        setExpenseNotes('');
+        folioMemoryCache.delete(roomId);
+        await loadFolio(true);
+      } else {
+        showToast(res?.error || 'Failed to record extra expense', 'error');
+      }
+    } catch (err) {
+      console.error('Error recording extra expense:', err);
+      showToast(err.message || 'Error recording extra expense', 'error');
+    } finally {
+      setIsSubmittingExpense(false);
+    }
+  };
+
+  const handleDeleteExtraExpense = async (expense) => {
+    if (!expense || !expense.id) return;
+    const bookingId = folioData?.bookingId || folioData?.booking_id || folioData?.current_booking_id || roomId;
+    
+    showConfirm({
+      title: 'Remove Extra Expense / Damage Charge',
+      message: `Are you sure you want to remove "${expense.reason}" (${formatCurrency(expense.total || expense.amount)}) from Room #${folioData?.roomNumber} folio?`,
+      confirmLabel: 'Remove Charge',
+      confirmColor: '#dc2626',
+      onConfirm: async () => {
+        try {
+          const res = await api.deleteExtraExpense(bookingId, expense.id);
+          if (res && res.success !== false) {
+            showToast('Extra expense removed from folio', 'info');
+            folioMemoryCache.delete(roomId);
+            await loadFolio(true);
+          } else {
+            showToast(res?.error || 'Failed to remove expense', 'error');
+          }
+        } catch (err) {
+          console.error('Error removing extra expense:', err);
+          showToast(err.message || 'Error removing extra expense', 'error');
+        }
+      }
+    });
   };
 
   // Expand split payments so each payment mode has its own individual receipt record & receipt print button
@@ -1477,9 +1622,82 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         </div>
       </div>
 
+      {/* Folio View Tabs */}
+      <div
+        className="folio-nav-tabs-bar"
+        style={{
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+          overflowX: 'auto',
+          padding: '4px 2px 14px 2px',
+          borderBottom: '1.5px solid var(--border-color, #e2e8f0)',
+          marginBottom: '16px'
+        }}
+      >
+        {[
+          { id: 'all', label: '📋 All Folio Details', count: null },
+          { id: 'stay', label: '🏨 Stay & Tariff', count: null },
+          { id: 'fnb', label: '🍽️ Restaurant & Bar Orders', count: (folioData.restaurantOrders?.length || 0) + (folioData.barOrders?.length || 0) },
+          { id: 'expenses', label: '⚠️ Extra Expenses / Damages', count: (folioData.extraExpenses?.length || 0), highlight: (folioData.extraExpenses?.length || 0) > 0 },
+          { id: 'payments', label: '💳 Advance & Payments', count: (folioData.payments?.length || 0) }
+        ].map((tab) => {
+          const isActive = activeFolioTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              id={`tab-folio-${tab.id}`}
+              onClick={() => setActiveFolioTab(tab.id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: '10px',
+                border: isActive
+                  ? '1.5px solid var(--apple-blue, #2563eb)'
+                  : '1px solid var(--border-color, #cbd5e1)',
+                background: isActive
+                  ? 'var(--apple-blue, #2563eb)'
+                  : 'var(--bg-surface, #ffffff)',
+                color: isActive ? '#ffffff' : 'var(--text-secondary, #475569)',
+                fontWeight: isActive ? 850 : 650,
+                fontSize: '0.86rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+                boxShadow: isActive ? '0 2px 8px rgba(37, 99, 235, 0.25)' : 'none'
+              }}
+            >
+              <span>{tab.label}</span>
+              {tab.count !== null && tab.count !== undefined && (
+                <span
+                  style={{
+                    padding: '2px 7px',
+                    borderRadius: '12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    background: isActive
+                      ? 'rgba(255, 255, 255, 0.25)'
+                      : (tab.highlight ? '#fee2e2' : 'var(--bg-subtle, #f1f5f9)'),
+                    color: isActive
+                      ? '#ffffff'
+                      : (tab.highlight ? '#b91c1c' : 'var(--text-secondary, #475569)')
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Main Folio Grid Layout */}
       <div className="folio-page-grid" style={{ marginTop: 0 }}>
         {/* Column 1: Guest Profile */}
+        {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
         <div className="folio-card">
           <div className="folio-card-header">
             <h3>Guest Profile</h3>
@@ -1643,8 +1861,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             </div>
           )}
         </div>
+        )}
 
         {/* Column 2: Stay Details Card */}
+        {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
         <div className="folio-card" id="folio-stay-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
@@ -1932,6 +2152,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             })()}
           </div>
         </div>
+        )}
 
         {/* Restaurant & Bar Orders Section (Card Manner, Above Financial Summary) */}
         {(() => {
@@ -2003,14 +2224,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           const stayDueAmount = Math.max(0, rawStayBalance);
           const stayExcessAdvance = rawStayBalance < 0 ? Math.abs(rawStayBalance) : 0;
 
-          // Combined Folio Balance: excess advance absorbs pending F&B
-          const netFolioBalance = rawStayBalance + fnbPendingTotal;
+          // Extra Expenses, Loss & Damages calculations
+          const allExtraExpenses = folioData.extraExpenses || [];
+          const expensesTotal = Number(folioData.expensesTotal || allExtraExpenses.reduce((sum, e) => sum + Number(e.total || e.amount || 0), 0));
+          const expensesTaxable = allExtraExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+          const expensesGst = allExtraExpenses.reduce((sum, e) => sum + Number(e.gst_amount || 0), 0);
+
+          // Combined Folio Balance: excess advance absorbs pending F&B and Extra Expenses/Damages
+          const netFolioBalance = rawStayBalance + fnbPendingTotal + expensesTotal;
           const folioDueAmount = Math.max(0, netFolioBalance);
           const folioRefundAmount = netFolioBalance < 0 ? Math.abs(netFolioBalance) : 0;
 
           return (
             <React.Fragment>
               {/* 1. Restaurant & Bar Orders Cards Section */}
+              {(activeFolioTab === 'all' || activeFolioTab === 'fnb') && (
               <div className="folio-card" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2356,8 +2584,171 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 )}
               </div>
+              )}
+
+              {/* Extra Expenses, Loss & Damages Section */}
+              {(activeFolioTab === 'all' || activeFolioTab === 'expenses') && (
+              <div className="folio-card" id="folio-extra-expenses-card" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
+                <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.35rem' }}>🛡️</span>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 850 }}>Extra Expenses, Loss &amp; Damages ({allExtraExpenses.length})</h3>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                        Damages, broken items, laundry, mini-bar, or incidental penalties billed to this stay.
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {expensesTotal > 0 && (
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, padding: '5px 12px', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                        Total Billed: {formatCurrency(expensesTotal)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleOpenAddExpense}
+                      style={{
+                        padding: '6px 14px',
+                        background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '0.82rem',
+                        fontWeight: 750,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 4px rgba(79, 70, 229, 0.25)'
+                      }}
+                      title="Add damage charge or extra expense"
+                    >
+                      <span>➕</span>
+                      <span>Add Expense / Damage</span>
+                    </button>
+                  </div>
+                </div>
+
+                {allExtraExpenses.length > 0 ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                      gap: '14px',
+                      marginTop: '16px'
+                    }}
+                  >
+                    {allExtraExpenses.map((exp, idx) => {
+                      const catIcons = {
+                        'Damage / Breakage': '⚠️',
+                        'Linen & Bedding': '🛏️',
+                        'Mini Bar / Snacks': '🍫',
+                        'Laundry Service': '🧺',
+                        'Deep Cleaning': '🧹',
+                        'Transport / Cab': '🚗',
+                        'Key Card Replacement': '🔑',
+                        'Other': '🏷️'
+                      };
+                      const icon = catIcons[exp.category] || '🏷️';
+                      return (
+                        <div
+                          key={exp.id || idx}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            padding: '14px 16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '1.1rem' }}>{icon}</span>
+                                <span style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>
+                                  {exp.category || 'Incidental'}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteExpense(exp.id)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  cursor: 'pointer',
+                                  fontSize: '0.95rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  lineHeight: 1
+                                }}
+                                title="Delete this charge"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+
+                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginBottom: '4px' }}>
+                              {exp.title}
+                            </div>
+
+                            {exp.notes && (
+                              <div style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic', marginBottom: '10px', background: '#f8fafc', padding: '6px 10px', borderRadius: '6px' }}>
+                                &quot;{exp.notes}&quot;
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '0.76rem', color: '#64748b' }}>Taxable Amount:</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>{formatCurrency(exp.amount || 0)}</span>
+                            </div>
+                            {Number(exp.gst_amount || 0) > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '0.76rem', color: '#64748b' }}>GST ({exp.gst_rate || 0}%):</span>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309' }}>+ {formatCurrency(exp.gst_amount || 0)}</span>
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #e2e8f0' }}>
+                              <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#1e293b' }}>Total Billed:</span>
+                              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#dc2626' }}>{formatCurrency(exp.total || exp.amount || 0)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.72rem', color: '#94a3b8' }}>
+                              <span>📅 {exp.created_at ? formatDateTime(exp.created_at) : 'During Stay'}</span>
+                              {exp.recorded_by && <span>👤 {exp.recorded_by}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: '32px',
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      background: '#f8fafc',
+                      borderRadius: '12px',
+                      border: '1px dashed #cbd5e1',
+                      marginTop: '16px'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.8rem', marginBottom: '6px' }}>🛡️</div>
+                    <div style={{ fontWeight: 750, color: '#475569' }}>No extra expenses, damages, or incidental charges recorded.</div>
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px' }}>Click &quot;+ Add Expense / Damage&quot; above to record any broken room items, laundry, or extra billables.</div>
+                  </div>
+                )}
+              </div>
+              )}
 
               {/* 2. Two Main Breakdown Cards: Hospitality Bill & Restaurant / Bar Orders */}
+              {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'fnb') && (
               <div
                 style={{
                   gridColumn: '1/-1',
@@ -2715,9 +3106,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Checkout Financial Comparison Card: If Checkout Now vs If Checkout @ Declared Departure (Point 1) */}
-              {(() => {
+              {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
+              (() => {
                 if (isOtaBooking) return null;
                 // Stay duration parameters
                 const nowDays = Number(folioData.stayCalcNow?.chargedDays || folioData.chargedDays || 1);
@@ -2762,7 +3155,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 const nowDiscountGst = Number(folioData.stayCalcNow?.discountGst ?? Math.max(0, nowDiscountTotal - nowDiscountAmount));
 
                 const nowRoomCharge = Number(folioData.stayCalcNow?.roomCharge ?? (folioData.isEarlyCheckout ? (folioData.recalculatedRoomCharge || nowCalculatedRoomCharge) : (folioData.stayCalcNow ? nowCalculatedRoomCharge : stayNetTotal)));
-                const nowFolioTotal = nowRoomCharge + fnbPendingTotal;
+                const nowFolioTotal = nowRoomCharge + fnbPendingTotal + expensesTotal;
                 const nowRawBal = nowFolioTotal - advancePaidVal;
                 const nowDue = Math.max(0, nowRawBal);
                 const nowRefund = nowRawBal < 0 ? Math.abs(nowRawBal) : 0;
@@ -2794,7 +3187,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 const decDiscountGst = Number(folioData.stayCalcDeclared?.discountGst ?? Math.max(0, decDiscountTotal - decDiscountAmount));
 
                 const decRoomCharge = Number(folioData.stayCalcDeclared?.roomCharge ?? (folioData.originalRoomCharge || decCalculatedRoomCharge || stayNetTotal));
-                const decFolioTotal = decRoomCharge + fnbPendingTotal;
+                const decFolioTotal = decRoomCharge + fnbPendingTotal + expensesTotal;
                 const decRawBal = decFolioTotal - advancePaidVal;
                 const decDue = Math.max(0, decRawBal);
                 const decRefund = decRawBal < 0 ? Math.abs(decRawBal) : 0;
@@ -3358,9 +3751,11 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     </div>
                   </div>
                 );
-              })()}
+              })()
+              )}
 
               {/* 3. Financial Analytics: 5 KPI Tiles (Below the 2 Main Breakdown Cards) */}
+              {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'payments') && (
               <div className="folio-financial-tiles-grid" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 {isOtaBooking ? (
                   <>
@@ -3485,11 +3880,13 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </>
                 )}
               </div>
+              )}
             </React.Fragment>
           );
         })()}
 
         {/* Advance Payments & Billing Records Table (Point 6) */}
+        {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'payments') && (
         <div className="folio-card" style={{ gridColumn: '1/-1', marginBottom: '22px' }}>
           <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -3638,6 +4035,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Bottom CTA Bar */}
@@ -3670,7 +4068,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           isOtaPrepaid,
           foodTotal: Number(folioData.foodTotal || 0),
           barTotal: Number(folioData.barTotal || 0),
-          fnbTotal: Number(folioData.fnbTotal || ((Number(folioData.foodTotal) || 0) + (Number(folioData.barTotal) || 0)))
+          fnbTotal: Number(folioData.fnbTotal || ((Number(folioData.foodTotal) || 0) + (Number(folioData.barTotal) || 0))),
+          extraExpenses: folioData.extraExpenses || [],
+          expensesTotal: Number(folioData.expensesTotal || 0)
         } : folioData}
         onClose={() => setIsSettlementOpen(false)}
         onCheckoutSuccess={(res) => {

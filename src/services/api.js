@@ -100,6 +100,9 @@ export const api = {
   updateRoom: (id, data) => request(`/rooms/${id}`, { method: 'PUT', body: data }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
   transferRoom: (data) => request('/rooms/transfer', { method: 'POST', body: data }),
+  getExtraExpenses: (bookingId) => request(`/bookings/${bookingId}/extra-expenses`),
+  addExtraExpense: (bookingId, data) => request(`/bookings/${bookingId}/extra-expenses`, { method: 'POST', body: data }),
+  deleteExtraExpense: (bookingId, expenseId) => request(`/bookings/${bookingId}/extra-expenses/${expenseId}`, { method: 'DELETE' }),
 
   // Cleaner / Housekeeping Staff
   getCleaners: () => request('/cleaners'),
@@ -263,6 +266,11 @@ export const api = {
 
   // Payments for room folio (In-stay advance payment)
   addRoomPayment: (roomId, data) => request(`/rooms/${roomId}/payments`, { method: 'POST', body: data }),
+
+  // Extra Expenses / Loss / Damage for Room Folio
+  getExtraExpenses: (bookingId) => request(`/bookings/${bookingId}/extra-expenses`),
+  addExtraExpense: (bookingId, data) => request(`/bookings/${bookingId}/extra-expenses`, { method: 'POST', body: data }),
+  deleteExtraExpense: (bookingId, expenseId) => request(`/bookings/${bookingId}/extra-expenses/${expenseId}`, { method: 'DELETE' }),
 
   // Expenses & Petty Cash
   getExpenses: (params = {}) => {
