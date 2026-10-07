@@ -4250,9 +4250,9 @@ body.dark-theme .doc-action-card {
 }
 
 .folio-page-header {
-  position: relative !important;
-  top: auto !important;
-  z-index: 10;
+  position: sticky !important;
+  top: 68px !important;
+  z-index: 95 !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4260,10 +4260,13 @@ body.dark-theme .doc-action-card {
   margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 4px 0 8px 0 !important;
-  background: transparent !important;
-  border-bottom: 1.5px solid var(--border-light);
-  box-shadow: none !important;
+  padding: 10px 14px !important;
+  background: var(--bg-glass, rgba(255, 255, 255, 0.85)) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid var(--border-light, rgba(0, 0, 0, 0.08)) !important;
+  border-radius: 0 0 14px 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
   transition: border-color var(--transition-fast);
 }
 
@@ -4301,11 +4304,11 @@ body.dark-theme .doc-action-card {
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: transparent !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: none !important;
+  background: var(--bg-dark-glass, rgba(18, 20, 26, 0.88)) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 
 .btn-back-rooms {
@@ -13801,9 +13804,9 @@ body.dark-theme .stay-metric-pill {
    ROOM FOLIO PAGE HEADER & CONTROLS (HIGH CONTRAST DARK & LIGHT MODES)
    ========================================================================== */
 .folio-page-header {
-  position: relative !important;
-  top: auto !important;
-  z-index: 10;
+  position: sticky !important;
+  top: 68px !important;
+  z-index: 95 !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -13811,20 +13814,23 @@ body.dark-theme .stay-metric-pill {
   margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 4px 0 8px 0 !important;
-  background: transparent !important;
-  border-bottom: 1.5px solid var(--border-light, #e2e8f0);
-  box-shadow: none !important;
+  padding: 10px 14px !important;
+  background: var(--bg-glass, rgba(255, 255, 255, 0.85)) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid var(--border-light, #e2e8f0) !important;
+  border-radius: 0 0 14px 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
 }
 
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: transparent !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: none !important;
+  background: var(--bg-dark-glass, rgba(18, 20, 26, 0.88)) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 
 /* Folio Room Heading ("Room 103") */
