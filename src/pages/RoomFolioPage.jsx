@@ -1482,10 +1482,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           top: '68px',
           zIndex: 95,
           marginTop: 0,
-          marginBottom: '16px',
+          marginBottom: '10px',
           marginLeft: '-18px',
           marginRight: '-18px',
-          padding: '10px 18px',
+          padding: '6px 18px',
           boxSizing: 'border-box'
         }}
       >

@@ -59,9 +59,10 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
               }
             : isFolioActive
             ? {
-                padding: '2px 18px 60px',
+                padding: '0 18px 60px',
                 maxWidth: '100%',
                 minHeight: 'calc(100dvh - 68px)',
+                overflow: 'visible',
                 boxSizing: 'border-box'
               }
             : {}

@@ -17,6 +17,8 @@ release/runtime/
 release-electron/
 runtime/
 test_hotel.db
+test_hotel.db-shm
+test_hotel.db-wal
 qa-selenium.zip
 qa-selenium/
 propmpt.txt

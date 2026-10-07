@@ -578,9 +578,9 @@ body.dark-theme .app-container:has(#view-hospitality.active),
   max-height: none !important;
   min-height: calc(100dvh - 68px) !important;
   overflow-y: visible !important;
-  overflow-x: hidden !important;
+  overflow-x: clip !important;
   display: block !important;
-  padding: 2px 18px 80px !important;
+  padding: 0 18px 80px !important;
   background: var(--bg-app, #f5f5f7) !important;
 }
 
