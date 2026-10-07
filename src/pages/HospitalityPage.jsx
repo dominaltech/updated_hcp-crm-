@@ -331,8 +331,23 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
       {activeSubTab === 'rooms' ? (
         <div className="hosp-sub-content active" id="hosp-subview-rooms">
           {/* Room Transfer Toolbar on Dashboard */}
-          <div className="room-transfer-toolbar" id="room-transfer-toolbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div
+            className={`room-transfer-toolbar ${isTransferMode ? 'active-mode' : ''}`}
+            id="room-transfer-toolbar"
+          >
+            {isTransferMode && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.80rem', color: '#6d28d9', fontWeight: 650 }}>
+                {!transferSourceRoom ? (
+                  <span>👉 <strong>Step 1:</strong> Drag or click an <strong>Occupied Room</strong> to shift.</span>
+                ) : (
+                  <span>
+                    🎯 Shifting <strong>Room #{transferSourceRoom.room_number}</strong> ({transferSourceRoom.room_type}): Drop or click into any highlighted ready room of same type!
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
               <button
                 type="button"
                 className={`btn-room-transfer-mode ${isTransferMode ? 'active' : ''}`}
@@ -340,18 +355,19 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                 onClick={handleToggleTransferMode}
                 title="Shift guests between rooms of the same type (Price remains identical)"
               >
-                <span style={{ fontSize: '1.05rem' }}>🔄</span>
+                <span style={{ fontSize: '0.88rem' }}>🔄</span>
                 <span>Room Transfer</span>
                 {isTransferMode && (
                   <span
                     style={{
-                      fontSize: '0.7rem',
+                      fontSize: '0.64rem',
                       background: '#ffffff',
                       color: '#7c3aed',
-                      padding: '1px 8px',
-                      borderRadius: '12px',
+                      padding: '1px 6px',
+                      borderRadius: '10px',
                       fontWeight: 800,
-                      letterSpacing: '0.5px'
+                      letterSpacing: '0.4px',
+                      marginLeft: '2px'
                     }}
                   >
                     ON
@@ -360,47 +376,35 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
               </button>
 
               {isTransferMode && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.84rem', color: '#6d28d9', fontWeight: 650 }}>
-                  {!transferSourceRoom ? (
-                    <span>👉 <strong>Step 1:</strong> Drag or click an <strong>Occupied Room</strong> to shift.</span>
-                  ) : (
-                    <span>
-                      🎯 Shifting <strong>Room #{transferSourceRoom.room_number}</strong> ({transferSourceRoom.room_type}): Drop or click into any highlighted ready room of same type!
-                    </span>
+                <>
+                  {transferSourceRoom && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ padding: '3px 10px', fontSize: '0.74rem', borderRadius: '12px' }}
+                      onClick={() => {
+                        setTransferSourceRoom(null);
+                        setDropTargetRoomId(null);
+                      }}
+                    >
+                      Clear Selection
+                    </button>
                   )}
-                </div>
-              )}
-            </div>
-
-            {isTransferMode && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {transferSourceRoom && (
                   <button
                     type="button"
                     className="btn-secondary"
-                    style={{ padding: '4px 12px', fontSize: '0.78rem', borderRadius: '12px' }}
+                    style={{ padding: '3px 10px', fontSize: '0.74rem', borderRadius: '12px', color: '#ef4444', borderColor: '#fca5a5' }}
                     onClick={() => {
+                      setIsTransferMode(false);
                       setTransferSourceRoom(null);
                       setDropTargetRoomId(null);
                     }}
                   >
-                    Clear Selection
+                    Cancel Mode
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ padding: '4px 12px', fontSize: '0.78rem', borderRadius: '12px', color: '#ef4444', borderColor: '#fca5a5' }}
-                  onClick={() => {
-                    setIsTransferMode(false);
-                    setTransferSourceRoom(null);
-                    setDropTargetRoomId(null);
-                  }}
-                >
-                  Cancel Mode
-                </button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Rooms Grid Floor-wise */}

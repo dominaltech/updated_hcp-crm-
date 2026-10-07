@@ -14404,30 +14404,44 @@ body.dark-theme .room-service-card:hover,
 .room-transfer-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
+  justify-content: flex-end;
+  padding: 4px 10px;
   background: var(--bg-surface, #ffffff);
   border: 1.5px solid var(--border-color, #e2e8f0);
-  border-radius: 16px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
   box-sizing: border-box;
+  min-height: 38px;
+}
+
+.room-transfer-toolbar.active-mode {
+  justify-content: space-between;
+  background: #faf5ff;
+  border-color: #c4b5fd;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.08);
+}
+
+[data-theme="dark"] .room-transfer-toolbar.active-mode {
+  background: #231934;
+  border-color: #6b21a8;
 }
 
 .btn-room-transfer-mode {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-radius: 20px;
+  gap: 5px;
+  padding: 3.5px 11px;
+  border-radius: 14px;
   border: 1.5px solid #cbd5e1;
-  background: #ffffff;
-  color: #334155;
-  font-weight: 800;
-  font-size: 0.84rem;
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #334155);
+  font-weight: 750;
+  font-size: 0.76rem;
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
+  line-height: 1.25;
 }
 
 .btn-room-transfer-mode:hover {
@@ -14439,7 +14453,18 @@ body.dark-theme .room-service-card:hover,
   background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
   color: #ffffff !important;
   border-color: #6d28d9 !important;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35) !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3) !important;
+}
+
+[data-theme="dark"] .btn-room-transfer-mode {
+  background: #1e232d;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+[data-theme="dark"] .btn-room-transfer-mode:hover {
+  background: #2a303c;
+  border-color: #64748b;
 }
 
 .room-card.transfer-source {

@@ -3629,6 +3629,16 @@ export function buildGuestActivitiesSummaryHTML(data) {
           <div><strong>Check-out:</strong><br>${escapeHtml(checkoutTime)}</div>
         </div>
 
+        ${Array.isArray(data.extensionLogs) && data.extensionLogs.filter(l => l.type === 'room_transfer').length > 0 ? `
+        <!-- Room Shift Audit -->
+        <div style="padding: 6px 10px; background: #f5f3ff; border: 1px solid #c4b5fd; border-radius: 6px; margin-bottom: 12px; font-size: 8pt; color: #4c1d95;">
+          <strong>Room Shift Audit:</strong>
+          ${data.extensionLogs.filter(l => l.type === 'room_transfer').map(l => `
+            <span style="margin-left: 6px;">Shifted Room #${escapeHtml(l.from_room_number)} ➔ Room #${escapeHtml(l.to_room_number)} by ${escapeHtml(l.transferred_by || 'Staff')}</span>
+          `).join('; ')}
+        </div>
+        ` : ''}
+
         <!-- 1. Room Stay & Accommodation Charges Table -->
         <div style="margin-bottom: 12px;">
           <div style="font-size: 9.5pt; font-weight: 900; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
