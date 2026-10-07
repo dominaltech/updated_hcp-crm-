@@ -1473,8 +1473,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
   return (
     <section className="panel-view active" id="view-room-folio" style={{ marginTop: 0, paddingTop: 0 }}>
-      {/* Top Action Toolbar with Universal Back & Close Buttons */}
-      <div className="folio-page-header" style={{ position: 'relative', top: 'auto', zIndex: 10, marginTop: 0, marginBottom: '16px', paddingTop: '4px', paddingBottom: '8px' }}>
+      {/* Top Action Toolbar with Universal Back Button & Sticky Glassmorphism */}
+      <div
+        className="folio-page-header"
+        style={{
+          position: 'sticky',
+          top: '68px',
+          zIndex: 95,
+          marginTop: 0,
+          marginBottom: '16px',
+          marginLeft: '-18px',
+          marginRight: '-18px',
+          padding: '10px 18px',
+          boxSizing: 'border-box'
+        }}
+      >
         <div className="folio-header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, flexWrap: 'nowrap' }}>
           <button type="button" className="universal-back-btn" id="btn-folio-page-back" onClick={onBack} title="Back to Rooms Grid">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -1494,7 +1507,45 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           </div>
         </div>
 
-        <div className="folio-header-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
+        <div
+          className="folio-header-actions"
+          style={{
+            display: 'flex',
+            gap: '6px',
+            alignItems: 'center',
+            flexWrap: 'nowrap',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+        >
+          <button
+            type="button"
+            className="filter-chip btn-folio-action-chip btn-folio-expenses-chip"
+            onClick={() => handleOpenAddExpense()}
+            title="Add Extra Expenses, Damage or Incidentals to this Room Folio"
+            style={{
+              fontWeight: 800,
+              background: allExtraExpenses.length > 0 ? '#fef2f2' : undefined,
+              color: allExtraExpenses.length > 0 ? '#b91c1c' : undefined,
+              borderColor: allExtraExpenses.length > 0 ? '#fecaca' : undefined
+            }}
+          >
+            <span>➕</span> Add Expenses
+            {allExtraExpenses.length > 0 && (
+              <span
+                className="filter-chip-count"
+                style={{
+                  marginLeft: '4px',
+                  background: '#dc2626',
+                  color: '#ffffff'
+                }}
+              >
+                {allExtraExpenses.length}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             className="filter-chip btn-folio-action-chip btn-folio-visitors-chip btn-folio-visitors-action"
@@ -1609,15 +1660,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             onClick={() => setIsSettlementOpen(true)}
           >
             💳 Checkout
-          </button>
-
-          <button
-            type="button"
-            className="universal-close-btn"
-            onClick={onBack}
-            title="Close Folio & Return to Front Desk"
-          >
-            &times;
           </button>
         </div>
       </div>
@@ -5763,6 +5805,347 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         data={extensionSplitReceiptsData}
         onClose={() => setIsExtensionReceiptsOpen(false)}
       />
+
+      {/* Add Extra Expense / Damage Charge Modal */}
+      {isAddExpenseModalOpen && (() => {
+        const parsedAmt = parseFloat(expenseAmount) || 0;
+        const parsedGstPct = Number(expenseGstPct) || 0;
+        const taxableAmt = parsedAmt > 0 ? Math.round((parsedAmt / (1 + (parsedGstPct / 100))) * 100) / 100 : 0;
+        const gstAmt = parsedAmt > 0 ? Math.round((parsedAmt - taxableAmt) * 100) / 100 : 0;
+        const canSubmit = !isSubmittingExpense && parsedAmt > 0 && expenseReason.trim().length > 0;
+
+        const categories = [
+          { id: 'damage', label: 'Damage / Breakage', icon: '⚠️', defaultTitle: 'Broken Room Item / Damage' },
+          { id: 'linen', label: 'Linen & Bedding', icon: '🛏️', defaultTitle: 'Stained / Torn Bed Sheet / Towel' },
+          { id: 'minibar', label: 'Mini Bar / Snacks', icon: '🍫', defaultTitle: 'Mini Bar Consumption' },
+          { id: 'laundry', label: 'Laundry Service', icon: '🧺', defaultTitle: 'Guest Laundry & Dry Cleaning' },
+          { id: 'cleaning', label: 'Deep Cleaning', icon: '🧹', defaultTitle: 'Deep Room Cleaning Charge' },
+          { id: 'transport', label: 'Transport / Cab', icon: '🚗', defaultTitle: 'Airport Pickup / Cab Booking' },
+          { id: 'keycard', label: 'Key Card Replacement', icon: '🔑', defaultTitle: 'Lost Key Card Replacement' },
+          { id: 'other', label: 'Miscellaneous / Other', icon: '🏷️', defaultTitle: 'Extra Room Service / Charge' }
+        ];
+
+        return (
+          <div
+            className="modal-overlay active"
+            id="add-room-expense-overlay"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.70)',
+              backdropFilter: 'blur(5px)',
+              WebkitBackdropFilter: 'blur(5px)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px'
+            }}
+            onClick={() => !isSubmittingExpense && setIsAddExpenseModalOpen(false)}
+          >
+            <div
+              className="modal-container"
+              id="add-room-expense-modal"
+              style={{
+                width: '540px',
+                maxWidth: '96vw',
+                maxHeight: '92vh',
+                borderRadius: '16px',
+                background: '#ffffff',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  padding: '14px 20px',
+                  background: 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>🛡️</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>
+                      Add Extra Expense / Damage
+                    </h3>
+                    <span style={{ fontSize: '0.78rem', color: '#fecaca', fontWeight: 600 }}>
+                      Room #{folioData?.roomNumber} • {folioData?.guestName || 'Valued Guest'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddExpenseModalOpen(false)}
+                  disabled={isSubmittingExpense}
+                  title="Close (X)"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '1.3rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Body */}
+              <form
+                onSubmit={handleSaveExtraExpense}
+                style={{
+                  padding: '16px 20px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px'
+                }}
+              >
+                {/* Category Selection */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Category Preset
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '6px' }}>
+                    {categories.map((c) => {
+                      const isSelected = expenseCategory === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setExpenseCategory(c.id);
+                            if (!expenseReason.trim() || categories.some(x => x.defaultTitle === expenseReason)) {
+                              setExpenseReason(c.defaultTitle);
+                            }
+                          }}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            border: isSelected ? '2px solid #b91c1c' : '1px solid #cbd5e1',
+                            background: isSelected ? '#fef2f2' : '#f8fafc',
+                            color: isSelected ? '#b91c1c' : '#334155',
+                            fontWeight: isSelected ? 850 : 650,
+                            fontSize: '0.74rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            cursor: 'pointer',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <span>{c.icon}</span>
+                          <span>{c.label.split('/')[0]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Reason / Title */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                    Reason / Item Description <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Broken Bathroom Glass, Extra Laundry, Minibar Snacks..."
+                    value={expenseReason}
+                    onChange={(e) => setExpenseReason(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      height: '38px',
+                      padding: '0 12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.90rem',
+                      fontWeight: 650
+                    }}
+                  />
+                </div>
+
+                {/* Amount & GST % Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                      Total Expense Amount (₹) <span style={{ color: '#dc2626' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: '12px', fontWeight: 900, color: '#b91c1c', fontSize: '1.05rem' }}>₹</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        placeholder="0"
+                        value={expenseAmount}
+                        onChange={(e) => setExpenseAmount(e.target.value)}
+                        style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          height: '40px',
+                          paddingLeft: '28px',
+                          paddingRight: '10px',
+                          borderRadius: '8px',
+                          border: '2px solid #b91c1c',
+                          fontSize: '1.05rem',
+                          fontWeight: 900,
+                          color: '#0f172a'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                      GST Rate
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', height: '40px' }}>
+                      {[0, 5, 12, 18].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setExpenseGstPct(pct)}
+                          style={{
+                            borderRadius: '8px',
+                            border: expenseGstPct === pct ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                            background: expenseGstPct === pct ? '#e0f2fe' : '#ffffff',
+                            color: expenseGstPct === pct ? '#0369a1' : '#475569',
+                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Cost Calculation Card */}
+                {parsedAmt > 0 && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      padding: '10px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      fontSize: '0.82rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                      <span>Base / Taxable Value:</span>
+                      <strong style={{ color: '#0f172a' }}>{formatCurrency(taxableAmt)}</strong>
+                    </div>
+                    {parsedGstPct > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
+                        <span>GST ({parsedGstPct}% Included):</span>
+                        <strong>+ {formatCurrency(gstAmt)}</strong>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b91c1c', borderTop: '1px dashed #cbd5e1', paddingTop: '6px', marginTop: '2px', fontSize: '0.92rem' }}>
+                      <span style={{ fontWeight: 850 }}>Charge to Folio:</span>
+                      <strong style={{ fontWeight: 950 }}>{formatCurrency(parsedAmt)}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Notes / Remarks */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                    Remarks / Details (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Specific room location, item details, or guest acknowledgment..."
+                    value={expenseNotes}
+                    onChange={(e) => setExpenseNotes(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      height: '36px',
+                      padding: '0 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.84rem'
+                    }}
+                  />
+                </div>
+
+                {/* Footer Buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    disabled={isSubmittingExpense}
+                    onClick={() => setIsAddExpenseModalOpen(false)}
+                    style={{
+                      flex: 1,
+                      height: '42px',
+                      background: '#f1f5f9',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      fontWeight: 750,
+                      color: '#475569',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!canSubmit}
+                    style={{
+                      flex: 2,
+                      height: '42px',
+                      background: canSubmit ? 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)' : '#cbd5e1',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontWeight: 900,
+                      color: '#ffffff',
+                      cursor: canSubmit ? 'pointer' : 'not-allowed',
+                      boxShadow: canSubmit ? '0 4px 12px rgba(220, 38, 38, 0.3)' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {isSubmittingExpense ? (
+                      <span>⏳ Recording...</span>
+                    ) : (
+                      <>
+                        <span>➕</span>
+                        <span>Record &amp; Add {parsedAmt > 0 ? formatCurrency(parsedAmt) : 'Expense'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       <DocumentActionModal
         isOpen={docActionModal.isOpen}

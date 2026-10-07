@@ -4294,12 +4294,49 @@ body.dark-theme .doc-action-card {
 
 .folio-header-actions .btn-folio-action-chip,
 .folio-header-actions .filter-chip,
-.folio-header-actions .btn-scan-action {
+.folio-header-actions .btn-scan-action,
+.folio-header-actions .btn-folio-expenses-chip {
   white-space: nowrap !important;
   flex-shrink: 0 !important;
   padding: 6px 11px !important;
   font-size: 0.8rem !important;
 }
+
+.btn-folio-expenses-chip {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%) !important;
+  color: #991b1b !important;
+  border: 1.5px solid #f87171 !important;
+  border-radius: var(--radius-full, 9999px) !important;
+  font-weight: 850 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  cursor: pointer !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.btn-folio-expenses-chip:hover {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .btn-folio-expenses-chip,
+body.dark-theme .btn-folio-expenses-chip,
+html.dark-theme .btn-folio-expenses-chip {
+  background: rgba(185, 28, 28, 0.2) !important;
+  color: #fca5a5 !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+[data-theme="dark"] #add-room-expense-modal,
+body.dark-theme #add-room-expense-modal,
+html.dark-theme #add-room-expense-modal {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+}
+
 
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
