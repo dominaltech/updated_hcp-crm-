@@ -1139,7 +1139,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const globalRawStayBalance = isOtaPrepaid
     ? (hotelExtrasChargeVal - globalAdvancePaid)
     : (globalStayNet - globalAdvancePaid);
-  const globalExpensesTotal = Number(folioData.expensesTotal || (folioData.extraExpenses || []).reduce((sum, e) => sum + Number(e.total || e.amount || 0), 0));
+  const allExtraExpenses = folioData?.extraExpenses || [];
+  const globalExpensesTotal = Number(folioData?.expensesTotal || allExtraExpenses.reduce((sum, e) => sum + Number(e.total || e.amount || 0), 0));
   const globalNetFolioBalance = globalRawStayBalance + globalFnbPending + globalExpensesTotal;
   const folioDueAmount = Math.max(0, globalNetFolioBalance);
   const folioRefundAmount = globalNetFolioBalance < 0 ? Math.abs(globalNetFolioBalance) : 0;
