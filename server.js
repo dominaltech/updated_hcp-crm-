@@ -33,6 +33,7 @@ const db = require('./database');
 const { hashPassword, hashPasswordSync, verifyPassword, migratePlaintextPasswords, generateToken, requireAuth, requireRole, optionalAuth } = require('./middleware/auth');
 const secretManager = require('./services/secretManager');
 const supabaseService = require('./services/supabaseService');
+const notificationService = require('./services/notificationService');
 
 // Automatically migrate any legacy plaintext staff passwords to bcrypt hashes on startup
 migratePlaintextPasswords(db);
@@ -1468,6 +1469,19 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       }
     } catch (syncErr) {
       console.warn('[Supabase] Checkin sync dispatch skipped:', syncErr.message);
+    }
+
+    // Non-blocking push notification to Owner APK
+    try {
+      notificationService.notifyCheckin({
+        roomNumbers: result.roomNumbers || (result.roomNumber ? [result.roomNumber] : []),
+        guestName: result.guestName,
+        totalPaid: result.totalPaid || 0,
+        bookingId: result.id,
+        phone: result.mobile || ''
+      });
+    } catch (notifErr) {
+      console.warn('[Notification] Checkin push error:', notifErr.message);
     }
 
     res.json({
@@ -3095,7 +3109,7 @@ app.get('/api/bookings/:bookingId/extra-expenses', requireAuth, (req, res) => {
 app.post('/api/bookings/:bookingId/extra-expenses', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { reason, amount, gst_pct } = req.body;
+    const { reason, amount, gst_pct, category, notes } = req.body;
     if (!reason || !reason.trim()) {
       return res.status(400).json({ success: false, error: 'Reason/Item description is required' });
     }
@@ -3110,14 +3124,18 @@ app.post('/api/bookings/:bookingId/extra-expenses', requireAuth, requireRole('ma
     }
 
     const parsedGstPct = gst_pct !== undefined && gst_pct !== null ? parseFloat(gst_pct) : 5;
-    const taxableAmount = Math.round((parsedAmount / (1 + (parsedGstPct / 100))) * 100) / 100;
-    const gstAmount = Math.round((parsedAmount - taxableAmount) * 100) / 100;
-    const addedBy = req.user?.full_name || req.user?.username || 'Staff';
+    // GST is excluded: entered amount is base/taxable, 5% GST is added on top (e.g. 1000 + 50 = 1050)
+    const taxableAmount = parsedAmount;
+    const gstAmount = Math.round(parsedAmount * (parsedGstPct / 100) * 100) / 100;
+    const totalAmount = Math.round((taxableAmount + gstAmount) * 100) / 100;
+    const addedBy = req.user?.full_name || req.user?.username || req.body?.added_by || 'Staff';
+    const expCategory = category && String(category).trim() ? String(category).trim() : 'Room Expense';
+    const expNotes = notes && String(notes).trim() ? String(notes).trim() : '';
 
     const insertStmt = db.prepare(`
       INSERT INTO booking_extra_expenses (
-        booking_id, room_id, reason, amount, gst_pct, gst_amount, total_amount, added_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        booking_id, room_id, reason, amount, gst_pct, gst_amount, total_amount, created_by, added_by, category, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = insertStmt.run(
@@ -3127,8 +3145,11 @@ app.post('/api/bookings/:bookingId/extra-expenses', requireAuth, requireRole('ma
       taxableAmount,
       parsedGstPct,
       gstAmount,
-      parsedAmount,
-      addedBy
+      totalAmount,
+      addedBy,
+      addedBy,
+      expCategory,
+      expNotes
     );
 
     const inserted = db.prepare('SELECT * FROM booking_extra_expenses WHERE id = ?').get(result.lastInsertRowid);
@@ -3138,7 +3159,7 @@ app.post('/api/bookings/:bookingId/extra-expenses', requireAuth, requireRole('ma
   }
 });
 
-app.delete('/api/bookings/:bookingId/extra-expenses/:expenseId', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
+app.delete('/api/bookings/:bookingId/extra-expenses/:expenseId', requireAuth, requireRole('manager'), (req, res) => {
   try {
     const { bookingId, expenseId } = req.params;
     const existing = db.prepare('SELECT * FROM booking_extra_expenses WHERE id = ? AND booking_id = ?').get(expenseId, bookingId);
@@ -3605,6 +3626,19 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       }
     } catch (syncErr) {
       console.warn('[Supabase] Checkout sync dispatch skipped:', syncErr.message);
+    }
+
+    // Non-blocking push notification to Owner APK
+    try {
+      notificationService.notifyCheckout({
+        roomNumbers: result.checkedOutRooms || [room.room_number],
+        guestName: primaryBooking.guest_name,
+        settleAmount: result.netSettle || 0,
+        refundAmount: result.refund_amount || 0,
+        bookingId: primaryBooking.id
+      });
+    } catch (notifErr) {
+      console.warn('[Notification] Checkout push error:', notifErr.message);
     }
 
     res.json({ success: true, data: result });
@@ -4679,6 +4713,36 @@ app.delete('/api/restaurant/orders/:id', requireAuth, requireRole('manager'), (r
     res.json({ success: true, count: changes });
   } catch (error) {
     console.error('Delete single order error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List Recent Restaurant Orders
+app.get('/api/restaurant/orders', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM restaurant_orders ORDER BY id DESC LIMIT 50').all();
+    orders.forEach(o => {
+      try { o.items = JSON.parse(o.items_json || '[]'); } catch { o.items = []; }
+      o.items_json = o.items;
+      o.grand_total = o.total;
+    });
+    res.json({ success: true, orders, data: orders });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List Recent Bar Orders
+app.get('/api/bar/orders', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM bar_orders ORDER BY id DESC LIMIT 50').all();
+    orders.forEach(o => {
+      try { o.items = JSON.parse(o.items_json || '[]'); } catch { o.items = []; }
+      o.items_json = o.items;
+      o.grand_total = o.total;
+    });
+    res.json({ success: true, orders, data: orders });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -7753,7 +7817,7 @@ app.get('/api/auth/staff-list-public', (req, res) => {
           query += " AND (role = 'manager' OR can_access_manager = 1)";
         }
       } else {
-        if (req.query.include_manager === 'true' || req.query.include_manager === '1') {
+        if (req.query.include_manager === 'true' || req.query.include_manager === '1' || department === 'hospitality') {
           query += " AND (role = ? OR role = 'manager')";
           params.push(department);
         } else {
@@ -7762,7 +7826,7 @@ app.get('/api/auth/staff-list-public', (req, res) => {
         }
       }
     }
-    query += " ORDER BY role ASC, full_name ASC";
+    query += " ORDER BY CASE WHEN role = 'manager' THEN 0 ELSE 1 END, full_name ASC";
     const staff = db.prepare(query).all(...params);
     res.json({ success: true, staff });
   } catch (err) {
@@ -8168,7 +8232,7 @@ app.get('/api/hospitality/history', (req, res) => {
         COALESCE((SELECT p.cheque_status FROM payments p WHERE p.booking_id = b.id AND (p.payment_mode = 'cheque' OR p.split_cheque > 0) ORDER BY p.id DESC LIMIT 1), b.advance_cheque_status, 'pending') as cheque_status,
         CASE WHEN b.settlement_cheque_photo IS NOT NULL OR b.cheque_photo IS NOT NULL OR EXISTS(SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.cheque_photo IS NOT NULL) THEN 1 ELSE 0 END as has_cheque_photo,
         b.payment_status,
-        b.status as booking_status,
+        b.status, b.status as booking_status,
         b.is_prepaid,
         b.ota_bill_amount,
         b.rate_type,
@@ -9137,6 +9201,9 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN transaction_id TEXT DEFAULT NULL;
 try { db.exec("ALTER TABLE bookings ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN transaction_id TEXT DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE payments ADD COLUMN cheque_photo TEXT DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN added_by TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN category TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN notes TEXT;"); } catch (e) {}
 
 // Update Payment Status & Settle from History (e.g. from Pending to Passed / Paid)
 app.post(['/api/bookings/:id/payment-status', '/api/hospitality/history/:id/payment-status'], requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
@@ -11476,6 +11543,690 @@ app.get('/api/vouchers/petty-cash/:expenseId', (req, res) => {
   }
 });
 
+
+// ==========================================
+// 📦 STORE & INVENTORY MANAGEMENT API ROUTES
+// ==========================================
+
+// 1. Get all Store Vendors (Parties)
+app.get('/api/store/vendors', (req, res) => {
+  try {
+    const vendors = db.prepare('SELECT * FROM store_vendors ORDER BY name ASC').all();
+    res.json({ success: true, vendors });
+  } catch (err) {
+    console.error('Fetch store vendors error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. Create New Store Vendor
+app.post('/api/store/vendors', (req, res) => {
+  try {
+    const { name, mobile, address } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ success: false, error: 'Vendor name is required' });
+    if (!mobile || !mobile.trim()) return res.status(400).json({ success: false, error: 'Mobile number is required' });
+
+    const info = db.prepare(`
+      INSERT INTO store_vendors (name, mobile, address)
+      VALUES (?, ?, ?)
+    `).run(name.trim(), mobile.trim(), (address || '').trim());
+
+    const newVendor = db.prepare('SELECT * FROM store_vendors WHERE id = ?').get(info.lastInsertRowid);
+
+    // Non-blocking sync to Supabase
+    if (supabaseService && typeof supabaseService.pushStoreVendor === 'function') {
+      supabaseService.pushStoreVendor(newVendor).catch(err => console.warn('[Supabase] pushStoreVendor notice:', err.message));
+    }
+
+    res.json({ success: true, vendor: newVendor });
+  } catch (err) {
+    console.error('Create store vendor error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2b. Edit Existing Store Vendor
+app.put('/api/store/vendors/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, mobile, address } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ success: false, error: 'Vendor name is required' });
+    if (!mobile || !mobile.trim()) return res.status(400).json({ success: false, error: 'Mobile number is required' });
+
+    const existing = db.prepare('SELECT * FROM store_vendors WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Vendor not found' });
+
+    db.prepare(`
+      UPDATE store_vendors
+      SET name = ?, mobile = ?, address = ?
+      WHERE id = ?
+    `).run(name.trim(), mobile.trim(), (address || '').trim(), id);
+
+    const updated = db.prepare('SELECT * FROM store_vendors WHERE id = ?').get(id);
+    if (supabaseService && typeof supabaseService.pushStoreVendor === 'function') {
+      supabaseService.pushStoreVendor(updated).catch(err => console.warn('[Supabase] pushStoreVendor update notice:', err.message));
+    }
+
+    res.json({ success: true, vendor: updated });
+  } catch (err) {
+    console.error('Edit store vendor error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2c. Delete Store Vendor
+app.delete('/api/store/vendors/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = db.prepare('SELECT * FROM store_vendors WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Vendor not found' });
+
+    const billCount = db.prepare('SELECT COUNT(*) as cnt FROM store_bills WHERE vendor_id = ?').get(id)?.cnt || 0;
+    if (billCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot delete vendor "${existing.name}". It is linked to ${billCount} bill(s).`
+      });
+    }
+
+    db.prepare('DELETE FROM store_vendors WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Vendor deleted successfully' });
+  } catch (err) {
+    console.error('Delete store vendor error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Helper: Send push notification to Owner / Admin Expo App
+async function sendOwnerPushNotification(payload) {
+  try {
+    const tokens = db.prepare('SELECT token FROM owner_push_tokens').all();
+    if (!tokens || tokens.length === 0) return;
+    const messages = tokens.map(t => ({
+      to: t.token,
+      sound: 'default',
+      title: payload.title,
+      body: payload.body,
+      data: payload.data || {}
+    }));
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(messages)
+    });
+  } catch (err) {
+    console.warn('[PushNotification] Error sending push notification:', err.message);
+  }
+}
+
+// 3. Submit New Store Purchase Bill (Used by Store Boy or Manager)
+app.post('/api/store/bills', (req, res) => {
+  try {
+    const {
+      vendor_id,
+      bill_number,
+      bill_date,
+      total_amount,
+      payment_mode,
+      has_gst,
+      gst_remark,
+      items,
+      notes,
+      bill_photo,
+      created_by
+    } = req.body;
+
+    const parsedVendorId = parseInt(vendor_id, 10);
+    const parsedTotal = parseFloat(total_amount);
+
+    if (!parsedVendorId) return res.status(400).json({ success: false, error: 'Vendor is required' });
+    if (isNaN(parsedTotal) || parsedTotal <= 0) return res.status(400).json({ success: false, error: 'Valid total amount is required' });
+
+    const vendor = db.prepare('SELECT * FROM store_vendors WHERE id = ?').get(parsedVendorId);
+    if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
+
+    const payModeStr = (payment_mode || 'Bank Transfer').trim();
+    const hasGstVal = (has_gst === false || has_gst === 0 || has_gst === 'false') ? 0 : 1;
+    const gstRemarkStr = (gst_remark || '').trim();
+
+    const transaction = db.transaction(() => {
+      const billDateStr = bill_date || new Date().toISOString().split('T')[0];
+      const billNumStr = bill_number ? bill_number.trim() : ('SB-' + Date.now().toString().slice(-6));
+      const createdByStr = created_by ? created_by.trim() : 'Store Boy';
+
+      const info = db.prepare(`
+        INSERT INTO store_bills (
+          vendor_id, bill_number, bill_date, total_amount, paid_amount,
+          pending_amount, status, payment_mode, has_gst, gst_remark,
+          bill_photo, notes, created_by
+        ) VALUES (?, ?, ?, ?, 0, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
+      `).run(
+        parsedVendorId,
+        billNumStr,
+        billDateStr,
+        parsedTotal,
+        parsedTotal,
+        payModeStr,
+        hasGstVal,
+        gstRemarkStr,
+        bill_photo || null,
+        (notes || '').trim(),
+        createdByStr
+      );
+
+      const billId = info.lastInsertRowid;
+      const insertedItems = [];
+
+      if (Array.isArray(items) && items.length > 0) {
+        const itemStmt = db.prepare(`
+          INSERT INTO store_bill_items (bill_id, item_name, quantity, unit, rate, total_price)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        for (const it of items) {
+          const itName = (it.item_name || it.name || '').trim();
+          const itQty = parseFloat(it.quantity || it.qty || 1) || 1;
+          const itUnit = (it.unit || 'unit').trim();
+          const itRate = parseFloat(it.rate || 0) || 0;
+          const itTotal = parseFloat(it.total_price || it.total || (itQty * itRate)) || (itQty * itRate);
+
+          if (itName) {
+            itemStmt.run(billId, itName, itQty, itUnit, itRate, itTotal);
+            insertedItems.push({ item_name: itName, quantity: itQty, unit: itUnit, rate: itRate, total_price: itTotal });
+          }
+        }
+      }
+
+      const createdBill = db.prepare('SELECT * FROM store_bills WHERE id = ?').get(billId);
+      createdBill.vendor_name = vendor.name;
+      createdBill.vendor_mobile = vendor.mobile;
+      createdBill.items = insertedItems;
+
+      // 🔔 Create notification for Admin Panel with deep link
+      const formattedAmount = parsedTotal.toLocaleString('en-IN');
+      const notifTitle = `📦 New Store Bill: ${vendor.name}`;
+      const notifBody = `Bill #${billNumStr} for ₹${formattedAmount} (${payModeStr}${hasGstVal ? ' • GST' : ' • No GST'})`;
+      const deepLink = `hcpowner://store?billId=${billId}`;
+
+      try {
+        db.prepare(`
+          INSERT INTO owner_notifications (title, body, type, deep_link, metadata)
+          VALUES (?, ?, 'store_bill', ?, ?)
+        `).run(
+          notifTitle,
+          notifBody,
+          deepLink,
+          JSON.stringify({ billId, vendorId: parsedVendorId, billNumber: billNumStr, amount: parsedTotal, paymentMode: payModeStr })
+        );
+      } catch (notifErr) {
+        console.warn('Notice saving store bill notification:', notifErr.message);
+      }
+
+      return { createdBill, insertedItems, notifTitle, notifBody, deepLink };
+    });
+
+    const { createdBill, insertedItems, notifTitle, notifBody, deepLink } = transaction();
+
+    // Trigger push notification to Admin / Owner mobile apps
+    sendOwnerPushNotification({
+      title: notifTitle,
+      body: notifBody,
+      data: {
+        url: deepLink,
+        billId: createdBill.id,
+        vendorId: parsedVendorId
+      }
+    });
+
+    // Non-blocking sync to Supabase
+    if (supabaseService && typeof supabaseService.pushStoreBill === 'function') {
+      supabaseService.pushStoreBill(createdBill, insertedItems).catch(err => console.warn('[Supabase] pushStoreBill notice:', err.message));
+    }
+
+    res.json({ success: true, bill: createdBill, deepLink });
+  } catch (err) {
+    console.error('Create store bill error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. Fetch Store Bills (Live vs History with Party-wise & Bill-wise structure)
+app.get('/api/store/bills', async (req, res) => {
+  try {
+    if (supabaseService && typeof supabaseService.pullStoreBillsFromCloud === 'function') {
+      await supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
+    }
+    const statusType = (req.query.status || 'live').toLowerCase(); // 'live' or 'history'
+
+    let billsQuery = '';
+    if (statusType === 'history') {
+      // All fully cleared bills or bills where payments occurred
+      billsQuery = `
+        SELECT b.*, v.name as vendor_name, v.mobile as vendor_mobile
+        FROM store_bills b
+        JOIN store_vendors v ON b.vendor_id = v.id
+        WHERE b.status = 'FULL'
+        ORDER BY b.created_at DESC
+      `;
+    } else {
+      // Live: Pending or partly paid bills
+      billsQuery = `
+        SELECT b.*, v.name as vendor_name, v.mobile as vendor_mobile
+        FROM store_bills b
+        JOIN store_vendors v ON b.vendor_id = v.id
+        WHERE b.pending_amount > 0 AND b.status IN ('PENDING', 'PARTLY')
+        ORDER BY b.created_at DESC
+      `;
+    }
+
+    const bills = db.prepare(billsQuery).all();
+
+    // Attach items and payment history to each bill
+    const itemsStmt = db.prepare('SELECT * FROM store_bill_items WHERE bill_id = ?');
+    const paymentsStmt = db.prepare('SELECT * FROM store_vendor_payments WHERE bill_id = ? ORDER BY paid_at DESC');
+
+    for (const b of bills) {
+      b.items = itemsStmt.all(b.id);
+      b.payments = paymentsStmt.all(b.id);
+    }
+
+    // Party-wise summary aggregation
+    const partyMap = {};
+    for (const b of bills) {
+      if (!partyMap[b.vendor_id]) {
+        partyMap[b.vendor_id] = {
+          vendor_id: b.vendor_id,
+          vendor_name: b.vendor_name,
+          vendor_mobile: b.vendor_mobile,
+          total_bills: 0,
+          total_amount: 0,
+          total_paid: 0,
+          total_pending: 0,
+          bills: []
+        };
+      }
+      partyMap[b.vendor_id].total_bills += 1;
+      partyMap[b.vendor_id].total_amount += b.total_amount;
+      partyMap[b.vendor_id].total_paid += b.paid_amount;
+      partyMap[b.vendor_id].total_pending += b.pending_amount;
+      partyMap[b.vendor_id].bills.push(b);
+    }
+
+    const partySummary = Object.values(partyMap);
+
+    // Also fetch all past payment ledger entries for history tab
+    let recentPayments = [];
+    if (statusType === 'history') {
+      recentPayments = db.prepare(`
+        SELECT p.*, v.name as vendor_name, v.mobile as vendor_mobile, b.bill_number
+        FROM store_vendor_payments p
+        JOIN store_vendors v ON p.vendor_id = v.id
+        LEFT JOIN store_bills b ON p.bill_id = b.id
+        ORDER BY p.paid_at DESC
+        LIMIT 100
+      `).all();
+    }
+
+    res.json({
+      success: true,
+      status: statusType,
+      bills,
+      partySummary,
+      paymentsHistory: recentPayments
+    });
+  } catch (err) {
+    console.error('Fetch store bills error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Record Payment to Vendor (Full or Partly payment)
+app.post('/api/store/payments', (req, res) => {
+  try {
+    const {
+      bill_id,
+      vendor_id,
+      payment_amount,
+      payment_mode,
+      reference_no,
+      paid_by
+    } = req.body;
+
+    const parsedAmount = parseFloat(payment_amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid payment amount is required' });
+    }
+
+    const payMode = payment_mode || 'cash';
+    const payerName = paid_by || 'Admin (Jaijeet sir)';
+    const refNo = reference_no ? reference_no.trim() : '';
+
+    const transaction = db.transaction(() => {
+      let targetBill = null;
+      let effectiveVendorId = vendor_id ? parseInt(vendor_id, 10) : null;
+
+      if (bill_id) {
+        targetBill = db.prepare('SELECT * FROM store_bills WHERE id = ?').get(bill_id);
+        if (!targetBill) throw new Error('Bill not found');
+        effectiveVendorId = targetBill.vendor_id;
+
+        const newPaid = Math.round((targetBill.paid_amount + parsedAmount) * 100) / 100;
+        const newPending = Math.max(0, Math.round((targetBill.total_amount - newPaid) * 100) / 100);
+        const newStatus = (newPending === 0) ? 'FULL' : 'PARTLY';
+
+        db.prepare(`
+          UPDATE store_bills 
+          SET paid_amount = ?, pending_amount = ?, status = ?
+          WHERE id = ?
+        `).run(newPaid, newPending, newStatus, targetBill.id);
+
+        const paymentInfo = db.prepare(`
+          INSERT INTO store_vendor_payments (bill_id, vendor_id, payment_amount, payment_mode, reference_no, paid_by)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(targetBill.id, effectiveVendorId, parsedAmount, payMode, refNo, payerName);
+
+        targetBill.paid_amount = newPaid;
+        targetBill.pending_amount = newPending;
+        targetBill.status = newStatus;
+
+        return {
+          paymentId: paymentInfo.lastInsertRowid,
+          updatedBill: targetBill,
+          vendorId: effectiveVendorId
+        };
+      } else if (effectiveVendorId) {
+        // Party-level lump sum payment: Allocate across oldest pending bills
+        const pendingBills = db.prepare(`
+          SELECT * FROM store_bills 
+          WHERE vendor_id = ? AND pending_amount > 0 AND status IN ('PENDING', 'PARTLY')
+          ORDER BY created_at ASC
+        `).all(effectiveVendorId);
+
+        let remainingToAllocate = parsedAmount;
+        let lastUpdatedBill = null;
+
+        for (const pb of pendingBills) {
+          if (remainingToAllocate <= 0) break;
+          const payTowardsThis = Math.min(pb.pending_amount, remainingToAllocate);
+          const newPaid = Math.round((pb.paid_amount + payTowardsThis) * 100) / 100;
+          const newPending = Math.max(0, Math.round((pb.total_amount - newPaid) * 100) / 100);
+          const newStatus = (newPending === 0) ? 'FULL' : 'PARTLY';
+
+          db.prepare(`
+            UPDATE store_bills 
+            SET paid_amount = ?, pending_amount = ?, status = ?
+            WHERE id = ?
+          `).run(newPaid, newPending, newStatus, pb.id);
+
+          pb.paid_amount = newPaid;
+          pb.pending_amount = newPending;
+          pb.status = newStatus;
+          lastUpdatedBill = pb;
+
+          remainingToAllocate = Math.round((remainingToAllocate - payTowardsThis) * 100) / 100;
+        }
+
+        const paymentInfo = db.prepare(`
+          INSERT INTO store_vendor_payments (bill_id, vendor_id, payment_amount, payment_mode, reference_no, paid_by)
+          VALUES (NULL, ?, ?, ?, ?, ?)
+        `).run(effectiveVendorId, parsedAmount, payMode, refNo, payerName);
+
+        return {
+          paymentId: paymentInfo.lastInsertRowid,
+          updatedBill: lastUpdatedBill,
+          vendorId: effectiveVendorId
+        };
+      } else {
+        throw new Error('Either bill_id or vendor_id is required');
+      }
+    });
+
+    const result = transaction();
+
+    // Non-blocking sync to Supabase
+    if (supabaseService && typeof supabaseService.pushStorePayment === 'function') {
+      supabaseService.pushStorePayment({
+        bill_id: bill_id || null,
+        vendor_id: result.vendorId,
+        payment_amount: parsedAmount,
+        payment_mode: payMode,
+        reference_no: refNo,
+        paid_by: payerName
+      }, result.updatedBill).catch(err => console.warn('[Supabase] pushStorePayment notice:', err.message));
+    }
+
+    res.json({
+      success: true,
+      paymentId: result.paymentId,
+      updatedBill: result.updatedBill
+    });
+  } catch (err) {
+    console.error('Record store payment error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Delete / Void Store Bill (Admin Only)
+app.delete('/api/store/bills/:id', requireAuth, requireRole('manager'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const bill = db.prepare('SELECT * FROM store_bills WHERE id = ?').get(id);
+    if (!bill) return res.status(404).json({ success: false, error: 'Bill not found' });
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM store_bill_items WHERE bill_id = ?').run(id);
+      db.prepare('DELETE FROM store_vendor_payments WHERE bill_id = ?').run(id);
+      db.prepare('DELETE FROM store_bills WHERE id = ?').run(id);
+    })();
+
+    // Non-blocking sync to Supabase
+    if (supabaseService && typeof supabaseService.deleteStoreBill === 'function') {
+      supabaseService.deleteStoreBill(id).catch(err => console.warn('[Supabase] deleteStoreBill notice:', err.message));
+    }
+
+    res.json({ success: true, message: 'Store bill deleted successfully' });
+  } catch (err) {
+    console.error('Delete store bill error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Edit Store Bill (Used by Admin Panel)
+app.put('/api/store/bills/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const existing = db.prepare('SELECT * FROM store_bills WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Bill not found' });
+
+    const {
+      vendor_id,
+      bill_number,
+      bill_date,
+      total_amount,
+      payment_mode,
+      has_gst,
+      gst_remark,
+      notes,
+      status
+    } = req.body;
+
+    const newVendorId = vendor_id ? parseInt(vendor_id, 10) : existing.vendor_id;
+    const newTotal = (total_amount !== undefined && !isNaN(parseFloat(total_amount))) ? parseFloat(total_amount) : existing.total_amount;
+    const newBillNo = bill_number !== undefined ? String(bill_number).trim() : existing.bill_number;
+    const newBillDate = bill_date || existing.bill_date;
+    const newPaymentMode = payment_mode ? String(payment_mode).trim() : existing.payment_mode;
+    const newHasGst = (has_gst === false || has_gst === 0 || has_gst === 'false') ? 0 : (has_gst !== undefined ? 1 : existing.has_gst);
+    const newGstRemark = gst_remark !== undefined ? String(gst_remark).trim() : existing.gst_remark;
+    const newNotes = notes !== undefined ? String(notes).trim() : existing.notes;
+    
+    // Recalculate pending amount based on paid amount
+    const paidAmt = existing.paid_amount || 0;
+    const newPending = Math.max(0, Math.round((newTotal - paidAmt) * 100) / 100);
+    const newStatus = status ? String(status).toUpperCase() : (newPending === 0 ? 'FULL' : (paidAmt > 0 ? 'PARTLY' : 'PENDING'));
+
+    db.prepare(`
+      UPDATE store_bills
+      SET vendor_id = ?, bill_number = ?, bill_date = ?, total_amount = ?,
+          pending_amount = ?, status = ?, payment_mode = ?, has_gst = ?,
+          gst_remark = ?, notes = ?
+      WHERE id = ?
+    `).run(
+      newVendorId,
+      newBillNo,
+      newBillDate,
+      newTotal,
+      newPending,
+      newStatus,
+      newPaymentMode,
+      newHasGst,
+      newGstRemark,
+      newNotes,
+      id
+    );
+
+    const updatedBill = db.prepare(`
+      SELECT b.*, v.name as vendor_name, v.mobile as vendor_mobile
+      FROM store_bills b
+      JOIN store_vendors v ON b.vendor_id = v.id
+      WHERE b.id = ?
+    `).get(id);
+
+    res.json({ success: true, bill: updatedBill });
+  } catch (err) {
+    console.error('Update store bill error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 📱 OWNER / ADMIN APP NOTIFICATIONS & ACTIVITY API
+// ==========================================
+
+// Register Push Token for Owner / Admin Phone
+app.post('/api/owner/push-token', (req, res) => {
+  try {
+    const { token, device_name, platform } = req.body;
+    if (!token || !token.trim()) {
+      return res.status(400).json({ success: false, error: 'Push token is required' });
+    }
+    const cleanToken = token.trim();
+    notificationService.savePushToken(cleanToken, platform || device_name || 'android');
+    res.json({ success: true, message: 'Push token registered successfully' });
+  } catch (err) {
+    console.error('Register push token error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Owner Notifications
+app.get('/api/owner/notifications', (req, res) => {
+  try {
+    const notifications = notificationService.getNotifications(100);
+    res.json({ success: true, notifications, data: notifications });
+  } catch (err) {
+    console.error('Fetch owner notifications error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Owner Live Activity Feed (Check-ins, Check-outs, Restaurant & Bar orders)
+app.get('/api/owner/activity', (req, res) => {
+  try {
+    const type = req.query.type || 'all';
+    const activity = notificationService.getActivityFeed(type, 100);
+    res.json({ success: true, activity, data: activity });
+  } catch (err) {
+    console.error('Fetch owner activity error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Owner Approvals (Pending & Approved/Rejected History)
+app.get('/api/owner/approvals', (req, res) => {
+  try {
+    const { pending, history, approvals } = notificationService.getApprovals();
+    res.json({
+      success: true,
+      pending,
+      history,
+      approvals: pending,
+      data: approvals
+    });
+  } catch (err) {
+    console.error('Fetch owner approvals error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit New Approval Request (From CRM Staff during Check-In / Billing)
+app.post('/api/owner/approvals/request', (req, res) => {
+  try {
+    const result = notificationService.createApprovalRequest(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error('Create approval request error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Check Status of an Approval Request (Polled by CRM Check-In Dialog)
+app.get('/api/owner/approvals/:id/status', (req, res) => {
+  try {
+    const approval = db.prepare('SELECT * FROM owner_approvals WHERE id = ?').get(req.params.id);
+    if (!approval) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, approval, status: approval.status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Approve Request
+app.post('/api/owner/approvals/:id/approve', (req, res) => {
+  try {
+    const updated = notificationService.updateApprovalStatus(req.params.id, 'APPROVED', req.body.action_by || 'Admin');
+    if (!updated) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, message: 'Discount Approved', approval: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reject Request
+app.post('/api/owner/approvals/:id/reject', (req, res) => {
+  try {
+    const updated = notificationService.updateApprovalStatus(req.params.id, 'REJECTED', req.body.action_by || 'Admin', req.body.reason || '');
+    if (!updated) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, message: 'Discount Rejected', approval: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// Mark Single Notification as Read
+app.post('/api/owner/notifications/:id/read', (req, res) => {
+  try {
+    notificationService.markNotificationRead(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Mark All Notifications as Read
+app.post('/api/owner/notifications/read-all', (req, res) => {
+  try {
+    notificationService.markNotificationRead(null);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 function mountStaticDist() {
   if (fs.existsSync(distDir)) {
     app.use(express.static(distDir, {
@@ -11531,6 +12282,11 @@ async function startServer() {
         if (res && res.success) console.log(`[Supabase] Initial sync: ${res.synced} occupied room(s) synced to cloud.`);
       })
       .catch(err => console.warn('[Supabase] Initial sync skipped:', err.message));
+
+    // Real-time polling of cloud approvals from Admin mobile app (works across 5G / cellular / anywhere)
+    setInterval(() => {
+      supabaseService.pollCloudApprovals(db).catch(() => {});
+    }, 2500);
   });
 
   server.on('error', (err) => {

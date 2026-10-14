@@ -28,3 +28,5 @@ backup-file/
 *firebase*.json
 google-services*.json
 firebase-service-account.json
+*.apk
+crm.db

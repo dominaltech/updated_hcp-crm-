@@ -28,7 +28,7 @@ try {
 }
 
 // Resilient Offline Protection & Circuit Breaker
-const REQUEST_TIMEOUT_MS = 1000; // 1 second max for any cloud call
+const REQUEST_TIMEOUT_MS = 6000; // 1 second max for any cloud call
 const OFFLINE_COOLDOWN_MS = 15000; // 15 seconds cooldown before retrying cloud if network dropped
 
 let isOffline = false;
@@ -292,8 +292,29 @@ async function syncAllActiveRoomsFromLocal(localDb) {
       WHERE b.status = 'active'
     `).all();
 
+    const activeRoomSet = new Set((activeBookings || []).map(b => String(b.room_number)));
+
+    // 1. Reconcile: Purge any checked-out / stale room numbers from Supabase active_occupancies
+    try {
+      const { data: cloudRooms } = await withTimeout(
+        supabase.from('active_occupancies').select('room_number'),
+        REQUEST_TIMEOUT_MS
+      );
+      if (Array.isArray(cloudRooms)) {
+        for (const cr of cloudRooms) {
+          if (!activeRoomSet.has(String(cr.room_number))) {
+            console.log(`[Supabase] Pruning checked-out room from cloud: Room ${cr.room_number}`);
+            await removeActiveOccupancy(cr.room_number);
+          }
+        }
+      }
+    } catch (pruneErr) {
+      console.warn('[Supabase] Prune stale occupancies notice:', pruneErr.message);
+    }
+
     if (!activeBookings || activeBookings.length === 0) return;
 
+    // 2. Sync all current active rooms to cloud
     for (const b of activeBookings) {
       if (!canAttemptCloud()) break; // Exit immediately if offline circuit breaker tripped
       await syncActiveOccupancy({
@@ -312,7 +333,257 @@ async function syncAllActiveRoomsFromLocal(localDb) {
   }
 }
 
+
+/**
+ * Store Module Sync Methods
+ */
+async function pushStoreVendor(vendor) {
+  if (!canAttemptCloud() || !vendor) return null;
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('store_vendors').upsert({
+        id: vendor.id,
+        name: vendor.name,
+        mobile: vendor.mobile,
+        address: vendor.address || ''
+      }).select()
+    );
+    if (error) {
+      console.warn('[Supabase] pushStoreVendor error:', error.message);
+      return null;
+    }
+    markNetworkSuccess();
+    return data;
+  } catch (err) {
+    markNetworkFailure(err);
+    return null;
+  }
+}
+
+async function pushStoreBill(bill, items = []) {
+  if (!canAttemptCloud() || !bill) return null;
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('store_bills').upsert({
+        id: bill.id,
+        vendor_id: bill.vendor_id,
+        bill_number: bill.bill_number,
+        bill_date: bill.bill_date,
+        total_amount: bill.total_amount,
+        paid_amount: bill.paid_amount || 0,
+        pending_amount: bill.pending_amount,
+        status: bill.status || 'PENDING',
+        bill_photo: bill.bill_photo || null,
+        notes: bill.notes || '',
+        created_by: bill.created_by || 'Store Boy'
+      }).select()
+    );
+    if (error) {
+      console.warn('[Supabase] pushStoreBill error:', error.message);
+      return null;
+    }
+
+    if (items && items.length > 0) {
+      const itemsPayload = items.map(it => ({
+        bill_id: bill.id,
+        item_name: it.item_name,
+        quantity: it.quantity,
+        unit: it.unit,
+        rate: it.rate || 0,
+        total_price: it.total_price
+      }));
+      await withTimeout(supabase.from('store_bill_items').upsert(itemsPayload));
+    }
+
+    markNetworkSuccess();
+    return data;
+  } catch (err) {
+    markNetworkFailure(err);
+    return null;
+  }
+}
+
+async function pushStorePayment(payment, updatedBill = null) {
+  if (!canAttemptCloud() || !payment) return null;
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('store_vendor_payments').insert({
+        bill_id: payment.bill_id || null,
+        vendor_id: payment.vendor_id,
+        payment_amount: payment.payment_amount,
+        payment_mode: payment.payment_mode,
+        reference_no: payment.reference_no || '',
+        paid_by: payment.paid_by || 'Admin (Jaijeet sir)'
+      }).select()
+    );
+    if (error) {
+      console.warn('[Supabase] pushStorePayment error:', error.message);
+      return null;
+    }
+
+    if (updatedBill) {
+      await withTimeout(
+        supabase.from('store_bills').update({
+          paid_amount: updatedBill.paid_amount,
+          pending_amount: updatedBill.pending_amount,
+          status: updatedBill.status
+        }).eq('id', updatedBill.id)
+      );
+    }
+
+    markNetworkSuccess();
+    return data;
+  } catch (err) {
+    markNetworkFailure(err);
+    return null;
+  }
+}
+
+async function pullStoreBillsFromCloud(db) {
+  if (!canAttemptCloud() || !supabase || !db) return false;
+  try {
+    const { data: cloudBills, error: bErr } = await withTimeout(supabase.from('store_bills').select('*'));
+    if (bErr || !cloudBills) return false;
+
+    const upsert = db.prepare(`
+      INSERT INTO store_bills (id, vendor_id, bill_number, bill_date, total_amount, paid_amount, pending_amount, status, payment_mode, has_gst, gst_remark, bill_photo, notes, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        paid_amount = excluded.paid_amount,
+        pending_amount = excluded.pending_amount,
+        status = excluded.status,
+        payment_mode = excluded.payment_mode,
+        has_gst = excluded.has_gst,
+        gst_remark = excluded.gst_remark,
+        notes = excluded.notes
+    `);
+
+    for (const cb of cloudBills) {
+      let mode = cb.payment_mode || 'Bank Transfer';
+      let hasGst = cb.has_gst ?? 1;
+      let gstRemark = cb.gst_remark || '';
+      if (cb.notes && cb.notes.includes('Mode:')) {
+        const parts = cb.notes.split('|').map(s => s.trim());
+        for (const p of parts) {
+          if (p.startsWith('Mode:')) mode = p.replace('Mode:', '').trim();
+          if (p.toLowerCase().includes('without gst')) hasGst = 0;
+          if (p.toLowerCase().includes('with gst')) hasGst = 1;
+        }
+      }
+      upsert.run(
+        cb.id,
+        cb.vendor_id,
+        cb.bill_number || 'N/A',
+        cb.bill_date || new Date().toISOString().split('T')[0],
+        cb.total_amount || 0,
+        cb.paid_amount || 0,
+        cb.pending_amount ?? (cb.total_amount - (cb.paid_amount || 0)),
+        cb.status || 'PENDING',
+        mode,
+        hasGst,
+        gstRemark,
+        cb.bill_photo || null,
+        cb.notes || '',
+        cb.created_by || 'Store Boy',
+        cb.created_at || new Date().toISOString()
+      );
+    }
+    markNetworkSuccess();
+    return true;
+  } catch (err) {
+    markNetworkFailure(err);
+    return false;
+  }
+}
+
+async function deleteStoreBill(billId) {
+  if (!canAttemptCloud() || !billId) return false;
+  try {
+    await withTimeout(supabase.from('store_bill_items').delete().eq('bill_id', billId));
+    await withTimeout(supabase.from('store_vendor_payments').delete().eq('bill_id', billId));
+    const { error } = await withTimeout(supabase.from('store_bills').delete().eq('id', billId));
+    if (error) {
+      console.warn(`[Supabase] deleteStoreBill notice for ID ${billId}:`, error.message);
+      return false;
+    }
+    markNetworkSuccess();
+    return true;
+  } catch (err) {
+    markNetworkFailure(err);
+    return false;
+  }
+}
+
+async function syncApprovalRequestToCloud(req) {
+  if (!canAttemptCloud() || !req || !req.id) return false;
+  try {
+    const payload = {
+      room_number: String(req.room_number || ''),
+      department: 'discount_approval',
+      bill_no: 'APP-' + req.id,
+      grand_total: Number(req.final_amount || 0),
+      items_summary: JSON.stringify({
+        approval_id: req.id,
+        guest_name: req.guest_name,
+        members: req.members,
+        expected_checkout: req.expected_checkout,
+        discount_pct: req.discount_pct,
+        discount: req.discount,
+        current_total: req.current_total,
+        final_amount: req.final_amount,
+        reason: req.reason
+      }),
+      settled_by: req.requested_by || 'Reception Staff',
+      status: 'pending'
+    };
+    await withTimeout(supabase.from('room_charges_inbox').insert(payload));
+    markNetworkSuccess();
+    return true;
+  } catch (err) {
+    markNetworkFailure(err);
+    return false;
+  }
+}
+
+async function pollCloudApprovals(db) {
+  if (!canAttemptCloud() || !db) return;
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .select('*')
+        .eq('department', 'discount_approval')
+        .neq('status', 'pending')
+    );
+    if (!error && Array.isArray(data)) {
+      for (const row of data) {
+        const approvalId = row.bill_no ? row.bill_no.replace('APP-', '') : null;
+        if (approvalId) {
+          const newStatus = (row.status || '').toLowerCase() === 'approved' ? 'APPROVED' : 'REJECTED';
+          const existing = db.prepare('SELECT status FROM owner_approvals WHERE id = ?').get(approvalId);
+          if (existing && existing.status === 'PENDING') {
+            db.prepare(`
+              UPDATE owner_approvals
+              SET status = ?, action_by = ?, action_at = datetime('now','localtime')
+              WHERE id = ?
+            `).run(newStatus, row.settled_by || 'Admin', approvalId);
+            console.log(`[Cloud Approval] Synced decision from cloud: Request #${approvalId} is now ${newStatus}`);
+          }
+        }
+      }
+    }
+    markNetworkSuccess();
+  } catch (err) {
+    markNetworkFailure(err);
+  }
+}
+
 module.exports = {
+  pushStoreVendor,
+  pushStoreBill,
+  pushStorePayment,
+  deleteStoreBill,
+  pullStoreBillsFromCloud,
   syncActiveOccupancy,
   removeActiveOccupancy,
   pushRoomCharge,
@@ -320,6 +591,9 @@ module.exports = {
   fetchPendingRoomCharges,
   markChargesImported,
   syncAllActiveRoomsFromLocal,
+  syncApprovalRequestToCloud,
+  pollCloudApprovals,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };
+

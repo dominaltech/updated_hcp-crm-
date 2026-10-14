@@ -10133,7 +10133,7 @@ body.dark-theme .manager-subnav-btn.active {
 
 @page {
   size: A4 portrait;
-  margin: 4mm 6mm 4mm 6mm !important;
+  margin: 6mm 6mm 6mm 6mm !important;
 }
 
 @media print {
@@ -10202,9 +10202,9 @@ body.dark-theme .manager-subnav-btn.active {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    max-height: 288mm !important;
+    max-height: 284mm !important;
     box-sizing: border-box !important;
-    padding: 0 !important;
+    padding: 3mm 0 0 0 !important;
     margin: 0 auto !important;
     background: #ffffff !important;
     color: #000000 !important;
@@ -10244,11 +10244,11 @@ body.dark-theme .manager-subnav-btn.active {
   /* Half-A4 Receipt Card (fits exactly 136mm each, utilizing full A4 height without bottom blank space or page-2 overflow) */
   .half-a4-receipt-card {
     width: 100% !important;
-    height: 136mm !important;
-    max-height: 137mm !important;
+    height: 128mm !important;
+    max-height: 129mm !important;
     border: 1.5px solid #000000 !important;
     border-radius: 4px !important;
-    padding: 10px 16px !important;
+    padding: 8px 16px !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;

@@ -184,6 +184,7 @@ export const api = {
   resettleRestaurantOrder: (id, data) => request(`/restaurant/orders/${id}/resettle`, { method: 'POST', body: data }),
   cancelRestaurantTable: (id) => request(`/restaurant/tables/${id}/cancel`, { method: 'POST' }),
   deleteRestaurantSettledBill: (id) => request(`/restaurant/settled-bills/${id}`, { method: 'DELETE' }),
+  deleteRestaurantOrder: (id) => request(`/restaurant/orders/${id}`, { method: 'DELETE' }),
 
   // Bar Lounge POS
   getBarMenu: () => request('/bar/menu'),
@@ -207,6 +208,7 @@ export const api = {
   getBarSettledBills: () => request('/bar/settled-bills'),
   getBarOrderDetail: (id) => request(`/bar/orders/${id}`),
   resettleBarOrder: (id, data) => request(`/bar/orders/${id}/resettle`, { method: 'POST', body: data }),
+  deleteBarOrder: (id) => request(`/bar/orders/${id}`, { method: 'DELETE' }),
 
   // POS Manager Analytics (Restaurant & Bar)
   getPosAnalytics: (department = 'restaurant', params = {}) => {

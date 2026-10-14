@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime, formatTaxInvoiceNumber } from '../utils/formatters';
 import ExpensesPage from './ExpensesPage';
+import StoreManagerView from '../components/common/StoreManagerView';
 import ThemedSelect from '../components/common/ThemedSelect';
 import ThemedDatePicker from '../components/common/ThemedDatePicker';
 import { ExpenseCategoriesMasterContent } from '../components/common/ExpenseCategoriesMasterModal';
@@ -3294,6 +3295,9 @@ export default function ManagePage({ onPrintClosingReport }) {
           </div>
         </div>
       )}
+
+      {/* Subview 3: Expenses */}
+      {subTab === 'store' && <StoreManagerView />}
 
       {/* Subview 3: Expenses */}
       {subTab === 'expenses' && <ExpensesPage />}

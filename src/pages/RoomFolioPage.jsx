@@ -169,6 +169,7 @@ const folioMemoryCache = new Map();
 
 export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpenVisitors, onCheckoutDone, initialRoom = null }) {
   const { showToast, showConfirm, currentUser } = useApp();
+  const isAdmin = currentUser?.role === 'manager' || currentUser?.username?.toLowerCase() === 'admin' || Boolean(currentUser?.can_access_manager);
   const [folioData, setFolioData] = useState(() => {
     if (folioMemoryCache.has(roomId)) {
       return folioMemoryCache.get(roomId);
@@ -227,7 +228,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [extensionSplitReceiptsData, setExtensionSplitReceiptsData] = useState(null);
 
   // Extra Expenses / Loss / Damage State
-  const [activeFolioTab, setActiveFolioTab] = useState('all'); // 'all' | 'stay' | 'fnb' | 'expenses' | 'payments'
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [expenseReason, setExpenseReason] = useState('');
   const [expenseCategory, setExpenseCategory] = useState('damage');
@@ -1261,7 +1261,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
       const res = await api.addExtraExpense(bookingId, payload);
       if (res && res.success !== false) {
-        showToast(`Extra expense of ${formatCurrency(res.expense?.total || parsedAmt)} recorded successfully!`, 'success');
+        showToast(`Extra expense of ${formatCurrency(res.expense?.total_amount || res.expense?.total || (parsedAmt + Math.round(parsedAmt * 0.05 * 100) / 100))} recorded successfully!`, 'success');
         setIsAddExpenseModalOpen(false);
         setExpenseReason('');
         setExpenseAmount('');
@@ -1277,6 +1277,46 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     } finally {
       setIsSubmittingExpense(false);
     }
+  };
+
+  const handleDeleteFnbOrder = async (order) => {
+    if (!order || !order.id) return;
+    if (!isAdmin) {
+      showToast('Only Admin / Owner is authorized to void orders.', 'error');
+      return;
+    }
+    const isBar = order.department === 'bar';
+    const deptName = isBar ? 'Bar Lounge' : 'Restaurant';
+    const orderNum = order.order_number || `#${order.id}`;
+    const orderTotal = formatCurrency(order.total || order.grand_total || order.grandTotal || 0);
+
+    showConfirm({
+      title: `Void & Delete ${deptName} Bill`,
+      message: `Are you sure you want to permanently delete & void ${deptName} Bill ${orderNum} (${orderTotal}) from this room folio? This will immediately remove it from the stay balance.`,
+      confirmLabel: 'Yes, Delete & Void',
+      confirmColor: '#dc2626',
+      onConfirm: async () => {
+        try {
+          let res;
+          if (isBar) {
+            res = await api.deleteBarOrder(order.id);
+          } else {
+            res = await api.deleteRestaurantOrder(order.id);
+          }
+          if (res && res.success !== false) {
+            showToast(`${deptName} Bill ${orderNum} removed from folio`, 'info');
+            setSelectedFnbOrder(null);
+            folioMemoryCache.delete(roomId);
+            await loadFolio(true);
+          } else {
+            showToast(res?.error || `Failed to delete ${deptName} order`, 'error');
+          }
+        } catch (err) {
+          console.error(`Error deleting ${deptName} order:`, err);
+          showToast(err.message || `Error deleting ${deptName} order`, 'error');
+        }
+      }
+    });
   };
 
   const handleDeleteExtraExpense = async (expense) => {
@@ -1665,82 +1705,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         </div>
       </div>
 
-      {/* Folio View Tabs */}
-      <div
-        className="folio-nav-tabs-bar"
-        style={{
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'center',
-          overflowX: 'auto',
-          padding: '4px 2px 14px 2px',
-          borderBottom: '1.5px solid var(--border-color, #e2e8f0)',
-          marginBottom: '16px'
-        }}
-      >
-        {[
-          { id: 'all', label: '📋 All Folio Details', count: null },
-          { id: 'stay', label: '🏨 Stay & Tariff', count: null },
-          { id: 'fnb', label: '🍽️ Restaurant & Bar Orders', count: (folioData.restaurantOrders?.length || 0) + (folioData.barOrders?.length || 0) },
-          { id: 'expenses', label: '⚠️ Extra Expenses / Damages', count: (folioData.extraExpenses?.length || 0), highlight: (folioData.extraExpenses?.length || 0) > 0 },
-          { id: 'payments', label: '💳 Advance & Payments', count: (folioData.payments?.length || 0) }
-        ].map((tab) => {
-          const isActive = activeFolioTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              id={`tab-folio-${tab.id}`}
-              onClick={() => setActiveFolioTab(tab.id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '10px',
-                border: isActive
-                  ? '1.5px solid var(--apple-blue, #2563eb)'
-                  : '1px solid var(--border-color, #cbd5e1)',
-                background: isActive
-                  ? 'var(--apple-blue, #2563eb)'
-                  : 'var(--bg-surface, #ffffff)',
-                color: isActive ? '#ffffff' : 'var(--text-secondary, #475569)',
-                fontWeight: isActive ? 850 : 650,
-                fontSize: '0.86rem',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                whiteSpace: 'nowrap',
-                boxShadow: isActive ? '0 2px 8px rgba(37, 99, 235, 0.25)' : 'none'
-              }}
-            >
-              <span>{tab.label}</span>
-              {tab.count !== null && tab.count !== undefined && (
-                <span
-                  style={{
-                    padding: '2px 7px',
-                    borderRadius: '12px',
-                    fontSize: '0.74rem',
-                    fontWeight: 800,
-                    background: isActive
-                      ? 'rgba(255, 255, 255, 0.25)'
-                      : (tab.highlight ? '#fee2e2' : 'var(--bg-subtle, #f1f5f9)'),
-                    color: isActive
-                      ? '#ffffff'
-                      : (tab.highlight ? '#b91c1c' : 'var(--text-secondary, #475569)')
-                  }}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Main Folio Grid Layout */}
       <div className="folio-page-grid" style={{ marginTop: 0 }}>
         {/* Column 1: Guest Profile */}
-        {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
         <div className="folio-card">
           <div className="folio-card-header">
             <h3>Guest Profile</h3>
@@ -1904,10 +1871,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             </div>
           )}
         </div>
-        )}
 
         {/* Column 2: Stay Details Card */}
-        {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
         <div className="folio-card" id="folio-stay-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
@@ -2195,7 +2160,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             })()}
           </div>
         </div>
-        )}
 
         {/* Restaurant & Bar Orders Section (Card Manner, Above Financial Summary) */}
         {(() => {
@@ -2281,7 +2245,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           return (
             <React.Fragment>
               {/* 1. Restaurant & Bar Orders Cards Section */}
-              {(activeFolioTab === 'all' || activeFolioTab === 'fnb') && (
               <div className="folio-card" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2415,6 +2378,32 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                               <span style={{ fontSize: '0.90rem', fontWeight: 900, fontFamily: 'monospace, Courier, sans-serif', color: isPaid ? '#14532d' : '#7f1d1d' }}>
                                 {ord.order_number || `#${ord.id}`}
                               </span>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteFnbOrder(ord);
+                                  }}
+                                  style={{
+                                    background: '#fee2e2',
+                                    border: '1px solid #fca5a5',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontSize: '0.74rem',
+                                    padding: '2px 7px',
+                                    borderRadius: '5px',
+                                    fontWeight: 800,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title="Void & Delete this order (Admin Only)"
+                                >
+                                  <span>🗑️</span>
+                                  <span>Void</span>
+                                </button>
+                              )}
                               {ord.token_number && (
                                 <span
                                   style={{
@@ -2627,10 +2616,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 )}
               </div>
-              )}
 
               {/* Extra Expenses, Loss & Damages Section */}
-              {(activeFolioTab === 'all' || activeFolioTab === 'expenses') && (
               <div className="folio-card" id="folio-extra-expenses-card" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2716,27 +2703,33 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                                   {exp.category || 'Incidental'}
                                 </span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteExpense(exp.id)}
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: '#ef4444',
-                                  cursor: 'pointer',
-                                  fontSize: '0.95rem',
-                                  padding: '2px 6px',
-                                  borderRadius: '4px',
-                                  lineHeight: 1
-                                }}
-                                title="Delete this charge"
-                              >
-                                🗑️
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteExtraExpense(exp)}
+                                  style={{
+                                    background: '#fee2e2',
+                                    border: '1px solid #fca5a5',
+                                    color: '#dc2626',
+                                    cursor: 'pointer',
+                                    fontSize: '0.78rem',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontWeight: 800
+                                  }}
+                                  title="Delete this charge (Admin Only)"
+                                >
+                                  <span>🗑️</span>
+                                  <span>Delete</span>
+                                </button>
+                              )}
                             </div>
 
                             <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginBottom: '4px' }}>
-                              {exp.title}
+                              {exp.reason || exp.title || 'Damage / Extra Charge'}
                             </div>
 
                             {exp.notes && (
@@ -2753,17 +2746,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             </div>
                             {Number(exp.gst_amount || 0) > 0 && (
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                <span style={{ fontSize: '0.76rem', color: '#64748b' }}>GST ({exp.gst_rate || 0}%):</span>
+                                <span style={{ fontSize: '0.76rem', color: '#64748b' }}>GST ({exp.gst_pct || exp.gst_rate || 5}%):</span>
                                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#b45309' }}>+ {formatCurrency(exp.gst_amount || 0)}</span>
                               </div>
                             )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #e2e8f0' }}>
                               <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#1e293b' }}>Total Billed:</span>
-                              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#dc2626' }}>{formatCurrency(exp.total || exp.amount || 0)}</span>
+                              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#dc2626' }}>{formatCurrency(exp.total_amount || exp.total || ((Number(exp.amount || 0)) + (Number(exp.gst_amount || 0))))}</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.72rem', color: '#94a3b8' }}>
                               <span>📅 {exp.created_at ? formatDateTime(exp.created_at) : 'During Stay'}</span>
-                              {exp.recorded_by && <span>👤 {exp.recorded_by}</span>}
+                              {(exp.created_by || exp.added_by || exp.recorded_by) && <span>👤 {exp.created_by || exp.added_by || exp.recorded_by}</span>}
                             </div>
                           </div>
                         </div>
@@ -2788,10 +2781,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 )}
               </div>
-              )}
 
               {/* 2. Two Main Breakdown Cards: Hospitality Bill & Restaurant / Bar Orders */}
-              {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'fnb') && (
               <div
                 style={{
                   gridColumn: '1/-1',
@@ -3149,11 +3140,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 </div>
               </div>
-              )}
 
               {/* Checkout Financial Comparison Card: If Checkout Now vs If Checkout @ Declared Departure (Point 1) */}
-              {(activeFolioTab === 'all' || activeFolioTab === 'stay') && (
-              (() => {
+              {(() => {
                 if (isOtaBooking) return null;
                 // Stay duration parameters
                 const nowDays = Number(folioData.stayCalcNow?.chargedDays || folioData.chargedDays || 1);
@@ -3263,7 +3252,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             Checkout Financial Comparison (Now vs Declared Checkout Time)
                           </h4>
                           <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                            Complete itemized cost breakdown with base tariffs, GST, breakfast, extra mattress &amp; F&amp;B
+                            Complete itemized cost breakdown with base tariffs, GST, breakfast, extra mattress, F&amp;B &amp; extras
                           </span>
                         </div>
                       </div>
@@ -3514,16 +3503,94 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           </div>
                         </div>
 
+                        {/* 3. Extra Expenses, Loss & Damages Breakdown Block */}
+                        {allExtraExpenses.length > 0 && (
+                          <div style={{ background: '#fef2f2', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#991b1b', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span>🛡️</span> Extra Expenses &amp; Damages
+                              </span>
+                              <span style={{ fontSize: '0.72rem', color: '#b91c1c', textTransform: 'none', fontWeight: 700, background: '#fee2e2', padding: '1px 7px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
+                                {allExtraExpenses.length} Item{allExtraExpenses.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              {allExtraExpenses.map((exp, idx) => {
+                                const expTaxable = Number(exp.amount || 0);
+                                const expGst = Number(exp.gst_amount || 0);
+                                const expTotal = Number(exp.total_amount || exp.total || (expTaxable + expGst));
+                                const expTitle = exp.reason || exp.title || exp.category || 'Incidentals / Damage';
+                                const expGstPct = exp.gst_pct || exp.gst_rate || 5;
+
+                                return (
+                                  <div
+                                    key={exp.id || idx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      padding: '4px 0',
+                                      borderBottom: idx < allExtraExpenses.length - 1 ? '1px dashed #fecaca' : undefined
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                      <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.80rem' }}>
+                                        {expTitle}:
+                                      </span>
+                                      <span style={{ fontSize: '0.73rem', color: '#991b1b' }}>
+                                        Base: {formatCurrency(expTaxable)} | GST ({expGstPct}%): +{formatCurrency(expGst)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.10rem', color: '#b91c1c', fontWeight: 900, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(expTotal)}
+                                    </strong>
+                                  </div>
+                                );
+                              })}
+
+                              {/* Extras Taxable Subtotal */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fca5a5', borderBottom: '1px dashed #fca5a5', marginTop: '2px' }}>
+                                <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Extras Taxable Subtotal:
+                                </span>
+                                <strong style={{ fontSize: '1.08rem', color: '#991b1b', fontWeight: 900 }}>
+                                  {formatCurrency(expensesTaxable)}
+                                </strong>
+                              </div>
+
+                              {/* Extras GST (5%) */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Extras GST (5%):
+                                </span>
+                                <strong style={{ fontSize: '1.08rem', color: '#991b1b', fontWeight: 900 }}>
+                                  + {formatCurrency(expensesGst)}
+                                </strong>
+                              </div>
+
+                              {/* Total Extras & Damages */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fca5a5' }}>
+                                <span style={{ fontWeight: 850, color: '#991b1b', fontSize: '0.90rem' }}>
+                                  Total Extras &amp; Damages (Incl. GST):
+                                </span>
+                                <strong style={{ fontSize: '1.20rem', color: '#dc2626', fontWeight: 950 }}>
+                                  + {formatCurrency(expensesTotal)}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {/* Grand Totals & Settlement */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.84rem', marginTop: '2px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                               <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
                               <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                Stay ({formatCurrency(nowRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)})
+                                Stay ({formatCurrency(nowRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)}){expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
                               </div>
                             </div>
-                            <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950 }}>{formatCurrency(nowRoomCharge + fnbTotal)}</strong>
+                            <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950 }}>{formatCurrency(nowRoomCharge + fnbTotal + expensesTotal)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
@@ -3766,16 +3833,94 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           </div>
                         </div>
 
+                        {/* 3. Extra Expenses, Loss & Damages Breakdown Block */}
+                        {allExtraExpenses.length > 0 && (
+                          <div style={{ background: '#fef2f2', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#991b1b', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span>🛡️</span> Extra Expenses &amp; Damages
+                              </span>
+                              <span style={{ fontSize: '0.72rem', color: '#b91c1c', textTransform: 'none', fontWeight: 700, background: '#fee2e2', padding: '1px 7px', borderRadius: '4px', border: '1px solid #fca5a5' }}>
+                                {allExtraExpenses.length} Item{allExtraExpenses.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              {allExtraExpenses.map((exp, idx) => {
+                                const expTaxable = Number(exp.amount || 0);
+                                const expGst = Number(exp.gst_amount || 0);
+                                const expTotal = Number(exp.total_amount || exp.total || (expTaxable + expGst));
+                                const expTitle = exp.reason || exp.title || exp.category || 'Incidentals / Damage';
+                                const expGstPct = exp.gst_pct || exp.gst_rate || 5;
+
+                                return (
+                                  <div
+                                    key={exp.id || idx}
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      padding: '4px 0',
+                                      borderBottom: idx < allExtraExpenses.length - 1 ? '1px dashed #fecaca' : undefined
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                      <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.80rem' }}>
+                                        {expTitle}:
+                                      </span>
+                                      <span style={{ fontSize: '0.73rem', color: '#991b1b' }}>
+                                        Base: {formatCurrency(expTaxable)} | GST ({expGstPct}%): +{formatCurrency(expGst)}
+                                      </span>
+                                    </div>
+                                    <strong style={{ fontSize: '1.10rem', color: '#b91c1c', fontWeight: 900, whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                                      + {formatCurrency(expTotal)}
+                                    </strong>
+                                  </div>
+                                );
+                              })}
+
+                              {/* Extras Taxable Subtotal */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fca5a5', borderBottom: '1px dashed #fca5a5', marginTop: '2px' }}>
+                                <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Extras Taxable Subtotal:
+                                </span>
+                                <strong style={{ fontSize: '1.08rem', color: '#991b1b', fontWeight: 900 }}>
+                                  {formatCurrency(expensesTaxable)}
+                                </strong>
+                              </div>
+
+                              {/* Extras GST (5%) */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                <span style={{ color: '#7f1d1d', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                  Extras GST (5%):
+                                </span>
+                                <strong style={{ fontSize: '1.08rem', color: '#991b1b', fontWeight: 900 }}>
+                                  + {formatCurrency(expensesGst)}
+                                </strong>
+                              </div>
+
+                              {/* Total Extras & Damages */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fca5a5' }}>
+                                <span style={{ fontWeight: 850, color: '#991b1b', fontSize: '0.90rem' }}>
+                                  Total Extras &amp; Damages (Incl. GST):
+                                </span>
+                                <strong style={{ fontSize: '1.20rem', color: '#dc2626', fontWeight: 950 }}>
+                                  + {formatCurrency(expensesTotal)}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {/* Grand Totals & Settlement */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.84rem', marginTop: '2px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                               <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
                               <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                Stay ({formatCurrency(decRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)})
+                                Stay ({formatCurrency(decRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)}){expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
                               </div>
                             </div>
-                            <strong style={{ fontSize: '1.08rem', color: '#0f172a' }}>{formatCurrency(decRoomCharge + fnbTotal)}</strong>
+                            <strong style={{ fontSize: '1.20rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(decRoomCharge + fnbTotal + expensesTotal)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
@@ -3794,11 +3939,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     </div>
                   </div>
                 );
-              })()
-              )}
+              })()}
 
               {/* 3. Financial Analytics: 5 KPI Tiles (Below the 2 Main Breakdown Cards) */}
-              {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'payments') && (
               <div className="folio-financial-tiles-grid" style={{ gridColumn: '1/-1', marginTop: '18px' }}>
                 {isOtaBooking ? (
                   <>
@@ -3873,7 +4016,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <div className="financial-tile">
                       <span className="tile-label">Total Amount</span>
                       <strong className="tile-val">
-                        {formatCurrency(isOtaPrepaidStay ? (hotelExtrasCharge + fnbPendingTotal) : (stayNetTotal + (isOtaPayAtHotel ? fnbTotal : fnbTotal)))}
+                        {formatCurrency(isOtaPrepaidStay ? (hotelExtrasCharge + fnbPendingTotal + expensesTotal) : (stayNetTotal + fnbTotal + expensesTotal))}
                       </strong>
                       <small>
                         {isOtaPrepaidStay
@@ -3881,7 +4024,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                               ? `Stay Covered (OTA) + F&B (${formatCurrency(fnbPendingTotal)})`
                               : `Stay Covered (OTA Voucher: ${formatCurrency(entireBookingVal)})`)
                           : (fnbTotal > 0
-                              ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbTotal)})`
+                              ? `Stay (${formatCurrency(stayNetTotal)})${fnbTotal > 0 ? ` + F&B (${formatCurrency(fnbTotal)})` : ''}${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}`
                               : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}
                       </small>
                     </div>
@@ -3917,19 +4060,17 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                                       ? (fnbPendingTotal > 0
                                           ? (hotelExtrasCharge > 0 ? `${formatCurrency(fnbPendingTotal)} F&B Due + ${formatCurrency(hotelExtrasCharge)} Extras` : `${formatCurrency(fnbPendingTotal)} F&B Bill Due`)
                                           : (hotelExtrasCharge > 0 ? `${formatCurrency(hotelExtrasCharge)} Extras Due` : 'Fully Settled (₹0 Due)'))
-                                      : (fnbPendingTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B` : 'Due at checkout'))))}
+                                      : (fnbPendingTotal > 0 || expensesTotal > 0 ? `${formatCurrency(stayDueAmount)} Stay${fnbPendingTotal > 0 ? ` + ${formatCurrency(fnbPendingTotal)} F&B` : ''}${expensesTotal > 0 ? ` + ${formatCurrency(expensesTotal)} Extras` : ''}` : 'Due at checkout'))))}
                       </small>
                     </div>
                   </>
                 )}
               </div>
-              )}
             </React.Fragment>
           );
         })()}
 
         {/* Advance Payments & Billing Records Table (Point 6) */}
-        {(activeFolioTab === 'all' || activeFolioTab === 'stay' || activeFolioTab === 'payments') && (
         <div className="folio-card" style={{ gridColumn: '1/-1', marginBottom: '22px' }}>
           <div className="folio-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -4078,7 +4219,6 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             )}
           </div>
         </div>
-        )}
       </div>
 
       {/* Bottom CTA Bar */}
@@ -5249,6 +5389,29 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     </button>
                   </div>
                 )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFnbOrder(selectedFnbOrder)}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#fee2e2',
+                      color: '#dc2626',
+                      border: '1.5px solid #fca5a5',
+                      borderRadius: '8px',
+                      fontWeight: 800,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginRight: 'auto'
+                    }}
+                    title="Permanently remove and void this F&B order"
+                  >
+                    🗑️ Void &amp; Delete Order
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setSelectedFnbOrder(null)}
@@ -5811,8 +5974,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       {isAddExpenseModalOpen && (() => {
         const parsedAmt = parseFloat(expenseAmount) || 0;
         const parsedGstPct = 5; // GST fixed at 5%, non-changeable
-        const taxableAmt = parsedAmt > 0 ? Math.round((parsedAmt / 1.05) * 100) / 100 : 0;
-        const gstAmt = parsedAmt > 0 ? Math.round((parsedAmt - taxableAmt) * 100) / 100 : 0;
+        const taxableAmt = parsedAmt;
+        const gstAmt = parsedAmt > 0 ? Math.round(parsedAmt * 0.05 * 100) / 100 : 0;
+        const totalCharge = Math.round((taxableAmt + gstAmt) * 100) / 100;
         const canSubmit = !isSubmittingExpense && parsedAmt > 0 && expenseReason.trim().length > 0;
 
         return (
@@ -5936,7 +6100,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       Total Expense Amount (₹) <span style={{ color: '#dc2626' }}>*</span>
                     </label>
                     <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
-                      GST fixed 5%
+                      + 5% GST Extra
                     </span>
                   </div>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -5985,12 +6149,12 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       <strong style={{ color: '#0f172a' }}>{formatCurrency(taxableAmt)}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b45309' }}>
-                      <span>GST (5% Included):</span>
+                      <span>GST (5%):</span>
                       <strong>+ {formatCurrency(gstAmt)}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b91c1c', borderTop: '1px dashed #cbd5e1', paddingTop: '6px', marginTop: '2px', fontSize: '0.92rem' }}>
                       <span style={{ fontWeight: 850 }}>Charge to Folio:</span>
-                      <strong style={{ fontWeight: 950 }}>{formatCurrency(parsedAmt)}</strong>
+                      <strong style={{ fontWeight: 950 }}>{formatCurrency(totalCharge)}</strong>
                     </div>
                   </div>
                 )}
@@ -6038,7 +6202,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     ) : (
                       <>
                         <span>➕</span>
-                        <span>Record &amp; Add {parsedAmt > 0 ? formatCurrency(parsedAmt) : 'Expense'}</span>
+                        <span>Record &amp; Add {totalCharge > 0 ? formatCurrency(totalCharge) : 'Expense'}</span>
                       </>
                     )}
                   </button>

@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HCP Store</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="supabase.js"></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --border-focus: #c5a880;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --gold: #b38e5d;
+      --gold-dark: #967243;
+      --gold-light: #fbf7ee;
+      --gold-border: #e5d7be;
+      --green: #10b981;
+      --green-bg: #ecfdf5;
+      --red: #ef4444;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 24px;
+    }
+
+    /* Centered Minimal Header */
+    .top-header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px 12px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    .brand-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo-icon {
+      font-size: 22px;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--gold-dark);
+      letter-spacing: 0.8px;
+    }
+
+    /* Tabs */
+    .nav-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+      max-width: 440px;
+    }
+
+    .tab-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn.active {
+      background: var(--gold-light);
+      border-color: var(--gold);
+      color: var(--gold-dark);
+      box-shadow: 0 1px 3px rgba(179, 142, 93, 0.15);
+    }
+
+    .tab-count {
+      background: rgba(0, 0, 0, 0.08);
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+
+    .tab-btn.active .tab-count {
+      background: var(--gold);
+      color: #fff;
+    }
+
+    /* Main Container */
+    main {
+      padding: 14px 16px;
+      max-width: 480px;
+      width: 100%;
+      margin: 0 auto;
+      flex: 1;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Clean Card */
+    .form-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .form-input {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 11px 13px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .form-input:focus {
+      background: #ffffff;
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(179, 142, 93, 0.12);
+    }
+
+    /* Custom Vendor Dropdown Box with Pencil Icon */
+    .custom-select-box {
+      display: flex;
+      align-items: center;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    .custom-select-box:focus-within {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(179, 142, 93, 0.12);
+      background: #ffffff;
+    }
+
+    .select-display {
+      flex: 1;
+      padding: 11px 13px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+
+    .select-arrow {
+      color: var(--gold);
+      font-size: 11px;
+      margin-right: 6px;
+    }
+
+    .pencil-btn {
+      background: none;
+      border: none;
+      border-left: 1px solid var(--border);
+      padding: 10px 14px;
+      color: var(--gold-dark);
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+
+    .pencil-btn:active {
+      background: var(--gold-light);
+    }
+
+    /* Date Box in Our Theme */
+    .custom-date-box {
+      display: flex;
+      align-items: center;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 11px 13px;
+      cursor: pointer;
+      user-select: none;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+
+    .custom-date-box:active {
+      background: var(--gold-light);
+      border-color: var(--border-focus);
+    }
+
+    .date-display-val {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .date-display-icon {
+      color: var(--gold);
+      font-size: 16px;
+    }
+
+    /* Amount Input */
+    .amount-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .currency-tag {
+      position: absolute;
+      left: 14px;
+      color: var(--gold-dark);
+      font-size: 20px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .amount-input {
+      padding-left: 36px !important;
+      font-size: 22px !important;
+      font-weight: 700 !important;
+      color: var(--text) !important;
+      letter-spacing: 0.5px;
+    }
+
+    .amount-words-text {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+      padding-left: 2px;
+      min-height: 16px;
+    }
+
+    /* GST Toggle: Only With GST & Without GST */
+    .gst-switch-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .gst-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 11px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+
+    .gst-btn.active {
+      background: var(--gold-light);
+      border-color: var(--gold);
+      color: var(--gold-dark);
+      box-shadow: 0 1px 4px rgba(179, 142, 93, 0.15);
+    }
+
+    /* Payment Modes */
+    .payment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .pay-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+
+    .pay-card .icon {
+      font-size: 22px;
+    }
+
+    .pay-card .text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .pay-card.active {
+      background: var(--gold-light);
+      border-color: var(--gold);
+      box-shadow: 0 1px 4px rgba(179, 142, 93, 0.15);
+    }
+
+    .pay-card.active .text {
+      color: var(--gold-dark);
+      font-weight: 700;
+    }
+
+    /* Save Button */
+    .btn-save-main {
+      background: linear-gradient(135deg, #c5a880 0%, #b38e5d 100%);
+      color: #ffffff;
+      border: none;
+      padding: 14px 20px;
+      border-radius: var(--radius-md);
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(179, 142, 93, 0.3);
+      transition: all 0.15s ease;
+      margin-top: 4px;
+    }
+
+    .btn-save-main:active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 6px rgba(179, 142, 93, 0.2);
+    }
+
+    .btn-save-main:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Recent Bills List */
+    .bills-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bill-item-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .bill-item-card:active {
+      background: #fafaf9;
+      border-color: var(--gold);
+    }
+
+    .bill-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .bill-vendor-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .bill-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .bill-amount-display {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--gold-dark);
+      text-align: right;
+    }
+
+    .bill-card-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+      border-top: 1px solid #f1f5f9;
+      font-size: 11px;
+    }
+
+    .badge {
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-gst {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .badge-mode {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .badge-status {
+      background: #f1f5f9;
+      color: #475569;
+    }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(3px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+      animation: fadeIn 0.18s ease;
+    }
+
+    .modal-box {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 10px;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      flex: 1;
+      background: var(--gold);
+      border: none;
+      color: #ffffff;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      color: #b91c1c;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Custom Theme Date Picker Modal */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      text-align: center;
+    }
+
+    .calendar-day-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 6px 0;
+    }
+
+    .calendar-day-cell {
+      padding: 9px 0;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text);
+      transition: all 0.1s;
+    }
+
+    .calendar-day-cell:hover, .calendar-day-cell:active {
+      background: var(--gold-light);
+    }
+
+    .calendar-day-cell.selected {
+      background: var(--gold);
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .calendar-day-cell.other-month {
+      color: #cbd5e1;
+    }
+
+    .calendar-nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .calendar-nav-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    /* Vendor Selection List in Modal */
+    .vendor-picker-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .vendor-picker-item {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .vendor-picker-item.selected {
+      border-color: var(--gold);
+      background: var(--gold-light);
+      color: var(--gold-dark);
+    }
+
+    /* Toast */
+    .toast-box {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #0f172a;
+      color: #ffffff;
+      padding: 11px 20px;
+      border-radius: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      z-index: 200;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none;
+    }
+
+    .toast-box.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Bill Details Key-Value */
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 13px;
+    }
+
+    .detail-label {
+      color: var(--text-muted);
+    }
+
+    .detail-value {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Minimal Centered Header -->
+  <header class="top-header">
+    <div class="brand-center">
+      <span class="brand-logo-icon">🏨</span>
+      <span class="brand-title">HCP STORE</span>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">
+        <span>➕ Add Bill</span>
+      </button>
+      <button class="tab-btn" id="tabRecentBtn" onclick="switchTab('recent')">
+        <span>📋 Recent Bills</span>
+        <span class="tab-count" id="recentCountBadge">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- TAB 1: ADD BILL -->
+    <div class="tab-content active" id="tabAdd">
+      <div class="form-card">
+        
+        <!-- Select Vendor: Custom dropdown with pencil on right -->
+        <div class="form-group">
+          <label class="form-label">Select Vendor</label>
+          <div class="custom-select-box">
+            <div class="select-display" onclick="openVendorPickerModal()">
+              <span id="selectedVendorText">Select Vendor</span>
+              <span class="select-arrow">▼</span>
+            </div>
+            <button type="button" class="pencil-btn" title="Add / Edit Vendors" onclick="openVendorManagerModal()">
+              ✏️
+            </button>
+          </div>
+        </div>
+
+        <!-- Bill Date: Custom Theme Date Picker -->
+        <div class="form-group">
+          <label class="form-label">Select Bill Date</label>
+          <div class="custom-date-box" onclick="openCustomDatePicker()">
+            <span class="date-display-val" id="billDateDisplay">Today</span>
+            <span class="date-display-icon">📅</span>
+          </div>
+        </div>
+
+        <!-- Bill Number: Optional -->
+        <div class="form-group">
+          <label class="form-label">Bill Number (Optional)</label>
+          <input type="text" id="billNumberInput" class="form-input" placeholder="e.g. 1042 or INV-049">
+        </div>
+
+        <!-- Bill Amount: Indian Style Numbering -->
+        <div class="form-group">
+          <label class="form-label">Bill Amount</label>
+          <div class="amount-box">
+            <span class="currency-tag">₹</span>
+            <input type="text" id="billAmountInput" class="form-input amount-input" placeholder="0" inputmode="numeric" oninput="handleAmountInput(this)" autocomplete="off">
+          </div>
+          <div id="amountWordsText" class="amount-words-text">Zero Rupees</div>
+        </div>
+
+        <!-- GST Option: Only With GST & Without GST -->
+        <div class="form-group">
+          <label class="form-label">GST Option</label>
+          <div class="gst-switch-row">
+            <button type="button" class="gst-btn active" id="btnWithGst" onclick="setGst(true)">
+              ✓ With GST
+            </button>
+            <button type="button" class="gst-btn" id="btnWithoutGst" onclick="setGst(false)">
+              ✕ Without GST
+            </button>
+          </div>
+        </div>
+
+        <!-- Payment Mode -->
+        <div class="form-group">
+          <label class="form-label">Select Payment Mode</label>
+          <div class="payment-grid">
+            <div class="pay-card active" id="payBank" onclick="setPaymentMode('Bank Transfer')">
+              <span class="icon">🏦</span>
+              <span class="text">Bank Transfer</span>
+            </div>
+            <div class="pay-card" id="payUPI" onclick="setPaymentMode('UPI')">
+              <span class="icon">📱</span>
+              <span class="text">UPI</span>
+            </div>
+            <div class="pay-card" id="payCash" onclick="setPaymentMode('Cash')">
+              <span class="icon">💵</span>
+              <span class="text">Cash</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Button: Simply "Save" -->
+        <button type="button" id="btnSave" class="btn-save-main" onclick="submitBill()">
+          <span>💾 Save</span>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- TAB 2: RECENT BILLS -->
+    <div class="tab-content" id="tabRecent">
+      <div class="bills-list" id="billsListContainer">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: VENDOR PICKER (Custom Dropdown Menu) -->
+  <div class="modal-backdrop" id="vendorPickerModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Select Vendor</span>
+        <button type="button" class="modal-close-btn" onclick="closeModal('vendorPickerModal')">✕</button>
+      </div>
+      <input type="text" id="vendorSearchInput" class="form-input" placeholder="🔍 Search vendor..." oninput="filterVendorList()" style="padding:8px 12px; font-size:13px;">
+      <div class="vendor-picker-list" id="vendorPickerItemsContainer">
+        <!-- Filled via JS -->
+      </div>
+      <button type="button" class="btn-primary" style="margin-top:4px;" onclick="closeModal('vendorPickerModal'); openVendorManagerModal(true);">
+        ➕ Add New Vendor
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: VENDOR MANAGEMENT (Add / Edit / Delete) -->
+  <div class="modal-backdrop" id="vendorManagerModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="vendorManagerTitle">Manage Vendor</span>
+        <button type="button" class="modal-close-btn" onclick="closeModal('vendorManagerModal')">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vendor Name *</label>
+        <input type="text" id="mgrVendorName" class="form-input" placeholder="e.g. Tara mutton shop">
+      </div>
+      <div class="form-group">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label class="form-label">Mobile Number</label>
+          <span style="font-size:11px; color:var(--gold-dark); font-weight:600;" id="phoneCounter">0/10</span>
+        </div>
+        <input type="tel" id="mgrVendorPhone" class="form-input" placeholder="10 numeric digits only" maxlength="10" inputmode="numeric" oninput="enforceTenDigit(this, 'phoneCounter')">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category (Optional)</label>
+        <input type="text" id="mgrVendorCat" class="form-input" placeholder="e.g. Mutton, Dairy, Grocery">
+      </div>
+      <div class="modal-actions" id="mgrModalActions">
+        <!-- Rendered dynamically for Add or Edit mode -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CUSTOM THEME DATE PICKER -->
+  <div class="modal-backdrop" id="customDatePickerModal">
+    <div class="modal-box">
+      <div class="calendar-nav-bar">
+        <button type="button" class="calendar-nav-btn" onclick="changeCalendarMonth(-1)">‹</button>
+        <div style="font-size:15px; font-weight:700; color:var(--gold-dark);" id="calendarMonthYearText">October 2026</div>
+        <button type="button" class="calendar-nav-btn" onclick="changeCalendarMonth(1)">›</button>
+      </div>
+      <div class="calendar-grid" id="calendarGridHeader">
+        <div class="calendar-day-header">Su</div>
+        <div class="calendar-day-header">Mo</div>
+        <div class="calendar-day-header">Tu</div>
+        <div class="calendar-day-header">We</div>
+        <div class="calendar-day-header">Th</div>
+        <div class="calendar-day-header">Fr</div>
+        <div class="calendar-day-header">Sa</div>
+      </div>
+      <div class="calendar-grid" id="calendarDaysGrid">
+        <!-- Filled via JS -->
+      </div>
+      <div class="modal-actions" style="margin-top:10px;">
+        <button type="button" class="btn-secondary" onclick="selectTodayDate()">Today</button>
+        <button type="button" class="btn-primary" onclick="confirmDateSelection()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BILL FULL DETAILS (Open when clicked from history) -->
+  <div class="modal-backdrop" id="billDetailsModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Bill Details</span>
+        <button type="button" class="modal-close-btn" onclick="closeModal('billDetailsModal')">✕</button>
+      </div>
+      <div id="billDetailsContent" style="display:flex; flex-direction:column; gap:4px;">
+        <!-- Filled dynamically -->
+      </div>
+      <button type="button" class="btn-secondary" style="width:100%; margin-top:8px;" onclick="closeModal('billDetailsModal')">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-box" id="toastBox">
+    <span id="toastIcon">✓</span>
+    <span id="toastMsg">Saved</span>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------
+    // HOTEL CITY PARK DEDICATED STORE DATABASE (NO OLD ADMIN NOTIFICATIONS)
+    // -------------------------------------------------------------
+    const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+    
+    let _supabase = null;
+    try {
+      if (window.supabase) {
+        _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+      }
+    } catch (e) {
+      console.warn('Supabase init warning:', e);
+    }
+
+    // -------------------------------------------------------------
+    // STATE & INITIAL VENDORS
+    // -------------------------------------------------------------
+    const FALLBACK_VENDORS = [
+      { id: 1, name: 'Gupta Grocery', phone: '9876543210', category: 'Market Road' },
+      { id: 2, name: 'Sharma Dairy', phone: '9123456789', category: 'Milk Colony' },
+      { id: 'v_tara', name: 'Tara mutton shop', phone: '8888888888', category: 'Mutton' }
+    ];
+
+    let vendors = [];
+    let bills = [];
+    let selectedVendorId = '';
+    let selectedDate = new Date();
+    let tempPickerDate = new Date();
+    let hasGst = true;
+    let selectedPaymentMode = 'Bank Transfer';
+    let isSubmitting = false;
+
+    // -------------------------------------------------------------
+    // LIFECYCLE INITIALIZATION
+    // -------------------------------------------------------------
+    window.addEventListener('DOMContentLoaded', () => {
+      loadVendors();
+      loadBills();
+      updateDateDisplay();
+      updateBillsCounter();
+      renderBillsList();
+    });
+
+    // -------------------------------------------------------------
+    // VENDOR MANAGEMENT (Custom Dropdown + Pencil)
+    // -------------------------------------------------------------
+    async function loadVendors() {
+      const stored = localStorage.getItem('hcp_store_vendors');
+      if (stored) {
+        try { vendors = JSON.parse(stored); } catch (_) { vendors = FALLBACK_VENDORS.slice(); }
+      } else {
+        vendors = FALLBACK_VENDORS.slice();
+      }
+
+      // Fetch live vendors from Supabase store_vendors
+      try {
+        if (_supabase) {
+          const { data, error } = await _supabase.from('store_vendors').select('*').order('name');
+          if (data && data.length > 0) {
+            vendors = data.map(v => ({ id: v.id, name: v.name, phone: v.mobile || '', category: v.address || '' }));
+            saveVendors();
+          }
+        }
+      } catch (e) {
+        console.warn('Vendors fetch:', e);
+      }
+
+      if (vendors.length > 0 && !selectedVendorId) {
+        selectedVendorId = vendors[0].id;
+      }
+      updateVendorDisplay();
+    }
+
+    function saveVendors() {
+      localStorage.setItem('hcp_store_vendors', JSON.stringify(vendors));
+    }
+
+    function updateVendorDisplay() {
+      const v = vendors.find(x => x.id === selectedVendorId);
+      const textEl = document.getElementById('selectedVendorText');
+      if (v) {
+        textEl.textContent = v.name;
+      } else {
+        textEl.textContent = 'Select Vendor';
+      }
+    }
+
+    function openVendorPickerModal() {
+      document.getElementById('vendorSearchInput').value = '';
+      renderVendorPickerItems();
+      document.getElementById('vendorPickerModal').classList.add('show');
+    }
+
+    function renderVendorPickerItems(filter = '') {
+      const container = document.getElementById('vendorPickerItemsContainer');
+      container.innerHTML = '';
+      let list = vendors;
+      if (filter) {
+        const q = filter.toLowerCase();
+        list = vendors.filter(v => v.name.toLowerCase().includes(q) || (v.category && v.category.toLowerCase().includes(q)));
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:16px; color:#94a3b8; font-size:13px;">No matching vendors</div>';
+        return;
+      }
+
+      list.forEach(v => {
+        const item = document.createElement('div');
+        item.className = 'vendor-picker-item' + (v.id === selectedVendorId ? ' selected' : '');
+        item.innerHTML = `
+          <span>${v.name}</span>
+          <span style="font-size:12px; color:#64748b;">${v.phone || ''}</span>
+        `;
+        item.onclick = () => {
+          selectedVendorId = v.id;
+          updateVendorDisplay();
+          closeModal('vendorPickerModal');
+        };
+        container.appendChild(item);
+      });
+    }
+
+    function filterVendorList() {
+      const q = document.getElementById('vendorSearchInput').value.trim();
+      renderVendorPickerItems(q);
+    }
+
+    function openVendorManagerModal(isAddingNew = false) {
+      const v = vendors.find(x => x.id === selectedVendorId);
+      const titleEl = document.getElementById('vendorManagerTitle');
+      const actionsEl = document.getElementById('mgrModalActions');
+
+      if (isAddingNew || !v) {
+        titleEl.textContent = 'Add New Vendor';
+        document.getElementById('mgrVendorName').value = '';
+        document.getElementById('mgrVendorPhone').value = '';
+        document.getElementById('mgrVendorCat').value = '';
+        document.getElementById('phoneCounter').textContent = '0/10';
+        actionsEl.innerHTML = `
+          <button type="button" class="btn-secondary" onclick="closeModal('vendorManagerModal')">Cancel</button>
+          <button type="button" class="btn-primary" onclick="saveVendorRecord(true)">Save</button>
+        `;
+      } else {
+        titleEl.textContent = 'Edit Vendor';
+        document.getElementById('mgrVendorName').value = v.name;
+        document.getElementById('mgrVendorPhone').value = v.phone || '';
+        document.getElementById('mgrVendorCat').value = v.category || '';
+        document.getElementById('phoneCounter').textContent = `${(v.phone || '').length}/10`;
+        actionsEl.innerHTML = `
+          <button type="button" class="btn-danger" onclick="deleteCurrentVendor()">Delete</button>
+          <button type="button" class="btn-secondary" onclick="closeModal('vendorManagerModal')">Cancel</button>
+          <button type="button" class="btn-primary" onclick="saveVendorRecord(false)">Update</button>
+        `;
+      }
+      document.getElementById('vendorManagerModal').classList.add('show');
+    }
+
+    async function saveVendorRecord(isNew) {
+      const name = document.getElementById('mgrVendorName').value.trim();
+      const phone = document.getElementById('mgrVendorPhone').value.trim();
+      const cat = document.getElementById('mgrVendorCat').value.trim();
+
+      if (!name) {
+        showToast('Please enter vendor name', false);
+        return;
+      }
+      if (phone && phone.length !== 10) {
+        showToast('Mobile number must be strictly 10 digits', false);
+        return;
+      }
+
+      if (isNew) {
+        const newId = 'v_' + Date.now();
+        const newObj = { id: newId, name, phone, category: cat };
+        vendors.push(newObj);
+        selectedVendorId = newId;
+
+        if (_supabase) {
+          try {
+            const { data } = await _supabase.from('store_vendors').insert([{ name, mobile: phone, address: cat }]).select();
+            if (data && data[0]) {
+              newObj.id = data[0].id;
+              selectedVendorId = data[0].id;
+            }
+          } catch (_) {}
+        }
+        showToast('Vendor added');
+      } else {
+        const v = vendors.find(x => x.id === selectedVendorId);
+        if (v) {
+          v.name = name;
+          v.phone = phone;
+          v.category = cat;
+          if (_supabase && typeof v.id === 'number') {
+            try {
+              await _supabase.from('store_vendors').update({ name, mobile: phone, address: cat }).eq('id', v.id);
+            } catch (_) {}
+          }
+          showToast('Vendor updated');
+        }
+      }
+      saveVendors();
+      updateVendorDisplay();
+      closeModal('vendorManagerModal');
+    }
+
+    async function deleteCurrentVendor() {
+      const v = vendors.find(x => x.id === selectedVendorId);
+      if (!v) return;
+      if (confirm(`Delete vendor "${v.name}"?`)) {
+        if (_supabase && typeof v.id === 'number') {
+          try {
+            await _supabase.from('store_vendors').delete().eq('id', v.id);
+          } catch (_) {}
+        }
+        vendors = vendors.filter(x => x.id !== selectedVendorId);
+        if (vendors.length > 0) selectedVendorId = vendors[0].id;
+        else selectedVendorId = '';
+        saveVendors();
+        updateVendorDisplay();
+        closeModal('vendorManagerModal');
+        showToast('Vendor deleted');
+      }
+    }
+
+    // -------------------------------------------------------------
+    // STRICT 10-DIGIT NUMERIC-ONLY PHONE NUMBER
+    // -------------------------------------------------------------
+    function enforceTenDigit(input, counterId) {
+      let val = input.value.replace(/\D/g, '');
+      if (val.length > 10) val = val.substring(0, 10);
+      input.value = val;
+      if (counterId) {
+        const counter = document.getElementById(counterId);
+        if (counter) counter.textContent = `${val.length}/10`;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // CUSTOM THEME DATE PICKER
+    // -------------------------------------------------------------
+    function updateDateDisplay() {
+      const d = selectedDate.getDate().toString().padStart(2, '0');
+      const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+      const y = selectedDate.getFullYear();
+      document.getElementById('billDateDisplay').textContent = `${d}/${m}/${y}`;
+    }
+
+    function openCustomDatePicker() {
+      tempPickerDate = new Date(selectedDate);
+      renderCalendar();
+      document.getElementById('customDatePickerModal').classList.add('show');
+    }
+
+    function renderCalendar() {
+      const year = tempPickerDate.getFullYear();
+      const month = tempPickerDate.getMonth();
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      document.getElementById('calendarMonthYearText').textContent = `${monthNames[month]} ${year}`;
+
+      const grid = document.getElementById('calendarDaysGrid');
+      grid.innerHTML = '';
+
+      const firstDayIndex = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const prevMonthDays = new Date(year, month, 0).getDate();
+
+      // Prev month filler days
+      for (let i = firstDayIndex - 1; i >= 0; i--) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day-cell other-month';
+        cell.textContent = prevMonthDays - i;
+        grid.appendChild(cell);
+      }
+
+      // Current month days
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day-cell';
+        if (
+          tempPickerDate.getFullYear() === selectedDate.getFullYear() &&
+          tempPickerDate.getMonth() === selectedDate.getMonth() &&
+          day === selectedDate.getDate()
+        ) {
+          cell.classList.add('selected');
+        }
+        cell.textContent = day;
+        cell.onclick = () => {
+          tempPickerDate.setDate(day);
+          document.querySelectorAll('.calendar-day-cell').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+        };
+        grid.appendChild(cell);
+      }
+    }
+
+    function changeCalendarMonth(delta) {
+      tempPickerDate.setMonth(tempPickerDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function selectTodayDate() {
+      selectedDate = new Date();
+      updateDateDisplay();
+      closeModal('customDatePickerModal');
+    }
+
+    function confirmDateSelection() {
+      selectedDate = new Date(tempPickerDate);
+      updateDateDisplay();
+      closeModal('customDatePickerModal');
+    }
+
+    // -------------------------------------------------------------
+    // INDIAN CURRENCY FORMATTING
+    // -------------------------------------------------------------
+    function handleAmountInput(input) {
+      let val = input.value.replace(/,/g, '').replace(/\D/g, '');
+      if (!val) {
+        input.value = '';
+        document.getElementById('amountWordsText').textContent = 'Zero Rupees';
+        return;
+      }
+
+      const num = parseInt(val, 10);
+      if (isNaN(num)) {
+        input.value = '';
+        return;
+      }
+
+      input.value = formatIndianNumber(num);
+      document.getElementById('amountWordsText').textContent = numberToWords(num) + ' only';
+    }
+
+    function formatIndianNumber(x) {
+      x = x.toString();
+      let lastThree = x.substring(x.length - 3);
+      let otherNumbers = x.substring(0, x.length - 3);
+      if (otherNumbers !== '') lastThree = ',' + lastThree;
+      return otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + lastThree;
+    }
+
+    function numberToWords(num) {
+      if (num === 0) return 'Zero Rupees';
+      const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+                 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+      const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+      function inWords(n) {
+        let str = '';
+        if (n >= 10000000) { str += inWords(Math.floor(n / 10000000)) + ' Crore '; n %= 10000000; }
+        if (n >= 100000) { str += inWords(Math.floor(n / 100000)) + ' Lakh '; n %= 100000; }
+        if (n >= 1000) { str += inWords(Math.floor(n / 1000)) + ' Thousand '; n %= 1000; }
+        if (n >= 100) { str += inWords(Math.floor(n / 100)) + ' Hundred '; n %= 100; }
+        if (n > 0) {
+          if (n < 20) str += a[n] + ' ';
+          else str += b[Math.floor(n / 10)] + ' ' + a[n % 10] + ' ';
+        }
+        return str.trim();
+      }
+      return inWords(num) + ' Rupees';
+    }
+
+    // -------------------------------------------------------------
+    // GST SWITCH & PAYMENT MODE
+    // -------------------------------------------------------------
+    function setGst(val) {
+      hasGst = val;
+      document.getElementById('btnWithGst').classList.toggle('active', val);
+      document.getElementById('btnWithoutGst').classList.toggle('active', !val);
+    }
+
+    function setPaymentMode(mode) {
+      selectedPaymentMode = mode;
+      document.getElementById('payBank').classList.toggle('active', mode === 'Bank Transfer');
+      document.getElementById('payUPI').classList.toggle('active', mode === 'UPI');
+      document.getElementById('payCash').classList.toggle('active', mode === 'Cash');
+    }
+
+    // -------------------------------------------------------------
+    // BILL SUBMISSION (Saves to store_bills - Zero Old Admin Alerts)
+    // -------------------------------------------------------------
+    async function submitBill() {
+      if (isSubmitting) return;
+
+      const vendor = vendors.find(x => x.id === selectedVendorId);
+      const billNumber = document.getElementById('billNumberInput').value.trim();
+      const rawAmt = document.getElementById('billAmountInput').value.replace(/,/g, '').trim();
+      const numAmt = parseInt(rawAmt, 10);
+      const saveBtn = document.getElementById('btnSave');
+
+      if (!vendor) {
+        showToast('Please select a vendor', false);
+        return;
+      }
+      if (!numAmt || numAmt <= 0) {
+        showToast('Please enter bill amount', false);
+        document.getElementById('billAmountInput').focus();
+        return;
+      }
+
+      isSubmitting = true;
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<span>⏳ Saving...</span>`;
+
+      const billId = 'BILL-' + Date.now().toString().slice(-6);
+      const formattedAmt = formatIndianNumber(numAmt);
+      const d = selectedDate.getDate().toString().padStart(2, '0');
+      const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+      const y = selectedDate.getFullYear();
+      const dateStr = `${y}-${m}-${d}`;
+
+      const billRecord = {
+        id: billId,
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+        vendor_phone: vendor.phone || '',
+        bill_number: billNumber || 'N/A',
+        bill_date: dateStr,
+        amount: numAmt,
+        amount_formatted: formattedAmt,
+        has_gst: hasGst,
+        gst_status: hasGst ? 'With GST' : 'Without GST',
+        payment_mode: selectedPaymentMode,
+        status: 'PENDING',
+        created_at: new Date().toISOString()
+      };
+
+      // 1. Save directly into Supabase store_bills table in real project
+      try {
+        if (_supabase) {
+          const vendorDbId = typeof vendor.id === 'number' ? vendor.id : 1;
+          const { data: insertedData } = await _supabase.from('store_bills').insert([{
+            vendor_id: vendorDbId,
+            bill_number: billNumber || 'N/A',
+            bill_date: dateStr,
+            total_amount: numAmt,
+            paid_amount: 0,
+            pending_amount: numAmt,
+            status: 'PENDING',
+            notes: `${hasGst ? 'With GST' : 'Without GST'} | Mode: ${selectedPaymentMode}`,
+            created_by: 'Store Boy'
+          }]).select();
+
+          // Trigger push notification to Store Admin app
+          const newBillId = (insertedData && insertedData[0]) ? insertedData[0].id : '';
+          _supabase.functions.invoke('send-store-push', {
+            body: {
+              bill_id: newBillId,
+              vendor_name: vendor.name,
+              bill_number: billNumber || 'N/A',
+              amount: formattedAmt,
+              payment_mode: selectedPaymentMode,
+              has_gst: hasGst
+            }
+          }).catch(pushErr => console.warn('Push alert notice:', pushErr));
+        }
+      } catch (err) {
+        console.warn('Cloud save warning (saved locally):', err);
+      }
+
+      // 2. Save locally into bills archive
+      bills.unshift(billRecord);
+      saveBills();
+      updateBillsCounter();
+      renderBillsList();
+
+      // 3. Reset form
+      document.getElementById('billNumberInput').value = '';
+      document.getElementById('billAmountInput').value = '';
+      document.getElementById('amountWordsText').textContent = 'Zero Rupees';
+
+      showToast('Bill Saved');
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `<span>💾 Save</span>`;
+      isSubmitting = false;
+
+      // Switch to Recent Bills tab to review
+      setTimeout(() => switchTab('recent'), 500);
+    }
+
+    // -------------------------------------------------------------
+    // RECENT BILLS ARCHIVE & FULL DETAILS MODAL
+    // -------------------------------------------------------------
+    async function loadBills() {
+      const stored = localStorage.getItem('hcp_store_bills');
+      if (stored) {
+        try { bills = JSON.parse(stored); } catch (_) { bills = []; }
+      }
+
+      // Fetch from Supabase store_bills
+      try {
+        if (_supabase) {
+          const { data } = await _supabase.from('store_bills').select('*').order('created_at', { ascending: false }).limit(50);
+          if (data && data.length > 0) {
+            const mapped = data.map(b => {
+              const v = vendors.find(x => x.id === b.vendor_id);
+              const total = parseFloat(b.total_amount) || 0;
+              return {
+                id: 'BILL-' + b.id,
+                vendor_id: b.vendor_id,
+                vendor_name: v ? v.name : ('Vendor #' + b.vendor_id),
+                vendor_phone: v ? v.phone : '',
+                bill_number: b.bill_number || 'N/A',
+                bill_date: b.bill_date || '',
+                amount: total,
+                amount_formatted: formatIndianNumber(total),
+                has_gst: (b.notes || '').includes('With GST'),
+                gst_status: (b.notes || '').includes('With GST') ? 'With GST' : 'Without GST',
+                payment_mode: (b.notes || '').split('Mode: ')[1] || 'Bank Transfer',
+                status: b.status || 'PENDING',
+                created_at: b.created_at
+              };
+            });
+            bills = mapped;
+            saveBills();
+            updateBillsCounter();
+            renderBillsList();
+          }
+        }
+      } catch (e) {
+        console.warn('Fetch bills note:', e);
+      }
+    }
+
+    function saveBills() {
+      localStorage.setItem('hcp_store_bills', JSON.stringify(bills));
+    }
+
+    function updateBillsCounter() {
+      document.getElementById('recentCountBadge').textContent = bills.length;
+    }
+
+    function renderBillsList() {
+      const container = document.getElementById('billsListContainer');
+      container.innerHTML = '';
+
+      if (bills.length === 0) {
+        container.innerHTML = '<div class="empty-state">No bills recorded yet.<br>Submitted bills will appear here.</div>';
+        return;
+      }
+
+      bills.forEach(b => {
+        const card = document.createElement('div');
+        card.className = 'bill-item-card';
+        card.innerHTML = `
+          <div class="bill-card-top">
+            <div>
+              <div class="bill-vendor-name">${b.vendor_name}</div>
+              <div class="bill-meta">Date: ${b.bill_date} • Bill #: ${b.bill_number}</div>
+            </div>
+            <div class="bill-amount-display">₹${b.amount_formatted}</div>
+          </div>
+          <div class="bill-card-bottom">
+            <div style="display:flex; gap:6px;">
+              <span class="badge badge-gst">${b.gst_status}</span>
+              <span class="badge badge-mode">${b.payment_mode}</span>
+            </div>
+            <span class="badge badge-status">${b.status}</span>
+          </div>
+        `;
+        card.onclick = () => openBillDetailsModal(b);
+        container.appendChild(card);
+      });
+    }
+
+    function openBillDetailsModal(b) {
+      const content = document.getElementById('billDetailsContent');
+      content.innerHTML = `
+        <div class="detail-row">
+          <span class="detail-label">Reference ID</span>
+          <span class="detail-value">${b.id}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Vendor Name</span>
+          <span class="detail-value">${b.vendor_name}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Vendor Mobile</span>
+          <span class="detail-value">${b.vendor_phone || 'N/A'}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Bill Date</span>
+          <span class="detail-value">${b.bill_date}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Bill Number</span>
+          <span class="detail-value">${b.bill_number}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Bill Amount</span>
+          <span class="detail-value" style="color:var(--gold-dark); font-size:16px;">₹${b.amount_formatted}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">GST Option</span>
+          <span class="detail-value">${b.gst_status}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Payment Mode</span>
+          <span class="detail-value">${b.payment_mode}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Status</span>
+          <span class="detail-value" style="color:#d97706;">${b.status}</span>
+        </div>
+      `;
+      document.getElementById('billDetailsModal').classList.add('show');
+    }
+
+    // -------------------------------------------------------------
+    // TABS & MODALS
+    // -------------------------------------------------------------
+    function switchTab(tab) {
+      document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
+      document.getElementById('tabRecentBtn').classList.toggle('active', tab === 'recent');
+      document.getElementById('tabAdd').classList.toggle('active', tab === 'add');
+      document.getElementById('tabRecent').classList.toggle('active', tab === 'recent');
+      if (tab === 'recent') renderBillsList();
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    function showToast(msg, isSuccess = true) {
+      const box = document.getElementById('toastBox');
+      document.getElementById('toastIcon').textContent = isSuccess ? '✓' : '⚠️';
+      document.getElementById('toastMsg').textContent = msg;
+      box.classList.add('show');
+      setTimeout(() => box.classList.remove('show'), 2200);
+    }
+  </script>
+</body>
+</html>

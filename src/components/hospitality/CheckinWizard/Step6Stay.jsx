@@ -51,6 +51,129 @@ export default function Step6Stay({
   const memberFrontInputRef = useRef(null);
   const memberBackInputRef = useRef(null);
 
+  // Discount Approval Request Modal & Polling State
+  const [discountPermissionModal, setDiscountPermissionModal] = useState({
+    isOpen: false,
+    requestedPct: null,
+    status: 'idle', // 'idle' | 'waiting' | 'approved' | 'rejected'
+    approvalId: null
+  });
+  const [approvedDiscountPct, setApprovedDiscountPct] = useState(null);
+
+  const handleCappedDiscountClick = (pct) => {
+    setDiscountPermissionModal({
+      isOpen: true,
+      requestedPct: pct,
+      status: 'idle',
+      approvalId: null
+    });
+  };
+
+  const handleSendDiscountRequest = async () => {
+    try {
+      const pct = Number(discountPermissionModal.requestedPct) || 0;
+      const roomNum = room?.room_number || room?.number || '212';
+      const guestName = draft.guestName || draft.guest_name || draft.name || draft.primaryGuestName || draft.primaryGuest?.name || 'Guest';
+
+      // Members info
+      const maleAdults = Number(draft.maleAdults !== undefined ? draft.maleAdults : 0);
+      const femaleAdults = Number(draft.femaleAdults !== undefined ? draft.femaleAdults : 1);
+      const totalAdults = (maleAdults + femaleAdults) || Number(draft.adults || 1);
+      const children = Number(draft.children || 0);
+      const membersStr = `${totalAdults} Adult${totalAdults > 1 ? 's' : ''}${children > 0 ? `, ${children} Child` : ''} (${maleAdults}M, ${femaleAdults}F)`;
+
+      // Expected checkout info
+      const timeFmt = (t24) => {
+        if (!t24) return '';
+        const parts = String(t24).split(':');
+        let h = parseInt(parts[0], 10);
+        const m = parts[1] ? parts[1].slice(0, 2) : '00';
+        if (isNaN(h)) return '';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        let h12 = h % 12;
+        if (h12 === 0) h12 = 12;
+        return `${String(h12).padStart(2, '0')}:${m} ${ampm}`;
+      };
+      const checkoutDateVal = draft.checkoutDate || (draft.approxCheckout ? draft.approxCheckout.split('T')[0] : '');
+      const checkoutTimeVal = draft.checkoutTime || (draft.approxCheckout && draft.approxCheckout.includes('T') ? draft.approxCheckout.split('T')[1].slice(0, 5) : '06:00');
+      const checkoutStr = `${checkoutDateVal} ${timeFmt(checkoutTimeVal)}`.trim() || '24 Hours Stay';
+
+      // Estimated rate
+      const baseTariff = Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500);
+      const nightsCount = Number(draft.stayNights) || 1;
+      const estimatedRate = baseTariff * nightsCount;
+      const calculatedDiscountAmt = Math.round((estimatedRate * pct) / 100);
+      const finalAmt = Math.max(0, estimatedRate - calculatedDiscountAmt);
+
+      const res = await api.post('/owner/approvals/request', {
+        type: 'discount',
+        dept: 'Room',
+        room_number: roomNum,
+        guest_name: guestName,
+        members: membersStr,
+        expected_checkout: checkoutStr,
+        discount: calculatedDiscountAmt,
+        discount_pct: pct,
+        current_total: estimatedRate,
+        final_amount: finalAmt,
+        requested_by: 'Reception Staff',
+        reason: `${membersStr} • Checkout: ${checkoutStr} • ${pct}% discount requested for Room ${roomNum}`,
+        metadata: {
+          members: membersStr,
+          expected_checkout: checkoutStr,
+          total: estimatedRate,
+          discount_pct: pct,
+          discount: calculatedDiscountAmt,
+          final_amount: finalAmt
+        }
+      });
+
+      if (res && res.id) {
+        setDiscountPermissionModal(prev => ({
+          ...prev,
+          status: 'waiting',
+          approvalId: res.id
+        }));
+        showToast('Discount approval request sent to Admin phone!', 'blue');
+      }
+    } catch (err) {
+      showToast('Could not send permission request: ' + (err?.message || 'Server error'), 'red');
+    }
+  };
+
+  useEffect(() => {
+    if (discountPermissionModal.status !== 'waiting' || !discountPermissionModal.approvalId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/owner/approvals/${discountPermissionModal.approvalId}/status`);
+        if (res && res.status === 'APPROVED') {
+          clearInterval(interval);
+          setDiscountPermissionModal(prev => ({ ...prev, status: 'approved' }));
+          setApprovedDiscountPct(discountPermissionModal.requestedPct);
+          const updates = { discountPct: discountPermissionModal.requestedPct };
+          if (discountPermissionModal.requestedPct >= 20) {
+            updates.mealPlan = 'without_breakfast';
+          }
+          updateDraft(updates);
+          showToast(`✓ Admin APPROVED ${discountPermissionModal.requestedPct}% discount for this check-in!`, 'green');
+          setTimeout(() => {
+            setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null });
+          }, 1500);
+        } else if (res && res.status === 'REJECTED') {
+          clearInterval(interval);
+          setDiscountPermissionModal(prev => ({ ...prev, status: 'rejected' }));
+          showToast('✕ Admin rejected the discount request.', 'red');
+        }
+      } catch (err) {
+        // silent retry
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [discountPermissionModal.status, discountPermissionModal.approvalId, discountPermissionModal.requestedPct]);
+
+
   const handleMemberDocUpload = async (field, file) => {
     if (!file) return;
     try {
@@ -3149,48 +3272,78 @@ export default function Step6Stay({
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
                   Discount (%) [Max: {room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? room.max_discount_pct : 25}%]
                 </label>
-                {discountPct >= 20 && (
-                  <span style={{ fontSize: '0.70rem', color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
-                    🥣 EP Auto-Set (No Breakfast)
-                  </span>
-                )}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  {approvedDiscountPct && (
+                    <span style={{ fontSize: '0.70rem', color: '#15803d', background: '#dcfce7', padding: '1px 8px', borderRadius: '4px', fontWeight: 800, border: '1px solid #86efac' }}>
+                      ✓ {approvedDiscountPct}% Approved by Admin
+                    </span>
+                  )}
+                  {discountPct >= 20 && (
+                    <span style={{ fontSize: '0.70rem', color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                      🥣 EP Auto-Set (No Breakfast)
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Discount Chips */}
               <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 {[0, 5, 10, 15, 20, 25].map((pct) => {
-                  const maxAllowed = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
+                  const policyLimit = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
+                  const maxAllowed = Math.max(policyLimit, Number(approvedDiscountPct) || 0);
                   const isCapped = pct > maxAllowed;
                   const isSelected = discountPct === pct;
                   return (
                     <button
                       key={pct}
                       type="button"
-                      disabled={isCapped}
                       onClick={() => {
-                        const finalPct = Math.min(pct, maxAllowed);
-                        const updates = { discountPct: finalPct };
-                        if (finalPct >= 20) {
-                          updates.mealPlan = 'without_breakfast';
+                        if (isCapped) {
+                          handleCappedDiscountClick(pct);
+                        } else {
+                          const updates = { discountPct: pct };
+                          if (pct >= 20) {
+                            updates.mealPlan = 'without_breakfast';
+                          }
+                          updateDraft(updates);
                         }
-                        updateDraft(updates);
                       }}
                       style={{
                         flex: 1,
-                        minWidth: '38px',
+                        minWidth: '40px',
                         padding: '6px 4px',
                         fontSize: '0.78rem',
                         fontWeight: 800,
                         borderRadius: '8px',
-                        border: isSelected ? '2px solid #2563eb' : '1px solid #cbd5e1',
-                        background: isSelected ? '#eff6ff' : isCapped ? '#f1f5f9' : '#ffffff',
-                        color: isSelected ? '#1d4ed8' : isCapped ? '#94a3b8' : '#334155',
-                        cursor: isCapped ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.15s ease'
+                        border: isSelected
+                          ? '2px solid #2563eb'
+                          : isCapped
+                          ? '1.5px dashed #f59e0b'
+                          : '1px solid #cbd5e1',
+                        background: isSelected
+                          ? '#eff6ff'
+                          : isCapped
+                          ? '#fffbeb'
+                          : '#ffffff',
+                        color: isSelected
+                          ? '#1d4ed8'
+                          : isCapped
+                          ? '#b45309'
+                          : '#334155',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px'
                       }}
-                      title={isCapped ? `Exceeds room max discount (${maxAllowed}%)` : `${pct}% Discount`}
+                      title={isCapped ? `Capped at ${maxAllowed}%. Click to ask Admin for permission` : `${pct}% Discount`}
                     >
-                      {pct === 0 ? 'None' : `${pct}%`}
+                      <span>{pct === 0 ? 'None' : `${pct}%`}</span>
+                      {isCapped && (
+                        <span style={{ fontSize: '0.65rem' }}>🔒</span>
+                      )}
                     </button>
                   );
                 })}
@@ -3200,16 +3353,20 @@ export default function Step6Stay({
                 type="number"
                 className="form-input"
                 min={0}
-                max={room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25}
+                max={100}
                 value={discountPct}
                 onChange={(e) => {
                   const maxAllowed = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
-                  const val = Math.min(Number(e.target.value) || 0, maxAllowed);
-                  const updates = { discountPct: val };
-                  if (val >= 20) {
-                    updates.mealPlan = 'without_breakfast';
+                  const val = Number(e.target.value) || 0;
+                  if (val > maxAllowed) {
+                    handleCappedDiscountClick(val);
+                  } else {
+                    const updates = { discountPct: val };
+                    if (val >= 20) {
+                      updates.mealPlan = 'without_breakfast';
+                    }
+                    updateDraft(updates);
                   }
-                  updateDraft(updates);
                 }}
                 style={{ background: 'var(--bg-app, #ffffff)', fontWeight: 700, color: 'var(--text-primary)', border: '1.5px solid var(--border-color, #cbd5e1)', height: '38px' }}
               />
@@ -5128,6 +5285,201 @@ export default function Step6Stay({
           />
           <div style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: '8px' }}>
             Click anywhere to close
+          </div>
+        </div>
+      )}
+
+      {/* DISCOUNT APPROVAL PERMISSION MODAL */}
+      {discountPermissionModal.isOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '460px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              border: '1.5px solid #e2e8f0',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ background: '#1e293b', padding: '16px 20px', color: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.25rem' }}>🔐</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#ffffff' }}>
+                    Special Discount Approval
+                  </h3>
+                  <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    Management Authorization Required
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null })}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer', padding: '4px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px' }}>
+              {discountPermissionModal.status === 'idle' && (
+                <div>
+                  <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: 800, color: '#92400e', fontSize: '0.85rem', marginBottom: '4px' }}>
+                      ⚠️ Policy Discount Limit Exceeded
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.80rem', color: '#b45309', lineHeight: 1.4 }}>
+                      Standard max discount allowed for Room <strong>{room?.room_number || room?.number || 'this room'}</strong> is{' '}
+                      <strong>{room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? room.max_discount_pct : 25}%</strong>.
+                      You are requesting <strong>{discountPermissionModal.requestedPct}%</strong> discount.
+                    </p>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', border: '1px solid #e2e8f0', marginBottom: '16px', fontSize: '0.82rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Room:</span>
+                      <strong>Room {room?.room_number || room?.number || '212'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Guest Name:</span>
+                      <strong>{draft.guestName || draft.guest_name || draft.name || draft.primaryGuestName || draft.primaryGuest?.name || 'Guest'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Members:</span>
+                      <strong>
+                        {((Number(draft.maleAdults || 0) + Number(draft.femaleAdults || 0)) || Number(draft.adults || 1))} Adults
+                        {Number(draft.children || 0) > 0 ? `, ${draft.children} Child` : ''}
+                        {' '}({Number(draft.maleAdults || 0)}M, {Number(draft.femaleAdults || 1)}F)
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Expected Checkout:</span>
+                      <strong style={{ color: '#0f172a' }}>
+                        {`${draft.checkoutDate || (draft.approxCheckout ? draft.approxCheckout.split('T')[0] : '')} ${draft.checkoutTime || '06:00 AM'}`.trim()}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Standard Base Tariff:</span>
+                      <strong>
+                        ₹{(Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)).toLocaleString('en-IN')}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Requested Discount:</span>
+                      <strong style={{ color: '#b45309' }}>{discountPermissionModal.requestedPct}%</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Discount Amount:</span>
+                      <strong style={{ color: '#16a34a' }}>
+                        − ₹{Math.round(((Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) * Number(discountPermissionModal.requestedPct)) / 100).toLocaleString('en-IN')}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#0f172a', fontWeight: 800 }}>Net Payable:</span>
+                      <strong style={{ color: '#2563eb', fontSize: '0.92rem' }}>
+                        ₹{Math.max(0, (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) - Math.round(((Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) * Number(discountPermissionModal.requestedPct)) / 100)).toLocaleString('en-IN')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '0 0 16px 0', textAlign: 'center', lineHeight: 1.4 }}>
+                    Clicking below sends an instant high-priority push notification and permission popup to the Admin panel. Once approved, this {discountPermissionModal.requestedPct}% discount unlocks for this check-in only.
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null })}
+                      style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '1.5px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: 750, cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendDiscountRequest}
+                      style={{ flex: 1.5, padding: '10px', borderRadius: '10px', border: 'none', background: '#0284c7', color: '#ffffff', fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)' }}
+                    >
+                      📲 Ask for Permission
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {discountPermissionModal.status === 'waiting' && (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ width: '44px', height: '44px', border: '4px solid #e0f2fe', borderTopColor: '#0284c7', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
+                  <h4 style={{ margin: '0 0 6px 0', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>
+                    Waiting for Admin Approval...
+                  </h4>
+                  <p style={{ margin: '0 0 16px 0', fontSize: '0.80rem', color: '#64748b', lineHeight: 1.4 }}>
+                    Push notification dispatched to Admin phone. As soon as management taps <strong>Approve</strong>, this check-in will automatically update.
+                  </p>
+                  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '8px 12px', fontSize: '0.76rem', color: '#0369a1', marginBottom: '16px' }}>
+                    ⚡ Real-time sync active (checking every 2.5 seconds)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null })}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#64748b', fontSize: '0.78rem', cursor: 'pointer' }}
+                  >
+                    Cancel Request
+                  </button>
+                </div>
+              )}
+
+              {discountPermissionModal.status === 'approved' && (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🎉</div>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#16a34a', fontSize: '1.1rem', fontWeight: 900 }}>
+                    Discount Approved!
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.84rem', color: '#15803d', fontWeight: 700 }}>
+                    Admin approved {discountPermissionModal.requestedPct}% discount for this check-in!
+                  </p>
+                </div>
+              )}
+
+              {discountPermissionModal.status === 'rejected' && (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🚫</div>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#dc2626', fontSize: '1.1rem', fontWeight: 900 }}>
+                    Request Rejected
+                  </h4>
+                  <p style={{ margin: '0 0 16px 0', fontSize: '0.84rem', color: '#991b1b' }}>
+                    Management did not approve the {discountPermissionModal.requestedPct}% discount.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null })}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#dc2626', color: '#ffffff', fontWeight: 750, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -342,9 +342,9 @@ export function printPreBillSlip(table, cart, waiterName, customDept = '') {
 
   const html = `
     <div class="slip-header">
-      <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
+      <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 38px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
       <p style="font-size: 8px; font-weight: bold; color: #333; margin: 0 0 2px;"><span style="font-weight: normal; text-transform: lowercase;">by</span> JMG HOSPITALITY AND INFRA LLP</p>
-      <p style="font-size: 9px; line-height: 1.25;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001</p>
+      <p style="font-size: 9px; line-height: 1.25;">119 Murarji Peth, Char Hutatma Chowk<br>Solapur - 413001 (Maharashtra)</p>
       <p style="font-size: 8.5px; margin: 2px 0 0;"><img src="/phone-call.png" alt="" style="width: 10px; height: 10px; vertical-align: -1px; display: inline-block;" /> : 0217-2725388, +91 9960013388</p>
       <p>${escapeHtml(headerDept)}</p>
       <p style="font-weight: bold; margin-top: 2px;">*** PRE-BILL / CHECK ***</p>
@@ -468,9 +468,9 @@ export function printCheckoutSlip(rawOrder, customDeptTitle) {
 
   const html = `
     <div class="slip-header">
-      <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 42px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
+      <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 42px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
       <p style="font-size: 8px; font-weight: bold; color: #333; margin: 0 0 2px;"><span style="font-weight: normal; text-transform: lowercase;">by</span> JMG HOSPITALITY AND INFRA LLP</p>
-      <p style="font-size: 9px; line-height: 1.25;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001</p>
+      <p style="font-size: 9px; line-height: 1.25;">119 Murarji Peth, Char Hutatma Chowk<br>Solapur - 413001 (Maharashtra)</p>
       <p style="font-size: 9px;"><img src="/phone-call.png" alt="" style="width: 10px; height: 10px; vertical-align: -1px; display: inline-block;" /> : 0217-2725388, +91 99600 13388 • GSTIN: 27AAAAA0000A1Z5</p>
       <p class="text-bold" style="margin-top: 3px; font-size: 11px; letter-spacing: 0.04em;">${escapeHtml(deptTitle)}</p>
     </div>
@@ -756,7 +756,7 @@ export function getActiveCashierName() {
 /**
  * 2-per-A4 Customer Payment Receipt (RECEIPT)
  * Matches physical paper slip used at Hotel City Paark:
- * Centered RECEIPT, Diamond Logo + Hotel CityPaark branding,
+ * Centered RECEIPT, Diamond Logo + Hotel City Paark branding,
  * Red serial No., guest name, sum in words, payment mode breakdown with UTR/Cheque/Cash,
  * multi-row table grid, Rs. box, Cheques subject to realization, For Hotel City Paark signature.
  */
@@ -1057,7 +1057,7 @@ export function buildMoneyReceiptHTML(receipt) {
   const formattedReceiptNo = formatReceiptNumberWithMode(rawReceiptNo, rawMode);
 
   const renderReceiptCard = (copyLabel) => `
-    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 136mm; max-height: 137mm; box-sizing: border-box; background: #ffffff !important; color: #000000 !important;">
+    <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 128mm; max-height: 129mm; box-sizing: border-box; background: #ffffff !important; color: #000000 !important;">
       <!-- Elegant Watermark Crest (Without Name) -->
       <div class="receipt-watermark" style="position: absolute; top: 52%; left: 50%; transform: translate(-50%, -50%); opacity: 0.055; pointer-events: none; z-index: 0; text-align: center;">
         <img src="/hcp-logo-without-name.png" alt="" style="width: 145px; height: auto;" loading="eager" decoding="sync" />
@@ -1067,13 +1067,14 @@ export function buildMoneyReceiptHTML(receipt) {
       <div class="receipt-header-row" style="position: relative; z-index: 1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; border-bottom: 1.5px solid #000000; padding-bottom: 4px; margin-bottom: 4px;">
         <!-- Leftest Side: City Park Logo taking ENTIRE height of header + Information on right side of logo (all leveled from left) -->
         <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-start; height: 100%; text-align: left;">
-          <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" class="receipt-brand-logo-img" style="height: 74px; max-height: 80px; width: auto; max-width: 220px; object-fit: contain; display: block; flex-shrink: 0;" loading="eager" decoding="sync" />
+          <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" class="receipt-brand-logo-img" style="height: 74px; max-height: 80px; width: auto; max-width: 220px; object-fit: contain; display: block; flex-shrink: 0;" loading="eager" decoding="sync" />
           <div style="display: flex; flex-direction: column; justify-content: center; text-align: left; align-items: flex-start; line-height: 1.25;">
             <div style="font-size: 7.8pt; color: #1e3a8a; margin: 0 0 1px 0; text-align: left;">
               <span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong>
             </div>
             <div class="receipt-address-text" style="font-size: 7pt; line-height: 1.3; color: #000000 !important; font-weight: 700; text-align: left; margin: 0;">
-              119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
+              119 Murarji Peth, Char Hutatma Chowk<br>
+              Solapur - 413001 (Maharashtra)<br>
               <img src="/phone-call.png" alt="" style="width: 9px; height: 9px; object-fit: contain; vertical-align: -1px; display: inline-block;" loading="eager" decoding="sync" /> : 0217-2729791, 92, 93, 9960013388<br>
               E-mail : hcitypark@rediffmail.com • website : hotelcityparksolapur.com
             </div>
@@ -1278,7 +1279,7 @@ export function printSplitPaymentReceipts(receiptsList) {
 /**
  * 2-per-A4 Petty Cash / Cash Voucher
  * Matches physical debit slip used at Hotel City Paark:
- * Diamond logo + Hotel CityPaark Solapur 413001,
+ * Diamond logo + Hotel City Paark Solapur 413001,
  * Petty Cash / Cash Voucher No. & Date,
  * Debit _____ A/c., Rupees (in words), Paid to, Being,
  * Particulars ruled table with Rs. and Ps. columns + Total,
@@ -1348,18 +1349,19 @@ export function printPettyCashVoucher(voucher) {
 
       <!-- Voucher Header -->
       <div class="voucher-header-row" style="position: relative; z-index: 1;">
-        <!-- Left: Official Crest (Without Name) + HOTEL CityPaark typography + Solapur 413001 Address -->
+        <!-- Left: Official Crest (Without Name) + Hotel City Paark typography + Solapur 413001 Address -->
         <div class="voucher-brand-col">
           <div class="voucher-hotel-logo" style="display: flex; align-items: center; gap: 8px;">
-            <img src="/HCP New Logo Png_witought-name.png" alt="Hotel CityPaark" class="voucher-brand-logo-img" style="height: 38px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+            <img src="/HCP New Logo Png_witought-name.png" alt="Hotel City Paark" class="voucher-brand-logo-img" style="height: 38px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
             <div class="hotel-title-text" style="line-height: 1;">
               <span class="hotel-sub" style="font-size: 7.5pt; letter-spacing: 0.22em; font-weight: 800; display: block;">HOTEL</span>
-              <span class="hotel-main" style="font-size: 17pt; font-weight: 900; font-family: Georgia, serif;">CityPaark</span>
+              <span class="hotel-main" style="font-size: 17pt; font-weight: 900; font-family: Georgia, serif;">City Paark</span>
               <span style="font-size: 7pt; color: #1e3a8a; display: block; margin-top: 1px;"><span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong></span>
             </div>
           </div>
-          <div class="voucher-address-top" style="font-size: 7.5pt; font-weight: 800; margin-top: 4px; color: #000000;">
-            ■ 119, MURARJI PETH, CHAR HUTATMA CHOWK, SOLAPUR - 413 001.
+          <div class="voucher-address-top" style="font-size: 7.5pt; font-weight: 800; margin-top: 4px; color: #000000; line-height: 1.25;">
+            119 Murarji Peth, Char Hutatma Chowk<br>
+            Solapur - 413001 (Maharashtra)
           </div>
         </div>
 
@@ -1542,7 +1544,7 @@ export async function downloadReceiptPDF(receipt, options = {}) {
   } catch (_) {}
 
   const opt = {
-    margin: [2, 4, 2, 4],
+    margin: [5, 4, 4, 4],
     filename: filename,
     image: { type: 'jpeg', quality: 1.0 },
     html2canvas: { scale: 2.0, useCORS: true, logging: false, scrollY: 0, windowWidth: 755 },
@@ -2312,14 +2314,15 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-bottom: 4px; padding-right: 215px; min-height: 108px;">
             <!-- Logo + Hotel Info -->
             <div style="display: flex; align-items: center; gap: 14px;">
-              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 108px; max-height: 108px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+              <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 108px; max-height: 108px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
               <div>
-                <h1 style="margin: 0; font-size: 19pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">HOTEL CityPaark</h1>
+                <h1 style="margin: 0; font-size: 19pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">Hotel City Paark</h1>
                 <div style="margin: 2px 0 0; font-size: 8.5pt; font-weight: 850; color: #1e3a8a; letter-spacing: 0.5px; text-transform: uppercase;">
                   by JMG HOSPITALITY AND INFRA LLP
                 </div>
-                <p style="margin: 2px 0 0; font-size: 8.2pt; font-weight: 750; color: #1e293b; white-space: nowrap;">
-                  119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)
+                <p style="margin: 2px 0 0; font-size: 8.2pt; font-weight: 750; color: #1e293b; line-height: 1.25;">
+                  119 Murarji Peth, Char Hutatma Chowk<br>
+                  Solapur - 413001 (Maharashtra)
                 </p>
                 <p style="margin: 2px 0 0; font-size: 8.2pt; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                   <img src="/phone-call.png" alt="" style="width: 12px; height: 12px; object-fit: contain; vertical-align: middle;" loading="eager" decoding="sync" />
@@ -2361,8 +2364,8 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
               <!-- CORPORATE BILL TO COMPANY (BTC) FULL DETAILS TABLE -->
               <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 2px solid #1e3a8a; background: rgba(255, 255, 255, 0.75);">
                 <tbody>
-                  <tr style="background: linear-gradient(135deg, #4c1d95 0%, #1e3a8a 100%);">
-                    <th colspan="4" style="padding: 3px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 2px solid #1e3a8a; color: #ffffff; letter-spacing: 0.4px;">
+                  <tr style="background: #f1f5f9;">
+                    <th colspan="4" style="padding: 4px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 1.5px solid #1e3a8a; color: #0f172a; letter-spacing: 0.4px;">
                       🏢 CORPORATE BILL TO COMPANY (BTC) &amp; GUEST DETAILS
                     </th>
                   </tr>
@@ -2422,8 +2425,8 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
               <!-- STANDARD PRIMARY GUEST PERSONAL INFORMATION TABLE -->
               <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 2px solid #1e3a8a; background: rgba(255, 255, 255, 0.75);">
                 <tbody>
-                  <tr style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
-                    <th colspan="4" style="padding: 3px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 2px solid #1e3a8a; color: #ffffff; letter-spacing: 0.4px;">
+                  <tr style="background: #f1f5f9;">
+                    <th colspan="4" style="padding: 4px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 1.5px solid #1e3a8a; color: #0f172a; letter-spacing: 0.4px;">
                       PRIMARY GUEST PERSONAL INFORMATION
                     </th>
                   </tr>
@@ -2478,9 +2481,9 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
 
           <!-- STAY DETAILS (Clean table without emojis, key-value people lived in) -->
           <div style="border: 2px solid #0f766e; margin-bottom: 5px; background: rgba(255, 255, 255, 0.75);">
-            <div style="background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); padding: 3px 10px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #0f766e; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
+            <div style="background: #f1f5f9; padding: 4px 10px; font-size: 9pt; font-weight: 950; border-bottom: 1.5px solid #0f766e; text-transform: uppercase; color: #0f172a; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>STAY DETAILS</span>
-              <span style="font-size: 8pt; font-weight: 900; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
+              <span style="font-size: 8pt; font-weight: 850; color: #0f172a; background: #ffffff; border: 1px solid #94a3b8; padding: 1px 6px; border-radius: 3px;">
                 ${roomsList.length} ROOM${roomsList.length > 1 ? 'S' : ''} ALLOCATED
               </span>
             </div>
@@ -2568,9 +2571,9 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
 
           <!-- PAYMENT SUMMARY (Table Manner with Crisp Borders & Prominent Typography) -->
           <div style="border: 2px solid #1e3a8a; margin-top: 8px; margin-bottom: 4px; background: rgba(255, 255, 255, 0.75);">
-            <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); padding: 3px 8px; font-size: 9pt; font-weight: 950; border-bottom: 2px solid #1e3a8a; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
+            <div style="background: #f1f5f9; padding: 4px 8px; font-size: 9pt; font-weight: 950; border-bottom: 1.5px solid #1e3a8a; text-transform: uppercase; color: #0f172a; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.4px;">
               <span>PAYMENT SUMMARY</span>
-              <span style="font-size: 7.5pt; font-weight: 800; color: #86efac; background: rgba(255, 255, 255, 0.2); padding: 1px 6px; border-radius: 3px;">
+              <span style="font-size: 7.5pt; font-weight: 850; color: #166534; background: #ffffff; border: 1px solid #86efac; padding: 1px 6px; border-radius: 3px;">
                 Standard 5% Hotel GST Included
               </span>
             </div>
@@ -2763,10 +2766,10 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           <!-- Annexure Header -->
           <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 3px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 32px; width: auto; object-fit: contain;" />
+              <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 32px; width: auto; object-fit: contain;" />
               <div>
                 <div style="font-size: 11pt; font-weight: 900; font-family: Georgia, serif; color: #1e3a8a; letter-spacing: 0.5px;">
-                  HOTEL CityPaark — Document Verification Annexure
+                  Hotel City Paark — Document Verification Annexure
                 </div>
                 <div style="font-size: 7.5pt; font-weight: 750; color: #475569;">
                   Official Scanned Records &bull; Primary Guest Live Photo &bull; 4 Documents Aligned Per Sheet
@@ -3306,14 +3309,15 @@ export function buildGuestPaymentSummaryHTML(data) {
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 12px; gap: 20px;">
             <!-- Logo + Hotel Info -->
             <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0;">
-              <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 68px; width: auto; object-fit: contain; flex-shrink: 0;" loading="eager" decoding="sync" />
+              <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 68px; width: auto; object-fit: contain; flex-shrink: 0;" loading="eager" decoding="sync" />
               <div>
-                <h1 style="margin: 0; font-size: 19pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">HOTEL CityPaark</h1>
+                <h1 style="margin: 0; font-size: 19pt; font-weight: 900; font-family: Georgia, serif; letter-spacing: 0.5px; color: #1e3a8a; line-height: 1.1;">Hotel City Paark</h1>
                 <div style="margin: 2px 0 0; font-size: 8.2pt; font-weight: 850; color: #1e3a8a; letter-spacing: 0.5px; text-transform: uppercase;">
                   by JMG HOSPITALITY AND INFRA LLP
                 </div>
-                <p style="margin: 3px 0 0; font-size: 8pt; font-weight: 750; color: #1e293b; white-space: nowrap; line-height: 1.25;">
-                  119, Murarji Peth, Char Hutatma Chowk, Solapur - 413001
+                <p style="margin: 3px 0 0; font-size: 8pt; font-weight: 750; color: #1e293b; line-height: 1.25;">
+                  119 Murarji Peth, Char Hutatma Chowk<br>
+                  Solapur - 413001 (Maharashtra)
                 </p>
                 <p style="margin: 3px 0 0; font-size: 8pt; color: #0284c7; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                   <img src="/phone-call.png" alt="" style="width: 11px; height: 11px; object-fit: contain; vertical-align: middle;" loading="eager" decoding="sync" />
@@ -3605,11 +3609,12 @@ export function buildGuestActivitiesSummaryHTML(data) {
         <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
           <div style="display: flex; align-items: center; gap: 12px;">
-            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 64px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+            <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 64px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
             <div>
               <div style="font-size: 8pt; color: #1e3a8a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">by JMG HOSPITALITY AND INFRA LLP</div>
               <div style="font-size: 7.8pt; color: #334155; line-height: 1.35; margin-top: 2px;">
-                119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
+                119 Murarji Peth, Char Hutatma Chowk<br>
+                Solapur - 413001 (Maharashtra)<br>
                 Tel: 0217-2729791, 92, 93 • Mob: 9960013388 • GSTIN: 27AABFJ9168C1ZX
               </div>
             </div>
@@ -5051,7 +5056,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
       
       <!-- Elegant Centered Watermark Background Logo (Authentic Transparent Mauve/Rose Tint with Name) -->
       <div style="position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); opacity: 0.14; pointer-events: none; z-index: 0; text-align: center; width: 100%; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
-        <img src="/hcp-logo-with-name-transparent.png" alt="Hotel CityPaark Watermark" style="width: 520px; max-width: 85%; height: auto; filter: contrast(120%) saturate(120%);" loading="eager" decoding="sync" />
+        <img src="/hcp-logo-with-name-transparent.png" alt="Hotel City Paark Watermark" style="width: 520px; max-width: 85%; height: auto; filter: contrast(120%) saturate(120%);" loading="eager" decoding="sync" />
       </div>
 
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 100%; justify-content: space-between; background: transparent;">
@@ -5060,7 +5065,8 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; background: transparent;">
             <!-- Left Hotel Address & Contact (aligned in middle of logo height) -->
             <div style="font-size: 7.8pt; color: #222; line-height: 1.38; max-width: 55%; font-weight: 400; align-self: center;">
-              <div style="white-space: nowrap; font-size: 7.8pt; font-weight: 400; color: #111;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)</div>
+              <div style="font-size: 7.8pt; font-weight: 400; color: #111;">119 Murarji Peth, Char Hutatma Chowk</div>
+              <div style="font-size: 7.8pt; font-weight: 400; color: #111;">Solapur - 413001 (Maharashtra)</div>
               <div>Tel.: 0217-2729791, 92, 93 Mob.: 9960013388</div>
               <div>E-mail : hcitypark@rediffmail.com</div>
               <div>website : hotelcityparksolapur.com</div>
@@ -5068,7 +5074,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 
             <!-- Right Brand Logo with Name (Height 126px) & by JMG HOSPITALITY AND INFRA LLP matching logo text width -->
             <div style="display: flex; flex-direction: column; align-items: center; text-align: center; width: 174px;">
-              <img src="/hcp-logo-with-name-transparent.png" alt="Hotel CityPaark" style="height: 126px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+              <img src="/hcp-logo-with-name-transparent.png" alt="Hotel City Paark" style="height: 126px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
               <div style="width: 100%; font-size: 7.2pt; font-weight: 600; color: #000; letter-spacing: 0.2px; margin-top: 3px; white-space: nowrap; font-family: 'Segoe UI', Arial, sans-serif; text-align: center;">
                 <span style="font-weight: 400; text-transform: lowercase;">by</span> <span style="font-weight: 600; text-transform: uppercase;">JMG HOSPITALITY AND INFRA LLP</span>
               </div>
@@ -5627,9 +5633,10 @@ export function printFullMenuA4(department = 'restaurant', menuItems = [], categ
         </div>
 
         <div style="text-align: right;">
-          <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 48px; width: auto; margin-bottom: 4px;" />
+          <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 48px; width: auto; margin-bottom: 4px;" />
           <div style="font-size: 7.5pt; color: #334155; line-height: 1.25;">
-            119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001<br>
+            119 Murarji Peth, Char Hutatma Chowk<br>
+            Solapur - 413001 (Maharashtra)<br>
             <img src="/phone-call.png" alt="" style="width: 10px; height: 10px; object-fit: contain; vertical-align: -1px; display: inline-block;" /> : 0217-2729791, 9960013388<br>
             E-mail : hcitypark@rediffmail.com
           </div>
@@ -5763,11 +5770,11 @@ export function buildDailyClosingReportHTML(analyticsData, options = {}) {
         <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 48px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
+            <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 48px; width: auto; object-fit: contain;" loading="eager" decoding="sync" />
             <div>
-              <h1 style="margin: 0; font-size: 16pt; font-weight: 900; font-family: Georgia, serif; color: #000;">HOTEL CityPaark</h1>
+              <h1 style="margin: 0; font-size: 16pt; font-weight: 900; font-family: Georgia, serif; color: #000;">Hotel City Paark</h1>
               <div style="margin: 1px 0 0; font-size: 7.5pt; color: #1e3a8a;"><span style="text-transform: lowercase; font-weight: 600;">by</span> <strong style="letter-spacing: 0.5px;">JMG HOSPITALITY AND INFRA LLP</strong></div>
-              <p style="margin: 1px 0 0; font-size: 7pt; font-weight: 700; color: #1e293b; white-space: nowrap;">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 (Maharashtra)</p>
+              <p style="margin: 1px 0 0; font-size: 7pt; font-weight: 700; color: #1e293b; line-height: 1.25;">119 Murarji Peth, Char Hutatma Chowk<br>Solapur - 413001 (Maharashtra)</p>
               <p style="margin: 1px 0 0; font-size: 6.8pt; color: #475569;">Tel: 0217-2729791, 92, 93 • +91 9960013388 • Email: hcitypark@rediffmail.com • Web: hotelcityparksolapur.com</p>
             </div>
           </div>
@@ -6025,7 +6032,7 @@ export function buildDailyClosingReportHTML(analyticsData, options = {}) {
             </div>
           </div>
           <div style="text-align: center; font-size: 6.8pt; color: #64748b;">
-            Official End-of-Day Financial Audit • Hotel CityPaark, Solapur
+            Official End-of-Day Financial Audit • Hotel City Paark, Solapur
           </div>
           <div style="text-align: center; width: 220px;">
             <div style="border-top: 1.5px solid #000; padding-top: 3px; font-size: 7.5pt; font-weight: 900;">
@@ -6092,9 +6099,9 @@ export function printPosThermalClosingSlip(analyticsData, department = 'restaura
 
   const html = `
     <div class="slip-header">
-      <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
+      <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 38px; width: auto; object-fit: contain; margin: 0 auto 4px; display: block;" />
       <p style="font-size: 8px; font-weight: bold; color: #333; margin: 0 0 2px;"><span style="font-weight: normal; text-transform: lowercase;">by</span> JMG HOSPITALITY AND INFRA LLP</p>
-      <p style="font-size: 9px; line-height: 1.25;">119, Murarji Peth, Solapur - 413 001</p>
+      <p style="font-size: 9px; line-height: 1.25;">119 Murarji Peth, Char Hutatma Chowk<br>Solapur - 413001 (Maharashtra)</p>
       <p class="text-bold" style="margin-top: 4px; font-size: 11px; letter-spacing: 0.04em;">${escapeHtml(deptTitle)}</p>
       <div style="font-size: 10px; font-weight: bold; background: #000; color: #fff; padding: 2px 4px; margin-top: 4px; display: inline-block;">
         ${escapeHtml(auditTitle)}
@@ -6391,7 +6398,8 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
           <img src="/hcp-logo-with-name-transparent.png" alt="Logo" style="height: 52px; width: auto; object-fit: contain;" />
           <div>
             <div class="brand-title">Hotel City Paark</div>
-            <div class="brand-sub">119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001 | Tel: 0217-2729791/92/93</div>
+            <div class="brand-sub">119 Murarji Peth, Char Hutatma Chowk</div>
+            <div class="brand-sub">Solapur - 413001 (Maharashtra) | Tel: 0217-2729791/92/93</div>
             <div class="brand-sub"><strong>GSTIN : 27AAUFJ0434H1Z7</strong> | Email: hcitypark@rediffmail.com</div>
           </div>
         </div>

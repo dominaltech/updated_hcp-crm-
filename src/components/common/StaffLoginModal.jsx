@@ -54,11 +54,11 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
           const list = Array.isArray(data) ? data : (data?.staff || []);
           setStaffList(list);
 
-          // Strictly filter only staff belonging to this respected section
+          // Filter staff belonging to this section, plus Admin/Owner for hospitality
           const matching = list.filter((s) => (!s.status || s.status === 'active') && (
             targetRole === 'manager'
               ? (s.role === 'manager' || s.can_access_manager == 1 || s.can_access_manager === true)
-              : (s.role === targetRole)
+              : (s.role === targetRole || (targetRole === 'hospitality' && s.role === 'manager'))
           ));
 
           if (matching.length === 1) {
@@ -77,11 +77,11 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
 
   if (!isOpen) return null;
 
-  // Filter ONLY staff belonging to this respected section
+  // Filter staff belonging to this section, plus Admin/Owner for hospitality
   const sectionStaff = staffList.filter((s) => (!s.status || s.status === 'active') && (
     targetRole === 'manager'
       ? (s.role === 'manager' || s.can_access_manager == 1 || s.can_access_manager === true)
-      : (s.role === targetRole)
+      : (s.role === targetRole || (targetRole === 'hospitality' && s.role === 'manager'))
   ));
 
   const handleSelectStaff = (staff) => {
@@ -393,6 +393,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                 {sectionStaff.map((s) => {
                   const isSelected = selectedStaff?.username === s.username;
                   const isCurrent = currentUser?.username === s.username;
+                  const isManager = s.role === 'manager';
                   const initials = (s.full_name || s.username)
                     .split(' ')
                     .map((n) => n[0])
@@ -410,9 +411,11 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                         padding: '16px 16px',
                         borderRadius: '16px',
                         border: isSelected
-                          ? `2.5px solid ${sectionBranding.cardBorderActive}`
-                          : '1.5px solid var(--border-color, #e2e8f0)',
-                        background: isSelected ? sectionBranding.cardBgActive : 'var(--bg-surface, #ffffff)',
+                          ? `2.5px solid ${isManager ? '#f59e0b' : sectionBranding.cardBorderActive}`
+                          : (isManager ? '1.5px solid #fcd34d' : '1.5px solid var(--border-color, #e2e8f0)'),
+                        background: isSelected 
+                          ? (isManager ? 'rgba(245, 158, 11, 0.15)' : sectionBranding.cardBgActive) 
+                          : (isManager ? '#fffdf5' : 'var(--bg-surface, #ffffff)'),
                         boxShadow: isSelected
                           ? '0 6px 20px rgba(0,0,0,0.1)'
                           : '0 2px 6px rgba(0,0,0,0.03)',
@@ -427,10 +430,12 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                           width: '50px',
                           height: '50px',
                           borderRadius: '14px',
-                          background: isSelected ? sectionBranding.accentColor : 'var(--bg-surface-secondary, #f1f5f9)',
-                          color: isSelected ? '#ffffff' : 'var(--text-primary, #334155)',
+                          background: isSelected 
+                            ? (isManager ? '#f59e0b' : sectionBranding.accentColor) 
+                            : (isManager ? '#fef3c7' : 'var(--bg-surface-secondary, #f1f5f9)'),
+                          color: isSelected ? '#ffffff' : (isManager ? '#b45309' : 'var(--text-primary, #334155)'),
                           fontWeight: 950,
-                          fontSize: '1.15rem',
+                          fontSize: isManager ? '1.35rem' : '1.15rem',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -439,7 +444,7 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                           transition: 'all 0.18s ease'
                         }}
                       >
-                        {initials}
+                        {isManager ? '👑' : initials}
                       </div>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div
@@ -458,12 +463,21 @@ export default function StaffLoginModal({ isOpen, onClose, initialDepartment = n
                         <div
                           style={{
                             fontSize: '0.80rem',
-                            color: isSelected ? sectionBranding.accentColor : 'var(--text-secondary, #64748b)',
+                            color: isSelected ? (isManager ? '#b45309' : sectionBranding.accentColor) : 'var(--text-secondary, #64748b)',
                             fontWeight: 850,
-                            marginTop: '3px'
+                            marginTop: '3px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            flexWrap: 'wrap'
                           }}
                         >
-                          {isSelected ? '✓ Selected' : `ID: ${s.username}`}
+                          <span>{isSelected ? '✓ Selected' : `ID: ${s.username}`}</span>
+                          {isManager && (
+                            <span style={{ background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: '4px', fontSize: '0.70rem', fontWeight: 900, border: '1px solid #fde68a' }}>
+                              👑 Admin / Owner
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

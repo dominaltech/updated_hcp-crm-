@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HCP Store Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="supabase.js"></script>
+  <style>
+    :root {
+      --bg: #F4F5F2;
+      --card-bg: #ffffff;
+      --border: #E1E4DE;
+      --border-focus: #B8893B;
+      --ink: #0F2A2E;
+      --text: #16211F;
+      --text-muted: #6B7773;
+      --brass: #B8893B;
+      --brass-dark: #966F2A;
+      --brass-light: #FBF7EE;
+      --green: #2E7D5B;
+      --green-bg: #E8F5E9;
+      --amber: #C77D12;
+      --amber-bg: #FFF8E6;
+      --red: #B3402F;
+      --red-bg: #FEECEB;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-sm: 0 1px 3px rgba(15,42,46,0.06);
+      --shadow-md: 0 4px 14px rgba(15,42,46,0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 40px;
+    }
+
+    /* Top Sticky Header */
+    .top-header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-center {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo-icon {
+      font-size: 24px;
+    }
+
+    .brand-title {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: 0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: #F1F5F2;
+      border: 1px solid var(--border);
+      color: var(--ink);
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+      background: var(--brass-light);
+      border-color: var(--brass);
+      color: var(--brass-dark);
+    }
+
+    /* Main Navigation Tabs: Store vs Vendors */
+    .nav-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .tab-btn {
+      background: #EBECE8;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(15,42,46,0.2);
+    }
+
+    .tab-badge {
+      background: rgba(255,255,255,0.25);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .tab-btn:not(.active) .tab-badge {
+      background: var(--border);
+      color: var(--text-muted);
+    }
+
+    /* Main Container */
+    .main-container {
+      max-width: 600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* SUB-TABS (Current vs History) */
+    .sub-tabs-bar {
+      display: flex;
+      background: #EBECE8;
+      border-radius: var(--radius-md);
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .sub-tab-btn {
+      flex: 1;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .sub-tab-btn.active {
+      background: #ffffff;
+      color: var(--ink);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .sub-badge {
+      background: var(--border);
+      color: var(--text-muted);
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .sub-tab-btn.active .sub-badge {
+      background: var(--ink);
+      color: #ffffff;
+    }
+
+    /* View Switcher: Party-wise vs Bill-wise */
+    .view-switcher-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .view-switch-btn {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .view-switch-btn.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #ffffff;
+    }
+
+    /* KPI Summary Stats */
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--brass);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .kpi-val-danger {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--red);
+      margin-top: 2px;
+    }
+
+    .kpi-val-ok {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--green);
+      margin-top: 2px;
+    }
+
+    .kpi-right {
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .kpi-right b {
+      color: var(--ink);
+    }
+
+    /* Filter & Search Bar */
+    .search-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      font-size: 14px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px 0 36px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--brass);
+      box-shadow: 0 0 0 3px rgba(184,137,59,0.15);
+    }
+
+    /* Cards Styling */
+    .feed-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .party-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .party-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .party-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .party-phone {
+      font-size: 13px;
+      color: var(--brass);
+      font-weight: 600;
+      margin-top: 2px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .party-due-col {
+      text-align: right;
+    }
+
+    .party-due-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--red);
+      letter-spacing: 0.5px;
+    }
+
+    .party-due-val {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--red);
+    }
+
+    .party-meta-row {
+      background: #F8F9F7;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .party-meta-row b {
+      color: var(--ink);
+    }
+
+    .party-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-pay-party {
+      flex: 1;
+      background: var(--ink);
+      color: #ffffff;
+      border: none;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-view-bills {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      color: var(--ink);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Collapsible Party Bills */
+    .party-bills-box {
+      margin-top: 6px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .party-bill-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #FAFAF8;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+
+    /* Bill Cards */
+    .bill-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .bill-card:hover {
+      border-color: var(--brass);
+      box-shadow: var(--shadow-md);
+    }
+
+    .bill-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .bill-vendor-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .bill-sub-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .bill-due-col {
+      text-align: right;
+    }
+
+    .bill-due-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--red);
+    }
+
+    .bill-due-amount {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--red);
+    }
+
+    .bill-breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      background: #F8F9F7;
+      padding: 7px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .bill-badges-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2px;
+    }
+
+    .badges-group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      border: 1px solid currentColor;
+    }
+
+    .badge-pending { color: var(--red); }
+    .badge-partly { color: var(--amber); }
+    .badge-full { color: var(--green); }
+    .badge-gst { color: var(--ink); }
+    .badge-no-gst { color: var(--text-muted); }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 42, 46, 0.45);
+      backdrop-filter: blur(3px);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .modal-backdrop.show { display: flex; }
+
+    .modal-dialog {
+      background: var(--card-bg);
+      border-top-left-radius: var(--radius-lg);
+      border-top-right-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 540px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.18);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--card-bg);
+      z-index: 10;
+    }
+
+    .modal-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .close-btn {
+      background: #F1F5F2;
+      border: none;
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Modal Summary Box */
+    .summary-box {
+      background: #F8F9F7;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .summary-lbl { color: var(--text-muted); }
+    .summary-val { font-weight: 700; color: var(--ink); }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* Pay Section */
+    .pay-section {
+      background: #ffffff;
+      border: 1.5px solid var(--brass);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pay-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .amount-input-wrap {
+      display: flex;
+      align-items: center;
+      background: #F8F9F7;
+      border: 1.5px solid var(--brass);
+      border-radius: var(--radius-sm);
+      padding: 0 12px;
+    }
+
+    .amount-prefix {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-right: 6px;
+    }
+
+    .amount-input {
+      width: 100%;
+      height: 48px;
+      background: transparent;
+      border: none;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--ink);
+      font-family: inherit;
+      outline: none;
+    }
+
+    .quick-chips-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .quick-chip {
+      background: var(--brass-light);
+      border: 1px solid var(--brass);
+      color: var(--brass-dark);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Remark feedback box */
+    .remark-box {
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.4;
+      border: 1px solid;
+    }
+
+    .remark-partly {
+      background: var(--amber-bg);
+      border-color: var(--amber);
+      color: #78350F;
+    }
+
+    .remark-full {
+      background: var(--green-bg);
+      border-color: var(--green);
+      color: #064E3B;
+    }
+
+    .mode-pills-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .mode-pill {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: #F4F5F2;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .mode-pill.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .input-text {
+      width: 100%;
+      height: 40px;
+      padding: 0 10px;
+      background: #F8F9F7;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--ink);
+      outline: none;
+    }
+
+    .btn-submit-pay {
+      background: var(--green);
+      color: #ffffff;
+      border: none;
+      padding: 14px;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 36px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+      background: var(--card-bg);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    /* Toast */
+    .toast-box {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(40px);
+      background: var(--ink);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 200;
+    }
+
+    .toast-box.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Sticky Header -->
+  <header class="top-header">
+    <div class="brand-row">
+      <div class="brand-center">
+        <span class="brand-logo-icon">👑</span>
+        <span class="brand-title">HCP STORE ADMIN</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="fetchData()" title="Refresh Data">🔄</button>
+      </div>
+    </div>
+
+    <!-- Main Navigation Tabs: Store vs Vendors -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" id="tabStoreBtn" onclick="switchNavTab('store')">
+        <span>🏪 Store</span>
+        <span class="tab-badge" id="badgeStoreCount">0</span>
+      </button>
+      <button class="tab-btn" id="tabVendorsBtn" onclick="switchNavTab('vendors')">
+        <span>👥 Vendors</span>
+        <span class="tab-badge" id="badgeVendorsCount">0</span>
+      </button>
+    </nav>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-container">
+
+    <!-- ========================================== -->
+    <!-- SECTION 1: STORE TAB                      -->
+    <!-- ========================================== -->
+    <section id="sectionStore" style="display: flex; flex-direction: column; gap: 14px;">
+
+      <!-- Sub-Tabs: "Current" vs "History" -->
+      <div class="sub-tabs-bar">
+        <button class="sub-tab-btn active" id="subTabCurrentBtn" onclick="switchStoreSubTab('current')">
+          <span>Current</span>
+          <span class="sub-badge" id="badgeCurrentCount">0</span>
+        </button>
+        <button class="sub-tab-btn" id="subTabHistoryBtn" onclick="switchStoreSubTab('history')">
+          <span>History (Paid)</span>
+          <span class="sub-badge" id="badgeHistoryCount">0</span>
+        </button>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="storeSearchInput" placeholder="Search vendor, bill #, phone..." oninput="renderCurrentSubTab()">
+      </div>
+
+      <!-- VIEW 1: CURRENT BILLS (Pending / Partly Due) -->
+      <div id="subViewCurrent" style="display: flex; flex-direction: column; gap: 12px;">
+
+        <!-- KPI Summary Stats -->
+        <div class="kpi-card">
+          <div>
+            <div class="kpi-label">TOTAL OUTSTANDING DUES</div>
+            <div class="kpi-val-danger" id="kpiTotalDue">₹0</div>
+          </div>
+          <div class="kpi-right">
+            <div><b id="kpiPendingCount">0</b> Pending Bills</div>
+            <div><b id="kpiPartiesCount">0</b> Parties</div>
+          </div>
+        </div>
+
+        <!-- Toggle: Party-wise Entire Due vs Bill-wise Due -->
+        <div class="view-switcher-row">
+          <button class="view-switch-btn active" id="btnViewParty" onclick="switchDueView('party')">
+            👥 Party-wise Entire Due
+          </button>
+          <button class="view-switch-btn" id="btnViewBill" onclick="switchDueView('bill')">
+            📄 Bill-wise Due
+          </button>
+        </div>
+
+        <!-- Party-wise Feed -->
+        <div id="partyWiseFeed" class="feed-list"></div>
+
+        <!-- Bill-wise Feed -->
+        <div id="billWiseFeed" class="feed-list" style="display: none;"></div>
+
+      </div>
+
+      <!-- VIEW 2: HISTORY (Settled / Fully Paid Bills) -->
+      <div id="subViewHistory" style="display: none; flex-direction: column; gap: 12px;">
+        
+        <div class="kpi-card" style="border-left-color: var(--green);">
+          <div>
+            <div class="kpi-label">TOTAL SETTLED INVOICES</div>
+            <div class="kpi-val-ok" id="kpiHistoryCleared">₹0</div>
+          </div>
+          <div class="kpi-right">
+            <div><b id="kpiHistoryCount">0</b> Bills Cleared</div>
+            <div>Zero Pending Balance</div>
+          </div>
+        </div>
+
+        <div id="historyFeed" class="feed-list"></div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- SECTION 2: VENDORS TAB                    -->
+    <!-- ========================================== -->
+    <section id="sectionVendors" style="display: none; flex-direction: column; gap: 14px;">
+      
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:16px; font-weight:800; color:var(--ink);">Store Vendors Directory</span>
+        <button onclick="openAddVendorModal()" style="background:var(--ink); color:#fff; border:none; padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; font-weight:700; cursor:pointer;">
+          + Add Vendor
+        </button>
+      </div>
+
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="vendorSearchInput" placeholder="Search vendor name or phone..." oninput="renderVendorsFeed()">
+      </div>
+
+      <div id="vendorsFeed" class="feed-list"></div>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================== -->
+  <!-- MODAL: BILL DETAILS & PAYMENT MODAL        -->
+  <!-- ========================================== -->
+  <div class="modal-backdrop" id="billModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title" id="modalBillTitle">Bill Details</div>
+        <button class="close-btn" onclick="closeModal('billModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Summary Box -->
+        <div class="summary-box">
+          <div class="summary-row">
+            <span class="summary-lbl">Vendor Name:</span>
+            <span class="summary-val" id="mdlVendorName">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Vendor Phone:</span>
+            <span class="summary-val" id="mdlVendorPhone">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Bill Date:</span>
+            <span class="summary-val" id="mdlBillDate">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">GST Status:</span>
+            <span class="summary-val" id="mdlGstStatus">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Preferred Mode:</span>
+            <span class="summary-val" id="mdlPreferredMode">-</span>
+          </div>
+          <div class="summary-row" id="mdlNotesRow" style="display:none;">
+            <span class="summary-lbl">Notes:</span>
+            <span class="summary-val" id="mdlNotes" style="font-style:italic;">-</span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="summary-row">
+            <span class="summary-lbl">Total Bill Amount:</span>
+            <span class="summary-val" style="font-size:16px;" id="mdlTotalAmt">₹0</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Already Paid:</span>
+            <span class="summary-val" style="color:var(--green); font-size:16px;" id="mdlPaidAmt">₹0</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl" style="font-weight:700; color:var(--red);">Remaining Due:</span>
+            <span class="summary-val" style="color:var(--red); font-size:18px; font-weight:800;" id="mdlPendingAmt">₹0</span>
+          </div>
+        </div>
+
+        <!-- Interactive Payment Section -->
+        <div class="pay-section" id="mdlPaySection">
+          <div class="pay-title">💳 Record Payment</div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Payment Amount (₹):</label>
+          <div class="amount-input-wrap">
+            <span class="amount-prefix">₹</span>
+            <input type="number" class="amount-input" id="mdlPayAmountInput" oninput="onBillPayAmountChange()">
+          </div>
+
+          <div class="quick-chips-row">
+            <button class="quick-chip" id="btnPayFullChip" onclick="setBillPayFull()">Pay Full</button>
+            <button class="quick-chip" id="btnPayHalfChip" onclick="setBillPayHalf()">50%</button>
+          </div>
+
+          <!-- Dynamic Remark Feedback -->
+          <div class="remark-box" id="mdlDynamicRemark">
+            <!-- Populated via JS -->
+          </div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Payment Mode:</label>
+          <div class="mode-pills-row">
+            <button type="button" class="mode-pill active" onclick="setPayMode('Bank Transfer', this)">Bank Transfer</button>
+            <button type="button" class="mode-pill" onclick="setPayMode('UPI', this)">UPI</button>
+            <button type="button" class="mode-pill" onclick="setPayMode('Cash', this)">Cash</button>
+          </div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Reference / UTR / Cheque # (Optional):</label>
+          <input type="text" class="input-text" id="mdlPayRef" placeholder="e.g. UTR1234, Cheque 501">
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Paid By:</label>
+          <input type="text" class="input-text" id="mdlPaidBy" value="Admin (Jaijeet sir)">
+
+          <button class="btn-submit-pay" id="btnSubmitBillPay" onclick="submitBillPayment()">
+            💳 Record Payment
+          </button>
+        </div>
+
+        <div id="mdlClearedNotice" style="display:none; background:var(--green-bg); border:1px solid var(--green); border-radius:var(--radius-sm); padding:14px; text-align:center;">
+          <div style="font-size:14px; font-weight:800; color:var(--green);">✓ BILL FULLY SETTLED</div>
+          <div style="font-size:12px; color:var(--text); margin-top:2px;">This bill has zero pending dues and is archived in History.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: PARTY LUMP-SUM PAYMENT              -->
+  <!-- ========================================== -->
+  <div class="modal-backdrop" id="partyModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title" id="partyModalTitle">Pay Party Balance</div>
+        <button class="close-btn" onclick="closeModal('partyModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="summary-box">
+          <div class="summary-row">
+            <span class="summary-lbl">Vendor Name:</span>
+            <span class="summary-val" id="partyMdlName">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Vendor Phone:</span>
+            <span class="summary-val" id="partyMdlPhone">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl">Pending Bills Count:</span>
+            <span class="summary-val" id="partyMdlBillsCount">-</span>
+          </div>
+          <div class="summary-row">
+            <span class="summary-lbl" style="font-weight:700; color:var(--red);">Entire Party Due:</span>
+            <span class="summary-val" style="color:var(--red); font-size:19px; font-weight:800;" id="partyMdlDue">₹0</span>
+          </div>
+        </div>
+
+        <div class="pay-section">
+          <div class="pay-title">💳 Record Party Lump-Sum Payment</div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Payment Amount (₹):</label>
+          <div class="amount-input-wrap">
+            <span class="amount-prefix">₹</span>
+            <input type="number" class="amount-input" id="partyPayAmountInput" oninput="onPartyPayAmountChange()">
+          </div>
+
+          <div class="quick-chips-row">
+            <button class="quick-chip" onclick="setPartyPayFull()">Pay Entire Due</button>
+          </div>
+
+          <div class="remark-box" id="partyDynamicRemark"></div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Payment Mode:</label>
+          <div class="mode-pills-row">
+            <button type="button" class="mode-pill active" onclick="setPartyPayMode('Bank Transfer', this)">Bank Transfer</button>
+            <button type="button" class="mode-pill" onclick="setPartyPayMode('UPI', this)">UPI</button>
+            <button type="button" class="mode-pill" onclick="setPartyPayMode('Cash', this)">Cash</button>
+          </div>
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Reference / Cheque # (Optional):</label>
+          <input type="text" class="input-text" id="partyPayRef" placeholder="e.g. UTR / Cheque Ref">
+
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Paid By:</label>
+          <input type="text" class="input-text" id="partyPaidBy" value="Admin (Jaijeet sir)">
+
+          <button class="btn-submit-pay" id="btnSubmitPartyPay" onclick="submitPartyPayment()">
+            💳 Confirm Party Payment
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT VENDOR -->
+  <div class="modal-backdrop" id="vendorModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title" id="vendorModalTitle">👥 Vendor</div>
+        <button class="close-btn" onclick="closeModal('vendorModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editVendorId">
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Vendor / Party Name *</label>
+          <input type="text" class="input-text" id="vendorNameInput" placeholder="e.g. Raj Dairy">
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Mobile Number (10 digits)</label>
+          <input type="tel" class="input-text" id="vendorMobileInput" maxlength="10" placeholder="10-digit number" oninput="validateMobileInput(this)">
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink);">Address / City</label>
+          <input type="text" class="input-text" id="vendorAddressInput" placeholder="Market Road, Solapur">
+        </div>
+        <button class="btn-submit-pay" onclick="saveVendor()">💾 Save Vendor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-box" id="toastBox">
+    <span id="toastIcon">✓</span>
+    <span id="toastMsg">Operation successful</span>
+  </div>
+
+  <script>
+    // SUPABASE CLIENT SETUP
+    const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+
+    let _supabase = null;
+    try {
+      if (typeof supabase !== 'undefined' && supabase.createClient) {
+        _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.warn('Supabase init warning:', e);
+    }
+
+    // STATE
+    let allBills = [];
+    let allVendors = [];
+    let currentStoreSubTab = 'current'; // 'current' | 'history'
+    let currentDueView = 'party'; // 'party' | 'bill'
+    let expandedParties = {};
+    let activeBill = null;
+    let activeParty = null;
+    let activeBillPayMode = 'Bank Transfer';
+    let activePartyPayMode = 'Bank Transfer';
+
+    function formatIndianNumber(x) {
+      if (!x || isNaN(x)) return '0';
+      const parts = x.toString().split('.');
+      let lastThree = parts[0].substring(parts[0].length - 3);
+      const otherNumbers = parts[0].substring(0, parts[0].length - 3);
+      if (otherNumbers !== '') lastThree = ',' + lastThree;
+      const res = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + lastThree;
+      return parts.length > 1 ? res + '.' + parts[1] : res;
+    }
+
+    function validateMobileInput(el) {
+      el.value = el.value.replace(/[^0-9]/g, '').slice(0, 10);
+    }
+
+    // DATA SYNC
+    async function fetchData() {
+      if (!_supabase) return;
+
+      try {
+        const [vRes, bRes] = await Promise.all([
+          _supabase.from('store_vendors').select('*').order('name', { ascending: true }),
+          _supabase.from('store_bills').select('*').order('created_at', { ascending: false })
+        ]);
+
+        if (vRes.data) {
+          allVendors = vRes.data;
+          document.getElementById('badgeVendorsCount').textContent = allVendors.length;
+          renderVendorsFeed();
+        }
+
+        if (bRes.data) {
+          allBills = bRes.data;
+          updateCountersAndKPIs();
+          renderCurrentSubTab();
+        }
+
+        showToast('Data synced live');
+      } catch (err) {
+        console.error('Fetch error:', err);
+        showToast('Error syncing data', false);
+      }
+    }
+
+    function updateCountersAndKPIs() {
+      const liveBills = allBills.filter(b => (b.status || '').toUpperCase() !== 'FULL' && (parseFloat(b.pending_amount) || 0) > 0);
+      const histBills = allBills.filter(b => (b.status || '').toUpperCase() === 'FULL' || (parseFloat(b.pending_amount) || 0) === 0);
+
+      document.getElementById('badgeStoreCount').textContent = liveBills.length;
+      document.getElementById('badgeCurrentCount').textContent = liveBills.length;
+      document.getElementById('badgeHistoryCount').textContent = histBills.length;
+
+      const totalPending = liveBills.reduce((acc, b) => acc + (parseFloat(b.pending_amount) || 0), 0);
+      const totalCleared = histBills.reduce((acc, b) => acc + (parseFloat(b.total_amount) || 0), 0);
+      const uniqueParties = new Set(liveBills.map(b => b.vendor_id)).size;
+
+      document.getElementById('kpiTotalDue').textContent = '₹' + formatIndianNumber(totalPending);
+      document.getElementById('kpiPendingCount').textContent = liveBills.length;
+      document.getElementById('kpiPartiesCount').textContent = uniqueParties;
+
+      document.getElementById('kpiHistoryCleared').textContent = '₹' + formatIndianNumber(totalCleared);
+      document.getElementById('kpiHistoryCount').textContent = histBills.length;
+    }
+
+    // TAB SWITCHING
+    function switchNavTab(tab) {
+      document.getElementById('tabStoreBtn').classList.toggle('active', tab === 'store');
+      document.getElementById('tabVendorsBtn').classList.toggle('active', tab === 'vendors');
+      document.getElementById('sectionStore').style.display = tab === 'store' ? 'flex' : 'none';
+      document.getElementById('sectionVendors').style.display = tab === 'vendors' ? 'flex' : 'none';
+    }
+
+    function switchStoreSubTab(sub) {
+      currentStoreSubTab = sub;
+      document.getElementById('subTabCurrentBtn').classList.toggle('active', sub === 'current');
+      document.getElementById('subTabHistoryBtn').classList.toggle('active', sub === 'history');
+      document.getElementById('subViewCurrent').style.display = sub === 'current' ? 'flex' : 'none';
+      document.getElementById('subViewHistory').style.display = sub === 'history' ? 'flex' : 'none';
+      renderCurrentSubTab();
+    }
+
+    function switchDueView(v) {
+      currentDueView = v;
+      document.getElementById('btnViewParty').classList.toggle('active', v === 'party');
+      document.getElementById('btnViewBill').classList.toggle('active', v === 'bill');
+      document.getElementById('partyWiseFeed').style.display = v === 'party' ? 'flex' : 'none';
+      document.getElementById('billWiseFeed').style.display = v === 'bill' ? 'flex' : 'none';
+      renderCurrentSubTab();
+    }
+
+    // RENDERING
+    function renderCurrentSubTab() {
+      const q = (document.getElementById('storeSearchInput').value || '').trim().toLowerCase();
+
+      if (currentStoreSubTab === 'current') {
+        const liveBills = allBills.filter(b => (b.status || '').toUpperCase() !== 'FULL' && (parseFloat(b.pending_amount) || 0) > 0);
+        
+        if (currentDueView === 'party') {
+          renderPartyWiseDue(liveBills, q);
+        } else {
+          renderBillWiseDue(liveBills, q);
+        }
+      } else {
+        const histBills = allBills.filter(b => (b.status || '').toUpperCase() === 'FULL' || (parseFloat(b.pending_amount) || 0) === 0);
+        renderHistoryBills(histBills, q);
+      }
+    }
+
+    function renderPartyWiseDue(bills, q) {
+      const container = document.getElementById('partyWiseFeed');
+      const partyMap = {};
+
+      bills.forEach(b => {
+        if (!partyMap[b.vendor_id]) {
+          const v = allVendors.find(x => x.id === b.vendor_id);
+          partyMap[b.vendor_id] = {
+            vendor_id: b.vendor_id,
+            name: v ? v.name : `Vendor #${b.vendor_id}`,
+            mobile: v ? v.mobile : '',
+            total_amount: 0,
+            total_paid: 0,
+            total_pending: 0,
+            bills: []
+          };
+        }
+        partyMap[b.vendor_id].total_amount += (parseFloat(b.total_amount) || 0);
+        partyMap[b.vendor_id].total_paid += (parseFloat(b.paid_amount) || 0);
+        partyMap[b.vendor_id].total_pending += (parseFloat(b.pending_amount) || 0);
+        partyMap[b.vendor_id].bills.push(b);
+      });
+
+      let parties = Object.values(partyMap);
+      if (q) {
+        parties = parties.filter(p => p.name.toLowerCase().includes(q) || (p.mobile || '').includes(q));
+      }
+
+      if (!parties.length) {
+        container.innerHTML = '<div class="empty-state">🎉 No outstanding party dues! All bills cleared.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      parties.forEach(p => {
+        const isExp = !!expandedParties[p.vendor_id];
+        const card = document.createElement('div');
+        card.className = 'party-card';
+        card.innerHTML = `
+          <div class="party-head">
+            <div>
+              <div class="party-name">${p.name}</div>
+              ${p.mobile ? `<a href="tel:${p.mobile}" class="party-phone">📞 ${p.mobile}</a>` : ''}
+            </div>
+            <div class="party-due-col">
+              <div class="party-due-label">ENTIRE DUE</div>
+              <div class="party-due-val">₹${formatIndianNumber(p.total_pending)}</div>
+            </div>
+          </div>
+
+          <div class="party-meta-row">
+            <span>Billed: <b>₹${formatIndianNumber(p.total_amount)}</b></span>
+            <span>Paid: <b style="color:var(--green);">₹${formatIndianNumber(p.total_paid)}</b></span>
+            <span>Bills: <b>${p.bills.length}</b></span>
+          </div>
+
+          <div class="party-actions">
+            <button class="btn-pay-party" onclick="openPartyModal(${p.vendor_id})">💳 Pay Party Balance</button>
+            <button class="btn-view-bills" onclick="togglePartyExpand(${p.vendor_id})">
+              ${isExp ? '▲ Hide Bills' : `▼ View Bills (${p.bills.length})`}
+            </button>
+          </div>
+
+          ${isExp ? `
+            <div class="party-bills-box">
+              ${p.bills.map(b => `
+                <div class="party-bill-row" onclick="openBillModal(${b.id})">
+                  <div>
+                    <div style="font-weight:700; color:var(--ink); font-size:13px;">${b.bill_number ? '#' + b.bill_number : 'ID #' + b.id}</div>
+                    <div style="font-size:11px; color:var(--text-muted);">${b.bill_date || 'N/A'} • ${b.payment_mode || 'Bank'}</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-weight:800; color:var(--red); font-size:14px;">₹${formatIndianNumber(b.pending_amount)}</div>
+                    <div style="font-size:11px; color:var(--brass); font-weight:700;">Pay ➔</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function togglePartyExpand(vId) {
+      expandedParties[vId] = !expandedParties[vId];
+      renderCurrentSubTab();
+    }
+
+    function renderBillWiseDue(bills, q) {
+      const container = document.getElementById('billWiseFeed');
+      let filtered = bills;
+      if (q) {
+        filtered = bills.filter(b => {
+          const v = allVendors.find(x => x.id === b.vendor_id);
+          const vName = v ? v.name.toLowerCase() : '';
+          const bNum = (b.bill_number || '').toLowerCase();
+          return vName.includes(q) || bNum.includes(q);
+        });
+      }
+
+      if (!filtered.length) {
+        container.innerHTML = '<div class="empty-state">🎉 No pending bills! All cleared.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      filtered.forEach(b => {
+        const v = allVendors.find(x => x.id === b.vendor_id);
+        const card = document.createElement('div');
+        card.className = 'bill-card';
+        card.onclick = () => openBillModal(b.id);
+        card.innerHTML = `
+          <div class="bill-head">
+            <div>
+              <div class="bill-vendor-title">${v ? v.name : 'Store Vendor'}</div>
+              <div class="bill-sub-meta">${b.bill_number ? 'Bill #' + b.bill_number : 'ID #' + b.id} • ${b.bill_date || 'N/A'}</div>
+            </div>
+            <div class="bill-due-col">
+              <div class="bill-due-label">PENDING DUE</div>
+              <div class="bill-due-amount">₹${formatIndianNumber(b.pending_amount)}</div>
+            </div>
+          </div>
+
+          <div class="bill-breakdown-row">
+            <span>Total: ₹${formatIndianNumber(b.total_amount)}</span>
+            <span>Paid: ₹${formatIndianNumber(b.paid_amount || 0)}</span>
+            <span>Mode: ${b.payment_mode || 'Bank'}</span>
+          </div>
+
+          <div class="bill-badges-row">
+            <div class="badges-group">
+              <span class="badge ${b.status === 'PARTLY' ? 'badge-partly' : 'badge-pending'}">
+                ${b.status === 'PARTLY' ? 'PARTLY PAID' : 'PENDING'}
+              </span>
+              <span class="badge ${b.has_gst ? 'badge-gst' : 'badge-no-gst'}">
+                ${b.has_gst ? 'GST' : 'NO GST'}
+              </span>
+            </div>
+            <span style="color:var(--brass); font-size:12px; font-weight:700;">View & Pay ➔</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderHistoryBills(bills, q) {
+      const container = document.getElementById('historyFeed');
+      let filtered = bills;
+      if (q) {
+        filtered = bills.filter(b => {
+          const v = allVendors.find(x => x.id === b.vendor_id);
+          const vName = v ? v.name.toLowerCase() : '';
+          const bNum = (b.bill_number || '').toLowerCase();
+          return vName.includes(q) || bNum.includes(q);
+        });
+      }
+
+      if (!filtered.length) {
+        container.innerHTML = '<div class="empty-state">No paid bills recorded yet.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      filtered.forEach(b => {
+        const v = allVendors.find(x => x.id === b.vendor_id);
+        const card = document.createElement('div');
+        card.className = 'bill-card';
+        card.onclick = () => openBillModal(b.id);
+        card.innerHTML = `
+          <div class="bill-head">
+            <div>
+              <div class="bill-vendor-title">${v ? v.name : 'Store Vendor'}</div>
+              <div class="bill-sub-meta">${b.bill_number ? 'Bill #' + b.bill_number : 'ID #' + b.id} • ${b.bill_date || 'N/A'}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:16px; font-weight:800; color:var(--green);">₹${formatIndianNumber(b.total_amount)}</div>
+              <span class="badge badge-full" style="margin-top:2px;">✓ FULLY PAID</span>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); margin-top:4px;">
+            <span>Mode: ${b.payment_mode || 'Bank Transfer'} • Settled</span>
+            <span style="color:var(--brass); font-weight:600;">Details ➔</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderVendorsFeed() {
+      const container = document.getElementById('vendorsFeed');
+      const q = (document.getElementById('vendorSearchInput').value || '').trim().toLowerCase();
+      let filtered = allVendors;
+      if (q) {
+        filtered = allVendors.filter(v => v.name.toLowerCase().includes(q) || (v.mobile || '').includes(q));
+      }
+
+      if (!filtered.length) {
+        container.innerHTML = '<div class="empty-state">No registered vendors found.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      filtered.forEach(v => {
+        const vendorBills = allBills.filter(b => b.vendor_id === v.id);
+        const pending = vendorBills.filter(b => (b.status || '').toUpperCase() !== 'FULL').reduce((a, b) => a + (parseFloat(b.pending_amount) || 0), 0);
+        const card = document.createElement('div');
+        card.className = 'party-card';
+        card.innerHTML = `
+          <div class="party-head">
+            <div>
+              <div class="party-name">${v.name}</div>
+              ${v.mobile ? `<a href="tel:${v.mobile}" class="party-phone">📞 ${v.mobile}</a>` : ''}
+              <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${v.address || 'Solapur'}</div>
+            </div>
+            <div class="party-due-col">
+              <div class="party-due-label">DUE BALANCE</div>
+              <div style="font-size:16px; font-weight:800; color:${pending > 0 ? 'var(--red)' : 'var(--green)'};">
+                ₹${formatIndianNumber(pending)}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <button style="flex:1; background:#fff; border:1px solid var(--border); padding:8px; border-radius:var(--radius-sm); font-weight:700; cursor:pointer;" onclick="openEditVendorModal(${v.id})">✏️ Edit</button>
+            <button style="background:var(--red-bg); border:1px solid var(--red); color:var(--red); padding:8px 12px; border-radius:var(--radius-sm); font-weight:700; cursor:pointer;" onclick="deleteVendor(${v.id})">🗑️ Delete</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // BILL DETAILS & PAYMENT MODAL LOGIC
+    function openBillModal(billId) {
+      activeBill = allBills.find(b => b.id === billId);
+      if (!activeBill) return;
+
+      const v = allVendors.find(x => x.id === activeBill.vendor_id);
+      document.getElementById('modalBillTitle').textContent = activeBill.bill_number ? `Bill #${activeBill.bill_number}` : `Bill ID #${activeBill.id}`;
+      document.getElementById('mdlVendorName').textContent = v ? v.name : 'Store Vendor';
+      document.getElementById('mdlVendorPhone').textContent = v?.mobile ? '📞 ' + v.mobile : 'N/A';
+      document.getElementById('mdlBillDate').textContent = activeBill.bill_date || 'N/A';
+      document.getElementById('mdlGstStatus').textContent = activeBill.has_gst ? 'With GST' : 'Without GST';
+      document.getElementById('mdlPreferredMode').textContent = activeBill.payment_mode || 'Bank Transfer';
+
+      if (activeBill.notes) {
+        document.getElementById('mdlNotesRow').style.display = 'flex';
+        document.getElementById('mdlNotes').textContent = activeBill.notes;
+      } else {
+        document.getElementById('mdlNotesRow').style.display = 'none';
+      }
+
+      document.getElementById('mdlTotalAmt').textContent = '₹' + formatIndianNumber(activeBill.total_amount);
+      document.getElementById('mdlPaidAmt').textContent = '₹' + formatIndianNumber(activeBill.paid_amount || 0);
+      document.getElementById('mdlPendingAmt').textContent = '₹' + formatIndianNumber(activeBill.pending_amount || 0);
+
+      const pend = parseFloat(activeBill.pending_amount) || 0;
+      if (pend > 0) {
+        document.getElementById('mdlPaySection').style.display = 'flex';
+        document.getElementById('mdlClearedNotice').style.display = 'none';
+        document.getElementById('mdlPayAmountInput').value = pend;
+        activeBillPayMode = activeBill.payment_mode || 'Bank Transfer';
+        document.querySelectorAll('#mdlPaySection .mode-pill').forEach(b => {
+          b.classList.toggle('active', b.textContent === activeBillPayMode);
+        });
+        onBillPayAmountChange();
+      } else {
+        document.getElementById('mdlPaySection').style.display = 'none';
+        document.getElementById('mdlClearedNotice').style.display = 'block';
+      }
+
+      document.getElementById('billModal').classList.add('show');
+    }
+
+    function setBillPayFull() {
+      if (!activeBill) return;
+      document.getElementById('mdlPayAmountInput').value = activeBill.pending_amount || 0;
+      onBillPayAmountChange();
+    }
+
+    function setBillPayHalf() {
+      if (!activeBill) return;
+      document.getElementById('mdlPayAmountInput').value = Math.round((parseFloat(activeBill.pending_amount) || 0) / 2);
+      onBillPayAmountChange();
+    }
+
+    function setPayMode(m, btn) {
+      activeBillPayMode = m;
+      document.querySelectorAll('#mdlPaySection .mode-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function onBillPayAmountChange() {
+      if (!activeBill) return;
+      const amt = parseFloat(document.getElementById('mdlPayAmountInput').value) || 0;
+      const actualPending = parseFloat(activeBill.pending_amount) || 0;
+      const remarkBox = document.getElementById('mdlDynamicRemark');
+      const submitBtn = document.getElementById('btnSubmitBillPay');
+
+      if (amt <= 0) {
+        remarkBox.style.display = 'none';
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.6';
+        return;
+      }
+
+      remarkBox.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+
+      if (amt < actualPending) {
+        remarkBox.className = 'remark-box remark-partly';
+        const rem = actualPending - amt;
+        remarkBox.innerHTML = `<b>⚠️ PARTIAL PAYMENT (PARTLY)</b><br>Entered amount is less than actual due. Status will be marked as <b>PARTLY</b>. Remaining balance after payment: <b>₹${formatIndianNumber(rem)}</b>.`;
+        submitBtn.textContent = `Record Partial Payment (₹${formatIndianNumber(amt)})`;
+      } else {
+        remarkBox.className = 'remark-box remark-full';
+        remarkBox.innerHTML = `<b>✓ FULL SETTLEMENT (FULL)</b><br>Entered amount clears the bill in full. Status will be marked as <b>FULL</b> and moved to History.`;
+        submitBtn.textContent = `Clear Bill & Mark FULL (₹${formatIndianNumber(amt)})`;
+      }
+    }
+
+    async function submitBillPayment() {
+      if (!activeBill || !_supabase) return;
+      const amt = parseFloat(document.getElementById('mdlPayAmountInput').value) || 0;
+      if (amt <= 0) {
+        alert('Please enter a valid payment amount');
+        return;
+      }
+
+      const refNo = document.getElementById('mdlPayRef').value.trim();
+      const paidBy = document.getElementById('mdlPaidBy').value.trim() || 'Admin (Jaijeet sir)';
+      const actualTotal = parseFloat(activeBill.total_amount) || 0;
+      const prevPaid = parseFloat(activeBill.paid_amount) || 0;
+
+      const newPaid = Math.round((prevPaid + amt) * 100) / 100;
+      const newPending = Math.max(0, Math.round((actualTotal - newPaid) * 100) / 100);
+      const newStatus = (newPending === 0) ? 'FULL' : 'PARTLY';
+
+      try {
+        // 1. Insert into store_vendor_payments
+        await _supabase.from('store_vendor_payments').insert([{
+          bill_id: activeBill.id,
+          vendor_id: activeBill.vendor_id,
+          payment_amount: amt,
+          payment_mode: activeBillPayMode,
+          reference_no: refNo,
+          paid_by: paidBy
+        }]);
+
+        // 2. Update store_bills
+        await _supabase.from('store_bills').update({
+          paid_amount: newPaid,
+          pending_amount: newPending,
+          status: newStatus
+        }).eq('id', activeBill.id);
+
+        closeModal('billModal');
+        showToast(newStatus === 'FULL' ? '✓ Bill cleared & moved to History' : `✓ Partial payment of ₹${amt} recorded`);
+        await fetchData();
+      } catch (err) {
+        console.error('Payment error:', err);
+        showToast('Payment recording failed', false);
+      }
+    }
+
+    // PARTY LUMP-SUM PAYMENT LOGIC
+    function openPartyModal(vId) {
+      const v = allVendors.find(x => x.id === vId);
+      const bills = allBills.filter(b => b.vendor_id === vId && (b.status || '').toUpperCase() !== 'FULL');
+      const totalDue = bills.reduce((acc, b) => acc + (parseFloat(b.pending_amount) || 0), 0);
+
+      activeParty = {
+        vendor_id: vId,
+        name: v ? v.name : `Vendor #${vId}`,
+        mobile: v ? v.mobile : '',
+        totalDue: totalDue,
+        bills: bills
+      };
+
+      document.getElementById('partyMdlName').textContent = activeParty.name;
+      document.getElementById('partyMdlPhone').textContent = activeParty.mobile ? '📞 ' + activeParty.mobile : 'N/A';
+      document.getElementById('partyMdlBillsCount').textContent = bills.length + ' bills';
+      document.getElementById('partyMdlDue').textContent = '₹' + formatIndianNumber(totalDue);
+      document.getElementById('partyPayAmountInput').value = totalDue;
+
+      activePartyPayMode = 'Bank Transfer';
+      document.querySelectorAll('#partyModal .mode-pill').forEach(b => {
+        b.classList.toggle('active', b.textContent === 'Bank Transfer');
+      });
+
+      onPartyPayAmountChange();
+      document.getElementById('partyModal').classList.add('show');
+    }
+
+    function setPartyPayFull() {
+      if (!activeParty) return;
+      document.getElementById('partyPayAmountInput').value = activeParty.totalDue;
+      onPartyPayAmountChange();
+    }
+
+    function setPartyPayMode(m, btn) {
+      activePartyPayMode = m;
+      document.querySelectorAll('#partyModal .mode-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function onPartyPayAmountChange() {
+      if (!activeParty) return;
+      const amt = parseFloat(document.getElementById('partyPayAmountInput').value) || 0;
+      const remarkBox = document.getElementById('partyDynamicRemark');
+
+      if (amt <= 0) {
+        remarkBox.style.display = 'none';
+        return;
+      }
+
+      remarkBox.style.display = 'block';
+      if (amt < activeParty.totalDue) {
+        remarkBox.className = 'remark-box remark-partly';
+        const rem = activeParty.totalDue - amt;
+        remarkBox.innerHTML = `<b>⚠️ PARTIAL PARTY ALLOCATION</b><br>Payment of ₹${formatIndianNumber(amt)} will be applied sequentially across oldest bills. Remaining party balance: <b>₹${formatIndianNumber(rem)}</b>.`;
+      } else {
+        remarkBox.className = 'remark-box remark-full';
+        remarkBox.innerHTML = `<b>✓ ENTIRE PARTY CLEARANCE</b><br>All outstanding bills for <b>${activeParty.name}</b> will be marked as FULL and moved to History.`;
+      }
+    }
+
+    async function submitPartyPayment() {
+      if (!activeParty || !_supabase) return;
+      const amt = parseFloat(document.getElementById('partyPayAmountInput').value) || 0;
+      if (amt <= 0) {
+        alert('Please enter a valid payment amount');
+        return;
+      }
+
+      const refNo = document.getElementById('partyPayRef').value.trim();
+      const paidBy = document.getElementById('partyPaidBy').value.trim() || 'Admin (Jaijeet sir)';
+
+      try {
+        let rem = amt;
+        // Allocate oldest first
+        const sorted = [...activeParty.bills].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        for (const b of sorted) {
+          if (rem <= 0) break;
+          const curPend = parseFloat(b.pending_amount) || 0;
+          const curPaid = parseFloat(b.paid_amount) || 0;
+          const curTot = parseFloat(b.total_amount) || 0;
+          const payThis = Math.min(curPend, rem);
+
+          const newPaid = Math.round((curPaid + payThis) * 100) / 100;
+          const newPend = Math.max(0, Math.round((curTot - newPaid) * 100) / 100);
+          const newSt = (newPend === 0) ? 'FULL' : 'PARTLY';
+
+          await _supabase.from('store_bills').update({
+            paid_amount: newPaid,
+            pending_amount: newPend,
+            status: newSt
+          }).eq('id', b.id);
+
+          rem = Math.round((rem - payThis) * 100) / 100;
+        }
+
+        // Insert payment log
+        await _supabase.from('store_vendor_payments').insert([{
+          vendor_id: activeParty.vendor_id,
+          payment_amount: amt,
+          payment_mode: activePartyPayMode,
+          reference_no: refNo,
+          paid_by: paidBy
+        }]);
+
+        closeModal('partyModal');
+        showToast('Party payment recorded successfully');
+        await fetchData();
+      } catch (err) {
+        console.error('Party payment error:', err);
+        showToast('Failed to record party payment', false);
+      }
+    }
+
+    // VENDOR CRUD
+    function openAddVendorModal() {
+      document.getElementById('vendorModalTitle').textContent = '👥 Add New Vendor';
+      document.getElementById('editVendorId').value = '';
+      document.getElementById('vendorNameInput').value = '';
+      document.getElementById('vendorMobileInput').value = '';
+      document.getElementById('vendorAddressInput').value = '';
+      document.getElementById('vendorModal').classList.add('show');
+    }
+
+    function openEditVendorModal(vId) {
+      const v = allVendors.find(x => x.id === vId);
+      if (!v) return;
+      document.getElementById('vendorModalTitle').textContent = '✏️ Edit Vendor';
+      document.getElementById('editVendorId').value = v.id;
+      document.getElementById('vendorNameInput').value = v.name;
+      document.getElementById('vendorMobileInput').value = v.mobile || '';
+      document.getElementById('vendorAddressInput').value = v.address || '';
+      document.getElementById('vendorModal').classList.add('show');
+    }
+
+    async function saveVendor() {
+      if (!_supabase) return;
+      const vId = document.getElementById('editVendorId').value;
+      const name = document.getElementById('vendorNameInput').value.trim();
+      const mobile = document.getElementById('vendorMobileInput').value.trim();
+      const address = document.getElementById('vendorAddressInput').value.trim();
+
+      if (!name) {
+        alert('Please enter Vendor / Party Name');
+        return;
+      }
+
+      if (mobile && mobile.length !== 10) {
+        alert('Please enter a valid 10-digit mobile number');
+        return;
+      }
+
+      try {
+        if (vId) {
+          await _supabase.from('store_vendors').update({ name, mobile, address }).eq('id', vId);
+          showToast('Vendor updated');
+        } else {
+          await _supabase.from('store_vendors').insert([{ name, mobile, address }]);
+          showToast('Vendor added');
+        }
+        closeModal('vendorModal');
+        await fetchData();
+      } catch (err) {
+        console.error('Save vendor error:', err);
+        showToast('Error saving vendor', false);
+      }
+    }
+
+    async function deleteVendor(vId) {
+      if (!_supabase) return;
+      const count = allBills.filter(b => b.vendor_id === vId).length;
+      if (count > 0) {
+        alert(`Cannot delete vendor because ${count} store bills are linked.`);
+        return;
+      }
+      if (!confirm('Are you sure you want to delete this vendor?')) return;
+
+      try {
+        await _supabase.from('store_vendors').delete().eq('id', vId);
+        showToast('Vendor deleted');
+        await fetchData();
+      } catch (err) {
+        console.error('Delete vendor error:', err);
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    function showToast(msg, isSuccess = true) {
+      const box = document.getElementById('toastBox');
+      document.getElementById('toastIcon').textContent = isSuccess ? '✓' : '⚠️';
+      document.getElementById('toastMsg').textContent = msg;
+      box.classList.add('show');
+      setTimeout(() => box.classList.remove('show'), 2300);
+    }
+
+    // Auto-fetch on boot
+    window.addEventListener('DOMContentLoaded', () => {
+      fetchData();
+      setInterval(fetchData, 20000);
+    });
+  </script>
+</body>
+</html>

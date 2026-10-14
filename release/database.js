@@ -596,12 +596,20 @@ db.exec(`
     gst_amount REAL NOT NULL,
     total_amount REAL NOT NULL,
     created_by TEXT,
+    added_by TEXT,
+    category TEXT,
+    notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_booking_extra_expenses_booking_id ON booking_extra_expenses(booking_id);
   CREATE INDEX IF NOT EXISTS idx_booking_extra_expenses_room_id ON booking_extra_expenses(room_id);
 `);
+
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN added_by TEXT;"); } catch (_) {}
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN category TEXT;"); } catch (_) {}
+try { db.exec("ALTER TABLE booking_extra_expenses ADD COLUMN notes TEXT;"); } catch (_) {}
+
 
 // Staff Accounts Table for Role-Based Access & Cashier Auditing
 db.exec(`
@@ -1331,9 +1339,101 @@ const migrateSplitPaymentsToIndividualLedgers = (dbInstance) => {
 
 migrateSplitPaymentsToIndividualLedgers(db);
 
+function ensureStoreTables(database) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS store_vendors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        mobile TEXT NOT NULL,
+        address TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS store_bills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vendor_id INTEGER NOT NULL,
+        bill_number TEXT,
+        bill_date DATE DEFAULT (DATE('now', 'localtime')),
+        total_amount REAL NOT NULL,
+        paid_amount REAL DEFAULT 0,
+        pending_amount REAL NOT NULL,
+        status TEXT DEFAULT 'PENDING',
+        payment_mode TEXT DEFAULT 'Bank Transfer',
+        has_gst INTEGER DEFAULT 1,
+        gst_remark TEXT DEFAULT '',
+        bill_photo TEXT,
+        notes TEXT,
+        created_by TEXT DEFAULT 'Store Boy',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (vendor_id) REFERENCES store_vendors(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS store_bill_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bill_id INTEGER NOT NULL,
+        item_name TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT NOT NULL,
+        rate REAL DEFAULT 0,
+        total_price REAL NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (bill_id) REFERENCES store_bills(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS store_vendor_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bill_id INTEGER,
+        vendor_id INTEGER NOT NULL,
+        payment_amount REAL NOT NULL,
+        payment_mode TEXT NOT NULL,
+        reference_no TEXT,
+        paid_by TEXT DEFAULT 'Admin (Jaijeet sir)',
+        paid_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (bill_id) REFERENCES store_bills(id) ON DELETE SET NULL,
+        FOREIGN KEY (vendor_id) REFERENCES store_vendors(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS owner_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        type TEXT DEFAULT 'store_bill',
+        deep_link TEXT,
+        metadata TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS owner_push_tokens (
+        token TEXT PRIMARY KEY,
+        device_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_used DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const billCols = database.prepare("PRAGMA table_info(store_bills)").all().map(c => c.name);
+    if (!billCols.includes('payment_mode')) {
+      database.exec("ALTER TABLE store_bills ADD COLUMN payment_mode TEXT DEFAULT 'Bank Transfer'");
+    }
+    if (!billCols.includes('has_gst')) {
+      database.exec("ALTER TABLE store_bills ADD COLUMN has_gst INTEGER DEFAULT 1");
+    }
+    if (!billCols.includes('gst_remark')) {
+      database.exec("ALTER TABLE store_bills ADD COLUMN gst_remark TEXT DEFAULT ''");
+    }
+  } catch (err) {
+    console.warn('Notice ensuring store tables and columns:', err.message);
+  }
+}
+
+ensureStoreTables(db);
+
 db.DEFAULT_ROOMS_CATALOG = DEFAULT_ROOMS_CATALOG;
 db.seedDefaultRooms = seedDefaultRooms;
 db.migrateSplitPaymentsToIndividualLedgers = migrateSplitPaymentsToIndividualLedgers;
+db.ensureStoreTables = ensureStoreTables;
 
 module.exports = db;
 
