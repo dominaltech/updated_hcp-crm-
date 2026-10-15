@@ -46,88 +46,87 @@
     }
 
     /* Centered Minimal Header */
+    /* Centered Minimal Header */
     .top-header {
       background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      padding: 8px 12px 6px;
+      padding: 10px 14px 8px;
       position: sticky;
       top: 0;
       z-index: 40;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      gap: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+      width: 100%;
     }
 
     .brand-center {
       display: flex;
       align-items: center;
-      gap: 8px;
-    }
-
-    .brand-logo-icon {
-      font-size: 22px;
-    }
-
-    .brand-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--gold-dark);
-      letter-spacing: 0.8px;
-    }
-
-    /* Tabs */
-    .nav-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      justify-content: center;
       width: 100%;
-      max-width: 440px;
+    }
+
+    /* Modern Segmented Button Tabs */
+    .nav-tabs {
+      display: flex;
+      width: 100%;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 12px;
+      gap: 6px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
     }
 
     .tab-btn {
-      background: #f1f5f9;
-      border: 1px solid var(--border);
+      flex: 1;
+      background: transparent;
+      border: none;
       color: var(--text-muted);
-      padding: 9px 12px;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 9px;
+      font-size: 13.5px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
+      gap: 7px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .tab-btn.active {
-      background: var(--gold-light);
-      border-color: var(--gold);
-      color: var(--gold-dark);
-      box-shadow: 0 1px 3px rgba(179, 142, 93, 0.15);
+      background: #0f172a;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+      font-weight: 700;
     }
 
     .tab-count {
-      background: rgba(0, 0, 0, 0.08);
-      padding: 2px 7px;
-      border-radius: 10px;
+      background: #e2e8f0;
+      color: #475569;
+      padding: 2px 8px;
+      border-radius: 12px;
       font-size: 11px;
+      font-weight: 700;
+      transition: all 0.2s;
     }
 
     .tab-btn.active .tab-count {
-      background: var(--gold);
-      color: #fff;
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
     }
 
-    /* Main Container */
+    /* Main Container - Full Width Modern Layout */
     main {
-      padding: 14px 16px;
-      max-width: 480px;
+      padding: 10px 12px;
+      max-width: 100%;
       width: 100%;
-      margin: 0 auto;
+      margin: 0;
       flex: 1;
     }
 
@@ -880,7 +879,7 @@
   <!-- Minimal Centered Header -->
   <header class="top-header">
     <div class="brand-center">
-      <img src="hcp-logo-with-name-transparent.png" alt="Hotel City Park" style="height: 38px; max-width: 190px; object-fit: contain; display: block; margin: 0 auto;">
+      <img src="hcp-logo-with-name-transparent.png" alt="Hotel City Park" style="height: 52px; max-height: 56px; max-width: 250px; object-fit: contain; display: block; margin: 0 auto;">
     </div>
 
     <!-- Navigation Tabs -->
@@ -1923,8 +1922,28 @@
       document.getElementById('tabRecentBtn').classList.toggle('active', tab === 'recent');
       document.getElementById('tabAdd').classList.toggle('active', tab === 'add');
       document.getElementById('tabRecent').classList.toggle('active', tab === 'recent');
-      if (tab === 'recent') renderBillsList();
+      if (tab === 'recent') {
+        loadBills();
+        if (typeof currentRecentSubTab !== 'undefined' && currentRecentSubTab === 'party') {
+          renderPartyWiseList();
+        } else {
+          renderBillsList();
+        }
+      }
     }
+    window.switchTab = switchTab;
+
+    // Listen for notification messages or postMessage triggers
+    window.addEventListener('message', (event) => {
+      try {
+        const d = (typeof event.data === 'string') ? JSON.parse(event.data) : event.data;
+        if (d && (d.action === 'open_recent' || d.type === 'store_payment' || d.tab === 'recent')) {
+          switchTab('recent');
+        }
+      } catch (_) {
+        if (event.data === 'open_recent') switchTab('recent');
+      }
+    });
 
     function closeModal(id) {
       document.getElementById(id).classList.remove('show');

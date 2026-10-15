@@ -120,8 +120,15 @@ serve(async (req) => {
       const projectId = serviceAccount.project_id;
       const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
 
-      // Dispatch to FCM Topics (subscribers get heads-up notification even if killed)
-      const topics = ["hotel_admin", "store_bills"];
+      // Dispatch to relevant FCM Topic based on event type
+      let topics: string[] = ["hotel_admin"];
+      if (type === "store") {
+        topics = ["hotel_admin"];
+      } else if (type === "store_payment") {
+        topics = ["store_bills"];
+      } else {
+        topics = ["hotel_admin"];
+      }
       for (const topic of topics) {
         try {
           const fcmMessage = {

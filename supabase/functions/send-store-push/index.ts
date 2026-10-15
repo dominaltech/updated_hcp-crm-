@@ -104,27 +104,37 @@ serve(async (req) => {
     const accessToken = await getGoogleAccessToken(serviceAccount);
     const projectId = serviceAccount.project_id;
 
-    const vendorName = payload.vendor_name || 'Vendor';
-    const amount = payload.amount || '0';
-    const billNumber = payload.bill_number ? 'Bill #' + payload.bill_number : 'New Bill';
-    const paymentMode = payload.payment_mode || 'Bank Transfer';
-    const gstInfo = payload.has_gst ? 'With GST' : 'Without GST';
-    const billId = payload.bill_id ? String(payload.bill_id) : '';
+    const rec = payload.record || payload;
+    const vendorName = payload.vendor_name || rec.vendor_name || 'Vendor';
+    const rawAmt = payload.amount || rec.total_amount || rec.amount || '0';
+    const numAmt = parseFloat(String(rawAmt).replace(/,/g, '')) || 0;
+    const amount = numAmt > 0 ? numAmt.toLocaleString('en-IN') : String(rawAmt);
+    const billNumber = payload.bill_number ? ('Bill #' + payload.bill_number) : (rec.bill_number ? ('Bill #' + rec.bill_number) : 'New Bill');
+    const paymentMode = payload.payment_mode || (rec.notes?.match(/Mode:\s*([^|]+)/)?.[1]?.trim()) || 'Bank Transfer';
+    const gstInfo = payload.has_gst !== undefined ? (payload.has_gst ? 'With GST' : 'Without GST') : (rec.notes?.includes('With GST') ? 'With GST' : 'Without GST');
+    const billId = payload.bill_id ? String(payload.bill_id) : String(rec.id || '');
+
+    // TARGET TOPIC:
+    // New bill by Storeman -> target 'hotel_admin' (Admin APK rings)
+    // Payment by Admin -> target 'store_bills' (Storeman APK rings)
+    const isPayment = payload.type === 'store_payment' || Boolean(payload.title?.toLowerCase().includes('paid'));
+    const targetTopic = payload.topic || (isPayment ? "store_bills" : "hotel_admin");
 
     const title = payload.title || `📦 New Store Bill: ${vendorName}`;
     const body = payload.body || `${billNumber} for ₹${amount} (${paymentMode} • ${gstInfo})`;
 
     const fcmMessage = {
       message: {
-        topic: payload.topic || "store_bills",
+        topic: targetTopic,
         notification: {
           title: title,
           body: body,
         },
         data: {
           billId: billId,
-          url: billId ? ('?billId=' + billId) : '',
-          type: payload.type || 'store_bill',
+          url: isPayment ? '/recent' : '/(tabs)/store',
+          action: isPayment ? 'open_recent' : 'open_store',
+          type: payload.type || (isPayment ? 'store_payment' : 'store_bill'),
           ...(payload.data || {})
         },
         android: {
