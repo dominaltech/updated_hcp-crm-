@@ -4619,20 +4619,20 @@ export default function Step6Stay({
             >
               {/* 1. CURRENT BOOKING ROOM (PURPLE DASHBOARD CARD) */}
               <div
-                className="room-card"
+                className="modal-additional-room-card is-primary"
                 style={{
                   background: 'linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%)',
-                  border: '2.5px solid #8b5cf6',
+                  border: '2px solid #8b5cf6',
                   borderRadius: '14px',
-                  padding: '12px 10px 14px',
+                  padding: '14px 12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   textAlign: 'center',
                   position: 'relative',
-                  boxShadow: '0 6px 20px rgba(139, 92, 246, 0.22)',
-                  minHeight: '175px',
+                  boxShadow: '0 4px 16px rgba(139, 92, 246, 0.18)',
+                  minHeight: '185px',
                   boxSizing: 'border-box'
                 }}
               >
@@ -4649,35 +4649,33 @@ export default function Step6Stay({
                     borderRadius: '12px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.03em',
-                    boxShadow: '0 2px 5px rgba(139, 92, 246, 0.35)'
+                    boxShadow: '0 2px 4px rgba(139, 92, 246, 0.3)'
                   }}
                 >
                   Current Room
                 </div>
 
                 <div
-                  className="room-number-badge"
                   style={{
-                    fontSize: '2.1rem',
-                    fontWeight: 900,
+                    fontSize: '2rem',
+                    fontWeight: 950,
                     color: '#6b21a8',
                     lineHeight: 1,
                     letterSpacing: '-0.03em',
-                    marginTop: '16px'
+                    marginTop: '8px'
                   }}
                 >
                   {room.room_number}
                 </div>
 
                 <div
-                  className="status-pill"
                   style={{
                     background: '#ede9fe',
                     color: '#7c3aed',
                     border: '1px solid #c4b5fd',
                     padding: '2px 10px',
                     borderRadius: '14px',
-                    fontSize: '0.7rem',
+                    fontSize: '0.68rem',
                     fontWeight: 800,
                     textTransform: 'uppercase',
                     letterSpacing: '0.03em',
@@ -4693,7 +4691,6 @@ export default function Step6Stay({
 
                 {/* Capacity breakdown: (3+1) notation */}
                 <div
-                  className="room-capacity-pill"
                   style={{
                     fontSize: '0.72rem',
                     fontWeight: 800,
@@ -4715,7 +4712,7 @@ export default function Step6Stay({
 
                 <div
                   style={{
-                    marginTop: '8px',
+                    marginTop: '6px',
                     fontSize: '0.74rem',
                     fontWeight: 800,
                     color: '#6b21a8',
@@ -4737,20 +4734,20 @@ export default function Step6Stay({
                 return (
                   <div
                     key={ar.id}
-                    className="room-card"
+                    className="modal-additional-room-card is-added"
                     style={{
                       background: 'linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%)',
-                      border: '2.5px solid #a855f7',
+                      border: '2px solid #a855f7',
                       borderRadius: '14px',
-                      padding: '12px 10px 14px',
+                      padding: '14px 12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       textAlign: 'center',
                       position: 'relative',
-                      boxShadow: '0 6px 20px rgba(168, 85, 247, 0.18)',
-                      minHeight: '175px',
+                      boxShadow: '0 4px 16px rgba(168, 85, 247, 0.16)',
+                      minHeight: '185px',
                       boxSizing: 'border-box'
                     }}
                   >
@@ -4772,28 +4769,26 @@ export default function Step6Stay({
                     </div>
 
                     <div
-                      className="room-number-badge"
                       style={{
-                        fontSize: '2.1rem',
-                        fontWeight: 900,
+                        fontSize: '2rem',
+                        fontWeight: 950,
                         color: '#7e22ce',
                         lineHeight: 1,
                         letterSpacing: '-0.03em',
-                        marginTop: '16px'
+                        marginTop: '8px'
                       }}
                     >
                       {ar.room_number}
                     </div>
 
                     <div
-                      className="status-pill"
                       style={{
                         background: '#f3e8ff',
                         color: '#7e22ce',
                         border: '1px solid #e9d5ff',
                         padding: '2px 10px',
                         borderRadius: '14px',
-                        fontSize: '0.7rem',
+                        fontSize: '0.68rem',
                         fontWeight: 800,
                         marginTop: '4px'
                       }}
@@ -4806,7 +4801,6 @@ export default function Step6Stay({
                     </div>
 
                     <div
-                      className="room-capacity-pill"
                       style={{
                         fontSize: '0.72rem',
                         fontWeight: 800,
@@ -4829,12 +4823,12 @@ export default function Step6Stay({
                       type="button"
                       onClick={() => handleRemoveAdditionalRoom(ar.id)}
                       style={{
-                        marginTop: '8px',
+                        marginTop: '6px',
                         background: '#fee2e2',
                         color: '#dc2626',
                         border: '1px solid #fca5a5',
                         borderRadius: '8px',
-                        padding: '4px 12px',
+                        padding: '5px 12px',
                         fontSize: '0.76rem',
                         fontWeight: 800,
                         cursor: 'pointer',
@@ -4857,13 +4851,13 @@ export default function Step6Stay({
                 return (
                   <div
                     key={r.id}
-                    className="room-card status-ready"
+                    className="modal-additional-room-card is-ready"
                     onClick={() => handleSelectAdditionalRoom(r)}
                     style={{
-                      background: '#f2fbf4',
-                      border: '1.5px solid #86efac',
+                      background: 'linear-gradient(180deg, #f0fdf4 0%, #e8f9ed 100%)',
+                      border: '2px solid #86efac',
                       borderRadius: '14px',
-                      padding: '12px 10px 14px',
+                      padding: '14px 12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -4873,37 +4867,38 @@ export default function Step6Stay({
                       cursor: 'pointer',
                       transition: 'all 0.18s ease',
                       boxShadow: '0 4px 14px rgba(34, 197, 94, 0.1)',
-                      minHeight: '175px',
+                      minHeight: '185px',
                       boxSizing: 'border-box'
                     }}
                   >
                     <div
-                      className="status-pill ready"
                       style={{
                         position: 'absolute',
                         top: '8px',
                         right: '8px',
                         fontSize: '0.62rem',
-                        fontWeight: 800,
+                        fontWeight: 900,
                         padding: '2px 8px',
                         borderRadius: '12px',
-                        background: '#dcfce7',
-                        color: '#16a34a',
-                        border: '1px solid #bbf7d0'
+                        background: '#047857',
+                        color: '#ffffff',
+                        border: '1px solid #065f46',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.03em',
+                        boxShadow: '0 1px 3px rgba(4, 120, 87, 0.2)'
                       }}
                     >
                       Ready
                     </div>
 
                     <div
-                      className="room-number-badge"
                       style={{
-                        fontSize: '2.1rem',
-                        fontWeight: 900,
-                        color: '#1e293b',
+                        fontSize: '2rem',
+                        fontWeight: 950,
+                        color: '#064e3b',
                         lineHeight: 1,
                         letterSpacing: '-0.03em',
-                        marginTop: '16px'
+                        marginTop: '8px'
                       }}
                     >
                       {r.room_number}
@@ -4913,7 +4908,7 @@ export default function Step6Stay({
                       style={{
                         fontSize: '0.78rem',
                         fontWeight: 750,
-                        color: '#64748b',
+                        color: '#475569',
                         marginTop: '3px'
                       }}
                     >
@@ -4921,7 +4916,6 @@ export default function Step6Stay({
                     </div>
 
                     <div
-                      className="room-capacity-pill"
                       style={{
                         fontSize: '0.72rem',
                         fontWeight: 800,
@@ -4947,7 +4941,7 @@ export default function Step6Stay({
                         handleSelectAdditionalRoom(r);
                       }}
                       style={{
-                        marginTop: '8px',
+                        marginTop: '6px',
                         background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                         color: '#ffffff',
                         border: 'none',
@@ -4959,7 +4953,7 @@ export default function Step6Stay({
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '5px',
-                        boxShadow: '0 3px 10px rgba(5, 150, 105, 0.25)',
+                        boxShadow: '0 3px 8px rgba(5, 150, 105, 0.25)',
                         transition: 'all 0.15s ease'
                       }}
                     >

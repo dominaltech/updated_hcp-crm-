@@ -771,6 +771,27 @@ body.dark-theme .floor-room-count,
   box-shadow: 0 6px 16px rgba(5, 150, 105, 0.28), 0 2px 5px rgba(5, 150, 105, 0.12) !important;
 }
 
+/* Additional Room Picker Modal Cards */
+.modal-additional-room-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+}
+
+.modal-additional-room-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+.modal-additional-room-card.is-ready:hover {
+  border-color: #059669 !important;
+  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.22) !important;
+}
+
+.modal-additional-room-card.is-primary:hover,
+.modal-additional-room-card.is-added:hover {
+  border-color: #7c3aed !important;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.22) !important;
+}
+
 .room-card.status-occupied {
   background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%) !important;
   border: 1.5px solid #2563eb !important;
