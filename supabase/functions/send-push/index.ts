@@ -135,7 +135,7 @@ serve(async (req) => {
                 type: String(type),
                 title: String(title),
                 body: String(body),
-                url: type === "discount" ? "/approvals" : (type === "checkin" ? "/occupied" : "/activity"),
+                url: type === "discount" ? "/approvals" : (type === "checkin" ? (data.room_number ? `/room?id=${data.room_number}&room=${data.room_number}` : "/occupied") : (type === "store" ? "/(tabs)/store" : "/activity")),
                 ...Object.fromEntries(
                   Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v ?? "")])
                 )
@@ -179,7 +179,12 @@ serve(async (req) => {
               notification: { title, body },
               data: {
                 type: String(type),
-                url: type === "discount" ? "/approvals" : (type === "checkin" ? "/occupied" : "/activity"),
+                title: String(title),
+                body: String(body),
+                url: type === "discount" ? "/approvals" : (type === "checkin" ? (data.room_number ? `/room?id=${data.room_number}&room=${data.room_number}` : "/occupied") : (type === "store" ? "/(tabs)/store" : "/activity")),
+                ...Object.fromEntries(
+                  Object.entries(data).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v ?? "")])
+                )
               },
               android: {
                 priority: "HIGH",

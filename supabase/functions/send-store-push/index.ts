@@ -111,12 +111,12 @@ serve(async (req) => {
     const gstInfo = payload.has_gst ? 'With GST' : 'Without GST';
     const billId = payload.bill_id ? String(payload.bill_id) : '';
 
-    const title = `📦 New Store Bill: ${vendorName}`;
-    const body = `${billNumber} for ₹${amount} (${paymentMode} • ${gstInfo})`;
+    const title = payload.title || `📦 New Store Bill: ${vendorName}`;
+    const body = payload.body || `${billNumber} for ₹${amount} (${paymentMode} • ${gstInfo})`;
 
     const fcmMessage = {
       message: {
-        topic: "store_bills",
+        topic: payload.topic || "store_bills",
         notification: {
           title: title,
           body: body,
@@ -124,7 +124,8 @@ serve(async (req) => {
         data: {
           billId: billId,
           url: billId ? ('?billId=' + billId) : '',
-          type: 'store_bill'
+          type: payload.type || 'store_bill',
+          ...(payload.data || {})
         },
         android: {
           priority: "HIGH",

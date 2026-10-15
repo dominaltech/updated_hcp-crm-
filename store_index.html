@@ -49,14 +49,14 @@
     .top-header {
       background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      padding: 14px 16px 12px;
+      padding: 8px 12px 6px;
       position: sticky;
       top: 0;
       z-index: 40;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 6px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
@@ -720,6 +720,159 @@
       color: var(--text-muted);
       font-size: 13px;
     }
+  
+    /* Compact Single-Screen Add Bill Optimization */
+    #tabAdd .form-card {
+      padding: 10px 14px;
+      gap: 6px;
+    }
+    #tabAdd .form-group {
+      margin-bottom: 6px;
+    }
+    #tabAdd .form-label {
+      font-size: 11px;
+      margin-bottom: 2px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    #tabAdd .form-input, #tabAdd .select-display, #tabAdd .custom-date-box {
+      padding: 7px 10px;
+      font-size: 13px;
+    }
+    #tabAdd .amount-box .currency-tag {
+      font-size: 17px;
+      left: 10px;
+    }
+    #tabAdd .amount-input {
+      padding-left: 28px !important;
+      font-size: 18px !important;
+      padding-top: 5px !important;
+      padding-bottom: 5px !important;
+    }
+    #tabAdd .amount-words-text {
+      font-size: 10px;
+      min-height: 13px;
+      padding-top: 1px;
+    }
+    #tabAdd .gst-btn {
+      padding: 7px 6px;
+      font-size: 12px;
+    }
+    #tabAdd .pay-card {
+      padding: 7px 4px;
+      gap: 3px;
+    }
+    #tabAdd .pay-card .icon {
+      font-size: 16px;
+    }
+    #tabAdd .pay-card .text {
+      font-size: 11px;
+    }
+    #tabAdd .btn-save-main {
+      padding: 10px 16px;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    /* Sub Tabs for Recent Bills: Bill Wise & Party Wise */
+    .sub-nav-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .sub-tab-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .sub-tab-btn.active {
+      background: #0f172a;
+      border-color: #0f172a;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+    }
+
+    /* Party-Wise Card Styling */
+    .party-group-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .party-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 8px;
+    }
+    .party-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .party-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .party-totals {
+      text-align: right;
+    }
+    .party-total-amt {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--gold-dark);
+    }
+    .party-bills-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Status Color Coding for Party Wise Bills */
+    .status-card-full {
+      background: #ecfdf5 !important;
+      border: 1.5px solid #10b981 !important;
+    }
+    .status-badge-full {
+      background: #10b981 !important;
+      color: #ffffff !important;
+    }
+    .status-card-partly {
+      background: #fffbeb !important;
+      border: 1.5px solid #f59e0b !important;
+    }
+    .status-badge-partly {
+      background: #f59e0b !important;
+      color: #ffffff !important;
+    }
+    .status-card-unpaid {
+      background: #fef2f2 !important;
+      border: 1.5px solid #ef4444 !important;
+    }
+    .status-badge-unpaid {
+      background: #ef4444 !important;
+      color: #ffffff !important;
+    }
+
   </style>
 </head>
 <body>
@@ -727,8 +880,7 @@
   <!-- Minimal Centered Header -->
   <header class="top-header">
     <div class="brand-center">
-      <span class="brand-logo-icon">🏨</span>
-      <span class="brand-title">HCP STORE</span>
+      <img src="hcp-logo-with-name-transparent.png" alt="Hotel City Park" style="height: 38px; max-width: 190px; object-fit: contain; display: block; margin: 0 auto;">
     </div>
 
     <!-- Navigation Tabs -->
@@ -829,7 +981,23 @@
 
     <!-- TAB 2: RECENT BILLS -->
     <div class="tab-content" id="tabRecent">
+      <!-- 2 Tabs: Bill Wise & Party Wise -->
+      <div class="sub-nav-tabs">
+        <button class="sub-tab-btn active" id="subTabBillBtn" onclick="switchRecentSubTab('bill')">
+          <span>📄 Bill Wise</span>
+        </button>
+        <button class="sub-tab-btn" id="subTabPartyBtn" onclick="switchRecentSubTab('party')">
+          <span>👥 Party Wise</span>
+        </button>
+      </div>
+
+      <!-- View A: Bill Wise -->
       <div class="bills-list" id="billsListContainer">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- View B: Party Wise -->
+      <div class="bills-list" id="partyListContainer" style="display: none;">
         <!-- Rendered dynamically -->
       </div>
     </div>
@@ -1376,21 +1544,40 @@
             created_by: 'Store Boy'
           }]).select();
 
-          // Trigger push notification to Store Admin app
+          // Trigger push notification to Admin APK (HotelCityPark-Owner)
           const newBillId = (insertedData && insertedData[0]) ? insertedData[0].id : '';
-          _supabase.functions.invoke('send-store-push', {
+          _supabase.functions.invoke('send-push', {
             body: {
-              bill_id: newBillId,
-              vendor_name: vendor.name,
-              bill_number: billNumber || 'N/A',
-              amount: formattedAmt,
-              payment_mode: selectedPaymentMode,
-              has_gst: hasGst
+              title: '📦 Store Bill: ' + vendor.name,
+              body: '₹' + formattedAmt + ' bill entered by Storeman (' + selectedPaymentMode + ')',
+              type: 'store',
+              data: {
+                bill_id: newBillId,
+                vendor_name: vendor.name,
+                bill_number: billNumber || 'N/A',
+                amount: formattedAmt,
+                payment_mode: selectedPaymentMode,
+                has_gst: hasGst
+              }
             }
-          }).catch(pushErr => console.warn('Push alert notice:', pushErr));
+          }).catch(pushErr => console.warn('Admin push alert notice:', pushErr));
         }
       } catch (err) {
-        console.warn('Cloud save warning (saved locally):', err);
+        console.warn('Cloud save warning (queueing offline):', err);
+        // Queue for offline auto-sync
+        try {
+          const q = JSON.parse(localStorage.getItem('hcp_store_offline_queue') || '[]');
+          q.push({
+            vendor_id: typeof vendor.id === 'number' ? vendor.id : 1,
+            vendor_name: vendor.name,
+            bill_number: billNumber || 'N/A',
+            bill_date: dateStr,
+            total_amount: numAmt,
+            notes: `${hasGst ? 'With GST' : 'Without GST'} | Mode: ${selectedPaymentMode}`
+          });
+          localStorage.setItem('hcp_store_offline_queue', JSON.stringify(q));
+          showToast('Saved offline. Will sync when internet is on.', true);
+        } catch (_) {}
       }
 
       // 2. Save locally into bills archive
@@ -1544,6 +1731,193 @@
     // -------------------------------------------------------------
     // TABS & MODALS
     // -------------------------------------------------------------
+    
+    let currentRecentSubTab = 'bill';
+
+    function switchRecentSubTab(mode) {
+      currentRecentSubTab = mode;
+      document.getElementById('subTabBillBtn').classList.toggle('active', mode === 'bill');
+      document.getElementById('subTabPartyBtn').classList.toggle('active', mode === 'party');
+      document.getElementById('billsListContainer').style.display = (mode === 'bill') ? 'flex' : 'none';
+      document.getElementById('partyListContainer').style.display = (mode === 'party') ? 'flex' : 'none';
+      if (mode === 'party') {
+        renderPartyWiseList();
+      } else {
+        renderBillsList();
+      }
+    }
+
+    function getBillStatusInfo(b) {
+      const s = String(b.status || 'PENDING').toUpperCase();
+      const pendingAmt = (b.pending_amount !== undefined) ? Number(b.pending_amount) : (s === 'FULL' || s === 'PAID' ? 0 : Number(b.amount || 0));
+      const totalAmt = Number(b.amount || b.total_amount || 0);
+
+      if (s === 'FULL' || s === 'PAID' || pendingAmt === 0) {
+        return {
+          code: 'FULL',
+          label: 'PAID FULL',
+          cardClass: 'status-card-full',
+          badgeClass: 'status-badge-full',
+          color: '#047857'
+        };
+      }
+      if (s === 'PARTLY' || (pendingAmt > 0 && pendingAmt < totalAmt)) {
+        return {
+          code: 'PARTLY',
+          label: 'PARTLY PAID',
+          cardClass: 'status-card-partly',
+          badgeClass: 'status-badge-partly',
+          color: '#b45309'
+        };
+      }
+      return {
+        code: 'UNPAID',
+        label: 'NOT PAID',
+        cardClass: 'status-card-unpaid',
+        badgeClass: 'status-badge-unpaid',
+        color: '#b91c1c'
+      };
+    }
+
+    function renderPartyWiseList() {
+      const container = document.getElementById('partyListContainer');
+      container.innerHTML = '';
+
+      if (bills.length === 0) {
+        container.innerHTML = '<div class="empty-state">No party bills found.<br>Recorded bills will show grouped by party.</div>';
+        return;
+      }
+
+      // Group bills by Vendor / Party
+      const parties = {};
+      bills.forEach(b => {
+        const vId = b.vendor_id || b.vendor_name || 'other';
+        const vName = b.vendor_name || 'General Party';
+        if (!parties[vId]) {
+          parties[vId] = {
+            id: vId,
+            name: vName,
+            phone: b.vendor_phone || '',
+            bills: [],
+            totalAmt: 0,
+            paidAmt: 0,
+            pendingAmt: 0
+          };
+        }
+        parties[vId].bills.push(b);
+        const amt = Number(b.amount || 0);
+        parties[vId].totalAmt += amt;
+        const info = getBillStatusInfo(b);
+        if (info.code === 'FULL') {
+          parties[vId].paidAmt += amt;
+        } else if (info.code === 'PARTLY') {
+          const pd = Number(b.paid_amount || (amt / 2));
+          parties[vId].paidAmt += pd;
+          parties[vId].pendingAmt += Math.max(0, amt - pd);
+        } else {
+          parties[vId].pendingAmt += amt;
+        }
+      });
+
+      Object.values(parties).forEach(party => {
+        const pCard = document.createElement('div');
+        pCard.className = 'party-group-card';
+
+        let billsHtml = '';
+        party.bills.forEach(b => {
+          const info = getBillStatusInfo(b);
+          billsHtml += `
+            <div class="bill-item-card ${info.cardClass}" onclick='openBillDetailsModal(${JSON.stringify(b)})' style="margin-bottom: 6px;">
+              <div class="bill-card-top">
+                <div>
+                  <div style="font-weight: 700; font-size: 14px; color: var(--text);">Bill #: ${b.bill_number || 'N/A'}</div>
+                  <div class="bill-meta">Date: ${b.bill_date} • ${b.payment_mode || 'Bank'}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 16px; font-weight: 800; color: ${info.color};">₹${b.amount_formatted || formatIndianNumber(b.amount)}</div>
+                  <span class="badge ${info.badgeClass}" style="margin-top: 3px; display: inline-block;">${info.label}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        pCard.innerHTML = `
+          <div class="party-header">
+            <div>
+              <div class="party-title">${party.name}</div>
+              <div class="party-sub">${party.phone ? '📞 ' + party.phone + ' • ' : ''}${party.bills.length} Bill${party.bills.length > 1 ? 's' : ''}</div>
+            </div>
+            <div class="party-totals">
+              <div class="party-total-amt">₹${formatIndianNumber(party.totalAmt)}</div>
+              <div style="font-size: 11px; font-weight: 700; color: ${party.pendingAmt > 0 ? '#b91c1c' : '#047857'}; margin-top: 2px;">
+                ${party.pendingAmt > 0 ? 'Due: ₹' + formatIndianNumber(party.pendingAmt) : 'Fully Cleared ✓'}
+              </div>
+            </div>
+          </div>
+          <div class="party-bills-list">
+            ${billsHtml}
+          </div>
+        `;
+        container.appendChild(pCard);
+      });
+    }
+
+    // -------------------------------------------------------------
+    // OFFLINE SYNC RESILIENCE ARCHITECTURE
+    // -------------------------------------------------------------
+    async function flushOfflineQueue() {
+      const q = localStorage.getItem('hcp_store_offline_queue');
+      if (!q) return;
+      let items = [];
+      try { items = JSON.parse(q); } catch (_) { items = []; }
+      if (!items || items.length === 0) return;
+
+      if (!navigator.onLine || !_supabase) return;
+
+      console.log('[Store Sync] Flushing offline bills queue (' + items.length + ' items)...');
+      const unSynced = [];
+      for (const item of items) {
+        try {
+          await _supabase.from('store_bills').insert([{
+            vendor_id: item.vendor_id,
+            bill_number: item.bill_number || 'N/A',
+            bill_date: item.bill_date,
+            total_amount: item.total_amount,
+            paid_amount: 0,
+            pending_amount: item.total_amount,
+            status: 'PENDING',
+            notes: item.notes,
+            created_by: 'Store Boy (Offline Synced)'
+          }]);
+          
+          // Trigger push to Admin APK
+          _supabase.functions.invoke('send-push', {
+            body: {
+              title: '📦 Store Bill: ' + (item.vendor_name || 'Vendor'),
+              body: '₹' + item.total_amount + ' bill synced from Storeman',
+              type: 'store',
+              data: { amount: item.total_amount, bill_number: item.bill_number }
+            }
+          }).catch(() => {});
+        } catch (e) {
+          unSynced.push(item);
+        }
+      }
+
+      localStorage.setItem('hcp_store_offline_queue', JSON.stringify(unSynced));
+      if (unSynced.length === 0) {
+        showToast('All offline bills synced to cloud ✓', true);
+        loadBills();
+      }
+    }
+
+    window.addEventListener('online', () => {
+      showToast('Internet connected. Syncing bills...', true);
+      flushOfflineQueue();
+    });
+
+
     function switchTab(tab) {
       document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
       document.getElementById('tabRecentBtn').classList.toggle('active', tab === 'recent');
