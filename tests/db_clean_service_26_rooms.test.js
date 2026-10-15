@@ -35,6 +35,12 @@ describe('Clean Slate / Purge Demo Data - 26 Official Rooms Preservation', () =>
         ota_early_checkin_price REAL DEFAULT 900,
         ota_early_checkin_max_hours INTEGER DEFAULT 6,
         ota_early_checkin_gst_pct REAL DEFAULT 5,
+        ota_early_6h_rate REAL DEFAULT 900,
+        ota_early_6h_gst_pct REAL DEFAULT 5,
+        ota_early_9h_rate REAL DEFAULT 1200,
+        ota_early_9h_gst_pct REAL DEFAULT 5,
+        ota_early_12h_rate REAL DEFAULT 1500,
+        ota_early_12h_gst_pct REAL DEFAULT 5,
         status TEXT NOT NULL DEFAULT 'ready',
         current_booking_id INTEGER DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -154,22 +160,27 @@ describe('Clean Slate / Purge Demo Data - 26 Official Rooms Preservation', () =>
     // Check specific room configurations
     const r102 = allRooms.find(r => r.room_number === '102');
     expect(r102.room_type).toBe('Executive Room');
-    expect(r102.price).toBe(2500);
-    expect(r102.price_single).toBe(2200);
+    expect(r102.price).toBe(2350);
+    expect(r102.price_single).toBe(2050);
+
+    const r202 = allRooms.find(r => r.room_number === '202');
+    expect(r202.room_type).toBe('Executive Plus');
+    expect(r202.price).toBe(2450);
+    expect(r202.price_single).toBe(2150);
 
     const r201 = allRooms.find(r => r.room_number === '201');
     expect(r201.room_type).toBe('Deluxe Room');
-    expect(r201.price).toBe(2800);
-    expect(r201.price_single).toBe(2500);
+    expect(r201.price).toBe(2650);
+    expect(r201.price_single).toBe(2350);
 
     const r310 = allRooms.find(r => r.room_number === '310');
     expect(r310.room_type).toBe('Suit Room');
-    expect(r310.price).toBe(4500);
-    expect(r310.price_single).toBe(3600);
+    expect(r310.price).toBe(4000);
+    expect(r310.price_single).toBe(3500);
 
     const r401 = allRooms.find(r => r.room_number === '401');
-    expect(r401.room_type).toBe('Pent Hosue');
-    expect(r401.price).toBe(4800);
-    expect(r401.price_single).toBe(4200);
+    expect(r401.room_type).toBe('Pent House');
+    expect(r401.price).toBe(5000);
+    expect(r401.price_single).toBe(4500);
   });
 });

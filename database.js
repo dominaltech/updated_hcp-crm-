@@ -1050,21 +1050,33 @@ try {
 
 // Official Default 26 Hotel Rooms for Hotel City Park
 const DEFAULT_ROOMS_CATALOG = [
-  // Executive Rooms (21 rooms)
+  // Executive Rooms
   ...['102', '103', '104'].map(num => ({
     room_number: String(num),
     floor: 'First Floor',
     room_type: 'Executive Room',
-    price_single: 2200,
-    price: 2500,
+    price_single: 2050,
+    price: 2350,
     max_discount_pct: 15,
     max_adults: 2,
     max_children: 2,
     max_extra_beds: 1,
     extra_bed_price: 600,
   })),
-  ...['202', '203', '204', '205', '206', '207', '208', '209', '210', '211'].map(num => ({
+  ...['204', '205', '206', '207', '208'].map(num => ({
     room_number: String(num),
+    floor: 'Second Floor',
+    room_type: 'Executive Room',
+    price_single: 2050,
+    price: 2350,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  {
+    room_number: '209',
     floor: 'Second Floor',
     room_type: 'Executive Room',
     price_single: 2200,
@@ -1074,9 +1086,21 @@ const DEFAULT_ROOMS_CATALOG = [
     max_children: 2,
     max_extra_beds: 1,
     extra_bed_price: 600,
-  })),
-  ...['302', '303', '304', '305', '306', '307', '308', '309'].map(num => ({
+  },
+  ...['303', '304', '305', '306', '307'].map(num => ({
     room_number: String(num),
+    floor: 'Third Floor',
+    room_type: 'Executive Room',
+    price_single: 2050,
+    price: 2350,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  {
+    room_number: '308',
     floor: 'Third Floor',
     room_type: 'Executive Room',
     price_single: 2200,
@@ -1086,15 +1110,41 @@ const DEFAULT_ROOMS_CATALOG = [
     max_children: 2,
     max_extra_beds: 1,
     extra_bed_price: 600,
+  },
+
+  // Executive Plus
+  ...['202', '203', '210', '211'].map(num => ({
+    room_number: String(num),
+    floor: 'Second Floor',
+    room_type: 'Executive Plus',
+    price_single: 2150,
+    price: 2450,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  ...['302', '309'].map(num => ({
+    room_number: String(num),
+    floor: 'Third Floor',
+    room_type: 'Executive Plus',
+    price_single: 2150,
+    price: 2450,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
   })),
 
-  // Deluxe Rooms (3 rooms)
+  // Deluxe Rooms
   ...['201', '212'].map(num => ({
     room_number: String(num),
     floor: 'Second Floor',
     room_type: 'Deluxe Room',
-    price_single: 2500,
-    price: 2800,
+    price_single: 2350,
+    price: 2650,
     max_discount_pct: 15,
     max_adults: 2,
     max_children: 2,
@@ -1105,8 +1155,8 @@ const DEFAULT_ROOMS_CATALOG = [
     room_number: '301',
     floor: 'Third Floor',
     room_type: 'Deluxe Room',
-    price_single: 2500,
-    price: 2800,
+    price_single: 2350,
+    price: 2650,
     max_discount_pct: 15,
     max_adults: 2,
     max_children: 2,
@@ -1114,13 +1164,13 @@ const DEFAULT_ROOMS_CATALOG = [
     extra_bed_price: 600,
   },
 
-  // Suit Room (1 room)
+  // Suit Room
   {
     room_number: '310',
     floor: 'Third Floor',
     room_type: 'Suit Room',
-    price_single: 3600,
-    price: 4500,
+    price_single: 3500,
+    price: 4000,
     max_discount_pct: 15,
     max_adults: 2,
     max_children: 2,
@@ -1128,13 +1178,13 @@ const DEFAULT_ROOMS_CATALOG = [
     extra_bed_price: 600,
   },
 
-  // Pent Hosue (1 room)
+  // Pent House
   {
     room_number: '401',
     floor: 'Fourth Floor',
-    room_type: 'Pent Hosue',
-    price_single: 4200,
-    price: 4800,
+    room_type: 'Pent House',
+    price_single: 4500,
+    price: 5000,
     max_discount_pct: 15,
     max_adults: 2,
     max_children: 2,
