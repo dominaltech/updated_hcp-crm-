@@ -578,6 +578,66 @@ async function pollCloudApprovals(db) {
   }
 }
 
+async function syncDailyAnalyticsToCloud(db) {
+  if (!canAttemptCloud() || !db) return;
+  try {
+    const dates = [
+      new Date().toISOString().slice(0, 10),
+      new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+    ];
+
+    for (const d of dates) {
+      const payRows = db.prepare(`
+        SELECT 
+          amount, 
+          lower(COALESCE(payment_mode, 'cash')) as mode,
+          COALESCE(split_cash, 0) as scash,
+          COALESCE(split_online, 0) as supis,
+          COALESCE(split_card, 0) as scard
+        FROM payments
+        WHERE date(created_at) = ?
+      `).all(d);
+
+      let rev = 0, cash = 0, upi = 0, card = 0;
+      payRows.forEach(p => {
+        const amt = Number(p.amount) || 0;
+        rev += amt;
+        if (p.scash || p.supis || p.scard) {
+          cash += Number(p.scash) || 0;
+          upi += Number(p.supis) || 0;
+          card += Number(p.scard) || 0;
+        } else {
+          if (p.mode === 'cash') cash += amt;
+          else if (p.mode === 'upi' || p.mode === 'online') upi += amt;
+          else if (p.mode === 'card') card += amt;
+          else cash += amt;
+        }
+      });
+
+      const chkInRow = db.prepare(`SELECT COUNT(*) as cnt FROM bookings WHERE date(checkin_time) = ?`).get(d);
+      const chkOutRow = db.prepare(`SELECT COUNT(*) as cnt FROM bookings WHERE date(actual_checkout_time) = ? OR (actual_checkout_time IS NULL AND date(approx_checkout_time) = ?)`).get(d, d);
+
+      const payload = {
+        id: d,
+        today_revenue: rev,
+        today_cash: cash,
+        today_upi: upi,
+        today_card: card,
+        today_checkins: Number(chkInRow?.cnt) || 0,
+        today_checkouts: Number(chkOutRow?.cnt) || 0,
+        occupied_rooms: 0,
+        total_rooms: 24,
+        updated_at: new Date().toISOString()
+      };
+
+      await withTimeout(supabase.from('hotel_analytics').upsert(payload));
+    }
+    markNetworkSuccess();
+  } catch (err) {
+    markNetworkFailure(err);
+  }
+}
+
 module.exports = {
   pushStoreVendor,
   pushStoreBill,
@@ -593,6 +653,7 @@ module.exports = {
   syncAllActiveRoomsFromLocal,
   syncApprovalRequestToCloud,
   pollCloudApprovals,
+  syncDailyAnalyticsToCloud,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };

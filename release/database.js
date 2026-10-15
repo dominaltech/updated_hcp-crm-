@@ -626,6 +626,26 @@ db.exec(`
   );
 `);
 
+// Tables for Mobile APK Push Notifications and Owner Activity
+db.exec(`
+  CREATE TABLE IF NOT EXISTS owner_push_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    platform TEXT DEFAULT 'android',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS owner_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL DEFAULT 'general',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    meta_json TEXT,
+    read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Migrations for Cashier Tracking & Manager Access Permissions
 try { db.exec("ALTER TABLE bookings ADD COLUMN checked_in_by TEXT DEFAULT 'Front Desk';"); } catch (e) {}
 try { db.exec("ALTER TABLE bookings ADD COLUMN checked_out_by TEXT DEFAULT NULL;"); } catch (e) {}
@@ -634,6 +654,12 @@ try { db.exec("ALTER TABLE bar_orders ADD COLUMN cashier_name TEXT DEFAULT '';")
 try { db.exec("ALTER TABLE staff_users ADD COLUMN can_access_manager INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET can_access_manager = 1 WHERE role = 'manager';").run(); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET full_name = 'Jaijeet sir' WHERE username = 'admin' OR (role = 'manager' AND full_name = 'General Manager');").run(); } catch (e) {}
+try {
+  const adminRow = db.prepare("SELECT id, password FROM staff_users WHERE username = 'admin'").get();
+  if (adminRow && !bcrypt.compareSync('admin123', adminRow.password)) {
+    db.prepare("UPDATE staff_users SET password = ? WHERE id = ?").run(bcrypt.hashSync('admin123', 10), adminRow.id);
+  }
+} catch (e) {}
 
 // Seed Starter Accounts for Each Hotel Section (Front Desk, Restaurant, Bar, Management) if missing
 const bcrypt = require('bcryptjs');

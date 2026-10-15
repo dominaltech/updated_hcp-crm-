@@ -76,8 +76,8 @@ export default function Step6Stay({
       const guestName = draft.guestName || draft.guest_name || draft.name || draft.primaryGuestName || draft.primaryGuest?.name || 'Guest';
 
       // Members info
-      const maleAdults = Number(draft.maleAdults !== undefined ? draft.maleAdults : 0);
-      const femaleAdults = Number(draft.femaleAdults !== undefined ? draft.femaleAdults : 1);
+      const maleAdults = Number(draft.adultsMale !== undefined ? draft.adultsMale : (draft.maleAdults !== undefined ? draft.maleAdults : maleCount));
+      const femaleAdults = Number(draft.adultsFemale !== undefined ? draft.adultsFemale : (draft.femaleAdults !== undefined ? draft.femaleAdults : femaleCount));
       const totalAdults = (maleAdults + femaleAdults) || Number(draft.adults || 1);
       const children = Number(draft.children || 0);
       const membersStr = `${totalAdults} Adult${totalAdults > 1 ? 's' : ''}${children > 0 ? `, ${children} Child` : ''} (${maleAdults}M, ${femaleAdults}F)`;
@@ -5369,9 +5369,9 @@ export default function Step6Stay({
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ color: '#64748b' }}>Members:</span>
                       <strong>
-                        {((Number(draft.maleAdults || 0) + Number(draft.femaleAdults || 0)) || Number(draft.adults || 1))} Adults
+                        {((Number(draft.adultsMale !== undefined ? draft.adultsMale : (draft.maleAdults || maleCount || 0)) + Number(draft.adultsFemale !== undefined ? draft.adultsFemale : (draft.femaleAdults || femaleCount || 0))) || Number(draft.adults || 1))} Adults
                         {Number(draft.children || 0) > 0 ? `, ${draft.children} Child` : ''}
-                        {' '}({Number(draft.maleAdults || 0)}M, {Number(draft.femaleAdults || 1)}F)
+                        {' '}({Number(draft.adultsMale !== undefined ? draft.adultsMale : (draft.maleAdults || maleCount || 0))}M, {Number(draft.adultsFemale !== undefined ? draft.adultsFemale : (draft.femaleAdults || femaleCount || 0))}F)
                       </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>

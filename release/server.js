@@ -33,6 +33,7 @@ const db = require('./database');
 const { hashPassword, hashPasswordSync, verifyPassword, migratePlaintextPasswords, generateToken, requireAuth, requireRole, optionalAuth } = require('./middleware/auth');
 const secretManager = require('./services/secretManager');
 const supabaseService = require('./services/supabaseService');
+const notificationService = require('./services/notificationService');
 
 // Automatically migrate any legacy plaintext staff passwords to bcrypt hashes on startup
 migratePlaintextPasswords(db);
@@ -1468,6 +1469,19 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       }
     } catch (syncErr) {
       console.warn('[Supabase] Checkin sync dispatch skipped:', syncErr.message);
+    }
+
+    // Non-blocking push notification to Owner APK
+    try {
+      notificationService.notifyCheckin({
+        roomNumbers: result.roomNumbers || (result.roomNumber ? [result.roomNumber] : []),
+        guestName: result.guestName,
+        totalPaid: result.totalPaid || 0,
+        bookingId: result.id,
+        phone: result.mobile || ''
+      });
+    } catch (notifErr) {
+      console.warn('[Notification] Checkin push error:', notifErr.message);
     }
 
     res.json({
@@ -3614,6 +3628,19 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       console.warn('[Supabase] Checkout sync dispatch skipped:', syncErr.message);
     }
 
+    // Non-blocking push notification to Owner APK
+    try {
+      notificationService.notifyCheckout({
+        roomNumbers: result.checkedOutRooms || [room.room_number],
+        guestName: primaryBooking.guest_name,
+        settleAmount: result.netSettle || 0,
+        refundAmount: result.refund_amount || 0,
+        bookingId: primaryBooking.id
+      });
+    } catch (notifErr) {
+      console.warn('[Notification] Checkout push error:', notifErr.message);
+    }
+
     res.json({ success: true, data: result });
   } catch (error) {
     console.error('Checkout error:', error);
@@ -4686,6 +4713,36 @@ app.delete('/api/restaurant/orders/:id', requireAuth, requireRole('manager'), (r
     res.json({ success: true, count: changes });
   } catch (error) {
     console.error('Delete single order error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List Recent Restaurant Orders
+app.get('/api/restaurant/orders', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM restaurant_orders ORDER BY id DESC LIMIT 50').all();
+    orders.forEach(o => {
+      try { o.items = JSON.parse(o.items_json || '[]'); } catch { o.items = []; }
+      o.items_json = o.items;
+      o.grand_total = o.total;
+    });
+    res.json({ success: true, orders, data: orders });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List Recent Bar Orders
+app.get('/api/bar/orders', (req, res) => {
+  try {
+    const orders = db.prepare('SELECT * FROM bar_orders ORDER BY id DESC LIMIT 50').all();
+    orders.forEach(o => {
+      try { o.items = JSON.parse(o.items_json || '[]'); } catch { o.items = []; }
+      o.items_json = o.items;
+      o.grand_total = o.total;
+    });
+    res.json({ success: true, orders, data: orders });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -11737,8 +11794,11 @@ app.post('/api/store/bills', (req, res) => {
 });
 
 // 4. Fetch Store Bills (Live vs History with Party-wise & Bill-wise structure)
-app.get('/api/store/bills', (req, res) => {
+app.get('/api/store/bills', async (req, res) => {
   try {
+    if (supabaseService && typeof supabaseService.pullStoreBillsFromCloud === 'function') {
+      await supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
+    }
     const statusType = (req.query.status || 'live').toLowerCase(); // 'live' or 'history'
 
     let billsQuery = '';
@@ -12042,23 +12102,18 @@ app.put('/api/store/bills/:id', (req, res) => {
 });
 
 // ==========================================
-// 📱 OWNER / ADMIN APP NOTIFICATIONS API
+// 📱 OWNER / ADMIN APP NOTIFICATIONS & ACTIVITY API
 // ==========================================
 
 // Register Push Token for Owner / Admin Phone
 app.post('/api/owner/push-token', (req, res) => {
   try {
-    const { token, device_name } = req.body;
+    const { token, device_name, platform } = req.body;
     if (!token || !token.trim()) {
       return res.status(400).json({ success: false, error: 'Push token is required' });
     }
     const cleanToken = token.trim();
-    db.prepare(`
-      INSERT INTO owner_push_tokens (token, device_name, last_used)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(token) DO UPDATE SET last_used = CURRENT_TIMESTAMP, device_name = excluded.device_name
-    `).run(cleanToken, (device_name || 'Owner Device').trim());
-
+    notificationService.savePushToken(cleanToken, platform || device_name || 'android');
     res.json({ success: true, message: 'Push token registered successfully' });
   } catch (err) {
     console.error('Register push token error:', err);
@@ -12069,11 +12124,7 @@ app.post('/api/owner/push-token', (req, res) => {
 // Get Owner Notifications
 app.get('/api/owner/notifications', (req, res) => {
   try {
-    const notifications = db.prepare(`
-      SELECT * FROM owner_notifications
-      ORDER BY created_at DESC
-      LIMIT 100
-    `).all();
+    const notifications = notificationService.getNotifications(100);
     res.json({ success: true, notifications, data: notifications });
   } catch (err) {
     console.error('Fetch owner notifications error:', err);
@@ -12081,11 +12132,84 @@ app.get('/api/owner/notifications', (req, res) => {
   }
 });
 
+// Get Owner Live Activity Feed (Check-ins, Check-outs, Restaurant & Bar orders)
+app.get('/api/owner/activity', (req, res) => {
+  try {
+    const type = req.query.type || 'all';
+    const activity = notificationService.getActivityFeed(type, 100);
+    res.json({ success: true, activity, data: activity });
+  } catch (err) {
+    console.error('Fetch owner activity error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get Owner Approvals (Pending & Approved/Rejected History)
+app.get('/api/owner/approvals', (req, res) => {
+  try {
+    const { pending, history, approvals } = notificationService.getApprovals();
+    res.json({
+      success: true,
+      pending,
+      history,
+      approvals: pending,
+      data: approvals
+    });
+  } catch (err) {
+    console.error('Fetch owner approvals error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit New Approval Request (From CRM Staff during Check-In / Billing)
+app.post('/api/owner/approvals/request', (req, res) => {
+  try {
+    const result = notificationService.createApprovalRequest(req.body);
+    res.json(result);
+  } catch (err) {
+    console.error('Create approval request error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Check Status of an Approval Request (Polled by CRM Check-In Dialog)
+app.get('/api/owner/approvals/:id/status', (req, res) => {
+  try {
+    const approval = db.prepare('SELECT * FROM owner_approvals WHERE id = ?').get(req.params.id);
+    if (!approval) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, approval, status: approval.status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Approve Request
+app.post('/api/owner/approvals/:id/approve', (req, res) => {
+  try {
+    const updated = notificationService.updateApprovalStatus(req.params.id, 'APPROVED', req.body.action_by || 'Admin');
+    if (!updated) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, message: 'Discount Approved', approval: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reject Request
+app.post('/api/owner/approvals/:id/reject', (req, res) => {
+  try {
+    const updated = notificationService.updateApprovalStatus(req.params.id, 'REJECTED', req.body.action_by || 'Admin', req.body.reason || '');
+    if (!updated) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, message: 'Discount Rejected', approval: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 // Mark Single Notification as Read
 app.post('/api/owner/notifications/:id/read', (req, res) => {
   try {
-    const { id } = req.params;
-    db.prepare('UPDATE owner_notifications SET is_read = 1 WHERE id = ?').run(id);
+    notificationService.markNotificationRead(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -12095,7 +12219,7 @@ app.post('/api/owner/notifications/:id/read', (req, res) => {
 // Mark All Notifications as Read
 app.post('/api/owner/notifications/read-all', (req, res) => {
   try {
-    db.prepare('UPDATE owner_notifications SET is_read = 1').run();
+    notificationService.markNotificationRead(null);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -12158,6 +12282,14 @@ async function startServer() {
         if (res && res.success) console.log(`[Supabase] Initial sync: ${res.synced} occupied room(s) synced to cloud.`);
       })
       .catch(err => console.warn('[Supabase] Initial sync skipped:', err.message));
+
+    // Real-time polling of cloud approvals from Admin mobile app (works across 5G / cellular / anywhere)
+    setInterval(() => {
+      supabaseService.pollCloudApprovals(db).catch(() => {});
+      if (typeof supabaseService.syncDailyAnalyticsToCloud === 'function') {
+        supabaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
+      }
+    }, 2500);
   });
 
   server.on('error', (err) => {

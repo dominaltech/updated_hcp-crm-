@@ -12286,6 +12286,9 @@ async function startServer() {
     // Real-time polling of cloud approvals from Admin mobile app (works across 5G / cellular / anywhere)
     setInterval(() => {
       supabaseService.pollCloudApprovals(db).catch(() => {});
+      if (typeof supabaseService.syncDailyAnalyticsToCloud === 'function') {
+        supabaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
+      }
     }, 2500);
   });
 
