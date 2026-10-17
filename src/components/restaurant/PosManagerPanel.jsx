@@ -87,6 +87,37 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
     status: 'active',
     can_access_manager: 0
   });
+  const [isManagerAuthModalOpen, setIsManagerAuthModalOpen] = useState(false);
+  const [managerAuthPassword, setManagerAuthPassword] = useState('');
+  const [managerAuthError, setManagerAuthError] = useState('');
+  const [isVerifyingManagerAuth, setIsVerifyingManagerAuth] = useState(false);
+
+  const handleVerifyManagerAccessPassword = async (e) => {
+    if (e) e.preventDefault();
+    if (!managerAuthPassword.trim()) {
+      setManagerAuthError('Please enter admin password');
+      return;
+    }
+    setIsVerifyingManagerAuth(true);
+    setManagerAuthError('');
+    try {
+      const res = await api.verifyManagerLock({ password: managerAuthPassword.trim() });
+      if (res && res.success) {
+        setStaffForm(prev => ({ ...prev, can_access_manager: 1 }));
+        setIsManagerAuthModalOpen(false);
+        setManagerAuthPassword('');
+        showToast('Admin password verified. Manager panel access granted.', 'green');
+      } else {
+        setManagerAuthError(res?.error || 'Invalid admin password');
+        showToast('Invalid admin password', 'red');
+      }
+    } catch (err) {
+      setManagerAuthError(err?.message || 'Invalid admin password');
+      showToast('Invalid admin password', 'red');
+    } finally {
+      setIsVerifyingManagerAuth(false);
+    }
+  };
 
   // Load Departmental POS Analytics
   const loadAnalytics = useCallback(async (fromStr, toStr) => {
@@ -2849,7 +2880,15 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                   <input
                     type="checkbox"
                     checked={Boolean(staffForm.can_access_manager == 1)}
-                    onChange={(e) => setStaffForm({ ...staffForm, can_access_manager: e.target.checked ? 1 : 0 })}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setManagerAuthPassword('');
+                        setManagerAuthError('');
+                        setIsManagerAuthModalOpen(true);
+                      } else {
+                        setStaffForm({ ...staffForm, can_access_manager: 0 });
+                      }
+                    }}
                     style={{ width: '17px', height: '17px', cursor: 'pointer' }}
                   />
                   <span>Allow Manager Panel Access</span>
@@ -2880,6 +2919,75 @@ export default function PosManagerPanel({ department = 'restaurant', onMenuChang
                   }}
                 >
                   {editingStaff ? 'Save Changes' : `Register ${department === 'bar' ? 'Bar' : 'Restaurant'} Staff`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Password Gate for Allow Manager Panel Access */}
+      {isManagerAuthModalOpen && (
+        <div className="modal-overlay active" style={{ zIndex: 10099, background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)' }}>
+          <div className="modal-container" style={{ maxWidth: '390px', width: '92%', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.35)' }}>
+            <div className="modal-header" style={{ background: '#1e293b', color: '#fff', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>🔐</span>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#fff' }}>Admin Password Required</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsManagerAuthModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.3rem', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleVerifyManagerAccessPassword}>
+              <div style={{ padding: '18px 20px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ margin: 0, fontSize: '0.84rem', color: '#475569', lineHeight: 1.45 }}>
+                  Please enter <strong>Admin Password</strong> to enable <em>Manager Panel Access</em> for <strong>{staffForm.full_name || staffForm.username || 'this staff member'}</strong>.
+                </p>
+                <div>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                    Admin Password *
+                  </label>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    className="form-input"
+                    placeholder="Enter admin password"
+                    value={managerAuthPassword}
+                    onChange={(e) => {
+                      setManagerAuthPassword(e.target.value);
+                      setManagerAuthError('');
+                    }}
+                    style={{ width: '100%', height: '40px', fontSize: '0.92rem', borderRadius: '8px' }}
+                  />
+                  {managerAuthError && (
+                    <div style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: 700, marginTop: '4px' }}>
+                      ⚠️ {managerAuthError}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: '12px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsManagerAuthModalOpen(false)}
+                  style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isVerifyingManagerAuth || !managerAuthPassword.trim()}
+                  style={{ padding: '7px 16px', fontSize: '0.82rem', fontWeight: 750, background: '#2563eb' }}
+                >
+                  {isVerifyingManagerAuth ? 'Verifying...' : 'Authorize Access'}
                 </button>
               </div>
             </form>

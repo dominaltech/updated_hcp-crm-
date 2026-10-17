@@ -380,7 +380,7 @@ export default function CheckinWizardModal({
           return false;
         }
         if (!draft.otaVoucherNo?.trim()) {
-          showToast('Please enter OTA Booking ID / Voucher No.', 'red');
+          showToast('Please enter OTA Booking ID / Bill No.', 'red');
           return false;
         }
         if (!draft.otaManualAmount || Number(draft.otaManualAmount) <= 0) {

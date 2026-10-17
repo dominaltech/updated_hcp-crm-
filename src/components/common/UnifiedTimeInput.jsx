@@ -21,7 +21,10 @@ export default function UnifiedTimeInput({
   id,
   required = false,
   minTime = null,
-  hasError = false
+  hasError = false,
+  openMenuProp = null,
+  onMenuOpenChange = null,
+  defaultPeriod = null
 }) {
   const [openMenu, setOpenMenu] = useState(null); // 'hour' | 'minute' | null
   const [periodOverride, setPeriodOverride] = useState(null);
@@ -31,6 +34,20 @@ export default function UnifiedTimeInput({
   const containerRef = useRef(null);
   const hourInputRef = useRef(null);
   const minuteInputRef = useRef(null);
+
+  const updateOpenMenu = (newVal) => {
+    setOpenMenu(newVal);
+    if (onMenuOpenChange) {
+      onMenuOpenChange(newVal);
+    }
+  };
+
+  useEffect(() => {
+    if (openMenuProp !== undefined && openMenuProp !== null) {
+      const menuType = typeof openMenuProp === 'object' ? openMenuProp.type : openMenuProp;
+      setOpenMenu(menuType);
+    }
+  }, [openMenuProp]);
 
   const minMinutes = useMemo(() => timeToMinutes(minTime), [minTime]);
   const currentMinutes = useMemo(() => timeToMinutes(value), [value]);
@@ -48,7 +65,7 @@ export default function UnifiedTimeInput({
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpenMenu(null);
+        updateOpenMenu(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -176,12 +193,12 @@ export default function UnifiedTimeInput({
     }
 
     emitChange(String(h), targetMin, targetPeriod);
-    setOpenMenu('minute'); // Automatically advance to minute selection
+    updateOpenMenu('minute'); // Automatically advance to minute selection
   };
 
   const handleSelectMinute = (m) => {
     emitChange(parsed.hour12 || '12', m, currentPeriod);
-    setOpenMenu(null); // Finish selection
+    updateOpenMenu(null); // Finish selection
   };
 
   const handlePeriodChange = (newPeriod) => {
@@ -303,7 +320,7 @@ export default function UnifiedTimeInput({
   const handleClear = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setOpenMenu(null);
+    updateOpenMenu(null);
     setPeriodOverride(null);
     setTypedHour(null);
     setTypedMinute(null);
@@ -372,7 +389,7 @@ export default function UnifiedTimeInput({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => setOpenMenu(prev => prev === 'hour' ? null : 'hour')}
+            onClick={() => updateOpenMenu(openMenu === 'hour' ? null : 'hour')}
             style={{
               border: 'none',
               background: openMenu === 'hour' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
@@ -428,7 +445,7 @@ export default function UnifiedTimeInput({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => setOpenMenu(prev => prev === 'minute' ? null : 'minute')}
+            onClick={() => updateOpenMenu(openMenu === 'minute' ? null : 'minute')}
             style={{
               border: 'none',
               background: openMenu === 'minute' ? 'var(--apple-blue-subtle, #e0f2fe)' : 'transparent',
@@ -543,13 +560,49 @@ export default function UnifiedTimeInput({
             <span style={{ fontSize: '0.74rem', fontWeight: 850, color: 'var(--apple-blue, #0369a1)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Select Hour (1 - 12)
             </span>
-            <button
-              type="button"
-              onClick={() => setOpenMenu(null)}
-              style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer', padding: '0 2px' }}
-            >
-              ✕
-            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'inline-flex', background: 'var(--bg-surface-secondary, #f1f5f9)', borderRadius: '6px', padding: '1px', border: '1px solid var(--border-color, #cbd5e1)' }}>
+                <button
+                  type="button"
+                  onClick={() => handlePeriodChange('AM')}
+                  style={{
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '1px 5px',
+                    fontSize: '0.70rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    background: currentPeriod === 'AM' ? 'var(--apple-blue, #0071e3)' : 'transparent',
+                    color: currentPeriod === 'AM' ? '#ffffff' : 'var(--text-secondary, #64748b)'
+                  }}
+                >
+                  AM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePeriodChange('PM')}
+                  style={{
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '1px 5px',
+                    fontSize: '0.70rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    background: currentPeriod === 'PM' ? 'var(--apple-blue, #0071e3)' : 'transparent',
+                    color: currentPeriod === 'PM' ? '#ffffff' : 'var(--text-secondary, #64748b)'
+                  }}
+                >
+                  PM
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateOpenMenu(null)}
+                style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer', padding: '0 2px' }}
+              >
+                ✕
+              </button>
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
             {hoursList.map((h) => {
@@ -619,7 +672,7 @@ export default function UnifiedTimeInput({
             </span>
             <button
               type="button"
-              onClick={() => setOpenMenu(null)}
+              onClick={() => updateOpenMenu(null)}
               style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', color: 'var(--text-secondary, #94a3b8)', cursor: 'pointer', padding: '0 2px' }}
             >
               ✕

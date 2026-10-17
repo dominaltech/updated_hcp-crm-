@@ -244,6 +244,26 @@ function notifyDiscountRequest({ discount = 0, total = 0, by = 'Staff', billId =
   });
 }
 
+function notifyExpense({ voucherNo = '', amount = 0, category = 'General', paidTo = '', cashierName = 'Staff', description = '' }) {
+  const formattedAmt = `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+  const title = `💸 Expense Recorded: ${formattedAmt}`;
+  const body = `${String(category || 'Expense').toUpperCase()} • Paid to ${paidTo || 'Vendor'} by ${cashierName}${voucherNo ? ` (Voucher #${voucherNo})` : ''}`;
+  return sendPushNotification({
+    title,
+    body,
+    type: 'expense',
+    data: {
+      type: 'expense',
+      voucherNo,
+      amount,
+      category,
+      paidTo,
+      cashierName,
+      url: '/expenses'
+    }
+  }).catch(e => console.warn('[NotificationService] Async expense notice error:', e.message));
+}
+
 function getNotifications(limit = 50) {
   try {
     return db.prepare(`
@@ -409,6 +429,10 @@ function getActivityFeed(type = 'all', limit = 100) {
   }
 }
 
+try {
+  db.prepare('ALTER TABLE owner_approvals ADD COLUMN meal_plan TEXT').run();
+} catch (_) {}
+
 function createApprovalRequest({
   type = 'discount',
   dept = 'Room',
@@ -418,6 +442,7 @@ function createApprovalRequest({
   room_number = '',
   members = '',
   expected_checkout = '',
+  meal_plan = '',
   discount = 0,
   discount_pct = 0,
   current_total = 0,
@@ -427,17 +452,19 @@ function createApprovalRequest({
   metadata = null
 }) {
   try {
-    const metaStr = typeof metadata === 'object' ? JSON.stringify(metadata) : (metadata || JSON.stringify({ members, expected_checkout }));
+    const metaObj = typeof metadata === 'object' && metadata !== null ? { ...metadata, meal_plan, requested_by } : { members, expected_checkout, meal_plan, requested_by };
+    const metaStr = JSON.stringify(metaObj);
 
     const info = db.prepare(`
       INSERT INTO owner_approvals (
         type, dept, bill_id, bill_number, guest_name, room_number,
-        members, expected_checkout, discount, discount_pct, current_total, final_amount,
+        members, expected_checkout, meal_plan, discount, discount_pct, current_total, final_amount,
         requested_by, reason, status, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
     `).run(
       type, dept, bill_id ? String(bill_id) : null, bill_number || '', guest_name || '',
       room_number ? String(room_number) : '', String(members || ''), String(expected_checkout || ''),
+      String(meal_plan || ''),
       Number(discount) || 0, Number(discount_pct) || 0,
       Number(current_total) || 0, Number(final_amount) || 0, requested_by || 'Front Desk', reason || '',
       metaStr
@@ -454,6 +481,7 @@ function createApprovalRequest({
         guest_name,
         members,
         expected_checkout,
+        meal_plan,
         discount,
         discount_pct,
         current_total,
@@ -469,8 +497,11 @@ function createApprovalRequest({
       guest_name ? `Guest: ${guest_name}` : null,
       members ? `Members: ${members}` : null,
       expected_checkout ? `Checkout: ${expected_checkout}` : null,
-      `Total: ₹${Number(current_total).toLocaleString('en-IN')}`,
-      `Discount: ${discount_pct}% (−₹${Number(discount).toLocaleString('en-IN')})`
+      meal_plan ? `Plan: ${meal_plan}` : null,
+      requested_by ? `Raised by: ${requested_by}` : null,
+      `Tariff: ₹${Number(current_total).toLocaleString('en-IN')}`,
+      `Discount: ${discount_pct}% (−₹${Number(discount).toLocaleString('en-IN')})`,
+      `Net: ₹${Number(final_amount).toLocaleString('en-IN')}`
     ].filter(Boolean).join(' • ');
 
     const body = `${details}. Tap to review and approve/reject.`;
@@ -604,6 +635,7 @@ module.exports = {
   notifyCheckin,
   notifyCheckout,
   notifyDiscountRequest,
+  notifyExpense,
   getNotifications,
   markNotificationRead,
   getActivityFeed,

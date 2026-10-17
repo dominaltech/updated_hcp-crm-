@@ -29,4 +29,6 @@ backup-file/
 google-services*.json
 firebase-service-account.json
 *.apk
+*.idsig
 crm.db
+.agents/

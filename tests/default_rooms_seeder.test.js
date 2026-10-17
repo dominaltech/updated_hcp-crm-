@@ -46,17 +46,19 @@ describe('Official Hotel Rooms Seeder', () => {
     `);
   });
 
-  it('contains exactly 26 rooms in DEFAULT_ROOMS_CATALOG matching all user specs', async () => {
+  it('contains exactly 40 rooms in DEFAULT_ROOMS_CATALOG matching all user specs', async () => {
     const mainDb = await import('../database.js');
     const catalog = mainDb.default.DEFAULT_ROOMS_CATALOG;
     expect(catalog).toBeDefined();
-    expect(catalog.length).toBe(26);
+    expect(catalog.length).toBe(40);
 
-    // Executive Rooms (15 rooms: 13 updated + 209, 308)
+    // Executive Rooms (29 rooms: 15 original + 402-409 + 501-506)
     const execRooms = catalog.filter(r => r.room_type === 'Executive Room');
-    expect(execRooms.length).toBe(15);
+    expect(execRooms.length).toBe(29);
     expect(execRooms.map(r => r.room_number)).toEqual([
-      '102', '103', '104', '204', '205', '206', '207', '208', '209', '303', '304', '305', '306', '307', '308'
+      '102', '103', '104', '204', '205', '206', '207', '208', '209', '303', '304', '305', '306', '307', '308',
+      '402', '403', '404', '405', '406', '407', '408', '409',
+      '501', '502', '503', '504', '505', '506'
     ]);
     const updatedExec = execRooms.filter(r => !['209', '308'].includes(r.room_number));
     updatedExec.forEach(r => {

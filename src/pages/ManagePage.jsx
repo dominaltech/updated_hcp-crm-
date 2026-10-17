@@ -56,9 +56,13 @@ export default function ManagePage({ onPrintClosingReport }) {
   const [accountingFromVoucher, setAccountingFromVoucher] = useState('');
   const [accountingToVoucher, setAccountingToVoucher] = useState('');
   const [accountingSearch, setAccountingSearch] = useState('');
+  const [accountingTaxType, setAccountingTaxType] = useState('all'); // 'all' | 'cgst_sgst' | 'igst'
   const [accountingEmail, setAccountingEmail] = useState(() => localStorage.getItem('hcp_accounting_email') || '');
   const [savedAccountingEmail, setSavedAccountingEmail] = useState(() => localStorage.getItem('hcp_accounting_email') || '');
   const [isSendingAccountingEmail, setIsSendingAccountingEmail] = useState(false);
+
+  // IGST Selected check for Accounting & Analysis
+  const isIgstSelected = accountingTaxType === 'igst' || (Array.isArray(accountingRecords) && accountingRecords.some(r => r.is_igst || (r.igst && r.igst > 0)));
 
   // Rooms CRUD state
   const [rooms, setRooms] = useState([]);
@@ -115,6 +119,37 @@ export default function ManagePage({ onPrintClosingReport }) {
     status: 'active',
     can_access_manager: 0
   });
+  const [isManagerAuthModalOpen, setIsManagerAuthModalOpen] = useState(false);
+  const [managerAuthPassword, setManagerAuthPassword] = useState('');
+  const [managerAuthError, setManagerAuthError] = useState('');
+  const [isVerifyingManagerAuth, setIsVerifyingManagerAuth] = useState(false);
+
+  const handleVerifyManagerAccessPassword = async (e) => {
+    if (e) e.preventDefault();
+    if (!managerAuthPassword.trim()) {
+      setManagerAuthError('Please enter admin password');
+      return;
+    }
+    setIsVerifyingManagerAuth(true);
+    setManagerAuthError('');
+    try {
+      const res = await api.verifyManagerLock({ password: managerAuthPassword.trim() });
+      if (res && res.success) {
+        setStaffForm(prev => ({ ...prev, can_access_manager: 1 }));
+        setIsManagerAuthModalOpen(false);
+        setManagerAuthPassword('');
+        showToast('Admin password verified. Manager panel access granted.', 'green');
+      } else {
+        setManagerAuthError(res?.error || 'Invalid admin password');
+        showToast('Invalid admin password', 'red');
+      }
+    } catch (err) {
+      setManagerAuthError(err?.message || 'Invalid admin password');
+      showToast('Invalid admin password', 'red');
+    } finally {
+      setIsVerifyingManagerAuth(false);
+    }
+  };
 
   // Cleaner / Housekeeping Staff state
   const [cleanersList, setCleanersList] = useState([]);
@@ -338,6 +373,7 @@ export default function ManagePage({ onPrintClosingReport }) {
         toBillNo: overrides.toBill !== undefined ? overrides.toBill : accountingToBill,
         fromVoucherNo: overrides.fromVoucher !== undefined ? overrides.fromVoucher : accountingFromVoucher,
         toVoucherNo: overrides.toVoucher !== undefined ? overrides.toVoucher : accountingToVoucher,
+        taxType: overrides.taxType !== undefined ? overrides.taxType : accountingTaxType,
         q: overrides.search !== undefined ? overrides.search : accountingSearch
       };
       const res = await api.getAccountingAnalysis(params);
@@ -404,8 +440,10 @@ export default function ManagePage({ onPrintClosingReport }) {
         fromBillNo: accountingFromBill,
         toBillNo: accountingToBill,
         fromVoucherNo: accountingFromVoucher,
-        toVoucherNo: accountingToVoucher
-      });
+        toVoucherNo: accountingToVoucher,
+                  taxType: accountingTaxType,
+                  isIgst: isIgstSelected
+                });
 
       // 2. Prepare email subject and summary body
       const totalBills = accountingRecords.length || accountingSummary.total_records || 0;
@@ -1693,7 +1731,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                           Hospitality Front Desk &amp; Room Folio Audit
                         </h3>
                         <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          Room Check-in Advances, Checkout Bill Settlements, OTA Pre-Paid Vouchers &amp; Front Desk Cash Drawer
+                          Room Check-in Advances, Checkout Bill Settlements, OTA Pre-Paid Bills &amp; Front Desk Cash Drawer
                         </span>
                       </div>
                     </div>
@@ -2635,7 +2673,9 @@ export default function ManagePage({ onPrintClosingReport }) {
                   fromBillNo: accountingFromBill,
                   toBillNo: accountingToBill,
                   fromVoucherNo: accountingFromVoucher,
-                  toVoucherNo: accountingToVoucher
+                  toVoucherNo: accountingToVoucher,
+                  taxType: accountingTaxType,
+                  isIgst: isIgstSelected
                 })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 750, fontSize: '0.84rem', padding: '8px 14px', borderRadius: '10px' }}
                 title="Download formatted Excel spreadsheet"
@@ -2646,7 +2686,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 type="button"
                 className="btn-secondary"
                 id="btn-accounting-download-csv"
-                onClick={() => exportAccountingAnalysisToCsv(accountingRecords, accountingSummary)}
+                onClick={() => exportAccountingAnalysisToCsv(accountingRecords, accountingSummary, { taxType: accountingTaxType, isIgst: isIgstSelected })}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 750, fontSize: '0.84rem', padding: '8px 14px', borderRadius: '10px' }}
                 title="Download CSV spreadsheet"
               >
@@ -2683,8 +2723,80 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <span>🔍</span> Filter &amp; Audit Range
               </span>
               
-              {/* Quick Presets */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {/* Quick Presets & Tax Mode Toggle */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Tax Mode Selector (CGST+SGST vs I GST) */}
+                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '10px', padding: '3px', border: '1.5px solid #cbd5e1', height: '32px', boxSizing: 'border-box' }} title="Filter by Tax Mode">
+                  <button
+                    type="button"
+                    id="btn-accounting-tax-all"
+                    onClick={() => {
+                      setAccountingTaxType('all');
+                      loadAccountingAnalysis({ taxType: 'all' });
+                    }}
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 750,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: accountingTaxType === 'all' ? '#ffffff' : 'transparent',
+                      color: accountingTaxType === 'all' ? '#0f172a' : '#64748b',
+                      boxShadow: accountingTaxType === 'all' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    All Taxes
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-accounting-tax-cgst-sgst"
+                    onClick={() => {
+                      setAccountingTaxType('cgst_sgst');
+                      loadAccountingAnalysis({ taxType: 'cgst_sgst' });
+                    }}
+                    style={{
+                      height: '24px',
+                      padding: '0 8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 750,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: accountingTaxType === 'cgst_sgst' ? '#ffffff' : 'transparent',
+                      color: accountingTaxType === 'cgst_sgst' ? '#0f172a' : '#64748b',
+                      boxShadow: accountingTaxType === 'cgst_sgst' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    CGST+SGST
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-accounting-tax-igst"
+                    onClick={() => {
+                      setAccountingTaxType('igst');
+                      loadAccountingAnalysis({ taxType: 'igst' });
+                    }}
+                    style={{
+                      height: '24px',
+                      padding: '0 9px',
+                      fontSize: '0.74rem',
+                      fontWeight: 850,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: accountingTaxType === 'igst' ? '#0284c7' : 'transparent',
+                      color: accountingTaxType === 'igst' ? '#ffffff' : '#64748b',
+                      boxShadow: accountingTaxType === 'igst' ? '0 1px 2px rgba(2,132,199,0.3)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    🏛️ I GST (5%)
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -2758,7 +2870,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                       id="filter-accounting-from-date"
                       value={accountingFromDate}
                       onChange={(e) => setAccountingFromDate(e.target.value)}
-                      style={{ width: '140px', height: '32px', fontSize: '0.80rem' }}
+                      style={{ width: '155px', height: '32px', fontSize: '0.80rem' }}
                     />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2767,22 +2879,22 @@ export default function ManagePage({ onPrintClosingReport }) {
                       id="filter-accounting-to-date"
                       value={accountingToDate}
                       onChange={(e) => setAccountingToDate(e.target.value)}
-                      style={{ width: '140px', height: '32px', fontSize: '0.80rem' }}
+                      style={{ width: '155px', height: '32px', fontSize: '0.80rem' }}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Filter 2: Voucher Number Range */}
+              {/* Filter 2: Bill Number Range */}
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
-                  Voucher Number Range
+                  Bill Number Range
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <input
                     type="text"
                     id="filter-accounting-from-bill"
-                    placeholder="From Voucher (e.g. 618)"
+                    placeholder="From Bill (e.g. 618)"
                     value={accountingFromBill}
                     onChange={(e) => setAccountingFromBill(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2791,7 +2903,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                   <input
                     type="text"
                     id="filter-accounting-to-bill"
-                    placeholder="To Voucher"
+                    placeholder="To Bill"
                     value={accountingToBill}
                     onChange={(e) => setAccountingToBill(e.target.value)}
                     style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', width: '100%' }}
@@ -2929,12 +3041,15 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
 
             <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>CGST &amp; SGST (5%)</div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                {isIgstSelected ? 'GST & I GST (5%)' : 'CGST & SGST (5%)'}
+              </div>
               <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
                 {formatCurrency(accountingSummary.total_cgst_sgst || 0)}
               </div>
               <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
                 C: {formatCurrency(accountingSummary.total_cgst || 0)} | S: {formatCurrency(accountingSummary.total_sgst || 0)}
+                {isIgstSelected && ` | I: ${formatCurrency(accountingSummary.total_igst || 0)}`}
               </div>
             </div>
 
@@ -2954,7 +3069,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <thead>
                   <tr style={{ background: '#1e293b', color: '#ffffff', textAlign: 'left' }}>
                     <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>C/O</th>
-                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Voucher No</th>
+                    <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Bill No</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, whiteSpace: 'nowrap' }}>Invoice number</th>
                     <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name of customer</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Room rent (base)</th>
@@ -2963,6 +3078,9 @@ export default function ManagePage({ onPrintClosingReport }) {
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Discount</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>CGST</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>SGST</th>
+                    {isIgstSelected && (
+                      <th style={{ padding: '11px 12px', fontWeight: 850, textAlign: 'right', whiteSpace: 'nowrap', color: '#38bdf8' }}>I GST</th>
+                    )}
                     <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name Of Company</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Company</th>
                   </tr>
@@ -2970,14 +3088,14 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <tbody>
                   {isLoadingAccounting ? (
                     <tr>
-                      <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={isIgstSelected ? 13 : 12} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ display: 'inline-block', width: '26px', height: '26px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '8px' }}></div>
                         <div style={{ fontWeight: 600 }}>Loading accounting &amp; analysis records...</div>
                       </td>
                     </tr>
                   ) : accountingRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={12} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={isIgstSelected ? 13 : 12} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📑</div>
                         <div style={{ fontWeight: 750, fontSize: '0.96rem', color: '#334155' }}>No Accounting Records Found</div>
                         <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>Try widening your date range or clearing the filter inputs.</div>
@@ -3002,7 +3120,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                             {r.date_of_checkout}
                           </td>
 
-                          {/* 2. Voucher No */}
+                          {/* 2. Bill No */}
                           <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                             <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '3px 8px', borderRadius: '6px', fontWeight: 750, fontFamily: 'monospace', fontSize: '0.82rem', border: '1px solid #cbd5e1' }}>
                               {r.voucher_no || r.bill_no || '-'}
@@ -3053,6 +3171,13 @@ export default function ManagePage({ onPrintClosingReport }) {
                           <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#059669' }}>
                             {formatCurrency(r.sgst || 0)}
                           </td>
+
+                          {/* 10B. I GST - Shown after SGST when IGST is selected */}
+                          {isIgstSelected && (
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 750, color: (r.igst || 0) > 0 ? '#0284c7' : '#94a3b8' }}>
+                              {formatCurrency(r.igst || 0)}
+                            </td>
+                          )}
 
                           {/* 11. Name Of Company */}
                           <td style={{ padding: '10px 14px' }}>
@@ -3107,6 +3232,11 @@ export default function ManagePage({ onPrintClosingReport }) {
                       <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#059669' }}>
                         {formatCurrency(accountingSummary.total_sgst || 0)}
                       </td>
+                      {isIgstSelected && (
+                        <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#0284c7', fontWeight: 850 }}>
+                          {formatCurrency(accountingSummary.total_igst || 0)}
+                        </td>
+                      )}
                       <td colSpan={2} style={{ padding: '12px 14px', textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
                         Net Payable: <strong>{formatCurrency(accountingSummary.total_grand || 0)}</strong>
                       </td>
@@ -5731,7 +5861,15 @@ export default function ManagePage({ onPrintClosingReport }) {
                       type="checkbox"
                       checked={Boolean(staffForm.can_access_manager == 1 || staffForm.role === 'manager')}
                       disabled={staffForm.role === 'manager'}
-                      onChange={(e) => setStaffForm({ ...staffForm, can_access_manager: e.target.checked ? 1 : 0 })}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setManagerAuthPassword('');
+                          setManagerAuthError('');
+                          setIsManagerAuthModalOpen(true);
+                        } else {
+                          setStaffForm({ ...staffForm, can_access_manager: 0 });
+                        }
+                      }}
                       style={{ width: '17px', height: '17px', cursor: 'pointer' }}
                     />
                     <span>Allow Manager Panel Access</span>
@@ -5745,6 +5883,75 @@ export default function ManagePage({ onPrintClosingReport }) {
                 </button>
                 <button type="submit" className="btn-primary" style={{ fontWeight: 750 }}>
                   {editingStaff ? '💾 Save Changes' : '➕ Register Staff Member'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Password Gate for Allow Manager Panel Access */}
+      {isManagerAuthModalOpen && (
+        <div className="modal-overlay active" style={{ zIndex: 10099, background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)' }}>
+          <div className="modal-container" style={{ maxWidth: '390px', width: '92%', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.35)' }}>
+            <div className="modal-header" style={{ background: '#1e293b', color: '#fff', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>🔐</span>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#fff' }}>Admin Password Required</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsManagerAuthModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '1.3rem', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleVerifyManagerAccessPassword}>
+              <div style={{ padding: '18px 20px', background: '#fff', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ margin: 0, fontSize: '0.84rem', color: '#475569', lineHeight: 1.45 }}>
+                  Please enter <strong>Admin Password</strong> to enable <em>Manager Panel Access</em> for <strong>{staffForm.full_name || staffForm.username || 'this staff member'}</strong>.
+                </p>
+                <div>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                    Admin Password *
+                  </label>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    className="form-input"
+                    placeholder="Enter admin password"
+                    value={managerAuthPassword}
+                    onChange={(e) => {
+                      setManagerAuthPassword(e.target.value);
+                      setManagerAuthError('');
+                    }}
+                    style={{ width: '100%', height: '40px', fontSize: '0.92rem', borderRadius: '8px' }}
+                  />
+                  {managerAuthError && (
+                    <div style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: 700, marginTop: '4px' }}>
+                      ⚠️ {managerAuthError}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: '12px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsManagerAuthModalOpen(false)}
+                  style={{ padding: '7px 14px', fontSize: '0.82rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isVerifyingManagerAuth || !managerAuthPassword.trim()}
+                  style={{ padding: '7px 16px', fontSize: '0.82rem', fontWeight: 750, background: '#2563eb' }}
+                >
+                  {isVerifyingManagerAuth ? 'Verifying...' : 'Authorize Access'}
                 </button>
               </div>
             </form>

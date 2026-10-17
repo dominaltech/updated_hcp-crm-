@@ -934,15 +934,15 @@ export function buildMoneyReceiptHTML(receipt) {
 
   // Row 1: "paid while checking" / "paid while Living" / "paid while checkout"
   const checkStr = (cleanParticulars + ' ' + (receipt.payment_stage || '') + ' ' + (receipt.purpose || '') + ' ' + (receipt.notes || '')).toLowerCase();
-  let stageLabel = 'Paid while checking';
+  let stageLabel = 'Paid For checking';
   if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
     stageLabel = 'Paid while checkout';
   } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('advance') || checkStr.includes('checking')) {
-    stageLabel = 'Paid while checking';
+    stageLabel = 'Paid For checking';
   } else if (checkStr.includes('living') || checkStr.includes('mid-stay') || checkStr.includes('running') || checkStr.includes('stay') || checkStr.includes('fnb') || checkStr.includes('order') || checkStr.includes('restaurant') || checkStr.includes('bar')) {
     stageLabel = 'Paid while Living';
   } else {
-    stageLabel = 'Paid while checking';
+    stageLabel = 'Paid For checking';
   }
 
   const rawRoom = receipt.room_numbers || receipt.roomNumber || receipt.room_number || '';
@@ -1055,6 +1055,7 @@ export function buildMoneyReceiptHTML(receipt) {
   })();
 
   const formattedReceiptNo = formatReceiptNumberWithMode(rawReceiptNo, rawMode);
+  const receiptBillOrVoucherLabel = 'Bill No:';
 
   const renderReceiptCard = (copyLabel) => `
     <div class="half-a4-receipt-card" style="position: relative; overflow: hidden; height: 128mm; max-height: 129mm; box-sizing: border-box; background: #ffffff !important; color: #000000 !important;">
@@ -1098,7 +1099,7 @@ export function buildMoneyReceiptHTML(receipt) {
             <span class="receipt-date-highlight" style="font-weight: 850; color: #000000 !important;">${escapeHtml(formattedDateTimeStr)}</span>
           </div>
           <div style="font-size: 9pt; font-weight: 850; display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap;">
-            <span style="color: #000000; font-weight: 900; white-space: nowrap;">Voucher No:</span>
+            <span style="color: #000000; font-weight: 900; white-space: nowrap;">${receiptBillOrVoucherLabel}</span>
             <span class="voucher-no-highlight" style="min-width: 120px; text-align: center; font-family: monospace, Courier, sans-serif; font-size: 10.5pt; font-weight: 950; color: #000000 !important; background: #ffffff !important; border: 1.5px solid #000000 !important; border-radius: 4px; padding: 1px 8px; white-space: nowrap;">${escapeHtml(displayVoucherNo)}</span>
           </div>
         </div>
@@ -1121,11 +1122,11 @@ export function buildMoneyReceiptHTML(receipt) {
           <span class="receipt-fill-line" style="font-size: 12pt; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; line-height: 24px; color: #000000 !important;">${escapeHtml(dynamicModeValue)}</span>
           <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">Room No.</span>
           <span class="receipt-fill-line" style="width: 55px; max-width: 65px; flex: none; text-align: center; font-size: 12.5pt; font-weight: 950; white-space: nowrap; line-height: 24px; color: #000000 !important;">${escapeHtml(String(receipt.room_numbers || '-').replace(/Room\s*#\s*/gi, 'Room ').replace(/^#/, ''))}</span>
-          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">Voucher No:</span>
+          <span class="receipt-lbl" style="margin-left: 6px; font-size: 12pt; font-weight: 850; white-space: nowrap; flex-shrink: 0; color: #000000 !important;">${receiptBillOrVoucherLabel}</span>
           <span class="receipt-fill-line" style="width: 125px; max-width: 135px; flex: none; text-align: center; font-weight: 950; font-family: monospace, Courier, sans-serif; font-size: 11pt; white-space: nowrap; line-height: 24px; color: #000000 !important;">${escapeHtml(displayVoucherNo)}</span>
         </div>
 
-        <!-- Multi-Row Ruled Table Grid (Using both rows: Row 1 = Paid while checking/living/checkout, Row 2 = Mode & UTR) -->
+        <!-- Multi-Row Ruled Table Grid (Using both rows: Row 1 = Paid For checking/living/checkout, Row 2 = Mode & UTR) -->
         <div class="receipt-table-section">
           <table class="receipt-mini-table" style="font-size: 12pt; color: #000000 !important; background: #ffffff !important;">
             <thead>
@@ -1904,7 +1905,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   // Meal Plan & Extra Bed description
   const rawMealPlan = String(data.mealPlan || data.meal_plan || (data.room && (data.room.meal_plan || data.room.mealPlan)) || 'room_only').toLowerCase();
   let mealPlanDisplay = 'Without Breakfast';
-  if (rawMealPlan.includes('breakfast') || rawMealPlan === 'cp') {
+  if (!rawMealPlan.includes('without') && (rawMealPlan.includes('breakfast') || rawMealPlan === 'cp')) {
     mealPlanDisplay = 'With Breakfast' + (isOta ? ' • OTA Pre-booked' : '');
   } else if (rawMealPlan.includes('map')) {
     mealPlanDisplay = 'Breakfast & Dinner' + (isOta ? ' • OTA Pre-booked' : '');
@@ -2104,7 +2105,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   let caseBannerIcon = '🚶';
   let caseBannerTitle = '';
   let caseBannerSubtitle = '';
-  let caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Voucher No: ${escapeHtml(cleanVoucherNumber(voucherNo) || voucherNo)}</span>`;
+  let caseBannerRefHtml = '';
   let caseHeaderLabel = '';
 
   if (isOtaPrepaid) {
@@ -2115,8 +2116,8 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerIcon = '🌐';
     caseBannerTitle = `OTA PRE-PAID RESERVATION (${platform.toUpperCase()})${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerRefHtml = otaBookingId
-      ? `<span style="background: #dcfce7; color: #166534; border: 1.5px solid #86efac; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher Ref: #${escapeHtml(otaBookingId)}</span>`
-      : `<span style="background: #dcfce7; color: #166534; border: 1.5px solid #86efac; padding: 4px 10px; border-radius: 4px; font-weight: 900;">OTA Voucher Ref: Not Specified</span>`;
+      ? `<span style="background: #dcfce7; color: #166534; border: 1.5px solid #86efac; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher No: ${escapeHtml(otaBookingId)}</span>`
+      : `<span style="background: #dcfce7; color: #166534; border: 1.5px solid #86efac; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher No: Not Specified</span>`;
     caseHeaderLabel = `OTA Pre-Paid (${platform})${hasExtraMembers ? ' with Extra Member' : ''}`;
   } else if (isOtaPayAtHotel) {
     const platform = otaPlatform || 'OTA';
@@ -2127,8 +2128,8 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerTitle = `OTA RESERVATION (${platform.toUpperCase()}) • PAY AT HOTEL${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Booked via OTA channel. Entire room stay tariff + hotel incidentals must be collected directly from guest at Front Desk.';
     caseBannerRefHtml = otaBookingId
-      ? `<span style="background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; padding: 4px 10px; border-radius: 4px; font-weight: 900;">OTA Ref: #${escapeHtml(otaBookingId)}</span>`
-      : `<span style="background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; padding: 4px 10px; border-radius: 4px; font-weight: 900;">OTA Ref: Pay at Hotel</span>`;
+      ? `<span style="background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher No: ${escapeHtml(otaBookingId)}</span>`
+      : `<span style="background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher No: Not Specified</span>`;
     caseHeaderLabel = `OTA Pay-at-Hotel (${platform})${hasExtraMembers ? ' with Extra Member' : ''}`;
   } else if (isBtc) {
     const company = btcCompanyName ? btcCompanyName.toUpperCase() : 'CORPORATE CLIENT';
@@ -2138,7 +2139,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerIcon = '🏢';
     caseBannerTitle = `CORPORATE BILL TO COMPANY (BTC) — ${company}${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Room stay tariff & approved taxes are debited to Company Credit Ledger. Personal incidentals & F&B are payable by guest upon checkout.';
-    caseBannerRefHtml = `<span style="background: #f3e8ff; color: #6b21a8; border: 1.5px solid #d8b4fe; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Approval: #${escapeHtml(btcApprovalRef || 'CREDIT')}</span>`;
+    caseBannerRefHtml = btcApprovalRef ? `<span style="background: #f3e8ff; color: #6b21a8; border: 1.5px solid #d8b4fe; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Approval: #${escapeHtml(btcApprovalRef)}</span>` : '';
     caseHeaderLabel = `Corporate BTC (${btcCompanyName || 'Client'})${hasExtraMembers ? ' with Extra Member' : ''}`;
   } else if (isWebsite) {
     caseBannerBorder = '#0369a1';
@@ -2147,7 +2148,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerIcon = '💻';
     caseBannerTitle = `HOTEL OFFICIAL WEBSITE DIRECT RESERVATION${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Direct online reservation through hotel booking engine. Standard room tariff and hotel policies apply.';
-    caseBannerRefHtml = `<span style="background: #e0f2fe; color: #0369a1; border: 1.5px solid #7dd3fc; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Web ID: #${escapeHtml(voucherNo)}</span>`;
+    caseBannerRefHtml = '';
     caseHeaderLabel = `Website Direct${hasExtraMembers ? ' with Extra Member' : ''}`;
   } else {
     caseBannerBorder = '#1e293b';
@@ -2156,7 +2157,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerIcon = '🚶';
     caseBannerTitle = `DIRECT WALK-IN GUEST${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = '';
-    caseBannerRefHtml = `<span style="background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 4px; font-weight: 850;">Voucher No: ${escapeHtml(cleanVoucherNumber(voucherNo) || voucherNo)}</span>`;
+    caseBannerRefHtml = '';
     caseHeaderLabel = `Direct Walk-in${hasExtraMembers ? ' with Extra Member' : ''}`;
   }
 
@@ -2285,7 +2286,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           <tbody>
             <tr>
               <td style="padding: 2.5px 7px; font-size: 7.5pt; font-weight: 850; background: #eff6ff; border-bottom: 1.5px solid #93c5fd; border-right: 1.5px solid #93c5fd; white-space: nowrap; color: #1e40af;">
-                Voucher / Reg No:
+                Bill No:
               </td>
               <td style="padding: 2.5px 8px; font-weight: 900; font-size: 9.5pt; color: #1e3a8a; border-bottom: 1.5px solid #93c5fd; white-space: nowrap; letter-spacing: 0.03em;">
                 ${escapeHtml(voucherNo)}
@@ -2353,7 +2354,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                 </div>
               ` : ''}
             </div>
-            <div style="text-align: right; white-space: nowrap; font-size: 8.5pt; font-weight: 850; color: #1e293b; margin-left: 8px;">
+            <div style="text-align: right; white-space: nowrap; font-size: 8.5pt; font-weight: 850; color: #1e293b; margin-left: 8px; display: ${caseBannerRefHtml ? 'block' : 'none'};">
               ${caseBannerRefHtml}
             </div>
           </div>
@@ -3363,7 +3364,7 @@ export function buildGuestPaymentSummaryHTML(data) {
                 <strong style="color: #0f172a;">${escapeHtml(mobile)}</strong>
               </div>
               <div>
-                <span style="color: #64748b; font-size: 8pt; font-weight: 800; text-transform: uppercase; display: block;">Voucher Number</span>
+                <span style="color: #64748b; font-size: 8pt; font-weight: 800; text-transform: uppercase; display: block;">Bill No</span>
                 <strong style="color: #0f172a;">${escapeHtml(voucherNo)}</strong>
               </div>
               <div>
@@ -4109,7 +4110,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
     bookingModeStr = 'BTC';
   }
 
-  const extraMattressCount = Number(r.extra_beds ?? c.extra_beds ?? c.extraBeds ?? r.extraBeds ?? (Number(r.extra_bed_charge || c.hotelExtrasCharge || 0) > 0 ? 1 : 0) || 0);
+  const extraMattressCount = Number((r.extra_beds ?? c.extra_beds ?? c.extraBeds ?? r.extraBeds ?? (Number(r.extra_bed_charge || c.hotelExtrasCharge || 0) > 0 ? 1 : 0)) || 0);
   const baseBedCapacity = Number(r.max_adults ?? c.max_adults ?? 2);
   let adults = (Number(r.adults_male || 0) + Number(r.adults_female || 0) + Number(r.adults_other || 0)) || Number(r.adults || 0) || 1;
   // User Requirement: "if 2 bed + 1 Extra mattress = it will be 1pax or 3 pax (we want it should be 3 pax)"
@@ -5125,7 +5126,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
                         <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(invoiceNo)}</span>
                       </td>
                       <td style="padding: 1px 0 1px 12px; width: 50%; white-space: nowrap;">
-                        <span style="color: #333; font-weight: 400;">Reg. No. :</span>
+                        <span style="color: #333; font-weight: 400;">Bill No. :</span>
                         <span style="color: #000; font-weight: 400; margin-left: 4px;">${escapeHtml(regNo)}</span>
                       </td>
                     </tr>
@@ -6250,10 +6251,19 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
   const fromVoucher = filters.fromVoucherNo || filters.from_voucher_no || '';
   const toVoucher = filters.toVoucherNo || filters.to_voucher_no || '';
 
+  const hasIgst = Boolean(
+    filters.isIgst ||
+    filters.taxType === 'igst' ||
+    summary.has_igst ||
+    (summary.total_igst && summary.total_igst > 0) ||
+    records.some(r => r.is_igst || (r.igst && r.igst > 0))
+  );
+
   const filterTags = [];
   if (fromDt || toDt) filterTags.push(`Date: ${fromDt || 'Start'} to ${toDt || 'Present'}`);
   if (fromBill || toBill) filterTags.push(`Bill No: ${fromBill || 'Start'} to ${toBill || 'End'}`);
   if (fromVoucher || toVoucher) filterTags.push(`Voucher No: ${fromVoucher || 'Start'} to ${toVoucher || 'End'}`);
+  if (filters.taxType && filters.taxType !== 'all') filterTags.push(`Tax Mode: ${filters.taxType === 'igst' ? 'I GST' : 'CGST+SGST'}`);
   const filterDesc = filterTags.length > 0 ? filterTags.join(' &nbsp;|&nbsp; ') : 'All Recorded Checkouts & Bills';
 
   const nowStr = new Date().toLocaleString('en-IN', {
@@ -6267,16 +6277,22 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
 
   const totBase = Number(summary.total_room_rent_base || 0).toFixed(2);
   const totMattress = Number(summary.total_extra_mattress || 0).toFixed(2);
+  const totBreakfast = Number(summary.total_visitor_breakfast || 0).toFixed(2);
   const totDisc = Number(summary.total_discount || 0).toFixed(2);
-  const totCgstSgst = Number(summary.total_cgst_sgst || 0).toFixed(2);
+  const totCgst = Number(summary.total_cgst || 0).toFixed(2);
+  const totSgst = Number(summary.total_sgst || 0).toFixed(2);
+  const totIgst = Number(summary.total_igst || 0).toFixed(2);
   const totGrand = Number(summary.total_grand || 0).toFixed(2);
 
   const rowsHtml = records.map((r, idx) => {
     const isEven = idx % 2 === 0;
     const baseRent = Number(r.room_rent_base || 0).toFixed(2);
     const mattress = Number(r.extra_mattress_pax || 0).toFixed(2);
+    const breakfast = Number(r.visitor_breakfast_base || 0).toFixed(2);
     const disc = Number(r.discount || 0).toFixed(2);
-    const cgstSgst = Number(r.cgst_sgst_total || 0).toFixed(2);
+    const cgst = Number(r.cgst || 0).toFixed(2);
+    const sgst = Number(r.sgst || 0).toFixed(2);
+    const igst = Number(r.igst || 0).toFixed(2);
     const gstNo = r.gst_no_of_customer || '-';
 
     return `
@@ -6287,9 +6303,12 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
         <td style="padding: 5px 8px; font-weight: 600; text-align: left;">${escapeHtml(r.name_of_customer || '-')}</td>
         <td style="padding: 5px 8px; text-align: right; font-family: monospace;">₹${baseRent}</td>
         <td style="padding: 5px 8px; text-align: right; font-family: monospace;">₹${mattress}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace;">₹${breakfast}</td>
         <td style="padding: 5px 8px; text-align: right; font-family: monospace; color: #dc2626;">₹${disc}</td>
-        <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${cgstSgst}</td>
-        <td style="padding: 5px 8px; text-align: left;">${escapeHtml(r.name_of_customer_gst || '-')}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${cgst}</td>
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${sgst}</td>
+        ${hasIgst ? `<td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #0284c7;">₹${igst}</td>` : ''}
+        <td style="padding: 5px 8px; text-align: left;">${escapeHtml(r.name_of_company || r.name_of_customer_gst || '-')}</td>
         <td style="padding: 5px 6px; text-align: center; font-family: monospace; font-size: 8.5pt;">${escapeHtml(gstNo)}</td>
       </tr>
     `;
@@ -6359,9 +6378,9 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
         th {
           background-color: #1e293b;
           color: #ffffff;
-          padding: 6px 6px;
+          padding: 6px 5px;
           font-weight: 700;
-          font-size: 8.5pt;
+          font-size: 8pt;
           text-transform: uppercase;
           letter-spacing: 0.2px;
           border: 1px solid #0f172a;
@@ -6413,26 +6432,32 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
       <table>
         <thead>
           <tr>
-            <th style="width: 8%;">C/O</th>
-            <th style="width: 7.5%;">Bill no</th>
-            <th style="width: 7.5%;">Invoice number</th>
-            <th style="width: 14%;">Name of customer</th>
-            <th style="width: 9.5%;">Room rent (base)</th>
-            <th style="width: 9.5%;">Extra mattress (PAX)</th>
-            <th style="width: 7.5%;">Discount</th>
-            <th style="width: 9%;">CGST &amp; SGST</th>
-            <th style="width: 16%;">Name Of Customer GST</th>
-            <th style="width: 11.5%;">GST No of Customer</th>
+            <th style="width: 7%;">C/O</th>
+            <th style="width: 7%;">Bill no</th>
+            <th style="width: 7%;">Invoice number</th>
+            <th style="width: 13%;">Name of customer</th>
+            <th style="width: 8.5%;">Room rent (base)</th>
+            <th style="width: 8.5%;">Extra mattress (PAX)</th>
+            <th style="width: 8.5%;">Visitors extra Breakfast (Base)</th>
+            <th style="width: 6.5%;">Discount</th>
+            <th style="width: 6.5%;">CGST</th>
+            <th style="width: 6.5%;">SGST</th>
+            ${hasIgst ? '<th style="width: 6.5%; color: #38bdf8;">I GST</th>' : ''}
+            <th style="width: 12%;">Name Of Customer GST</th>
+            <th style="width: 9%;">GST No of Customer</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="10" style="padding: 24px; text-align: center; color: #64748b;">No accounting checkout records match the applied criteria.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="${hasIgst ? 13 : 12}" style="padding: 24px; text-align: center; color: #64748b;">No accounting checkout records match the applied criteria.</td></tr>`}
           <tr class="total-row">
             <td colspan="4" style="text-align: right; padding-right: 12px;">TOTAL (${records.length} Bills / Invoices):</td>
             <td style="text-align: right; font-family: monospace;">₹${totBase}</td>
             <td style="text-align: right; font-family: monospace;">₹${totMattress}</td>
+            <td style="text-align: right; font-family: monospace;">₹${totBreakfast}</td>
             <td style="text-align: right; font-family: monospace; color: #dc2626;">₹${totDisc}</td>
-            <td style="text-align: right; font-family: monospace;">₹${totCgstSgst}</td>
+            <td style="text-align: right; font-family: monospace;">₹${totCgst}</td>
+            <td style="text-align: right; font-family: monospace;">₹${totSgst}</td>
+            ${hasIgst ? `<td style="text-align: right; font-family: monospace; color: #0284c7;">₹${totIgst}</td>` : ''}
             <td colspan="2" style="text-align: right; padding-right: 8px;">Net Payable: <strong>₹${totGrand}</strong></td>
           </tr>
         </tbody>
@@ -6482,6 +6507,13 @@ export function printAccountingAnalysisReport({ records = [], filters = {}, summ
 export function generateAccountingAnalysisExcelXml(records = [], summary = {}, filters = {}) {
   const fromDt = filters.fromDate || filters.from_date || 'Start';
   const toDt = filters.toDate || filters.to_date || 'Present';
+  const hasIgst = Boolean(
+    filters.isIgst ||
+    filters.taxType === 'igst' ||
+    summary.has_igst ||
+    (summary.total_igst && summary.total_igst > 0) ||
+    records.some(r => r.is_igst || (r.igst && r.igst > 0))
+  );
 
   let xml = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -6560,12 +6592,14 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
    <Column ss:Width="95"/>
    <Column ss:Width="105"/>
    <Column ss:Width="140"/>
-   <Column ss:Width="150"/>
    <Column ss:Width="115"/>
    <Column ss:Width="125"/>
+   <Column ss:Width="135"/>
    <Column ss:Width="90"/>
-   <Column ss:Width="110"/>
-   <Column ss:Width="170"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   ${hasIgst ? '<Column ss:Width="90"/>' : ''}
+   <Column ss:Width="160"/>
    <Column ss:Width="140"/>
 
    <Row ss:Height="24">
@@ -6581,12 +6615,14 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="Header"><Data ss:Type="String">C/O</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Bill no</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Invoice number</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">GST No of Customer</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Name of customer</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Room rent (base)</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Extra mattress (PAX)</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Visitors extra Breakfast (Base)</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Discount</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">CGST &amp; SGST</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">CGST</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">SGST</Data></Cell>
+    ${hasIgst ? '<Cell ss:StyleID="Header"><Data ss:Type="String">I GST</Data></Cell>' : ''}
     <Cell ss:StyleID="Header"><Data ss:Type="String">Name Of Customer GST</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">GST No of Customer</Data></Cell>
    </Row>
@@ -6598,13 +6634,15 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.date_of_checkout || '-')}</Data></Cell>
     <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.bill_no || '-')}</Data></Cell>
     <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.invoice_number || '-')}</Data></Cell>
-    <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.gst_no_of_customer || '-')}</Data></Cell>
     <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_customer || '-')}</Data></Cell>
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.room_rent_base || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.extra_mattress_pax || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.visitor_breakfast_base || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.discount || 0).toFixed(2)}</Data></Cell>
-    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.cgst_sgst_total || 0).toFixed(2)}</Data></Cell>
-    <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_customer_gst || '-')}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.cgst || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.sgst || 0).toFixed(2)}</Data></Cell>
+    ${hasIgst ? `<Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.igst || 0).toFixed(2)}</Data></Cell>` : ''}
+    <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_company || r.name_of_customer_gst || '-')}</Data></Cell>
     <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.gst_no_of_customer || '-')}</Data></Cell>
    </Row>`;
   });
@@ -6615,12 +6653,14 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String">TOTAL</Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
-    <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String">${records.length} Bills</Data></Cell>
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_room_rent_base || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_extra_mattress || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_visitor_breakfast || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_discount || 0).toFixed(2)}</Data></Cell>
-    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_cgst_sgst || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_cgst || 0).toFixed(2)}</Data></Cell>
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_sgst || 0).toFixed(2)}</Data></Cell>
+    ${hasIgst ? `<Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_igst || 0).toFixed(2)}</Data></Cell>` : ''}
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
    </Row>

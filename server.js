@@ -8485,6 +8485,8 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       from_voucher_no,
       toVoucherNo,
       to_voucher_no,
+      taxType,
+      tax_type,
       q,
       search,
       limit = 500
@@ -8496,6 +8498,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
     const endBill = toBillNo || to_bill_no;
     const startVoucher = fromVoucherNo || from_voucher_no;
     const endVoucher = toVoucherNo || to_voucher_no;
+    const taxMode = (taxType || tax_type || 'all').toLowerCase();
     const searchQuery = (q || search || '').trim();
 
     let sql = `
@@ -8684,7 +8687,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       } else if (row.guest_company_name && row.guest_company_name.trim()) {
         nameOfCompany = row.guest_company_name.trim();
       } else {
-        nameOfCompany = '-';
+        nameOfCompany = (row.guest_name && row.guest_name.trim()) ? row.guest_name.trim() : '-';
       }
 
       // GST No of Company resolution:
@@ -8743,7 +8746,9 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
           ota_platform: row.ota_platform,
           total_room_charge: row.total_room_charge || 0,
           total_paid: row.total_paid || 0,
-          payment_status: row.booking_status
+          payment_status: row.booking_status,
+          is_igst: Boolean(row.is_igst || row.tax_type === 'IGST'),
+          tax_type: row.tax_type || (row.is_igst ? 'IGST' : 'CGST_SGST')
         });
       } else {
         const item = billMap.get(groupKey);
@@ -8757,6 +8762,10 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
         item.discount += discountRow;
         item.total_room_charge += (row.total_room_charge || 0);
         item.total_paid += (row.total_paid || 0);
+        if (row.is_igst || row.tax_type === 'IGST') {
+          item.is_igst = true;
+          item.tax_type = 'IGST';
+        }
 
         if (item.name_of_company === '-' && nameOfCompany !== '-') {
           item.name_of_company = nameOfCompany;
@@ -8771,20 +8780,43 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
 
     let records = Array.from(billMap.values());
 
-    // Calculate CGST & SGST for each bill item
+        // Calculate CGST, SGST & IGST for each bill item
     records.forEach(item => {
       const taxable = Math.max(0, item.room_rent_base + item.extra_mattress_pax + (item.visitor_breakfast_base || 0) - item.discount);
       const totalGst = Number((taxable * 0.05).toFixed(2));
-      const cgst = Number((totalGst / 2).toFixed(2));
-      const sgst = Number((totalGst - cgst).toFixed(2));
-      
+      const isIgstItem = Boolean(item.is_igst || item.tax_type === 'IGST');
+
+      let cgst = 0;
+      let sgst = 0;
+      let igst = 0;
+
+      if (isIgstItem) {
+        igst = totalGst;
+        cgst = 0;
+        sgst = 0;
+      } else {
+        cgst = Number((totalGst / 2).toFixed(2));
+        sgst = Number((totalGst - cgst).toFixed(2));
+        igst = 0;
+      }
+
       item.taxable_amount = taxable;
       item.cgst = cgst;
       item.sgst = sgst;
+      item.igst = igst;
+      item.is_igst = isIgstItem;
+      item.tax_type = isIgstItem ? 'IGST' : 'CGST_SGST';
       item.cgst_sgst_total = totalGst;
       item.grand_total = Number((taxable + totalGst).toFixed(2));
       item.rooms_str = item.rooms.join(', ');
     });
+
+    // Apply tax mode filter if specified
+    if (taxMode === 'igst') {
+      records = records.filter(item => item.is_igst);
+    } else if (taxMode === 'cgst_sgst' || taxMode === 'cgst' || taxMode === 'sgst') {
+      records = records.filter(item => !item.is_igst);
+    }
 
     // Helper to match number / voucher range
     const filterByNumberRange = (val, from, to) => {
@@ -8831,6 +8863,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       acc.total_discount += it.discount;
       acc.total_cgst += it.cgst;
       acc.total_sgst += it.sgst;
+      acc.total_igst += (it.igst || 0);
       acc.total_cgst_sgst += it.cgst_sgst_total;
       acc.total_grand += it.grand_total;
       return acc;
@@ -8842,6 +8875,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
       total_discount: 0,
       total_cgst: 0,
       total_sgst: 0,
+      total_igst: 0,
       total_cgst_sgst: 0,
       total_grand: 0
     });
@@ -8852,6 +8886,7 @@ app.get('/api/manager/accounting-analysis', requireAuth, requireRole('manager', 
     summary.total_discount = Number(summary.total_discount.toFixed(2));
     summary.total_cgst = Number(summary.total_cgst.toFixed(2));
     summary.total_sgst = Number(summary.total_sgst.toFixed(2));
+    summary.total_igst = Number((summary.total_igst || 0).toFixed(2));
     summary.total_cgst_sgst = Number(summary.total_cgst_sgst.toFixed(2));
     summary.total_grand = Number(summary.total_grand.toFixed(2));
 
@@ -10451,6 +10486,18 @@ app.post('/api/expenses', requireAuth, requireRole('manager', 'hospitality'), (r
     );
 
     const newExpense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(result.lastInsertRowid);
+    try {
+      notificationService.notifyExpense({
+        voucherNo,
+        amount: numAmount,
+        category: cleanCategory,
+        paidTo: cleanPaidTo,
+        cashierName: cleanCashier,
+        description: cleanPurpose
+      });
+    } catch (e) {
+      console.warn('[Expense] Notification trigger notice:', e.message);
+    }
     res.json({
       success: true,
       expense: newExpense,
@@ -11811,6 +11858,14 @@ app.get('/api/store/bills', async (req, res) => {
         WHERE b.status = 'FULL'
         ORDER BY b.created_at DESC
       `;
+    } else if (statusType === 'all') {
+      // All bills: pending, partly paid, and fully settled
+      billsQuery = `
+        SELECT b.*, v.name as vendor_name, v.mobile as vendor_mobile
+        FROM store_bills b
+        JOIN store_vendors v ON b.vendor_id = v.id
+        ORDER BY b.created_at DESC
+      `;
     } else {
       // Live: Pending or partly paid bills
       billsQuery = `
@@ -12247,6 +12302,35 @@ function mountStaticDist() {
 }
 
 
+// -------------------------------------------------------------
+// STOREMAN PANEL & ADMIN PANEL DIRECT ROUTES
+// -------------------------------------------------------------
+app.get(['/storeman', '/storeman/index.html', '/storeman.html', '/store', '/store/'], (req, res) => {
+  const storePath = fs.existsSync(path.join(__dirname, 'store_index.html'))
+    ? path.join(__dirname, 'store_index.html')
+    : path.join(publicDir, 'store_index.html');
+  res.sendFile(storePath);
+});
+
+app.get(['/store-admin', '/store-admin/index.html', '/store_admin_index.html'], (req, res) => {
+  const storeAdminPath = fs.existsSync(path.join(__dirname, 'store_admin_index.html'))
+    ? path.join(__dirname, 'store_admin_index.html')
+    : path.join(publicDir, 'store_admin_index.html');
+  res.sendFile(storeAdminPath);
+});
+
+app.get('/supabase.js', (req, res) => {
+  const spPath = fs.existsSync(path.join(__dirname, 'supabase.js'))
+    ? path.join(__dirname, 'supabase.js')
+    : path.join(publicDir, 'supabase.js');
+  res.sendFile(spPath);
+});
+
+// Admin Panel redirection to port 8081 (Admin Server)
+app.get(['/admin', '/admin/'], (req, res) => {
+  res.redirect('http://localhost:8081');
+});
+
 async function startServer() {
   const hasDist = fs.existsSync(path.join(distDir, 'index.html'));
   const isDev = process.env.VITE_DEV === '1' || (process.env.NODE_ENV === 'development' && !hasDist);
@@ -12275,6 +12359,9 @@ async function startServer() {
     console.log(`🍽️ Restaurant POS Screen: http://localhost:${PORT}/restaurant`);
     console.log(`🍸 Bar POS Screen: http://localhost:${PORT}/bar`);
     console.log(`⚙️ Manage Rooms (Owner): http://localhost:${PORT}/manage`);
+    console.log(`📦 Storeman Panel: http://localhost:${PORT}/storeman`);
+    console.log(`📋 Store Admin Panel: http://localhost:${PORT}/store-admin`);
+    console.log(`📱 Admin / Owner Panel: http://localhost:8081`);
 
     // Non-blocking background sync of active occupancies to Supabase cloud
     supabaseService.syncAllActiveRoomsFromLocal(db)
@@ -12284,10 +12371,27 @@ async function startServer() {
       .catch(err => console.warn('[Supabase] Initial sync skipped:', err.message));
 
     // Real-time polling of cloud approvals from Admin mobile app (works across 5G / cellular / anywhere)
+    // Initial background sync for store bills and vendors
+    if (typeof supabaseService.pullStoreBillsFromCloud === 'function') {
+      supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
+    }
+
+    // Real-time polling of cloud approvals, store bills, vendors, and analytics
+    let storeSyncCounter = 0;
     setInterval(() => {
       supabaseService.pollCloudApprovals(db).catch(() => {});
       if (typeof supabaseService.syncDailyAnalyticsToCloud === 'function') {
         supabaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
+      }
+      if (typeof supabaseService.pullStoreBillsFromCloud === 'function') {
+        supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
+      }
+      if (typeof supabaseService.pullCloudRoomChargesToLocal === 'function') {
+        supabaseService.pullCloudRoomChargesToLocal(db).catch(() => {});
+      }
+      storeSyncCounter++;
+      if (storeSyncCounter % 4 === 0 && typeof supabaseService.pullStoreVendorsFromCloud === 'function') {
+        supabaseService.pullStoreVendorsFromCloud(db).catch(() => {});
       }
     }, 2500);
   });

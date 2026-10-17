@@ -41,7 +41,7 @@ describe('User Requests: Check-in Box Overlap, Expenses Modal CSS, & PCV-1 with 
     expect(html).toContain('border-right: 3.5px solid #1e3a8a;');
     
     // Content is preserved
-    expect(html).toContain('Voucher / Reg No:');
+    expect(html).toContain('Bill No:');
     expect(html).toContain('260919-386');
     expect(html).toContain('Check-in Date:');
   });

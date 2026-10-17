@@ -654,6 +654,7 @@ try { db.exec("ALTER TABLE bar_orders ADD COLUMN cashier_name TEXT DEFAULT '';")
 try { db.exec("ALTER TABLE staff_users ADD COLUMN can_access_manager INTEGER DEFAULT 0;"); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET can_access_manager = 1 WHERE role = 'manager';").run(); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET full_name = 'Jaijeet sir' WHERE username = 'admin' OR (role = 'manager' AND full_name = 'General Manager');").run(); } catch (e) {}
+const bcrypt = require('bcryptjs');
 try {
   const adminRow = db.prepare("SELECT id, password FROM staff_users WHERE username = 'admin'").get();
   if (adminRow && !bcrypt.compareSync('admin123', adminRow.password)) {
@@ -662,7 +663,6 @@ try {
 } catch (e) {}
 
 // Seed Starter Accounts for Each Hotel Section (Front Desk, Restaurant, Bar, Management) if missing
-const bcrypt = require('bcryptjs');
 const ensureStaffAccount = (username, defaultPassword, fullName, role, phone, canAccessManager = null) => {
   const existing = db.prepare('SELECT id FROM staff_users WHERE username = ?').get(username);
   const managerAccess = canAccessManager !== null ? canAccessManager : (role === 'manager' ? 1 : 0);
@@ -1111,6 +1111,30 @@ const DEFAULT_ROOMS_CATALOG = [
     max_extra_beds: 1,
     extra_bed_price: 600,
   },
+  ...['402', '403', '404', '405', '406', '407', '408', '409'].map(num => ({
+    room_number: String(num),
+    floor: 'Fourth Floor',
+    room_type: 'Executive Room',
+    price_single: 2050,
+    price: 2350,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
+  ...['501', '502', '503', '504', '505', '506'].map(num => ({
+    room_number: String(num),
+    floor: 'Fifth Floor',
+    room_type: 'Executive Room',
+    price_single: 2050,
+    price: 2350,
+    max_discount_pct: 15,
+    max_adults: 2,
+    max_children: 2,
+    max_extra_beds: 1,
+    extra_bed_price: 600,
+  })),
 
   // Executive Plus
   ...['202', '203', '210', '211'].map(num => ({

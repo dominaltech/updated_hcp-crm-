@@ -711,7 +711,6 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                   { value: 'Passport', label: '🛂 Passport' },
                   { value: 'Driving License', label: '🚗 Driving License' },
                   { value: 'Voter ID', label: '🗳️ Voter ID' },
-                  { value: 'PAN Card', label: '📄 PAN Card' },
                   { value: 'Government ID', label: '🏛️ Other Govt ID' }
                 ]}
                 colorTheme="blue"

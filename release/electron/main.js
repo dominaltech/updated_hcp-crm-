@@ -77,18 +77,152 @@ function isPortActive(port) {
   });
 }
 
+function getAppConfig() {
+  const appDataDir = path.join(process.env.APPDATA || '', 'HotelCityPark');
+  const configFile = path.join(appDataDir, 'network_config.json');
+  let config = {
+    mode: 'master', // 'master' | 'client'
+    serverHost: 'localhost',
+    serverPort: PORT,
+    screen: 'hospitality'
+  };
+
+  if (fs.existsSync(configFile)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+      config = { ...config, ...parsed };
+    } catch (_) {}
+  }
+
+  // Parse command line arguments
+  const args = process.argv || [];
+  for (const a of args) {
+    if (a === '--client') config.mode = 'client';
+    if (a === '--master') config.mode = 'master';
+    if (a.startsWith('--server=')) config.serverHost = a.split('=')[1].trim();
+    if (a.startsWith('--host=')) config.serverHost = a.split('=')[1].trim();
+    if (a.startsWith('--port=')) config.serverPort = parseInt(a.split('=')[1].trim(), 10) || PORT;
+    if (a === '--restaurant' || a === '--screen=restaurant') config.screen = 'restaurant';
+    if (a === '--bar' || a === '--screen=bar') config.screen = 'bar';
+    if (a === '--hospitality' || a === '--screen=hospitality') config.screen = 'hospitality';
+  }
+
+  return config;
+}
+
+function saveAppConfig(newCfg) {
+  const appDataDir = path.join(process.env.APPDATA || '', 'HotelCityPark');
+  if (!fs.existsSync(appDataDir)) {
+    try { fs.mkdirSync(appDataDir, { recursive: true }); } catch (_) {}
+  }
+  const configFile = path.join(appDataDir, 'network_config.json');
+  try {
+    fs.writeFileSync(configFile, JSON.stringify(newCfg, null, 2), 'utf8');
+  } catch (_) {}
+}
+
+function promptSetServerIp() {
+  const promptWin = new BrowserWindow({
+    width: 480,
+    height: 350,
+    title: 'Connect to Main CRM Server',
+    parent: mainWindow,
+    modal: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    backgroundColor: '#0f172a',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  const curCfg = getAppConfig();
+  const defaultIp = curCfg.serverHost !== 'localhost' ? curCfg.serverHost : '192.168.1.';
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Connect to Main CRM Server</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #fff; padding: 22px; margin: 0; }
+    h3 { margin: 0 0 6px; font-size: 1.15rem; color: #38bdf8; }
+    p { font-size: 0.82rem; color: #94a3b8; margin: 0 0 16px; line-height: 1.4; }
+    label { font-size: 0.76rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 9px 12px; background: #1e293b; border: 1.5px solid #334155; border-radius: 8px; color: #fff; font-size: 0.92rem; margin-bottom: 12px; }
+    input:focus, select:focus { border-color: #38bdf8; outline: none; }
+    .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+    button { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 0.84rem; cursor: pointer; border: none; }
+    .btn-cancel { background: #334155; color: #cbd5e1; }
+    .btn-save { background: #0284c7; color: #fff; }
+  </style>
+</head>
+<body>
+  <h3>🌐 Connect to Main CRM Server</h3>
+  <p>Enter the local Wi-Fi / LAN IP address of the Main Reception Computer.</p>
+  <form id="f">
+    <label>Main Server IP / Hostname</label>
+    <input type="text" id="ip" value="${defaultIp}" placeholder="e.g. 192.168.1.100" required autofocus />
+    
+    <label>Counter Screen</label>
+    <select id="sc">
+      <option value="restaurant" ${curCfg.screen === 'restaurant' ? 'selected' : ''}>🍽️ Restaurant POS Counter</option>
+      <option value="bar" ${curCfg.screen === 'bar' ? 'selected' : ''}>🍸 Bar POS Counter</option>
+      <option value="hospitality" ${curCfg.screen === 'hospitality' ? 'selected' : ''}>🏨 Front Desk (Hospitality)</option>
+    </select>
+
+    <div class="btns">
+      <button type="button" class="btn-cancel" onclick="window.close()">Cancel</button>
+      <button type="submit" class="btn-save">Save & Connect</button>
+    </div>
+  </form>
+  <script>
+    const { ipcRenderer } = require('electron');
+    document.getElementById('f').onsubmit = (e) => {
+      e.preventDefault();
+      const ip = document.getElementById('ip').value.trim();
+      const sc = document.getElementById('sc').value;
+      ipcRenderer.send('save-network-config', { serverHost: ip, screen: sc, mode: 'client' });
+      window.close();
+    };
+  </script>
+</body>
+</html>`;
+
+  promptWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
+}
+
 /**
  * Launch backend server process in parallel and navigate window as soon as port binds.
  */
 async function startServerAndNavigate() {
-  const targetUrl = `http://localhost:${PORT}/hospitality`;
+  const cfg = getAppConfig();
+  const screen = cfg.screen || 'hospitality';
+  const isClient = cfg.mode === 'client';
+  const targetHost = isClient ? (cfg.serverHost || 'localhost') : 'localhost';
+  const targetPort = isClient ? (cfg.serverPort || PORT) : PORT;
+  const targetUrl = `http://${targetHost}:${targetPort}/${screen}`;
 
+  console.log(`[Electron] Starting in ${cfg.mode.toUpperCase()} mode. Target URL: ${targetUrl}`);
+
+  // In Client Mode: do NOT spawn a local SQLite server. Connect to host!
+  if (isClient) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(targetUrl);
+    }
+    setupMenu();
+    return;
+  }
+
+  // In Master Mode:
   // 1. If server is already active, navigate instantly!
   if (await isPortActive(PORT)) {
     console.log(`[Electron] Backend server already active on port ${PORT}. Connecting immediately.`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadURL(targetUrl);
     }
+    setupMenu();
     return;
   }
 
@@ -127,6 +261,7 @@ async function startServerAndNavigate() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(targetUrl);
       }
+      setupMenu();
       return;
     }
   }
@@ -135,6 +270,7 @@ async function startServerAndNavigate() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.loadURL(targetUrl);
   }
+  setupMenu();
 }
 
 function createMainWindow() {
@@ -247,6 +383,72 @@ function setupMenu() {
         { role: 'togglefullscreen', label: 'Full Screen' },
         { role: 'toggleDevTools', label: 'Developer Tools' }
       ]
+    },
+    {
+      label: '🌐 Network & Mode',
+      submenu: [
+        {
+          label: 'Mode: Master Server (Main PC - Local SQLite + Cloud Sync)',
+          type: 'checkbox',
+          checked: getAppConfig().mode === 'master',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.mode = 'master';
+            cfg.serverHost = 'localhost';
+            saveAppConfig(cfg);
+            startServerAndNavigate();
+          }
+        },
+        {
+          label: 'Mode: Client (Connect to Main PC over Wi-Fi / LAN)',
+          type: 'checkbox',
+          checked: getAppConfig().mode === 'client',
+          click: () => {
+            promptSetServerIp();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Set Main Server IP Address...',
+          click: () => {
+            promptSetServerIp();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Switch Screen: Front Desk (Hospitality)',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.screen = 'hospitality';
+            saveAppConfig(cfg);
+            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
+            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
+            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/hospitality`);
+          }
+        },
+        {
+          label: 'Switch Screen: Restaurant POS Counter',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.screen = 'restaurant';
+            saveAppConfig(cfg);
+            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
+            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
+            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/restaurant`);
+          }
+        },
+        {
+          label: 'Switch Screen: Bar POS Counter',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.screen = 'bar';
+            saveAppConfig(cfg);
+            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
+            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
+            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/bar`);
+          }
+        }
+      ]
     }
   ];
 
@@ -259,6 +461,16 @@ ipcMain.on('print-window', () => {
   if (mainWindow) {
     mainWindow.webContents.print();
   }
+});
+
+ipcMain.on('save-network-config', (event, newCfg) => {
+  const cfg = getAppConfig();
+  const updated = { ...cfg, ...newCfg };
+  saveAppConfig(updated);
+  if (updated.mode === 'client') {
+    cleanupServer();
+  }
+  startServerAndNavigate();
 });
 
 ipcMain.on('open-external', (event, url) => {

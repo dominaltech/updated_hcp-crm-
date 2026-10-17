@@ -15,7 +15,7 @@ export default function Step6Stay({
   updateDraft,
   roomGstPct = 5
 }) {
-  const { showToast } = useApp();
+  const { showToast, currentUser } = useApp();
 
   // Auto-correct Check-In Date & Time if missing or using UTC "Z" string (Point 2)
   useEffect(() => {
@@ -50,6 +50,7 @@ export default function Step6Stay({
   const [memberLightboxTitle, setMemberLightboxTitle] = useState('');
   const memberFrontInputRef = useRef(null);
   const memberBackInputRef = useRef(null);
+  const [checkoutTimeMenuOpen, setCheckoutTimeMenuOpen] = useState(null);
 
   // Discount Approval Request Modal & Polling State
   const [discountPermissionModal, setDiscountPermissionModal] = useState({
@@ -98,12 +99,12 @@ export default function Step6Stay({
       const checkoutTimeVal = draft.checkoutTime || (draft.approxCheckout && draft.approxCheckout.includes('T') ? draft.approxCheckout.split('T')[1].slice(0, 5) : '06:00');
       const checkoutStr = `${checkoutDateVal} ${timeFmt(checkoutTimeVal)}`.trim() || '24 Hours Stay';
 
-      // Estimated rate
-      const baseTariff = Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500);
-      const nightsCount = Number(draft.stayNights) || 1;
-      const estimatedRate = baseTariff * nightsCount;
-      const calculatedDiscountAmt = Math.round((estimatedRate * pct) / 100);
-      const finalAmt = Math.max(0, estimatedRate - calculatedDiscountAmt);
+      // Accurate standard base tariff:
+      const staffName = currentUser?.full_name || currentUser?.username || 'Front Desk';
+      const mealPlanText = draft.mealPlan === 'with_breakfast' ? 'With Breakfast' : 'Without Breakfast';
+      const baseTariff = totalBaseRate > 0 ? totalBaseRate : (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500));
+      const calculatedDiscountAmt = Math.round((baseTariff * pct) / 100);
+      const finalAmt = Math.max(0, baseTariff - calculatedDiscountAmt);
 
       const res = await api.post('/owner/approvals/request', {
         type: 'discount',
@@ -112,19 +113,22 @@ export default function Step6Stay({
         guest_name: guestName,
         members: membersStr,
         expected_checkout: checkoutStr,
+        meal_plan: mealPlanText,
         discount: calculatedDiscountAmt,
         discount_pct: pct,
-        current_total: estimatedRate,
+        current_total: baseTariff,
         final_amount: finalAmt,
-        requested_by: 'Reception Staff',
-        reason: `${membersStr} • Checkout: ${checkoutStr} • ${pct}% discount requested for Room ${roomNum}`,
+        requested_by: staffName,
+        reason: `${membersStr} • Checkout: ${checkoutStr} • ${mealPlanText} • Raised by: ${staffName} • ${pct}% discount requested for Room ${roomNum}`,
         metadata: {
           members: membersStr,
           expected_checkout: checkoutStr,
-          total: estimatedRate,
+          meal_plan: mealPlanText,
+          total: baseTariff,
           discount_pct: pct,
           discount: calculatedDiscountAmt,
-          final_amount: finalAmt
+          final_amount: finalAmt,
+          requested_by: staffName
         }
       });
 
@@ -1251,7 +1255,9 @@ export default function Step6Stay({
       dStr = minOut;
     }
     const isOtaEarly = isOta && draft.isEarlyCheckin === true;
-    const tStr = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr));
+    let tStr = isOtaEarly ? '10:00' : (isOta ? '10:00' : (newTimeStr !== undefined ? newTimeStr : checkoutTimeStr));
+
+    // Notice: Do NOT auto-set time when date is chosen! Time remains empty until explicitly chosen by staff.
 
     if (!dStr && !tStr) {
       updateDraft({
@@ -1266,13 +1272,13 @@ export default function Step6Stay({
 
     const isoString = dStr ? (tStr ? `${dStr}T${tStr}` : dStr) : '';
 
-    // Calculate extension charge based on 24-hr stay cycle from check-in time (Skip if OTA customer, as checkout is fixed & paid with ₹0 surcharge)
-    const extCharge = calculateStayExtension(draft.checkinTime, isoString, isOta, room);
+    // Calculate extension charge based on 24-hr stay cycle from check-in time (only when date and time are both present)
+    const extCharge = (dStr && tStr) ? calculateStayExtension(draft.checkinTime, isoString, isOta, room) : 0;
 
     let calculatedNights = 1;
-    if (draft.checkinTime && isoString) {
+    if (draft.checkinTime && dStr) {
       const dInStr = draft.checkinTime.split('T')[0];
-      const dOutStr = dStr || (isoString.includes('T') ? isoString.split('T')[0] : '');
+      const dOutStr = dStr;
       if (dInStr && dOutStr) {
         const dIn = new Date(dInStr);
         const dOut = new Date(dOutStr);
@@ -1287,11 +1293,12 @@ export default function Step6Stay({
     updateDraft({
       approxCheckout: isoString,
       checkoutDate: dStr,
-      checkoutTime: tStr,
+      checkoutTime: tStr || '',
       extensionCharge: extCharge,
       stayNights: calculatedNights
     });
   };
+
 
   const handleCheckinChange = (newDateStr, newTimeStr) => {
     let dPart = newDateStr !== undefined ? newDateStr : (draft.checkinTime ? draft.checkinTime.split('T')[0] : '');
@@ -3091,37 +3098,40 @@ export default function Step6Stay({
             <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div className="form-grid-2" style={{ marginBottom: 0, gap: '12px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <label style={{ margin: 0, fontWeight: 800, fontSize: '0.80rem', color: '#1e293b' }}>
                       📅 Expected Checkout <span style={{ color: '#dc2626', fontWeight: 900 }}>* (Mandatory)</span>
                     </label>
-                    {checkoutTimeStr ? (
+                    {checkoutDateStr && checkoutTimeStr ? (
                       <span
                         style={{
                           fontSize: '0.72rem',
                           fontWeight: 800,
-                          color: checkoutTimeStr.split(':')[0] < 12 ? '#0369a1' : '#b45309',
-                          background: checkoutTimeStr.split(':')[0] < 12 ? '#e0f2fe' : '#fef3c7',
-                          padding: '1px 8px',
+                          color: '#15803d',
+                          background: '#ecfdf5',
+                          padding: '2px 8px',
                           borderRadius: '8px',
-                          border: checkoutTimeStr.split(':')[0] < 12 ? '1px solid #bae6fd' : '1px solid #fde68a'
+                          border: '1px solid #bbf7d0',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
                         }}
                       >
-                        ✓ {formatTime12(checkoutTimeStr)}
+                        ✓ {checkoutDateStr} @ {formatTime12(checkoutTimeStr)}
                       </span>
                     ) : (
                       <span
                         style={{
                           fontSize: '0.72rem',
                           fontWeight: 800,
-                          color: '#b91c1c',
-                          background: '#fef2f2',
-                          padding: '1px 8px',
+                          color: '#d97706',
+                          background: '#fffbeb',
+                          padding: '2px 8px',
                           borderRadius: '8px',
-                          border: '1px solid #fecaca'
+                          border: '1px solid #fde68a'
                         }}
                       >
-                        ⚠️ Select Checkout Time
+                        {!checkoutDateStr ? 'Select Date & Time' : 'Select Time'}
                       </span>
                     )}
                   </div>
@@ -3130,19 +3140,29 @@ export default function Step6Stay({
                     <ThemedDatePicker
                       value={checkoutDateStr}
                       min={isOta ? getMinCheckoutDate(draft.checkinTime) : (draft.checkinTime ? draft.checkinTime.split('T')[0] : '')}
-                      onChange={(e) => handleCheckoutChange(e.target.value, checkoutTimeStr)}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        handleCheckoutChange(newDate, checkoutTimeStr);
+                        if (newDate) {
+                          setTimeout(() => {
+                            setCheckoutTimeMenuOpen({ type: 'hour', key: Date.now() });
+                          }, 50);
+                        }
+                      }}
                       error={!checkoutDateStr}
                       style={{ height: '38px', fontSize: '0.82rem' }}
                     />
                     <UnifiedTimeInput
                       value={checkoutTimeStr || ''}
+                      openMenuProp={checkoutTimeMenuOpen}
+                      onMenuOpenChange={setCheckoutTimeMenuOpen}
                       onChange={(val) => handleCheckoutChange(checkoutDateStr, val)}
                       style={{
                         height: '38px',
                         fontSize: '0.82rem',
                         borderRadius: '8px',
-                        border: !checkoutTimeStr ? '2px solid #ef4444' : '1.5px solid var(--border-color, #cbd5e1)',
-                        background: !checkoutTimeStr ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-app, #ffffff)'
+                        border: !checkoutTimeStr ? '1.5px solid #f59e0b' : '1.5px solid var(--border-color, #cbd5e1)',
+                        background: 'var(--bg-app, #ffffff)'
                       }}
                     />
                   </div>
@@ -3349,27 +3369,151 @@ export default function Step6Stay({
                 })}
               </div>
 
-              <input
-                type="number"
-                className="form-input"
-                min={0}
-                max={100}
-                value={discountPct}
-                onChange={(e) => {
-                  const maxAllowed = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
-                  const val = Number(e.target.value) || 0;
-                  if (val > maxAllowed) {
-                    handleCappedDiscountClick(val);
-                  } else {
-                    const updates = { discountPct: val };
-                    if (val >= 20) {
-                      updates.mealPlan = 'without_breakfast';
-                    }
-                    updateDraft(updates);
-                  }
-                }}
-                style={{ background: 'var(--bg-app, #ffffff)', fontWeight: 700, color: 'var(--text-primary)', border: '1.5px solid var(--border-color, #cbd5e1)', height: '38px' }}
-              />
+              {/* Custom percentage row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', padding: '0 2px' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
+                  Custom Discount (%):
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min={0}
+                    max={100}
+                    value={discountPct || ''}
+                    placeholder="0"
+                    onChange={(e) => {
+                      const maxAllowed = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
+                      const val = Number(e.target.value) || 0;
+                      if (val > maxAllowed) {
+                        handleCappedDiscountClick(val);
+                      } else {
+                        const updates = { discountPct: val };
+                        if (val >= 20) {
+                          updates.mealPlan = 'without_breakfast';
+                        }
+                        updateDraft(updates);
+                      }
+                    }}
+                    style={{ width: '64px', height: '30px', textAlign: 'center', fontWeight: 800, fontSize: '0.82rem', borderRadius: '6px', border: '1.5px solid #cbd5e1', padding: '2px 4px' }}
+                  />
+                  <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#64748b' }}>%</span>
+                </div>
+              </div>
+
+              {/* 3-Column Breakdown: Without Discount, Discount Amount, With Discount Amount */}
+              {discountPct > 0 ? (
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                    borderRadius: '10px',
+                    border: '1.5px solid #cbd5e1',
+                    padding: '10px',
+                    marginTop: '4px'
+                  }}
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '8px' }}>
+                    {/* Without Discount */}
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                        Without Discount
+                      </span>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#475569', textDecoration: 'line-through', textDecorationColor: '#ef4444', marginTop: '2px' }}>
+                        ₹{totalBaseRate.toLocaleString('en-IN')}
+                      </div>
+                      <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700, marginTop: '2px' }}>
+                        ₹{Math.round(totalBaseRate * (1 + effectiveGstPct / 100)).toLocaleString('en-IN')} incl. GST
+                      </span>
+                    </div>
+
+                    {/* Discount Amount */}
+                    <div
+                      style={{
+                        background: '#fef2f2',
+                        border: '1.5px solid #fecaca',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                          Discount Amount
+                        </span>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 900, background: '#ef4444', color: '#ffffff', padding: '1px 5px', borderRadius: '4px' }}>
+                          {discountPct}% OFF
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.08rem', fontWeight: 900, color: '#dc2626', marginTop: '2px' }}>
+                        -₹{discountAmount.toLocaleString('en-IN')}
+                      </div>
+                      <span style={{ fontSize: '0.66rem', color: '#991b1b', fontWeight: 700, marginTop: '2px' }}>
+                        Savings: ₹{discountAmount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    {/* With Discount Amount */}
+                    <div
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #86efac',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                          With Discount Amount
+                        </span>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 900, background: '#16a34a', color: '#ffffff', padding: '1px 5px', borderRadius: '4px' }}>
+                          NET
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.18rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
+                        ₹{netChargeBeforeTax.toLocaleString('en-IN')}
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 800, marginTop: '2px' }}>
+                        ₹{totalNetDue.toLocaleString('en-IN')} incl. {effectiveGstPct}% GST
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px dashed #cbd5e1',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.74rem',
+                    color: '#64748b',
+                    fontWeight: 700
+                  }}
+                >
+                  <span>Standard Tariff (No Discount):</span>
+                  <strong style={{ color: '#0f172a', fontSize: '0.88rem' }}>
+                    ₹{totalBaseRate.toLocaleString('en-IN')} (₹{totalNetDue.toLocaleString('en-IN')} incl. GST)
+                  </strong>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5375,9 +5519,21 @@ export default function Step6Stay({
                       </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Meal Plan:</span>
+                      <strong style={{ color: draft.mealPlan === 'with_breakfast' ? '#16a34a' : '#64748b' }}>
+                        {draft.mealPlan === 'with_breakfast' ? '🍳 With Breakfast' : '☕ Without Breakfast'}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: '#64748b' }}>Raised By:</span>
+                      <strong style={{ color: '#0f172a' }}>
+                        {currentUser?.full_name || currentUser?.username || 'Front Desk'}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ color: '#64748b' }}>Standard Base Tariff:</span>
                       <strong>
-                        ₹{(Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)).toLocaleString('en-IN')}
+                        ₹{(totalBaseRate > 0 ? totalBaseRate : (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500))).toLocaleString('en-IN')}
                       </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -5387,13 +5543,13 @@ export default function Step6Stay({
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ color: '#64748b' }}>Discount Amount:</span>
                       <strong style={{ color: '#16a34a' }}>
-                        − ₹{Math.round(((Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) * Number(discountPermissionModal.requestedPct)) / 100).toLocaleString('en-IN')}
+                        − ₹{Math.round(((totalBaseRate > 0 ? totalBaseRate : (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500))) * Number(discountPermissionModal.requestedPct)) / 100).toLocaleString('en-IN')}
                       </strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
                       <span style={{ color: '#0f172a', fontWeight: 800 }}>Net Payable:</span>
-                      <strong style={{ color: '#2563eb', fontSize: '0.92rem' }}>
-                        ₹{Math.max(0, (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) - Math.round(((Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500)) * Number(discountPermissionModal.requestedPct)) / 100)).toLocaleString('en-IN')}
+                      <strong style={{ color: '#2563eb', fontSize: '0.96rem' }}>
+                        ₹{Math.max(0, (totalBaseRate > 0 ? totalBaseRate : (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500))) - Math.round(((totalBaseRate > 0 ? totalBaseRate : (Number(draft.roomCharge) || (room?.base_price ? Number(room.base_price) : 2500))) * Number(discountPermissionModal.requestedPct)) / 100)).toLocaleString('en-IN')}
                       </strong>
                     </div>
                   </div>

@@ -130,7 +130,7 @@ describe('Guest Registration Print Redesign (A4 Full Sheet & Clean Typography)',
 
   it('i) Voucher No & Check-in Date must be in clean key-value table and Walk-in banner cleaned', () => {
     const html = buildGuestRegistrationHTML(mockRegistrationData, { includePhotos: false });
-    expect(html).toContain('Voucher / Reg No:');
+    expect(html).toContain('Bill No:');
     expect(html).toContain('Check-in Date:');
     expect(html).toContain('border: 3.5px solid #1e3a8a;');
     

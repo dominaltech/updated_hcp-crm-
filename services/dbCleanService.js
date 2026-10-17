@@ -99,6 +99,30 @@ function cleanDemoData(db) {
       max_extra_beds: 1,
       extra_bed_price: 600,
     },
+    ...['402', '403', '404', '405', '406', '407', '408', '409'].map(num => ({
+      room_number: String(num),
+      floor: 'Fourth Floor',
+      room_type: 'Executive Room',
+      price_single: 2050,
+      price: 2350,
+      max_discount_pct: 15,
+      max_adults: 2,
+      max_children: 2,
+      max_extra_beds: 1,
+      extra_bed_price: 600,
+    })),
+    ...['501', '502', '503', '504', '505', '506'].map(num => ({
+      room_number: String(num),
+      floor: 'Fifth Floor',
+      room_type: 'Executive Room',
+      price_single: 2050,
+      price: 2350,
+      max_discount_pct: 15,
+      max_adults: 2,
+      max_children: 2,
+      max_extra_beds: 1,
+      extra_bed_price: 600,
+    })),
 
     // Executive Plus
     ...['202', '203', '210', '211'].map(num => ({

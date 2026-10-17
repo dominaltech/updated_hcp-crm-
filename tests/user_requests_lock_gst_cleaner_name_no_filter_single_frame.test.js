@@ -64,24 +64,24 @@ describe('User Requests: Locked GST & Base Tariff, Custom Cleaner Name on Other,
     expect(hospCode).toContain('floor-sections-container');
   });
 
-  it('4. All cards visible in one frame without scrolling', () => {
+  it('4. Home cards layout is scrollable and accommodates multi-floor rooms', () => {
     const cssCode = fs.readFileSync(path.join(rootDir, 'public/styles.css'), 'utf8');
 
-    // Container height is locked to 100dvh minus header and overflow hidden
+    // Container height is flexible and allows vertical scrolling
     expect(cssCode).toContain('.app-container:has(#view-hospitality.active)');
-    expect(cssCode).toContain('height: calc(100dvh - 66px) !important;');
-    expect(cssCode).toContain('overflow: hidden !important;');
+    expect(cssCode).toContain('overflow-y: visible !important;');
+    expect(cssCode).toContain('min-height: calc(100dvh - 68px) !important;');
 
     // 7 columns per row for 26 rooms layout
     expect(cssCode).toContain('grid-template-columns: repeat(7, minmax(0, 1fr)) !important;');
 
-    // Compact card height to prevent scrolling without congestion
+    // Compact card height to prevent congestion
     expect(cssCode).toContain('height: clamp(');
     expect(cssCode).toContain('min-height:');
     expect(cssCode).toContain('max-height:');
 
     // Margins from left and right on screen and hover shadow padding
-    expect(cssCode).toContain('padding: 2px 18px 2px !important;');
+    expect(cssCode).toContain('padding: 2px 18px 36px !important;');
     expect(cssCode).toContain('max-width: 1720px !important;');
     expect(cssCode).toContain('gap: 5px 8px !important;');
     expect(cssCode).toContain('margin-top: 3px !important;');

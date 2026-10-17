@@ -354,7 +354,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
           const targetPhone = cleanPhone ? (cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone) : '';
           const voucherNo = res.voucher_number || res.voucher_no || res.voucherNo || 'DEB';
           const dateStr = new Date().toLocaleString('en-IN');
-          const msg = `*HOTEL CITY PARK - DEBIT RECEIPT ALERT*\n\nNamaste ${formOwnerName},\nAn operational debit expense of *₹${amt.toLocaleString('en-IN')}* has been recorded under your account.\n\n• Voucher No: #${voucherNo}\n• Category: Owner Expenses\n• Purpose: ${effectivePurpose}\n• Paid To: ${formPaidTo.trim()}\n• Cashier: ${currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'}\n• Date & Time: ${dateStr}\n${formDescription.trim() ? `• Details: ${formDescription.trim()}\n` : ''}\nHotel City Park Management System`;
+          const msg = `*HOTEL CITY PARK - DEBIT RECEIPT ALERT*\n\nNamaste ${formOwnerName},\nAn operational debit expense of *₹${amt.toLocaleString('en-IN')}* has been recorded under your account.\n\n• Bill No: #${voucherNo}\n• Category: Owner Expenses\n• Purpose: ${effectivePurpose}\n• Paid To: ${formPaidTo.trim()}\n• Cashier: ${currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'}\n• Date & Time: ${dateStr}\n${formDescription.trim() ? `• Details: ${formDescription.trim()}\n` : ''}\nHotel City Park Management System`;
 
           if (targetPhone) {
             window.open(`https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank');
@@ -449,7 +449,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
     const cashier = exp.cashier_name || exp.cashier || 'Front Desk';
     const dateStr = (exp.created_at ? new Date(exp.created_at) : new Date()).toLocaleString('en-IN', { hour12: true });
     const voucherNo = exp.voucher_number || exp.voucher_no || exp.id || 'DEB';
-    const msg = `*HOTEL CITY PARK - DEBIT RECEIPT ALERT*\n\nNamaste ${owner},\nAn operational debit expense of *₹${amt.toLocaleString('en-IN')}* has been recorded under your account.\n\n• Voucher No: #${voucherNo}\n• Category: Owner Expenses\n• Purpose: ${purpose}\n• Paid To: ${exp.paid_to || owner}\n• Cashier: ${cashier}\n• Date & Time: ${dateStr}\n\nHotel City Park Management System`;
+    const msg = `*HOTEL CITY PARK - DEBIT RECEIPT ALERT*\n\nNamaste ${owner},\nAn operational debit expense of *₹${amt.toLocaleString('en-IN')}* has been recorded under your account.\n\n• Bill No: #${voucherNo}\n• Category: Owner Expenses\n• Purpose: ${purpose}\n• Paid To: ${exp.paid_to || owner}\n• Cashier: ${cashier}\n• Date & Time: ${dateStr}\n\nHotel City Park Management System`;
 
     let phone = (exp.owner_phone || '').trim();
     if (!phone) {
@@ -777,7 +777,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
           <table className="owner-rooms-table" style={{ margin: 0, width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ width: '110px' }}>Voucher No</th>
+                <th style={{ width: '110px' }}>Bill No</th>
                 <th style={{ width: '130px' }}>Date / Time</th>
                 <th>Category &amp; Purpose</th>
                 <th>Paid To</th>
@@ -982,9 +982,9 @@ export default function ExpensesPage({ onPrintVoucher }) {
                           })
                         }
                         style={{ fontSize: '0.74rem', padding: '4px 8px', fontWeight: 700, color: '#b45309', borderColor: '#fde68a', background: '#fffbeb' }}
-                        title="Print Cash Voucher Slip (2-on-A4)"
+                        title="Print Cash Bill Slip (2-on-A4)"
                       >
-                        🖨️ Voucher
+                        🖨️ Bill Slip
                       </button>
                       <button
                         type="button"
@@ -1461,7 +1461,7 @@ export default function ExpensesPage({ onPrintVoucher }) {
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#fff' }}>Record Remainder Returned</h3>
                   <div style={{ fontSize: '0.74rem', color: '#e0f2fe' }}>
-                    Voucher: {adjustingExpense.voucher_number || `PCV-${adjustingExpense.id}`}
+                    Bill No: {adjustingExpense.voucher_number || `PCV-${adjustingExpense.id}`}
                   </div>
                 </div>
               </div>

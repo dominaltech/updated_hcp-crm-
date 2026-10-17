@@ -133,7 +133,7 @@ describe('Clean Slate / Purge Demo Data - 26 Official Rooms Preservation', () =>
     expect(stats.expensesDeleted).toBe(1);
     expect(stats.restOrdersDeleted).toBe(1);
     expect(stats.barOrdersDeleted).toBe(1);
-    expect(stats.roomsPreserved).toBe(26);
+    expect(stats.roomsPreserved).toBe(40);
 
     // Verify all transactions are gone
     expect(db.prepare('SELECT COUNT(*) as cnt FROM bookings').get().cnt).toBe(0);
@@ -147,9 +147,9 @@ describe('Clean Slate / Purge Demo Data - 26 Official Rooms Preservation', () =>
     const demoRooms = db.prepare("SELECT room_number FROM rooms WHERE room_number IN ('771', '881', '101')").all();
     expect(demoRooms.length).toBe(0);
 
-    // Verify exactly 26 rooms exist
+    // Verify exactly 40 rooms exist
     const allRooms = db.prepare('SELECT room_number, room_type, price, price_single, status, current_booking_id FROM rooms ORDER BY CAST(room_number AS INTEGER) ASC').all();
-    expect(allRooms.length).toBe(26);
+    expect(allRooms.length).toBe(40);
 
     // All rooms must be 'ready' with NULL current_booking_id
     allRooms.forEach(r => {
@@ -182,5 +182,13 @@ describe('Clean Slate / Purge Demo Data - 26 Official Rooms Preservation', () =>
     expect(r401.room_type).toBe('Pent House');
     expect(r401.price).toBe(5000);
     expect(r401.price_single).toBe(4500);
+
+    const r402 = allRooms.find(r => r.room_number === '402');
+    expect(r402.room_type).toBe('Executive Room');
+    expect(r402.price).toBe(2350);
+
+    const r501 = allRooms.find(r => r.room_number === '501');
+    expect(r501.room_type).toBe('Executive Room');
+    expect(r501.price).toBe(2350);
   });
 });

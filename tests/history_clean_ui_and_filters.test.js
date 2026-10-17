@@ -62,8 +62,8 @@ describe('Hospitality History Clean UI, Filter Drawer & Fullscreen View Tests', 
     expect(historyCode).toContain('onClick={() => handleOpenScanCheque(detailBooking)}');
   });
 
-  it('9. Adds 2 columns: Voucher No and Invoice No to table header and body', () => {
-    expect(historyCode).toContain('>Voucher No</th>');
+  it('9. Adds 2 columns: Voucher No (renamed to Bill No in UI) and Invoice No to table header and body', () => {
+    expect(historyCode).toMatch(/>(Bill|Voucher) No<\/th>/);
     expect(historyCode).toContain('>Invoice No</th>');
     expect(historyCode).toContain('className="history-col-voucher"');
     expect(historyCode).toContain('className="history-col-invoice"');

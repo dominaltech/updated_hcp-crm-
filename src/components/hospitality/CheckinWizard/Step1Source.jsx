@@ -399,7 +399,7 @@ export default function Step1Source({
         return;
       }
       if (!draft.otaVoucherNo?.trim()) {
-        triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Voucher No. before choosing a document.');
+        triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Bill No. before choosing a document.');
         return;
       }
       if (!draft.checkoutDate) {
@@ -458,7 +458,7 @@ export default function Step1Source({
         return;
       }
       if (!draft.otaVoucherNo?.trim()) {
-        triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Voucher No. before filling form.');
+        triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Bill No. before filling form.');
         return;
       }
       if (!draft.checkoutDate) {
@@ -998,7 +998,7 @@ export default function Step1Source({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '1.2rem' }}>💵</span>
                   <span style={{ fontSize: '0.88rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    3. OTA Bill Amount, Voucher No. &amp; Dates *
+                    3. OTA Bill Amount, Bill No. &amp; Dates *
                   </span>
                 </div>
                 {!isOtaStep2PaymentDone ? (
@@ -1072,7 +1072,7 @@ export default function Step1Source({
                   )}
                 </div>
 
-                {/* OTA Booking ID / Voucher No. */}
+                {/* OTA Booking ID / Bill No. */}
                 <div>
                   <label
                     style={{
@@ -1083,7 +1083,7 @@ export default function Step1Source({
                       display: 'block'
                     }}
                   >
-                    OTA Booking ID / Voucher No. *
+                    OTA Booking ID / Bill No. *
                   </label>
                   <input
                     type="text"
@@ -2202,7 +2202,7 @@ export default function Step1Source({
 
                 <div>
                   <label style={{ fontSize: '0.78rem', fontWeight: 750, color: '#334155', marginBottom: '4px', display: 'block' }}>
-                    Corporate Voucher / PO / Approval Reference No.
+                    Corporate Bill / PO / Approval Reference No.
                   </label>
                   <input
                     type="text"
@@ -2336,7 +2336,7 @@ export default function Step1Source({
           } else if (isOta && !isOtaStep3BillDone) {
             triggerShake('⚠️ Step 3 Required: Please enter OTA Bill amount first.');
           } else if (isOta && !draft.otaVoucherNo?.trim()) {
-            triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Voucher No. first.');
+            triggerShake('⚠️ Step 3 Required: Please enter OTA Booking ID / Bill No. first.');
           } else if (isOta && !isOtaStep4TimingDone) {
             triggerShake('⚠️ Step 4 Required: Please choose Early vs On-Time Check-In first.');
           }

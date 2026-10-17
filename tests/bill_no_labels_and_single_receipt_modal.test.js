@@ -59,8 +59,8 @@ describe('Bill No Labels and Single/Split Receipt Popup Suite', () => {
     // Top-right box must be Bill No:
     expect(otaHtml).toContain('Bill No:');
     expect(otaHtml).toContain('261005-627');
-    // Booking case banner retains Voucher Ref: #asasasas
-    expect(otaHtml).toContain('Voucher Ref: #asasasas');
+    // Booking case banner retains Voucher No: asasasas
+    expect(otaHtml).toContain('Voucher No: asasasas');
   });
 
   it('2. Receipt displays "Bill No:" consistently', () => {
@@ -135,7 +135,7 @@ describe('Bill No Labels and Single/Split Receipt Popup Suite', () => {
     expect(appCode).toContain('setSplitReceiptsData(splitReceipts);');
   });
 
-  it('6. Receipt Table Row 1 displays "Room 307 - Paid for Check In" instead of "Paid while checking"', () => {
+  it('6. Receipt Table Row 1 displays "Room 307 - Paid For checking" instead of "Paid while checking"', () => {
     const receipt = {
       receipt_no: 'CR25',
       voucher_number: '261005-626',
@@ -147,7 +147,7 @@ describe('Bill No Labels and Single/Split Receipt Popup Suite', () => {
       particulars: 'Room 307 - Advance payment at check-in'
     };
     const html = buildMoneyReceiptHTML(receipt);
-    expect(html).toContain('Room 307 - Paid for Check In');
+    expect(html).toContain('Room 307 - Paid For checking');
     expect(html).not.toContain('Paid while checking');
   });
 });

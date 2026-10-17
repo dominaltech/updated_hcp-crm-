@@ -271,6 +271,94 @@ async function markChargesImported(chargeIds) {
 }
 
 /**
+ * Automatically imports all pending F&B room charges from Supabase into local SQLite.
+ * Called in the Master CRM background polling loop to adopt client updates in real-time.
+ */
+async function pullCloudRoomChargesToLocal(localDb) {
+  if (!canAttemptCloud() || !localDb) return [];
+  try {
+    const { data: pendingCharges, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .select('*')
+        .eq('status', 'pending')
+        .neq('department', 'discount_approval')
+        .order('created_at', { ascending: true }),
+      REQUEST_TIMEOUT_MS
+    );
+
+    if (error || !Array.isArray(pendingCharges) || pendingCharges.length === 0) return [];
+
+    const importedIds = [];
+    for (const cc of pendingCharges) {
+      const roomNum = cc.room_number;
+      if (!roomNum) continue;
+
+      const booking = localDb.prepare(`
+        SELECT b.id as booking_id, b.room_id, g.name as guest_name
+        FROM bookings b
+        JOIN rooms r ON b.room_id = r.id
+        JOIN guests g ON b.guest_id = g.id
+        WHERE r.room_number = ? AND b.status = 'active'
+      `).get(String(roomNum));
+
+      const roomId = booking ? booking.room_id : null;
+      const bookingId = booking ? booking.booking_id : null;
+      const guestName = booking ? booking.guest_name : 'In-House Guest';
+
+      const totalAmt = parseFloat(cc.grand_total) || 0;
+      if (totalAmt <= 0) continue;
+      const orderNum = cc.bill_no || `CLD-${cc.id}`;
+      const itemsJson = cc.items_summary ? JSON.stringify([{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }]) : '[]';
+      const subtotalAmt = parseFloat(cc.subtotal) || Math.round(totalAmt / 1.05);
+      const taxAmt = parseFloat(cc.gst) || (totalAmt - subtotalAmt);
+      const cashierName = cc.settled_by || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
+      const createdAt = cc.created_at ? cc.created_at.replace('T', ' ').substring(0, 19) : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+      if (cc.department === 'bar') {
+        const existing = localDb.prepare('SELECT id FROM bar_orders WHERE order_number = ?').get(orderNum);
+        if (!existing) {
+          localDb.prepare(`
+            INSERT INTO bar_orders (
+              order_number, room_id, customer_name, order_type,
+              items_json, subtotal, tax, discount, total,
+              payment_mode, is_paid, status, cashier_name,
+              booking_id, created_at
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+          importedIds.push(cc.id);
+        } else {
+          importedIds.push(cc.id);
+        }
+      } else {
+        const existing = localDb.prepare('SELECT id FROM restaurant_orders WHERE order_number = ?').get(orderNum);
+        if (!existing) {
+          localDb.prepare(`
+            INSERT INTO restaurant_orders (
+              order_number, room_id, customer_name, order_type,
+              items_json, subtotal, tax, discount, total,
+              payment_mode, is_paid, status, cashier_name,
+              booking_id, created_at
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+          importedIds.push(cc.id);
+        } else {
+          importedIds.push(cc.id);
+        }
+      }
+    }
+
+    if (importedIds.length > 0) {
+      await markChargesImported(importedIds);
+      console.log(`[Supabase] Automatically adopted ${importedIds.length} cloud charge(s) into local SQLite storage.`);
+    }
+    return importedIds;
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
  * Synchronizes all currently occupied rooms from local SQLite database to Supabase.
  * Runs non-blocking on server startup or on demand.
  */
@@ -439,9 +527,36 @@ async function pushStorePayment(payment, updatedBill = null) {
   }
 }
 
+async function pullStoreVendorsFromCloud(db) {
+  if (!canAttemptCloud() || !supabase || !db) return false;
+  try {
+    const { data: cloudVendors, error } = await withTimeout(supabase.from('store_vendors').select('*'));
+    if (error || !cloudVendors) return false;
+    const upsert = db.prepare(`
+      INSERT INTO store_vendors (id, name, mobile, address, created_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        mobile = excluded.mobile,
+        address = excluded.address
+    `);
+    for (const v of cloudVendors) {
+      upsert.run(v.id, v.name, v.mobile || '', v.address || '', v.created_at || new Date().toISOString());
+    }
+    markNetworkSuccess();
+    return true;
+  } catch (err) {
+    markNetworkFailure(err);
+    return false;
+  }
+}
+
 async function pullStoreBillsFromCloud(db) {
   if (!canAttemptCloud() || !supabase || !db) return false;
   try {
+    // Ensure vendors are synchronized first
+    await pullStoreVendorsFromCloud(db).catch(() => {});
+
     const { data: cloudBills, error: bErr } = await withTimeout(supabase.from('store_bills').select('*'));
     if (bErr || !cloudBills) return false;
 
@@ -527,10 +642,12 @@ async function syncApprovalRequestToCloud(req) {
         guest_name: req.guest_name,
         members: req.members,
         expected_checkout: req.expected_checkout,
+        meal_plan: req.meal_plan,
         discount_pct: req.discount_pct,
         discount: req.discount,
         current_total: req.current_total,
         final_amount: req.final_amount,
+        requested_by: req.requested_by,
         reason: req.reason
       }),
       settled_by: req.requested_by || 'Reception Staff',
@@ -640,6 +757,7 @@ async function syncDailyAnalyticsToCloud(db) {
 
 module.exports = {
   pushStoreVendor,
+  pullStoreVendorsFromCloud,
   pushStoreBill,
   pushStorePayment,
   deleteStoreBill,
@@ -654,6 +772,7 @@ module.exports = {
   syncApprovalRequestToCloud,
   pollCloudApprovals,
   syncDailyAnalyticsToCloud,
+  pullCloudRoomChargesToLocal,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };

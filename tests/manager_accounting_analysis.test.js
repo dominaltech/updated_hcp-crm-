@@ -42,7 +42,7 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
   it('2. Verifies ManagePage renders Accounting & Analysis subview with 12 exact specified columns', () => {
     expect(managePageContent).toContain("subTab === 'accounting'");
     expect(managePageContent).toContain('C/O');
-    expect(managePageContent).toContain('Voucher No');
+    expect(managePageContent).toMatch(/(Bill|Voucher) No/);
     expect(managePageContent).toContain('Invoice number');
     expect(managePageContent).toContain('Name of customer');
     expect(managePageContent).toContain('Room rent (base)');
@@ -111,7 +111,7 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
         date_of_checkout: '25-09-2026',
         voucher_no: '260924-001',
         bill_no: '260924-001',
-        invoice_number: '260924-001',
+        invoice_number: 'HCP001',
         name_of_customer: 'JAVID RANGREZ',
         room_rent_base: 3250.00,
         extra_mattress_pax: 500.00,
@@ -197,7 +197,7 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
       } else if (row.guest_company_name && row.guest_company_name.trim()) {
         nameOfCompany = row.guest_company_name.trim();
       } else {
-        nameOfCompany = '-';
+        nameOfCompany = (row.guest_name && row.guest_name.trim()) ? row.guest_name.trim() : '-';
       }
 
       let gstNoOfCompany = '';
@@ -249,15 +249,24 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(btcRes.nameOfCompany).toBe('Infosys BPM');
     expect(btcRes.gstNoOfCompany).toBe('27AAACI1234F1Z0');
 
-    // Test rule 4: Standard walk-in guest without company or GST -> MUST BE '-' and NEVER guest's personal name
+    // Test rule 4: Standard walk-in guest without corporate company or GST -> falls back to Customer Name
     const walkinRes = resolveCompanyAndGst({
       booking_source: 'Walk-in',
       company_name: null,
       gst_number: null,
       guest_name: 'Md Yahya Ab Wahid Mundewadi'
     });
-    expect(walkinRes.nameOfCompany).toBe('-');
+    expect(walkinRes.nameOfCompany).toBe('Md Yahya Ab Wahid Mundewadi');
     expect(walkinRes.gstNoOfCompany).toBe('-');
+
+    // When guest name is also missing, falls back to '-'
+    const blankRes = resolveCompanyAndGst({
+      booking_source: 'Walk-in',
+      company_name: null,
+      gst_number: null,
+      guest_name: ''
+    });
+    expect(blankRes.nameOfCompany).toBe('-');
   });
 
   it('10. Verifies only checked out bookings enter the Accounting & Analysis report', () => {
@@ -265,7 +274,7 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     const freshReleaseServer = fs.readFileSync(releaseServerPath, 'utf-8');
     [freshServer, freshReleaseServer].forEach((content) => {
       expect(content).toContain("b.status = 'checked_out' OR (b.actual_checkout_time IS NOT NULL AND b.status != 'cancelled')");
-      expect(content).toContain("nameOfCompany = '-'");
+      expect(content).toContain("nameOfCompany = (row.guest_name && row.guest_name.trim()) ? row.guest_name.trim() : '-'");
     });
   });
 
@@ -338,6 +347,87 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(freshManage).toContain('exportAccountingAnalysisToExcel(accountingRecords, accountingSummary');
     expect(freshManage).toContain('mail.google.com/mail/?view=cm');
     expect(freshManage).toContain('mailto:');
+  });
+
+  it('16. Verifies "I GST" column is rendered after "SGST" column when IGST is selected or present', () => {
+    const freshManage = fs.readFileSync(managePagePath, 'utf-8');
+    
+    // Tax filter buttons
+    expect(freshManage).toContain('btn-accounting-tax-all');
+    expect(freshManage).toContain('btn-accounting-tax-cgst-sgst');
+    expect(freshManage).toContain('btn-accounting-tax-igst');
+    expect(freshManage).toContain('isIgstSelected');
+
+    // Header order: SGST then I GST
+    const sgstHeaderIdx = freshManage.indexOf('>SGST</th>');
+    const igstHeaderIdx = freshManage.indexOf('>I GST</th>');
+    expect(sgstHeaderIdx).toBeGreaterThan(-1);
+    expect(igstHeaderIdx).toBeGreaterThan(-1);
+    expect(igstHeaderIdx).toBeGreaterThan(sgstHeaderIdx);
+
+    // Body row order: SGST cell then I GST cell
+    const sgstBodyIdx = freshManage.indexOf('{formatCurrency(r.sgst || 0)}');
+    const igstBodyIdx = freshManage.indexOf('{formatCurrency(r.igst || 0)}');
+    expect(sgstBodyIdx).toBeGreaterThan(-1);
+    expect(igstBodyIdx).toBeGreaterThan(-1);
+    expect(igstBodyIdx).toBeGreaterThan(sgstBodyIdx);
+
+    // Footer total order: SGST total then I GST total
+    const sgstFootIdx = freshManage.indexOf('{formatCurrency(accountingSummary.total_sgst || 0)}');
+    const igstFootIdx = freshManage.indexOf('{formatCurrency(accountingSummary.total_igst || 0)}');
+    expect(sgstFootIdx).toBeGreaterThan(-1);
+    expect(igstFootIdx).toBeGreaterThan(-1);
+    expect(igstFootIdx).toBeGreaterThan(sgstFootIdx);
+  });
+
+  it('17. Verifies print, Excel, and CSV builders correctly place "I GST" column after "SGST" column', () => {
+    const mockIgstRecords = [
+      {
+        date_of_checkout: '15-10-2026',
+        bill_no: '261015-001',
+        invoice_number: 'HCP100',
+        name_of_customer: 'Delhi Outstate Corp',
+        room_rent_base: 4000.00,
+        extra_mattress_pax: 0,
+        visitor_breakfast_base: 0,
+        discount: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 200.00,
+        is_igst: true,
+        tax_type: 'IGST',
+        name_of_company: 'Delhi Corp',
+        gst_no_of_company: '07AAAAA0000A1Z5',
+        gst_no_of_customer: '07AAAAA0000A1Z5'
+      }
+    ];
+
+    const mockSummary = {
+      total_records: 1,
+      total_room_rent_base: 4000.00,
+      total_extra_mattress: 0,
+      total_visitor_breakfast: 0,
+      total_discount: 0,
+      total_cgst: 0,
+      total_sgst: 0,
+      total_igst: 200.00,
+      total_cgst_sgst: 200.00,
+      total_grand: 4200.00,
+      has_igst: true
+    };
+
+    const html = buildAccountingAnalysisPrintHTML({
+      records: mockIgstRecords,
+      filters: { isIgst: true },
+      summary: mockSummary
+    });
+
+    const sgstIdx = html.indexOf('>SGST</th>');
+    const igstIdx = html.indexOf('>I GST</th>');
+    expect(sgstIdx).toBeGreaterThan(-1);
+    expect(igstIdx).toBeGreaterThan(-1);
+    expect(igstIdx).toBeGreaterThan(sgstIdx);
+    expect(html).toContain('₹200.00');
   });
 });
 

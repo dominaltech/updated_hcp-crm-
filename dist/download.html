@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Hotel City Park Apps</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body {
+      background: linear-gradient(135deg, #0A191C 0%, #0F2A2E 100%);
+      color: #F8FAFC;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .logo {
+      height: 70px;
+      margin-bottom: 12px;
+      object-fit: contain;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #E2B25E;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #94A3B8;
+      margin-top: 6px;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .card {
+      background: #132D33;
+      border: 1.5px solid #24464D;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .card-badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: #E2B25E;
+      color: #0A191C;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+    .card-meta {
+      font-size: 12px;
+      color: #94A3B8;
+      margin-bottom: 12px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #CBD5E1;
+      line-height: 1.45;
+      margin-bottom: 16px;
+    }
+    .features-list {
+      list-style: none;
+      margin-bottom: 18px;
+      font-size: 12.5px;
+      color: #94A3B8;
+    }
+    .features-list li {
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .download-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #E2B25E 0%, #D4A045 100%);
+      color: #0A191C;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      padding: 14px 18px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(226, 178, 94, 0.35);
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .download-btn:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+    .instructions {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px dashed #24464D;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 10px;
+      font-size: 12.5px;
+      color: #94A3B8;
+      line-height: 1.5;
+    }
+    .instructions strong {
+      color: #E2B25E;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="/hcp-logo-with-name-transparent.png" alt="Hotel City Park" class="logo">
+    <h1>Mobile Applications</h1>
+    <p class="subtitle">Direct Download & Installation for Android Devices</p>
+  </div>
+
+  <div class="container">
+    <!-- ADMIN APK -->
+    <div class="card">
+      <span class="card-badge">Updated Oct 17</span>
+      <h2 class="card-title">👑 Admin (Owner) App</h2>
+      <p class="card-meta">HotelCityPark-Owner.apk · For Hotel Owner & General Manager</p>
+      <p class="card-desc">
+        Complete operational oversight with Live Room Occupancy, Revenue KPIs, Expenses & Approvals, and the new Store tab with Party & Bill aging.
+      </p>
+      <ul class="features-list">
+        <li>🔴 Red & Yellow Aging Strips on Home screen</li>
+        <li>👥 Party-Wise dues with Red (25-40d) & Yellow (15-25d) alerts</li>
+        <li>📄 Bill-Wise rows with installment payment history & instant pay</li>
+        <li>🔍 Advanced filter popup by Name, Bill Date, Paid Date</li>
+      </ul>
+      <a href="/HotelCityPark-Owner.apk" class="download-btn" download>
+        ⬇ Download Admin APK
+      </a>
+    </div>
+
+    <!-- STOREMAN APK -->
+    <div class="card">
+      <span class="card-badge">Updated Oct 17</span>
+      <h2 class="card-title">📦 Storeman App</h2>
+      <p class="card-meta">Storeman.apk · For Store Manager & Inward Staff</p>
+      <p class="card-desc">
+        Simplified store management with fast inward bill creation, vendor management, and the updated "Recents" tab.
+      </p>
+      <ul class="features-list">
+        <li>📑 Updated "Recents" tab with Bill-wise & Party-wise tabs</li>
+        <li>⏱️ Detailed installment records (Date, Time, Mode, Amount)</li>
+        <li>🟡 15-25d Yellow & 🔴 25-40d Red aging highlights</li>
+        <li>🔔 Instant sync with Admin APK and CRM Server</li>
+      </ul>
+      <a href="/Storeman.apk" class="download-btn" download>
+        ⬇ Download Storeman APK
+      </a>
+    </div>
+
+    <!-- Installation Steps -->
+    <div class="instructions">
+      <strong>How to Install on Android:</strong><br>
+      1. Tap the download button above for the app you need.<br>
+      2. When downloaded, open the file from your Notification bar or Downloads folder.<br>
+      3. If your phone shows <em>"Install unknown apps"</em> or <em>"Security warning"</em>, tap <strong>Settings</strong> and enable <strong>"Allow from this source"</strong>.<br>
+      4. Tap <strong>Install</strong> to complete.
+    </div>
+  </div>
+</body>
+</html>

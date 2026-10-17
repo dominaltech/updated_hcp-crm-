@@ -1173,7 +1173,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                 </svg>
                 <span style={{ fontWeight: 800, fontSize: '0.90rem', color: 'var(--text-primary, #0f172a)' }}>
-                  Filter by Invoice / Voucher Number &amp; Date Range
+                  Filter by Invoice / Bill Number &amp; Date Range
                 </span>
               </div>
               <button
@@ -1344,7 +1344,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
               <th className="history-col-booking" style={{ width: '75px', whiteSpace: 'nowrap' }}>Booking</th>
               <th className="history-col-rooms" style={{ width: '90px' }}>Room</th>
               <th className="history-col-guest">Guest Name</th>
-              <th className="history-col-voucher" style={{ width: '125px', whiteSpace: 'nowrap' }}>Voucher No</th>
+              <th className="history-col-voucher" style={{ width: '125px', whiteSpace: 'nowrap' }}>Bill No</th>
               <th className="history-col-invoice" style={{ width: '105px', whiteSpace: 'nowrap' }}>Invoice No</th>
               <th className="history-col-checkin" style={{ width: '160px', minWidth: '155px', whiteSpace: 'nowrap' }}>Check-In</th>
               <th className="history-col-checkout" style={{ width: '160px', minWidth: '155px', whiteSpace: 'nowrap' }}>Check-Out</th>
@@ -1488,7 +1488,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                     )}
                   </td>
 
-                  {/* Voucher No */}
+                  {/* Bill No */}
                   <td className="history-col-voucher" style={{ whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', whiteSpace: 'nowrap' }}>
                       {cleanVoucherNumber(r.voucher_number || r.voucher_no || r.checkin_voucher_no) || (r.id ? `V-${r.id}` : '-')}
