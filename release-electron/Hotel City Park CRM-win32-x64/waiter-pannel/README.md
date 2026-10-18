@@ -1,16 +1,48 @@
-# React + Vite
+# 🏨 Hotel City Park - Waiter Panel & Android Mobile App
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Mobile-optimized Waiter Order & Table Management Panel built for **Hotel City Park CRM**.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📱 Features
 
-## React Compiler
+- **Room & Table Management**: Live view of Occupied, Available, and Billing statuses.
+- **Fast Food & Beverage Ordering**: Searchable menu categories, quick add/remove, custom notes.
+- **Custom Themed Modals**: In-app custom popups for alerts, confirmations, and billing (no default browser alerts).
+- **Universal CRM Theme Integration**: Synchronized with Hotel City Park universal CSS variables and seamless Light / Dark theme toggles.
+- **Android Native App**: Bundled with Capacitor for high-performance offline/LAN mobile ordering.
+- **Pre-built APK**: Ready-to-install Android package included (`HotelCityPark-Waiter.apk`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 🚀 Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Run Local Development Server
+```bash
+npm run dev
+```
+
+### 3. Build Web Assets
+```bash
+npm run build
+```
+
+### 4. Sync & Open Android Project
+```bash
+npx cap sync android
+npx cap open android
+```
+
+---
+
+## 📦 Android APK
+Direct download and install the waiter ordering app:
+- **File**: `HotelCityPark-Waiter.apk`
+- **Application ID**: `com.hotelcitypark.waiter`
+- **Icon & Branding**: Custom Hotel City Park gold-crest branding
+

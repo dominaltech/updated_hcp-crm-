@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android build and local files
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.cxx/
+android/.externalNativeBuild/
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/build/
+android/captures/
+android/.navigation/
+
