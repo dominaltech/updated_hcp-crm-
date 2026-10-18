@@ -1,13 +1,18 @@
-/**
- * Central API Client for Hotel City Park Waiter Panel
- * Connects seamlessly over localhost, Local Wi-Fi (e.g. 10.160.83.195), or Worldwide Cloud
- */
+import { Capacitor } from '@capacitor/core';
 
 export const CLOUD_TUNNEL_URL = 'https://hotelcitypark-api.loca.lt';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
+export const isNativePlatform = () => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+};
+
 export const getBaseUrl = () => {
-  // Check if custom server address was saved
+  // 1. Check if user configured a custom server address
   const customHost = localStorage.getItem('hcp_waiter_server_host');
   if (customHost && customHost.trim()) {
     let clean = customHost.trim().replace(/\/+$/, '');
@@ -15,19 +20,24 @@ export const getBaseUrl = () => {
     return clean;
   }
 
-  // If in browser
+  // 2. If running inside the Android APK (Native Mobile)
+  if (isNativePlatform()) {
+    // In native Android, "localhost" refers to the phone itself, NOT the CRM computer.
+    // Default directly to the hotel CRM Wi-Fi server IP.
+    return `http://${LOCAL_WIFI_IP}:3000/api`;
+  }
+
+  // 3. If running inside a standard Web Browser
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname || '';
     const isHttps = window.location.protocol === 'https:';
 
     // When deployed on Netlify, Vercel, or loaded over HTTPS:
-    // Calling http:// will trigger browser mixed-content blockage.
-    // Use the HTTPS cloud tunnel or relative /api (if proxied via _redirects)
     if (isHttps || hostname.includes('netlify.app') || hostname.includes('vercel.app')) {
       return `${CLOUD_TUNNEL_URL}/api`;
     }
 
-    // If on localhost
+    // If on localhost (PC desktop dev browser)
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       if (window.location.port === '3000') {
         return '/api';
@@ -35,14 +45,13 @@ export const getBaseUrl = () => {
       return 'http://localhost:3000/api';
     }
 
-    // If on local Wi-Fi IP (e.g. http://10.160.83.195:5174)
+    // If on local Wi-Fi IP in mobile browser (e.g. http://10.160.83.195:5174)
     if (window.location.port === '3000') {
       return '/api';
     }
     return `http://${hostname || LOCAL_WIFI_IP}:3000/api`;
   }
 
-  // Fallback for Android APK on mobile device connecting to hotel local Wi-Fi
   return `http://${LOCAL_WIFI_IP}:3000/api`;
 };
 
@@ -84,8 +93,14 @@ export const request = async (endpoint, options = {}) => {
     config.body = JSON.stringify(config.body);
   }
 
+  // AbortController timeout to prevent infinite "Signing in..." freeze
+  const controller = new AbortController();
+  const timeoutMs = options.timeout || 7500; // 7.5 seconds
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    let res = await fetch(url, config);
+    let res = await fetch(url, { ...config, signal: controller.signal });
+    clearTimeout(timer);
     let data;
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
@@ -103,8 +118,17 @@ export const request = async (endpoint, options = {}) => {
 
     return data;
   } catch (err) {
-    console.error(`[WaiterAPI] Error on ${options.method || 'GET'} ${url}:`, err.message);
-    throw err;
+    clearTimeout(timer);
+    let errorMsg = err.message || 'Connection failed';
+    if (err.name === 'AbortError') {
+      errorMsg = `Server timed out (${base.replace('/api', '')}). Ensure phone is connected to Hotel Wi-Fi, or check Server IP below.`;
+    } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+      errorMsg = `Cannot connect to CRM server (${base.replace('/api', '')}). Check phone Wi-Fi or update Server IP.`;
+    }
+    console.error(`[WaiterAPI] Error on ${options.method || 'GET'} ${url}:`, errorMsg);
+    const customError = new Error(errorMsg);
+    customError.original = err;
+    throw customError;
   }
 };
 

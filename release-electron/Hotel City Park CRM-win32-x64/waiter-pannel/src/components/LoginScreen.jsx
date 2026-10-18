@@ -37,6 +37,10 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
       } else {
         setErrorMsg(err.message || 'Login failed. Check server connection.');
       }
+      // If server could not be reached, automatically open connection settings
+      if (err.message && (err.message.includes('Cannot connect') || err.message.includes('timed out') || err.message.includes('Failed to fetch'))) {
+        setShowServerConfig(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -68,18 +72,23 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
     setShowServerConfig(false);
   };
 
+  const cleanServerDisplay = getBaseUrl().replace(/^https?:\/\//, '').replace(/\/api$/, '');
+
   return (
     <div
       style={{
-        height: '100dvh',
+        minHeight: '100dvh',
         width: '100vw',
         background: 'var(--bg-app)',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
+        flexDirection: 'column',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)',
+        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
+        paddingLeft: '16px',
+        paddingRight: '16px',
         overflowY: 'auto',
-        position: 'relative'
+        position: 'relative',
+        boxSizing: 'border-box'
       }}
     >
       {/* Top Floating Theme Switcher */}
@@ -90,8 +99,8 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
           title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           style={{
             position: 'absolute',
-            top: '14px',
-            right: '14px',
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+            right: '16px',
             width: '36px',
             height: '36px',
             borderRadius: 'var(--radius-sm)',
@@ -115,39 +124,64 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
         style={{
           width: '100%',
           maxWidth: '400px',
+          margin: 'auto',
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-medium)',
           borderRadius: 'var(--radius-lg)',
-          padding: '30px 22px',
+          padding: '24px 20px',
           boxShadow: 'var(--shadow-card)',
-          position: 'relative'
+          position: 'relative',
+          boxSizing: 'border-box'
         }}
       >
         {/* Branding Header */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div
             style={{
-              width: '58px',
-              height: '58px',
-              margin: '0 auto 12px',
+              width: '54px',
+              height: '54px',
+              margin: '0 auto 10px',
               background: 'var(--apple-orange-subtle)',
               border: '1.5px solid var(--apple-orange)',
               borderRadius: 'var(--radius-md)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.8rem',
+              fontSize: '1.7rem',
               boxShadow: 'var(--shadow-subtle)'
             }}
           >
             🍽️
           </div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: '0 0 3px' }}>
             Hotel City Park
           </h1>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600, margin: 0 }}>
+          <p style={{ fontSize: '0.80rem', color: 'var(--text-secondary)', fontWeight: 600, margin: '0 0 8px' }}>
             Waiter Order Panel (Restaurant &amp; Bar)
           </p>
+
+          {/* Quick Server Status Pill */}
+          <button
+            type="button"
+            onClick={() => setShowServerConfig(!showServerConfig)}
+            title="Click to view or edit target server IP"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--bg-surface-secondary)',
+              border: '1px solid var(--border-medium)',
+              fontSize: '0.68rem',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)' }} />
+            <span>Server: <strong style={{ color: 'var(--text-primary)' }}>{cleanServerDisplay}</strong></span>
+            <span style={{ opacity: 0.6 }}>⚙️</span>
+          </button>
         </div>
 
         {/* Login Form */}
