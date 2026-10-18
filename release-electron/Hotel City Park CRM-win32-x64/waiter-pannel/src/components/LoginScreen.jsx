@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api } from '../api/client';
+import { api, getBaseUrl, CLOUD_TUNNEL_URL, LOCAL_WIFI_IP } from '../api/client';
 
 export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
   const [username, setUsername] = useState('');
@@ -30,7 +30,13 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
         setErrorMsg(res?.error || 'Invalid credentials. Please try again.');
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Login failed. Check server connection.');
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const currentBase = getBaseUrl();
+      if (isHttps && currentBase.startsWith('http://')) {
+        setErrorMsg('Mixed Content: This HTTPS page cannot connect to HTTP server. Use Cloud HTTPS URL below.');
+      } else {
+        setErrorMsg(err.message || 'Login failed. Check server connection.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -42,12 +48,23 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
     setErrorMsg('');
   };
 
+  const handleApplyPreset = (host) => {
+    setServerHost(host);
+    if (host.trim()) {
+      localStorage.setItem('hcp_waiter_server_host', host.trim());
+    } else {
+      localStorage.removeItem('hcp_waiter_server_host');
+    }
+    setErrorMsg('');
+  };
+
   const handleSaveServerHost = () => {
     if (serverHost.trim()) {
       localStorage.setItem('hcp_waiter_server_host', serverHost.trim());
     } else {
       localStorage.removeItem('hcp_waiter_server_host');
     }
+    setErrorMsg('');
     setShowServerConfig(false);
   };
 
@@ -272,6 +289,21 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
           <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
+              onClick={() => handleQuickLogin('res-cap-3', '3')}
+              style={{
+                padding: '5px 10px',
+                borderRadius: 'var(--radius-xs)',
+                background: 'var(--apple-orange-subtle)',
+                border: '1.5px solid var(--apple-orange)',
+                color: 'var(--text-primary)',
+                fontSize: '0.72rem',
+                fontWeight: 750
+              }}
+            >
+              ⭐ Captain 3
+            </button>
+            <button
+              type="button"
               onClick={() => handleQuickLogin('waiter1', '1234')}
               style={{
                 padding: '5px 10px',
@@ -283,22 +315,7 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
                 fontWeight: 700
               }}
             >
-              Fill Waiter 1
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('waiter2', '1234')}
-              style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-xs)',
-                background: 'var(--bg-surface-secondary)',
-                border: '1px solid var(--border-medium)',
-                color: 'var(--text-primary)',
-                fontSize: '0.72rem',
-                fontWeight: 700
-              }}
-            >
-              Fill Waiter 2
+              Waiter 1
             </button>
             <button
               type="button"
@@ -322,47 +339,109 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
             <button
               type="button"
               onClick={() => setShowServerConfig(!showServerConfig)}
-              style={{ background: 'none', color: 'var(--text-secondary)', fontSize: '0.70rem', textDecoration: 'underline' }}
+              style={{ background: 'none', color: 'var(--text-secondary)', fontSize: '0.70rem', textDecoration: 'underline', cursor: 'pointer' }}
             >
-              {showServerConfig ? 'Close Server Settings' : '⚙️ Server Connection Settings'}
+              {showServerConfig ? '▲ Close Server Settings' : '⚙️ Server Connection Settings'}
             </button>
 
             {showServerConfig && (
-              <div style={{ marginTop: '8px', textAlign: 'left', padding: '10px', background: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-medium)' }}>
+              <div style={{ marginTop: '8px', textAlign: 'left', padding: '12px', background: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-medium)' }}>
+                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginBottom: '8px', wordBreak: 'break-all' }}>
+                  <strong>Active Target:</strong> <code style={{ color: 'var(--apple-blue)' }}>{getBaseUrl()}</code>
+                </div>
+
+                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                  Quick Presets:
+                </div>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(CLOUD_TUNNEL_URL)}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      borderRadius: 'var(--radius-xs)',
+                      background: 'var(--apple-green-subtle)',
+                      border: '1px solid var(--apple-green)',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ☁️ Cloud HTTPS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset(`http://${LOCAL_WIFI_IP}:3000`)}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      borderRadius: 'var(--radius-xs)',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-medium)',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📶 Hotel Wi-Fi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset('')}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      borderRadius: 'var(--radius-xs)',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-medium)',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔄 Auto-Detect
+                  </button>
+                </div>
+
                 <label style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Server IP / Cloud URL (leave blank for local auto-detect):
+                  Custom Server URL:
                 </label>
-                <input
-                  type="text"
-                  value={serverHost}
-                  onChange={(e) => setServerHost(e.target.value)}
-                  placeholder="e.g. http://10.120.45.196:3000"
-                  style={{
-                    width: '100%',
-                    height: '34px',
-                    padding: '0 8px',
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: 'var(--radius-xs)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.78rem',
-                    marginBottom: '6px'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveServerHost}
-                  style={{
-                    padding: '5px 12px',
-                    background: 'var(--apple-blue)',
-                    color: 'var(--text-on-accent)',
-                    borderRadius: 'var(--radius-xs)',
-                    fontSize: '0.72rem',
-                    fontWeight: 750
-                  }}
-                >
-                  Save &amp; Apply
-                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    value={serverHost}
+                    onChange={(e) => setServerHost(e.target.value)}
+                    placeholder="https://... or http://..."
+                    style={{
+                      flex: 1,
+                      height: '34px',
+                      padding: '0 8px',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-medium)',
+                      borderRadius: 'var(--radius-xs)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.78rem'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveServerHost}
+                    style={{
+                      padding: '0 12px',
+                      height: '34px',
+                      background: 'var(--apple-blue)',
+                      color: 'var(--text-on-accent)',
+                      borderRadius: 'var(--radius-xs)',
+                      fontSize: '0.72rem',
+                      fontWeight: 750,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -3,30 +3,47 @@
  * Connects seamlessly over localhost, Local Wi-Fi (e.g. 10.160.83.195), or Worldwide Cloud
  */
 
-const getBaseUrl = () => {
+export const CLOUD_TUNNEL_URL = 'https://hotelcitypark-api.loca.lt';
+export const LOCAL_WIFI_IP = '10.160.83.195';
+
+export const getBaseUrl = () => {
   // Check if custom server address was saved
   const customHost = localStorage.getItem('hcp_waiter_server_host');
   if (customHost && customHost.trim()) {
-    return customHost.replace(/\/+$/, '') + '/api';
+    let clean = customHost.trim().replace(/\/+$/, '');
+    if (!clean.endsWith('/api')) clean += '/api';
+    return clean;
   }
 
-  // If in browser on desktop or local network
+  // If in browser
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname || '';
-    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    const isHttps = window.location.protocol === 'https:';
+
+    // When deployed on Netlify, Vercel, or loaded over HTTPS:
+    // Calling http:// will trigger browser mixed-content blockage.
+    // Use the HTTPS cloud tunnel or relative /api (if proxied via _redirects)
+    if (isHttps || hostname.includes('netlify.app') || hostname.includes('vercel.app')) {
+      return `${CLOUD_TUNNEL_URL}/api`;
+    }
+
+    // If on localhost
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
       if (window.location.port === '3000') {
         return '/api';
       }
-      return `http://${hostname}:3000/api`;
-    }
-    // If in dev browser on localhost
-    if (window.location.port === '5174' || window.location.port === '3000') {
       return 'http://localhost:3000/api';
     }
+
+    // If on local Wi-Fi IP (e.g. http://10.160.83.195:5174)
+    if (window.location.port === '3000') {
+      return '/api';
+    }
+    return `http://${hostname || LOCAL_WIFI_IP}:3000/api`;
   }
 
   // Fallback for Android APK on mobile device connecting to hotel local Wi-Fi
-  return 'http://10.120.45.196:3000/api';
+  return `http://${LOCAL_WIFI_IP}:3000/api`;
 };
 
 let _token = localStorage.getItem('hcp_waiter_token') || null;
@@ -48,6 +65,8 @@ export const request = async (endpoint, options = {}) => {
 
   const headers = {
     'Content-Type': 'application/json',
+    'Bypass-Tunnel-Reminder': 'true',
+    'ngrok-skip-browser-warning': 'true',
     ...(options.headers || {})
   };
 
@@ -66,7 +85,7 @@ export const request = async (endpoint, options = {}) => {
   }
 
   try {
-    const res = await fetch(url, config);
+    let res = await fetch(url, config);
     let data;
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
