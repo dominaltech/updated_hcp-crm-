@@ -8,7 +8,12 @@ export default function SettingsModal({
   onToggleTheme,
   department,
   currentUser,
-  onLogout
+  onLogout,
+  offlineQueue = [],
+  onSyncOffline,
+  isSyncing = false,
+  installPrompt = null,
+  onInstallPWA
 }) {
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'settled'
   const [settledBills, setSettledBills] = useState([]);
@@ -304,6 +309,152 @@ export default function SettingsModal({
                     <span>Light Mode</span>
                   </button>
                 </div>
+              </div>
+
+              {/* PWA App Installation Block */}
+              <div
+                style={{
+                  padding: '14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-surface-secondary)',
+                  border: '1px solid var(--border-medium)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Install Waiter App (PWA)
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                      Add to Phone Home Screen • Fullscreen
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '1.3rem' }}>📲</span>
+                </div>
+
+                {installPrompt ? (
+                  <button
+                    type="button"
+                    onClick={onInstallPWA}
+                    style={{
+                      width: '100%',
+                      padding: '11px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontSize: '0.84rem',
+                      fontWeight: 850,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 8px rgba(37,99,235,0.3)'
+                    }}
+                  >
+                    <span>⬇️</span>
+                    <span>Install App on this Device</span>
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-xs)',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-light)',
+                      fontSize: '0.74rem',
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.4
+                    }}
+                  >
+                    {typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) ? (
+                      <span style={{ color: 'var(--apple-green)', fontWeight: 800 }}>
+                        ✅ App is installed &amp; running in full-screen PWA mode.
+                      </span>
+                    ) : (
+                      <span>
+                        💡 <strong>To Install:</strong> In Chrome/Edge tap <strong>⋮</strong> ➔ <em>"Install App"</em> or <em>"Add to Home screen"</em>. In Safari on iOS tap <strong>Share</strong> ➔ <em>"Add to Home Screen"</em>.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Offline Support & Sync Queue Block */}
+              <div
+                style={{
+                  padding: '14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-surface-secondary)',
+                  border: '1px solid var(--border-medium)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Offline Mode &amp; Sync
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                      Local queue for zero lost orders during Wi-Fi drops
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '1.3rem' }}>⚡</span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-xs)',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-light)',
+                    fontSize: '0.76rem'
+                  }}
+                >
+                  <span style={{ color: 'var(--text-secondary)' }}>Pending Offline Orders:</span>
+                  <span
+                    style={{
+                      fontWeight: 900,
+                      color: offlineQueue.length > 0 ? '#f59e0b' : 'var(--apple-green)'
+                    }}
+                  >
+                    {offlineQueue.length > 0 ? `${offlineQueue.length} order(s) waiting` : '✓ All Synced'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onSyncOffline}
+                  disabled={offlineQueue.length === 0 || isSyncing}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: offlineQueue.length > 0 ? 'var(--apple-orange)' : 'var(--bg-surface)',
+                    color: offlineQueue.length > 0 ? '#ffffff' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    fontSize: '0.82rem',
+                    fontWeight: 850,
+                    cursor: (offlineQueue.length === 0 || isSyncing) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    opacity: (offlineQueue.length === 0 || isSyncing) ? 0.6 : 1
+                  }}
+                >
+                  <span>{isSyncing ? '⏳' : '🔄'}</span>
+                  <span>{isSyncing ? 'Syncing with Server...' : offlineQueue.length > 0 ? `Sync ${offlineQueue.length} Order(s) Now` : 'Sync Offline Orders'}</span>
+                </button>
               </div>
 
               {/* End Shift / Logout Button */}

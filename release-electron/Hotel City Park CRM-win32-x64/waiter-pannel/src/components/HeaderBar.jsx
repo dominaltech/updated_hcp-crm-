@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function HeaderBar({ user, department, onOpenSettings }) {
+export default function HeaderBar({ user, department, onOpenSettings, offlineCount = 0, isOnline = true }) {
   const isBar = department === 'bar';
 
   return (
@@ -64,7 +64,7 @@ export default function HeaderBar({ user, department, onOpenSettings }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
         {/* Waiter Profile Chip */}
         <div
-          title={user?.full_name || user?.username || 'Waiter'}
+          title={`${user?.full_name || user?.username || 'Waiter'} (${isOnline ? 'Online' : 'Offline Mode'})`}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -77,7 +77,15 @@ export default function HeaderBar({ user, department, onOpenSettings }) {
             flexShrink: 0
           }}
         >
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)', flexShrink: 0 }} />
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: isOnline ? 'var(--apple-green)' : 'var(--apple-orange)',
+              flexShrink: 0
+            }}
+          />
           <span
             style={{
               fontSize: '0.74rem',
@@ -92,14 +100,15 @@ export default function HeaderBar({ user, department, onOpenSettings }) {
           </span>
         </div>
 
-        {/* Top-Right Settings Gear Button */}
+        {/* Top-Right Settings Gear Button with Offline Count Badge */}
         <button
           type="button"
           id="btn-header-settings"
           onClick={onOpenSettings}
-          title="Settings, Theme & Settled Bills"
+          title="Settings, Theme, Settled Bills & Offline Sync"
           aria-label="Settings"
           style={{
+            position: 'relative',
             width: '34px',
             height: '34px',
             borderRadius: 'var(--radius-xs)',
@@ -117,6 +126,29 @@ export default function HeaderBar({ user, department, onOpenSettings }) {
           }}
         >
           ⚙️
+          {offlineCount > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                background: '#f59e0b',
+                color: '#fff',
+                fontSize: '0.62rem',
+                fontWeight: 900,
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1.5px solid var(--bg-surface)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+              }}
+            >
+              {offlineCount}
+            </span>
+          )}
         </button>
       </div>
     </header>

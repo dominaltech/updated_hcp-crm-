@@ -12,6 +12,15 @@ import CartDrawer from './components/CartDrawer';
 import MyOrdersView from './components/MyOrdersView';
 import CustomModal from './components/CustomModal';
 import SettingsModal from './components/SettingsModal';
+import {
+  getOfflineQueue,
+  addToOfflineQueue,
+  syncOfflineQueue,
+  getCachedMenu,
+  setCachedMenu,
+  getCachedTables,
+  setCachedTables
+} from './utils/offlineSync';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => api.getCurrentUser());
@@ -82,6 +91,12 @@ export default function App() {
   const [modalConfig, setModalConfig] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Offline queue and PWA install states
+  const [offlineQueue, setOfflineQueue] = useState(() => getOfflineQueue());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [installPrompt, setInstallPrompt] = useState(null);
+
   const showToast = (message, duration = 4000) => {
     setToastMessage(message);
     setTimeout(() => {
@@ -115,7 +130,7 @@ export default function App() {
     }
   };
 
-  // 1. Fetch live tables, rooms, and orders
+  // 1. Fetch live tables, rooms, and orders with offline cache backup
   const fetchLiveData = useCallback(async () => {
     if (!currentUser) return;
     setIsLoading(true);
@@ -124,10 +139,12 @@ export default function App() {
         const res = await api.getBarTables();
         const rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
         setTables(rawTables);
+        setCachedTables('bar', rawTables);
       } else {
         const res = await api.getRestaurantTables();
         const rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
         setTables(rawTables);
+        setCachedTables('restaurant', rawTables);
       }
 
       // Fetch occupied rooms for Room Service
@@ -151,12 +168,17 @@ export default function App() {
     } catch (err) {
       console.error('Data fetch error:', err.message);
       setServerStatus('error');
+      // Load cached tables if current tables list is empty
+      const cached = getCachedTables(department);
+      if (cached && cached.length > 0) {
+        setTables((prev) => (prev && prev.length > 0 ? prev : cached));
+      }
     } finally {
       setIsLoading(false);
     }
   }, [currentUser, department]);
 
-  // 2. Fetch menu items and categories
+  // 2. Fetch menu items and categories with offline cache backup
   const fetchMenu = useCallback(async () => {
     if (!currentUser) return;
     setIsLoadingMenu(true);
@@ -166,22 +188,111 @@ export default function App() {
           api.getBarMenu(),
           api.getBarCategories()
         ]);
-        setMenuItems((menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []));
-        setCategories((catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []));
+        const items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
+        const cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
+        setMenuItems(items);
+        setCategories(cats);
+        setCachedMenu('bar', items, cats);
       } else {
         const [menuRes, catRes] = await Promise.all([
           api.getRestaurantMenu(),
           api.getRestaurantCategories()
         ]);
-        setMenuItems((menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []));
-        setCategories((catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []));
+        const items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
+        const cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
+        setMenuItems(items);
+        setCategories(cats);
+        setCachedMenu('restaurant', items, cats);
       }
     } catch (err) {
       console.error('Menu fetch error:', err.message);
+      const cached = getCachedMenu(department);
+      if (cached?.items?.length > 0) {
+        setMenuItems((prev) => (prev && prev.length > 0 ? prev : cached.items));
+        setCategories((prev) => (prev && prev.length > 0 ? prev : cached.categories));
+      }
     } finally {
       setIsLoadingMenu(false);
     }
   }, [currentUser, department]);
+
+  // Sync offline orders queue to server
+  const handleSyncOffline = useCallback(async () => {
+    if (isSyncing) return;
+    const q = getOfflineQueue();
+    if (!q || q.length === 0) return;
+    setIsSyncing(true);
+    try {
+      const res = await syncOfflineQueue(api, (progress) => {
+        showToast(`🔄 Syncing offline order ${progress.current}/${progress.total}...`, 2000);
+      });
+      setOfflineQueue(getOfflineQueue());
+      if (res.syncedCount > 0) {
+        showToast(`✅ Synced ${res.syncedCount} offline order(s) successfully!`, 4000);
+        fetchLiveData();
+      } else if (res.remainingCount > 0) {
+        showToast(`⚠️ Server offline: ${res.remainingCount} order(s) remain queued.`, 4000);
+      }
+    } catch (e) {
+      console.warn('Sync failed:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, fetchLiveData]);
+
+  // Online / Offline listeners & auto-sync trigger
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showToast('📶 Back online! Auto-syncing pending orders...');
+      handleSyncOffline();
+      fetchLiveData();
+      fetchMenu();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showToast('⚠️ Offline mode: Orders saved locally and auto-synced.');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Periodic sync check every 25 seconds if online
+    const interval = setInterval(() => {
+      if (navigator.onLine && getOfflineQueue().length > 0) {
+        handleSyncOffline();
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, [handleSyncOffline, fetchLiveData, fetchMenu]);
+
+  // Capture PWA install prompt
+  useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (!installPrompt) return;
+    try {
+      installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setInstallPrompt(null);
+        showToast('🎉 Hotel City Park Waiter app installed successfully!');
+      }
+    } catch (e) {
+      console.warn('Install prompt error:', e);
+    }
+  };
 
   // Initial and reactive effects
   useEffect(() => {
@@ -267,22 +378,36 @@ export default function App() {
     setCart([]);
   };
 
-  // Punch KOT order
+  // Punch KOT order with offline queue resilience
   const handlePunchOrder = async ({ notes }) => {
     if (!destination || cart.length === 0) return;
     setIsPunching(true);
-    try {
-      const orderPayload = {
-        department,
-        destination_type: destination.type,
-        destination_id: destination.id,
-        destination_label: destination.label,
-        items: cart,
-        waiter_id: currentUser.id,
-        waiter_name: currentUser.full_name || currentUser.username,
-        notes
-      };
 
+    const orderPayload = {
+      department,
+      destination_type: destination.type,
+      destination_id: destination.id,
+      destination_label: destination.label,
+      items: cart,
+      waiter_id: currentUser.id,
+      waiter_name: currentUser.full_name || currentUser.username,
+      notes
+    };
+
+    // If device is explicitly offline
+    if (!navigator.onLine) {
+      addToOfflineQueue(orderPayload);
+      setOfflineQueue(getOfflineQueue());
+      setIsCartOpen(false);
+      setCart([]);
+      setDestination(null);
+      setActiveTab('tables');
+      setIsPunching(false);
+      showToast('⚡ Saved Offline! Will auto-sync when Wi-Fi connects.', 5000);
+      return;
+    }
+
+    try {
       const res = await api.punchOrder(orderPayload);
 
       const kotNo = res?.kotNumber || res?.botNumber || res?.order_id || 'OK';
@@ -300,14 +425,33 @@ export default function App() {
       fetchLiveData();
     } catch (err) {
       console.error('Order punch failed:', err);
-      setModalConfig({
-        type: 'alert',
-        title: 'Order Punch Failed',
-        message: err.message || 'Server error. Please verify table/room status.',
-        icon: '❌',
-        confirmText: 'Dismiss',
-        confirmColor: 'var(--apple-red)'
-      });
+
+      const isNetworkError =
+        !navigator.onLine ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('NetworkError') ||
+        err.message?.includes('network') ||
+        err.message?.includes('timeout') ||
+        err.message?.includes('Load failed');
+
+      if (isNetworkError) {
+        addToOfflineQueue(orderPayload);
+        setOfflineQueue(getOfflineQueue());
+        setIsCartOpen(false);
+        setCart([]);
+        setDestination(null);
+        setActiveTab('tables');
+        showToast('⚡ Wi-Fi dropped! Order saved offline and will auto-sync.', 5000);
+      } else {
+        setModalConfig({
+          type: 'alert',
+          title: 'Order Punch Failed',
+          message: err.message || 'Server error. Please verify table/room status.',
+          icon: '❌',
+          confirmText: 'Dismiss',
+          confirmColor: 'var(--apple-red)'
+        });
+      }
     } finally {
       setIsPunching(false);
     }
@@ -401,7 +545,74 @@ export default function App() {
         user={currentUser}
         department={department}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        offlineCount={offlineQueue.length}
+        isOnline={isOnline}
       />
+
+      {/* Offline Pending Queue Banner */}
+      {offlineQueue.length > 0 && (
+        <div
+          style={{
+            padding: '7px 12px',
+            background: 'linear-gradient(90deg, #f59e0b, #d97706)',
+            color: '#ffffff',
+            fontSize: '0.78rem',
+            fontWeight: 850,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
+            zIndex: 99
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>⚡</span>
+            <span>
+              <strong>{offlineQueue.length}</strong> offline order{offlineQueue.length > 1 ? 's' : ''} waiting to sync
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleSyncOffline}
+            disabled={isSyncing}
+            style={{
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-xs)',
+              background: '#ffffff',
+              color: '#b45309',
+              fontSize: '0.72rem',
+              fontWeight: 900,
+              border: 'none',
+              cursor: isSyncing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <span>{isSyncing ? '⏳' : '🔄'}</span>
+            <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Offline mode indicator if network is disconnected */}
+      {!isOnline && (
+        <div
+          style={{
+            padding: '5px 12px',
+            background: 'var(--apple-red-subtle)',
+            borderBottom: '1px solid var(--apple-red)',
+            color: 'var(--apple-red)',
+            fontSize: '0.74rem',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <span>📡 Offline Mode Active — Orders saved locally &amp; will sync once Wi-Fi reconnects</span>
+        </div>
+      )}
 
       {/* Server Status Warning if disconnected */}
       {serverStatus === 'error' && (
@@ -534,6 +745,11 @@ export default function App() {
         department={department}
         currentUser={currentUser}
         onLogout={handleRequestLogout}
+        offlineQueue={offlineQueue}
+        onSyncOffline={handleSyncOffline}
+        isSyncing={isSyncing}
+        installPrompt={installPrompt}
+        onInstallPWA={handleInstallPWA}
       />
     </div>
   );

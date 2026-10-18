@@ -6,6 +6,13 @@
     <meta name="theme-color" content="#0a0f1d" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="application-name" content="HCP Waiter" />
+    <meta name="apple-mobile-web-app-title" content="HCP Waiter" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/pwa-192.png" />
+    <link rel="manifest" href="/manifest.json" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -28,5 +35,19 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Register Service Worker for PWA Offline Caching
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(reg) {
+              console.log('[PWA] Service Worker registered with scope:', reg.scope);
+            })
+            .catch(function(err) {
+              console.warn('[PWA] Service Worker registration failed:', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>

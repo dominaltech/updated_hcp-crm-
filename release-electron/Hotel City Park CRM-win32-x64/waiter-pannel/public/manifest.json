@@ -1,0 +1,32 @@
+{
+  "name": "Hotel City Park - Waiter Order Panel",
+  "short_name": "HCP Waiter",
+  "description": "Mobile Waiter & Captain POS Order Dispatching System for Hotel City Park",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0f1d",
+  "theme_color": "#0a0f1d",
+  "categories": ["business", "food"],
+  "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
