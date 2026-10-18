@@ -102,9 +102,36 @@ function getAppConfig() {
     if (a.startsWith('--server=')) config.serverHost = a.split('=')[1].trim();
     if (a.startsWith('--host=')) config.serverHost = a.split('=')[1].trim();
     if (a.startsWith('--port=')) config.serverPort = parseInt(a.split('=')[1].trim(), 10) || PORT;
+    if (a === '--admin' || a === '--owner' || a === '--screen=admin') {
+      config.screen = 'admin';
+      config.mode = 'client';
+    }
     if (a === '--restaurant' || a === '--screen=restaurant') config.screen = 'restaurant';
     if (a === '--bar' || a === '--screen=bar') config.screen = 'bar';
     if (a === '--hospitality' || a === '--screen=hospitality') config.screen = 'hospitality';
+  }
+  // Auto-detect Admin mode if executable name contains "admin" or "owner"
+  try {
+    const exeName = path.basename(process.execPath || '').toLowerCase();
+    if (exeName.includes('admin') || exeName.includes('owner')) {
+      config.screen = 'admin';
+      config.mode = 'client';
+    }
+  } catch (_) {}
+
+  // If in admin mode and serverHost is localhost, check if remote cloud URL or LAN IP is available
+  if (config.screen === 'admin' && (config.serverHost === 'localhost' || !config.serverHost)) {
+    try {
+      const rFile = path.join(__dirname, '..', 'remote_url.txt');
+      if (fs.existsSync(rFile)) {
+        const rUrl = fs.readFileSync(rFile, 'utf8').trim();
+        if (rUrl) config.serverHost = rUrl;
+      } else {
+        config.serverHost = '10.160.83.195';
+      }
+    } catch (_) {
+      config.serverHost = '10.160.83.195';
+    }
   }
 
   return config;
@@ -123,9 +150,9 @@ function saveAppConfig(newCfg) {
 
 function promptSetServerIp() {
   const promptWin = new BrowserWindow({
-    width: 480,
-    height: 350,
-    title: 'Connect to Main CRM Server',
+    width: 520,
+    height: 420,
+    title: 'Connect to Hotel Server / Cloud',
     parent: mainWindow,
     modal: true,
     resizable: false,
@@ -139,37 +166,59 @@ function promptSetServerIp() {
   });
 
   const curCfg = getAppConfig();
-  const defaultIp = curCfg.serverHost !== 'localhost' ? curCfg.serverHost : '192.168.1.';
+  let defaultIp = curCfg.serverHost !== 'localhost' ? curCfg.serverHost : '10.160.83.195';
+  
+  // Check if remote_url.txt exists
+  let remoteCloudUrl = '';
+  try {
+    const rFile = path.join(__dirname, '..', 'remote_url.txt');
+    if (fs.existsSync(rFile)) {
+      remoteCloudUrl = fs.readFileSync(rFile, 'utf8').trim();
+    }
+  } catch (_) {}
+
   const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Connect to Main CRM Server</title>
+  <title>Connect to Hotel Server / Cloud</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #fff; padding: 22px; margin: 0; }
     h3 { margin: 0 0 6px; font-size: 1.15rem; color: #38bdf8; }
-    p { font-size: 0.82rem; color: #94a3b8; margin: 0 0 16px; line-height: 1.4; }
+    p { font-size: 0.82rem; color: #94a3b8; margin: 0 0 14px; line-height: 1.4; }
     label { font-size: 0.76rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 4px; }
     input, select { width: 100%; box-sizing: border-box; padding: 9px 12px; background: #1e293b; border: 1.5px solid #334155; border-radius: 8px; color: #fff; font-size: 0.92rem; margin-bottom: 12px; }
     input:focus, select:focus { border-color: #38bdf8; outline: none; }
+    .quick-links { display: flex; gap: 8px; margin-bottom: 14px; }
+    .quick-btn { flex: 1; padding: 6px 10px; font-size: 0.76rem; font-weight: 600; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #38bdf8; cursor: pointer; text-align: center; }
+    .quick-btn:hover { background: #334155; }
     .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
-    button { padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 0.84rem; cursor: pointer; border: none; }
+    button { padding: 9px 18px; border-radius: 8px; font-weight: 700; font-size: 0.84rem; cursor: pointer; border: none; }
     .btn-cancel { background: #334155; color: #cbd5e1; }
     .btn-save { background: #0284c7; color: #fff; }
   </style>
 </head>
 <body>
-  <h3>🌐 Connect to Main CRM Server</h3>
-  <p>Enter the local Wi-Fi / LAN IP address of the Main Reception Computer.</p>
+  <h3>🌐 Hotel City Park Connection</h3>
+  <p>Connect over Local Hotel Wi-Fi or Worldwide Cloud.</p>
+  
+  <div class="quick-links">
+    <div class="quick-btn" onclick="document.getElementById('ip').value='10.160.83.195'">🏢 Hotel Wi-Fi</div>
+    ${remoteCloudUrl ? `<div class="quick-btn" onclick="document.getElementById('ip').value='${remoteCloudUrl}'">🌐 Worldwide Cloud</div>` : ''}
+    <div class="quick-btn" onclick="document.getElementById('ip').value='localhost'">💻 This PC</div>
+  </div>
+
   <form id="f">
-    <label>Main Server IP / Hostname</label>
-    <input type="text" id="ip" value="${defaultIp}" placeholder="e.g. 192.168.1.100" required autofocus />
+    <label>Server IP / Cloud URL</label>
+    <input type="text" id="ip" value="${defaultIp}" placeholder="e.g. 10.160.83.195 or https://..." required autofocus />
     
-    <label>Counter Screen</label>
+    <label>Initial Screen</label>
     <select id="sc">
+      <option value="admin" ${curCfg.screen === 'admin' ? 'selected' : ''}>👑 Admin & Owner Portal</option>
+      <option value="hospitality" ${curCfg.screen === 'hospitality' ? 'selected' : ''}>🏨 Front Desk (Hospitality CRM)</option>
       <option value="restaurant" ${curCfg.screen === 'restaurant' ? 'selected' : ''}>🍽️ Restaurant POS Counter</option>
       <option value="bar" ${curCfg.screen === 'bar' ? 'selected' : ''}>🍸 Bar POS Counter</option>
-      <option value="hospitality" ${curCfg.screen === 'hospitality' ? 'selected' : ''}>🏨 Front Desk (Hospitality)</option>
+      <option value="store-admin" ${curCfg.screen === 'store-admin' ? 'selected' : ''}>📋 Store Admin & Inventory</option>
     </select>
 
     <div class="btns">
@@ -202,9 +251,31 @@ async function startServerAndNavigate() {
   const isClient = cfg.mode === 'client';
   const targetHost = isClient ? (cfg.serverHost || 'localhost') : 'localhost';
   const targetPort = isClient ? (cfg.serverPort || PORT) : PORT;
-  const targetUrl = `http://${targetHost}:${targetPort}/${screen}`;
+
+  let screenPath = screen;
+  if (screen === 'admin') screenPath = 'admin/';
+  else if (screen === 'store') screenPath = 'store-admin';
+
+  let targetUrl;
+  if (targetHost.startsWith('http://') || targetHost.startsWith('https://')) {
+    const base = targetHost.replace(/\/+$/, '');
+    targetUrl = `${base}/${screenPath}`;
+  } else {
+    targetUrl = `http://${targetHost}:${targetPort}/${screenPath}`;
+  }
 
   console.log(`[Electron] Starting in ${cfg.mode.toUpperCase()} mode. Target URL: ${targetUrl}`);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const titleMap = {
+      admin: 'Hotel City Park - Admin & Owner Portal',
+      hospitality: 'Hotel City Park CRM - Front Desk',
+      restaurant: 'Hotel City Park - Restaurant POS',
+      bar: 'Hotel City Park - Bar Lounge POS',
+      'store-admin': 'Hotel City Park - Store Admin'
+    };
+    mainWindow.setTitle(titleMap[screen] || 'Hotel City Park CRM');
+  }
 
   // In Client Mode: do NOT spawn a local SQLite server. Connect to host!
   if (isClient) {
@@ -409,43 +480,55 @@ function setupMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Set Main Server IP Address...',
+          label: 'Set Server IP Address / Cloud URL...',
           click: () => {
             promptSetServerIp();
           }
         },
         { type: 'separator' },
         {
-          label: 'Switch Screen: Front Desk (Hospitality)',
+          label: '👑 Switch Screen: Admin & Owner Portal',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.screen = 'admin';
+            saveAppConfig(cfg);
+            startServerAndNavigate();
+          }
+        },
+        {
+          label: '🏨 Switch Screen: Front Desk (Hospitality CRM)',
           click: () => {
             const cfg = getAppConfig();
             cfg.screen = 'hospitality';
             saveAppConfig(cfg);
-            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
-            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
-            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/hospitality`);
+            startServerAndNavigate();
           }
         },
         {
-          label: 'Switch Screen: Restaurant POS Counter',
+          label: '🍽️ Switch Screen: Restaurant POS Counter',
           click: () => {
             const cfg = getAppConfig();
             cfg.screen = 'restaurant';
             saveAppConfig(cfg);
-            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
-            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
-            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/restaurant`);
+            startServerAndNavigate();
           }
         },
         {
-          label: 'Switch Screen: Bar POS Counter',
+          label: '🍸 Switch Screen: Bar POS Counter',
           click: () => {
             const cfg = getAppConfig();
             cfg.screen = 'bar';
             saveAppConfig(cfg);
-            const host = cfg.mode === 'client' ? (cfg.serverHost || 'localhost') : 'localhost';
-            const port = cfg.mode === 'client' ? (cfg.serverPort || PORT) : PORT;
-            if (mainWindow) mainWindow.loadURL(`http://${host}:${port}/bar`);
+            startServerAndNavigate();
+          }
+        },
+        {
+          label: '📋 Switch Screen: Store Admin & Inventory',
+          click: () => {
+            const cfg = getAppConfig();
+            cfg.screen = 'store-admin';
+            saveAppConfig(cfg);
+            startServerAndNavigate();
           }
         }
       ]
