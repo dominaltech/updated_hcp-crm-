@@ -1,12 +1,7 @@
 import React from 'react';
 
-export default function HeaderBar({ user, department, theme, onToggleTheme, onLogout }) {
+export default function HeaderBar({ user, department, onOpenSettings }) {
   const isBar = department === 'bar';
-  const isDark = theme === 'dark';
-
-  const handleLogoutClick = () => {
-    onLogout();
-  };
 
   return (
     <header
@@ -29,19 +24,29 @@ export default function HeaderBar({ user, department, theme, onToggleTheme, onLo
         overflow: 'hidden'
       }}
     >
-      {/* Left: Clean Brand Logo & Department Badge (Fixed compact width to avoid overflow) */}
+      {/* Left: Clean Brand Logo & Department Badge */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexShrink: 1 }}>
         <span style={{ fontSize: '1.2rem', lineHeight: 1, flexShrink: 0 }}>
           {isBar ? '🍸' : '🍽️'}
         </span>
-        <span style={{ fontSize: '0.90rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span
+          style={{
+            fontSize: '0.92rem',
+            fontWeight: 900,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.02em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}
+        >
           City Park
         </span>
         <span
           style={{
-            fontSize: '0.60rem',
+            fontSize: '0.62rem',
             fontWeight: 800,
-            padding: '2px 5px',
+            padding: '2px 6px',
             borderRadius: 'var(--radius-xs)',
             background: isBar ? 'var(--apple-purple)' : 'var(--apple-orange)',
             color: 'var(--text-on-accent)',
@@ -55,53 +60,27 @@ export default function HeaderBar({ user, department, theme, onToggleTheme, onLo
         </span>
       </div>
 
-      {/* Right: Theme Switcher, Waiter Chip & Logout Button */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-        {/* Universal Theme Toggle Button */}
-        <button
-          type="button"
-          id="btn-header-theme-toggle"
-          onClick={onToggleTheme}
-          title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-          aria-label="Toggle Theme"
-          style={{
-            width: '30px',
-            height: '30px',
-            borderRadius: 'var(--radius-xs)',
-            background: 'var(--bg-surface-secondary)',
-            border: '1px solid var(--border-medium)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '0.90rem',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'transform var(--transition-fast)'
-          }}
-        >
-          {isDark ? '☀️' : '🌙'}
-        </button>
-
+      {/* Right: Waiter Profile Chip & Top-Right Settings Gear Icon */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
         {/* Waiter Profile Chip */}
         <div
           title={user?.full_name || user?.username || 'Waiter'}
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
-            padding: '3px 7px',
+            gap: '5px',
+            padding: '4px 8px',
             borderRadius: 'var(--radius-xs)',
             background: 'var(--bg-surface-secondary)',
             border: '1px solid var(--border-light)',
-            maxWidth: '90px',
+            maxWidth: '120px',
             flexShrink: 0
           }}
         >
-          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--apple-green)', flexShrink: 0 }} />
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)', flexShrink: 0 }} />
           <span
             style={{
-              fontSize: '0.72rem',
+              fontSize: '0.74rem',
               fontWeight: 800,
               color: 'var(--text-primary)',
               whiteSpace: 'nowrap',
@@ -113,29 +92,31 @@ export default function HeaderBar({ user, department, theme, onToggleTheme, onLo
           </span>
         </div>
 
-        {/* Logout Exit Button */}
+        {/* Top-Right Settings Gear Button */}
         <button
           type="button"
-          onClick={handleLogoutClick}
-          title="Log out of this device"
+          id="btn-header-settings"
+          onClick={onOpenSettings}
+          title="Settings, Theme & Settled Bills"
+          aria-label="Settings"
           style={{
-            height: '30px',
-            padding: '0 7px',
+            width: '34px',
+            height: '34px',
             borderRadius: 'var(--radius-xs)',
-            background: 'var(--apple-red-subtle)',
-            border: '1px solid var(--apple-red)',
-            color: 'var(--apple-red)',
-            fontSize: '0.70rem',
-            fontWeight: 800,
+            background: 'var(--bg-surface-secondary)',
+            border: '1.5px solid var(--border-medium)',
+            color: 'var(--text-primary)',
             display: 'flex',
             alignItems: 'center',
-            gap: '3px',
+            justifyContent: 'center',
+            fontSize: '1.05rem',
+            cursor: 'pointer',
             flexShrink: 0,
-            cursor: 'pointer'
+            boxShadow: 'var(--shadow-subtle)',
+            transition: 'transform var(--transition-fast)'
           }}
         >
-          <span>🚪</span>
-          <span>Exit</span>
+          ⚙️
         </button>
       </div>
     </header>

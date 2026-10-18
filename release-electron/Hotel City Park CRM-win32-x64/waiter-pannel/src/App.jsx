@@ -11,6 +11,7 @@ import MenuView from './components/MenuView';
 import CartDrawer from './components/CartDrawer';
 import MyOrdersView from './components/MyOrdersView';
 import CustomModal from './components/CustomModal';
+import SettingsModal from './components/SettingsModal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => api.getCurrentUser());
@@ -79,6 +80,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
   const [serverStatus, setServerStatus] = useState('connected'); // 'connected' | 'error'
   const [modalConfig, setModalConfig] = useState(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const showToast = (message, duration = 4000) => {
     setToastMessage(message);
@@ -398,9 +400,7 @@ export default function App() {
       <HeaderBar
         user={currentUser}
         department={department}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onLogout={handleRequestLogout}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Server Status Warning if disconnected */}
@@ -523,6 +523,17 @@ export default function App() {
       <CustomModal
         config={modalConfig}
         onClose={() => setModalConfig(null)}
+      />
+
+      {/* Settings & Settled Bills Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        department={department}
+        currentUser={currentUser}
+        onLogout={handleRequestLogout}
       />
     </div>
   );

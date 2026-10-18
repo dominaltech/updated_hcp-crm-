@@ -5004,8 +5004,8 @@ app.post('/api/restaurant/settled-bills/delete', requireAuth, requireRole('manag
   }
 });
 
-// Delete single settled bill
-app.delete('/api/restaurant/orders/:id', requireAuth, requireRole('manager'), (req, res) => {
+// Delete single settled bill / cancel order
+app.delete('/api/restaurant/orders/:id', requireAuth, requireRole('manager', 'restaurant', 'waiter'), (req, res) => {
   try {
     const { id } = req.params;
     const deleteTransaction = db.transaction((orderId) => {
@@ -6456,7 +6456,7 @@ app.post('/api/bar/settled-bills/delete', requireAuth, requireRole('manager'), (
   }
 });
 
-app.delete('/api/bar/orders/:id', requireAuth, requireRole('manager'), (req, res) => {
+app.delete('/api/bar/orders/:id', requireAuth, requireRole('manager', 'bar', 'waiter'), (req, res) => {
   try {
     const { id } = req.params;
     db.prepare('DELETE FROM bar_orders WHERE id = ?').run(id);

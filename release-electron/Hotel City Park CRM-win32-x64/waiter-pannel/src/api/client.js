@@ -396,5 +396,21 @@ export const api = {
   },
 
   getRestaurantOrders: () => request('/restaurant/orders'),
-  getBarOrders: () => request('/bar/orders')
+  getBarOrders: () => request('/bar/orders'),
+  cancelTable: (department, tableId) => {
+    const endpoint = department === 'bar' ? `/bar/tables/${tableId}/cancel` : `/restaurant/tables/${tableId}/cancel`;
+    return request(endpoint, { method: 'POST' });
+  },
+  cancelOrder: (department, orderId) => {
+    const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
+    return request(endpoint, { method: 'DELETE' });
+  },
+  getSettledBills: (department) => {
+    const endpoint = department === 'bar' ? '/bar/settled-bills' : '/restaurant/settled-bills';
+    return request(endpoint);
+  },
+  getOrderDetail: (department, orderId) => {
+    const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
+    return request(endpoint);
+  }
 };
