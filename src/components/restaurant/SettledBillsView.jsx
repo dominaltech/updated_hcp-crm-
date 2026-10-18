@@ -63,7 +63,8 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
       const matchOrder = String(b.id).includes(q) || (b.order_number && String(b.order_number).toLowerCase().includes(q));
       const matchTable = (b.table_name && b.table_name.toLowerCase().includes(q)) || (b.table_number && String(b.table_number).toLowerCase().includes(q));
       const matchCust = b.customer_name && b.customer_name.toLowerCase().includes(q);
-      return matchOrder || matchTable || matchCust;
+      const matchWaiter = b.waiter_name && b.waiter_name.toLowerCase().includes(q);
+      return matchOrder || matchTable || matchCust || matchWaiter;
     }
     return true;
   });
@@ -148,10 +149,10 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
           <input
             type="text"
             className="form-input form-input-sm"
-            placeholder="Search Order # or Table..."
+            placeholder="Search Order #, Table, Waiter..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '220px' }}
+            style={{ width: '240px' }}
           />
           <button
             type="button"
@@ -268,7 +269,30 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                       )}
                     </div>
                   </td>
-                  <td>{b.table_name || (b.table_number ? `Table ${b.table_number}` : 'Walk-in')}</td>
+                  <td>
+                    <div style={{ fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
+                      {b.table_name || (b.table_number ? `Table ${b.table_number}` : 'Walk-in')}
+                    </div>
+                    {b.waiter_name && (
+                      <div
+                        style={{
+                          fontSize: '0.72rem',
+                          color: '#2563eb',
+                          fontWeight: 750,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          marginTop: '2px',
+                          background: 'rgba(59, 130, 246, 0.08)',
+                          padding: '1px 6px',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        <span>👤</span>
+                        <span>{b.waiter_name}</span>
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <span className="settled-token-badge">
                       Token #{b.token_number || 1}

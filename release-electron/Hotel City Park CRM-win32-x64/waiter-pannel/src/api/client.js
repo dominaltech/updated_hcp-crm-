@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://hotelcitypark-api.loca.lt';
+export const CLOUD_TUNNEL_URL = 'https://speech-recording-ordering-designer.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {
@@ -11,8 +11,35 @@ export const isNativePlatform = () => {
   }
 };
 
+let cachedTunnelUrl = null;
+
+// Fetch latest active tunnel URL from Supabase cloud sync if ever needed
+export const fetchCloudTunnelUrl = async () => {
+  if (cachedTunnelUrl) return cachedTunnelUrl;
+  try {
+    const res = await fetch(
+      'https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox?department=eq.cloud_tunnel_url&select=items_summary&limit=1',
+      {
+        headers: {
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
+        }
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]?.items_summary) {
+        cachedTunnelUrl = data[0].items_summary.replace(/\/+$/, '');
+        return cachedTunnelUrl;
+      }
+    }
+  } catch (e) {
+    console.warn('[WaiterAPI] Could not fetch tunnel from Supabase:', e.message);
+  }
+  return CLOUD_TUNNEL_URL;
+};
+
 export const getBaseUrl = () => {
-  // 1. Check if user configured a custom server address
+  // 1. Check if user/app cached a custom server address
   const customHost = localStorage.getItem('hcp_waiter_server_host');
   if (customHost && customHost.trim()) {
     let clean = customHost.trim().replace(/\/+$/, '');
@@ -22,8 +49,6 @@ export const getBaseUrl = () => {
 
   // 2. If running inside the Android APK (Native Mobile)
   if (isNativePlatform()) {
-    // In native Android, "localhost" refers to the phone itself, NOT the CRM computer.
-    // Default directly to the hotel CRM Wi-Fi server IP.
     return `http://${LOCAL_WIFI_IP}:3000/api`;
   }
 
@@ -34,7 +59,8 @@ export const getBaseUrl = () => {
 
     // When deployed on Netlify, Vercel, or loaded over HTTPS:
     if (isHttps || hostname.includes('netlify.app') || hostname.includes('vercel.app')) {
-      return `${CLOUD_TUNNEL_URL}/api`;
+      const tunnel = cachedTunnelUrl || CLOUD_TUNNEL_URL;
+      return `${tunnel}/api`;
     }
 
     // If on localhost (PC desktop dev browser)
@@ -68,10 +94,7 @@ export const setAuthToken = (token) => {
 
 export const getAuthToken = () => _token;
 
-export const request = async (endpoint, options = {}) => {
-  const base = getBaseUrl();
-  const url = `${base}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-
+const doFetch = async (url, options = {}, timeoutMs = 8000) => {
   const headers = {
     'Content-Type': 'application/json',
     'Bypass-Tunnel-Reminder': 'true',
@@ -93,13 +116,11 @@ export const request = async (endpoint, options = {}) => {
     config.body = JSON.stringify(config.body);
   }
 
-  // AbortController timeout to prevent infinite "Signing in..." freeze
   const controller = new AbortController();
-  const timeoutMs = options.timeout || 7500; // 7.5 seconds
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    let res = await fetch(url, { ...config, signal: controller.signal });
+    const res = await fetch(url, { ...config, signal: controller.signal });
     clearTimeout(timer);
     let data;
     const contentType = res.headers.get('content-type') || '';
@@ -119,13 +140,59 @@ export const request = async (endpoint, options = {}) => {
     return data;
   } catch (err) {
     clearTimeout(timer);
+    throw err;
+  }
+};
+
+export const request = async (endpoint, options = {}) => {
+  const normEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const base = getBaseUrl();
+  const primaryUrl = `${base}${normEndpoint}`;
+
+  try {
+    return await doFetch(primaryUrl, options, options.timeout || 8000);
+  } catch (err) {
+    // If network error or timeout, attempt dual fallback before failing
+    const isNetworkErr = err.name === 'AbortError' || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
+    if (isNetworkErr) {
+      console.warn(`[WaiterAPI] Primary endpoint ${primaryUrl} failed. Trying fallback...`);
+
+      // Determine alternate fallback URL
+      let fallbackBase = null;
+      if (isNativePlatform() && base.includes(LOCAL_WIFI_IP)) {
+        // Native Android was trying local Wi-Fi, fall back to Cloudflare HTTPS tunnel
+        fallbackBase = `${cachedTunnelUrl || CLOUD_TUNNEL_URL}/api`;
+      } else if (!base.includes(LOCAL_WIFI_IP) && typeof window !== 'undefined' && window.location.protocol === 'http:') {
+        // Was trying cloud tunnel on HTTP, fall back to local Wi-Fi
+        fallbackBase = `http://${LOCAL_WIFI_IP}:3000/api`;
+      } else {
+        // Check if Supabase has a newer tunnel URL
+        const freshTunnel = await fetchCloudTunnelUrl();
+        if (freshTunnel && !base.includes(freshTunnel)) {
+          fallbackBase = `${freshTunnel}/api`;
+        }
+      }
+
+      if (fallbackBase && fallbackBase !== base) {
+        try {
+          const fallbackUrl = `${fallbackBase}${normEndpoint}`;
+          const res = await doFetch(fallbackUrl, options, options.timeout || 8000);
+          console.log(`[WaiterAPI] Fallback to ${fallbackBase} succeeded! Saving host.`);
+          localStorage.setItem('hcp_waiter_server_host', fallbackBase);
+          return res;
+        } catch (fallbackErr) {
+          console.warn(`[WaiterAPI] Fallback also failed:`, fallbackErr.message);
+        }
+      }
+    }
+
     let errorMsg = err.message || 'Connection failed';
     if (err.name === 'AbortError') {
-      errorMsg = `Server timed out (${base.replace('/api', '')}). Ensure phone is connected to Hotel Wi-Fi, or check Server IP below.`;
+      errorMsg = 'Server response timed out. Please check connection and try again.';
     } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-      errorMsg = `Cannot connect to CRM server (${base.replace('/api', '')}). Check phone Wi-Fi or update Server IP.`;
+      errorMsg = 'Cannot connect to Hotel CRM server. Please check your internet connection.';
     }
-    console.error(`[WaiterAPI] Error on ${options.method || 'GET'} ${url}:`, errorMsg);
+    console.error(`[WaiterAPI] Error on ${options.method || 'GET'} ${primaryUrl}:`, errorMsg);
     const customError = new Error(errorMsg);
     customError.original = err;
     throw customError;

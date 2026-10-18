@@ -21,6 +21,8 @@ export default function BillEditModal({
   const [paymentMode, setPaymentMode] = useState('cash');
   const [discountPct, setDiscountPct] = useState(0);
   const [auditReason, setAuditReason] = useState('');
+  const [waiterName, setWaiterName] = useState(() => bill?.waiter_name || '');
+  const [isEditingWaiter, setIsEditingWaiter] = useState(false);
   const [menuList, setMenuList] = useState([]);
   const [searchMenuQuery, setSearchMenuQuery] = useState('');
   const [auditLogs, setAuditLogs] = useState([]);
@@ -45,6 +47,8 @@ export default function BillEditModal({
     setPaymentMode(bill.payment_mode || 'cash');
     setDiscountPct(bill.discount_pct || 0);
     setAuditReason('');
+    setWaiterName(bill.waiter_name || '');
+    setIsEditingWaiter(false);
 
     // Fetch full order details & logs from server
     setIsLoadingDetails(true);
@@ -66,6 +70,7 @@ export default function BillEditModal({
             })));
           }
           if (ord.payment_mode) setPaymentMode(ord.payment_mode);
+          if (ord.waiter_name) setWaiterName(ord.waiter_name);
         }
         if (res && (res.logs || res.audit_logs)) {
           setAuditLogs(res.logs || res.audit_logs || []);
@@ -173,6 +178,7 @@ export default function BillEditModal({
         upi_tax: upiFee,
         upiTax: upiFee,
         discount_pct: parseFloat(discountPct) || 0,
+        waiter_name: waiterName.trim(),
         audit_reason: auditReason.trim() || 'Bill item modification'
       };
 
@@ -202,6 +208,7 @@ export default function BillEditModal({
         grand_total: grandTotal,
         grandTotal,
         payment_mode: paymentMode,
+        waiter_name: waiterName.trim() || bill.waiter_name,
         card_surcharge: cardFee,
         cardSurcharge: cardFee,
         upi_tax: upiFee,
@@ -275,9 +282,78 @@ export default function BillEditModal({
                   </span>
                 )}
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)' }}>
-                {bill.table_name || `Table ${bill.table_number}`} • Token #{bill.token_number || 1} • Settled at {formatDateTime(bill.created_at || bill.settled_at)}
-              </p>
+              <div style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
+                  {bill.table_name || (bill.table_number ? `Table ${bill.table_number}` : 'Walk-in / Counter')}
+                </span>
+                <span style={{ color: 'var(--border-color, #cbd5e1)' }}>•</span>
+
+                {/* Waiter Name Badge with 1-click edit */}
+                {isEditingWaiter ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                      type="text"
+                      value={waiterName}
+                      onChange={(e) => setWaiterName(e.target.value)}
+                      placeholder="Waiter Name"
+                      style={{
+                        height: '24px',
+                        padding: '0 6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        border: '1.5px solid var(--apple-blue, #0071e3)',
+                        borderRadius: '4px',
+                        outline: 'none',
+                        width: '120px'
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingWaiter(false)}
+                      style={{
+                        padding: '2px 7px',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        background: 'var(--apple-blue, #0071e3)',
+                        color: '#fff',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Done
+                    </button>
+                  </span>
+                ) : (
+                  <span
+                    onClick={() => setIsEditingWaiter(true)}
+                    title="Click to change or reassign waiter name"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      color: '#1d4ed8',
+                      border: '1px solid rgba(59, 130, 246, 0.25)',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>👤</span>
+                    <span>Waiter: <strong>{waiterName || bill.waiter_name || 'Not Assigned'}</strong></span>
+                    <span style={{ fontSize: '0.68rem', opacity: 0.65 }}>✏️</span>
+                  </span>
+                )}
+
+                <span style={{ color: 'var(--border-color, #cbd5e1)' }}>•</span>
+                <span>Token #{bill.token_number || 1}</span>
+                <span style={{ color: 'var(--border-color, #cbd5e1)' }}>•</span>
+                <span>Settled at {formatDateTime(bill.created_at || bill.settled_at)}</span>
+              </div>
             </div>
           </div>
 

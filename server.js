@@ -5346,7 +5346,7 @@ app.get(['/api/restaurant/manager/analytics', '/api/bar/manager/analytics'], req
 app.post('/api/restaurant/orders/:id/resettle', requireAuth, requireRole('manager'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
-    const { items, updated_items, payment_mode, split_details, discount_pct, audit_reason, reason, customer_name } = req.body;
+    const { items, updated_items, payment_mode, split_details, discount_pct, audit_reason, reason, customer_name, waiter_name } = req.body;
 
     const previousOrder = db.prepare('SELECT * FROM restaurant_orders WHERE id = ?').get(id);
     if (!previousOrder) throw new Error('Original order not found');
@@ -5419,6 +5419,7 @@ app.post('/api/restaurant/orders/:id/resettle', requireAuth, requireRole('manage
       SET items_json = ?, subtotal = ?, tax = ?, discount = ?, total = ?,
           payment_mode = ?, split_details_json = ?, customer_name = ?,
           card_surcharge = ?, upi_tax = ?,
+          waiter_name = COALESCE(NULLIF(?, ''), waiter_name),
           resettle_count = COALESCE(resettle_count, 0) + 1
       WHERE id = ?
     `).run(
@@ -5432,6 +5433,7 @@ app.post('/api/restaurant/orders/:id/resettle', requireAuth, requireRole('manage
       customer_name ? customer_name.trim() : previousOrder.customer_name,
       card_surcharge,
       upi_tax,
+      waiter_name !== undefined ? (waiter_name ? String(waiter_name).trim() : null) : null,
       id
     );
 
@@ -6484,7 +6486,7 @@ app.get('/api/bar/orders/:id', (req, res) => {
 app.post('/api/bar/orders/:id/resettle', requireAuth, requireRole('manager'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
-    const { items, updated_items, payment_mode, split_details, discount_pct, audit_reason, reason, customer_name } = req.body;
+    const { items, updated_items, payment_mode, split_details, discount_pct, audit_reason, reason, customer_name, waiter_name } = req.body;
 
     const previousOrder = db.prepare('SELECT * FROM bar_orders WHERE id = ?').get(id);
     if (!previousOrder) throw new Error('Original bar order not found');
@@ -6553,6 +6555,7 @@ app.post('/api/bar/orders/:id/resettle', requireAuth, requireRole('manager'), (r
       SET items_json = ?, subtotal = ?, tax = ?, discount = ?, total = ?,
           payment_mode = ?, split_details_json = ?, customer_name = ?,
           card_surcharge = ?, upi_tax = ?,
+          waiter_name = COALESCE(NULLIF(?, ''), waiter_name),
           resettle_count = COALESCE(resettle_count, 0) + 1
       WHERE id = ?
     `).run(
@@ -6566,6 +6569,7 @@ app.post('/api/bar/orders/:id/resettle', requireAuth, requireRole('manager'), (r
       customer_name ? customer_name.trim() : previousOrder.customer_name,
       card_surcharge,
       upi_tax,
+      waiter_name !== undefined ? (waiter_name ? String(waiter_name).trim() : null) : null,
       id
     );
 

@@ -1,21 +1,17 @@
 import React, { useState } from 'react';
-import { api, getBaseUrl, CLOUD_TUNNEL_URL, LOCAL_WIFI_IP } from '../api/client';
+import { api } from '../api/client';
 
-export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
+export default function LoginScreen({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverHost, setServerHost] = useState(() => localStorage.getItem('hcp_waiter_server_host') || '');
-
-  const isDark = theme === 'dark';
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setErrorMsg('Please enter both username and password');
+      setErrorMsg('Please enter both ID and password');
       return;
     }
 
@@ -27,255 +23,183 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
       if (res && res.success && res.user) {
         onLoginSuccess(res.user);
       } else {
-        setErrorMsg(res?.error || 'Invalid credentials. Please try again.');
+        setErrorMsg(res?.error || 'Invalid ID or password. Please try again.');
       }
     } catch (err) {
-      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-      const currentBase = getBaseUrl();
-      if (isHttps && currentBase.startsWith('http://')) {
-        setErrorMsg('Mixed Content: This HTTPS page cannot connect to HTTP server. Use Cloud HTTPS URL below.');
-      } else {
-        setErrorMsg(err.message || 'Login failed. Check server connection.');
-      }
-      // If server could not be reached, automatically open connection settings
-      if (err.message && (err.message.includes('Cannot connect') || err.message.includes('timed out') || err.message.includes('Failed to fetch'))) {
-        setShowServerConfig(true);
-      }
+      setErrorMsg(err.message || 'Login failed. Please check connection and try again.');
     } finally {
       setIsLoading(false);
     }
   };
-
-  const handleQuickLogin = (u, p) => {
-    setUsername(u);
-    setPassword(p);
-    setErrorMsg('');
-  };
-
-  const handleApplyPreset = (host) => {
-    setServerHost(host);
-    if (host.trim()) {
-      localStorage.setItem('hcp_waiter_server_host', host.trim());
-    } else {
-      localStorage.removeItem('hcp_waiter_server_host');
-    }
-    setErrorMsg('');
-  };
-
-  const handleSaveServerHost = () => {
-    if (serverHost.trim()) {
-      localStorage.setItem('hcp_waiter_server_host', serverHost.trim());
-    } else {
-      localStorage.removeItem('hcp_waiter_server_host');
-    }
-    setErrorMsg('');
-    setShowServerConfig(false);
-  };
-
-  const cleanServerDisplay = getBaseUrl().replace(/^https?:\/\//, '').replace(/\/api$/, '');
 
   return (
     <div
       style={{
         minHeight: '100dvh',
         width: '100vw',
-        background: 'var(--bg-app)',
+        background: 'var(--bg-app, #0f172a)',
         display: 'flex',
-        flexDirection: 'column',
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)',
-        paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)',
-        paddingLeft: '16px',
-        paddingRight: '16px',
-        overflowY: 'auto',
-        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px 16px',
         boxSizing: 'border-box'
       }}
     >
-      {/* Top Floating Theme Switcher */}
-      {onToggleTheme && (
-        <button
-          type="button"
-          onClick={onToggleTheme}
-          title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-          style={{
-            position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-            right: '16px',
-            width: '36px',
-            height: '36px',
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-medium)',
-            color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.05rem',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-subtle)',
-            zIndex: 10
-          }}
-        >
-          {isDark ? '☀️' : '🌙'}
-        </button>
-      )}
-
       <div
         style={{
           width: '100%',
-          maxWidth: '400px',
-          margin: 'auto',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border-medium)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '24px 20px',
-          boxShadow: 'var(--shadow-card)',
-          position: 'relative',
+          maxWidth: '380px',
+          background: 'var(--bg-surface, #1e293b)',
+          border: '1px solid var(--border-medium, rgba(255, 255, 255, 0.1))',
+          borderRadius: 'var(--radius-lg, 18px)',
+          padding: '32px 24px',
+          boxShadow: 'var(--shadow-card, 0 10px 30px rgba(0, 0, 0, 0.35))',
           boxSizing: 'border-box'
         }}
       >
-        {/* Branding Header */}
-        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div
+        {/* Minimal Clean Header */}
+        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
+          <h1
             style={{
-              width: '54px',
-              height: '54px',
-              margin: '0 auto 10px',
-              background: 'var(--apple-orange-subtle)',
-              border: '1.5px solid var(--apple-orange)',
-              borderRadius: 'var(--radius-md)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.7rem',
-              boxShadow: 'var(--shadow-subtle)'
+              fontSize: '1.45rem',
+              fontWeight: 900,
+              color: 'var(--text-primary, #f8fafc)',
+              letterSpacing: '-0.02em',
+              margin: '0 0 6px'
             }}
           >
-            🍽️
-          </div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: '0 0 3px' }}>
             Hotel City Park
           </h1>
-          <p style={{ fontSize: '0.80rem', color: 'var(--text-secondary)', fontWeight: 600, margin: '0 0 8px' }}>
-            Waiter Order Panel (Restaurant &amp; Bar)
-          </p>
-
-          {/* Quick Server Status Pill */}
-          <button
-            type="button"
-            onClick={() => setShowServerConfig(!showServerConfig)}
-            title="Click to view or edit target server IP"
+          <p
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 10px',
-              borderRadius: 'var(--radius-xl)',
-              background: 'var(--bg-surface-secondary)',
-              border: '1px solid var(--border-medium)',
-              fontSize: '0.68rem',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer'
+              fontSize: '0.84rem',
+              color: 'var(--text-secondary, #94a3b8)',
+              margin: 0,
+              fontWeight: 600
             }}
           >
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--apple-green)' }} />
-            <span>Server: <strong style={{ color: 'var(--text-primary)' }}>{cleanServerDisplay}</strong></span>
-            <span style={{ opacity: 0.6 }}>⚙️</span>
-          </button>
+            Sign in to continue
+          </p>
         </div>
 
-        {/* Login Form */}
+        {/* Clean Login Form: Only ID, Password, and Sign In */}
         <form onSubmit={handleSubmit}>
-          {/* Username Input */}
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-              👤 Waiter ID / Username
+          {/* Waiter ID / Username */}
+          <div style={{ marginBottom: '18px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: 'var(--text-secondary, #94a3b8)',
+                marginBottom: '8px'
+              }}
+            >
+              Waiter ID / Username
             </label>
             <input
               type="text"
               autoCapitalize="none"
               autoCorrect="off"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. waiter1 or ramesh"
+              placeholder="Enter Waiter ID"
+              disabled={isLoading}
               style={{
                 width: '100%',
-                height: '44px',
+                height: '46px',
                 padding: '0 14px',
-                background: 'var(--bg-surface-secondary)',
-                border: '1.5px solid var(--border-medium)',
-                borderRadius: 'var(--radius-sm)',
-                color: 'var(--text-primary)',
+                background: 'var(--bg-surface-secondary, rgba(255, 255, 255, 0.05))',
+                border: '1.5px solid var(--border-medium, rgba(255, 255, 255, 0.12))',
+                borderRadius: 'var(--radius-sm, 10px)',
+                color: 'var(--text-primary, #f8fafc)',
                 fontSize: '0.96rem',
                 fontWeight: 650,
-                outline: 'none'
+                outline: 'none',
+                boxSizing: 'border-box'
               }}
             />
           </div>
 
-          {/* Password Input */}
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)', margin: 0 }}>
-                🔑 Password / PIN
+          {/* Password */}
+          <div style={{ marginBottom: '24px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px'
+              }}
+            >
+              <label
+                style={{
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: 'var(--text-secondary, #94a3b8)',
+                  margin: 0
+                }}
+              >
+                Password / PIN
               </label>
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{ background: 'none', color: 'var(--apple-blue)', fontSize: '0.74rem', fontWeight: 750 }}
+                tabIndex={-1}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--apple-blue, #38bdf8)',
+                  fontSize: '0.74rem',
+                  fontWeight: 750,
+                  cursor: 'pointer'
+                }}
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password..."
-                style={{
-                  width: '100%',
-                  height: '44px',
-                  padding: '0 42px 0 14px',
-                  background: 'var(--bg-surface-secondary)',
-                  border: '1.5px solid var(--border-medium)',
-                  borderRadius: 'var(--radius-sm)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.96rem',
-                  fontWeight: 650,
-                  outline: 'none'
-                }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  opacity: 0.5,
-                  fontSize: '1rem'
-                }}
-              >
-                🔒
-              </span>
-            </div>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              disabled={isLoading}
+              style={{
+                width: '100%',
+                height: '46px',
+                padding: '0 14px',
+                background: 'var(--bg-surface-secondary, rgba(255, 255, 255, 0.05))',
+                border: '1.5px solid var(--border-medium, rgba(255, 255, 255, 0.12))',
+                borderRadius: 'var(--radius-sm, 10px)',
+                color: 'var(--text-primary, #f8fafc)',
+                fontSize: '0.96rem',
+                fontWeight: 650,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
           </div>
 
           {/* Error Message */}
           {errorMsg && (
             <div
               style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--radius-xs)',
-                background: 'var(--apple-red-subtle)',
-                border: '1px solid var(--apple-red)',
-                color: 'var(--apple-red)',
-                fontSize: '0.80rem',
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-xs, 8px)',
+                background: 'var(--apple-red-subtle, rgba(239, 68, 68, 0.15))',
+                border: '1px solid var(--apple-red, #ef4444)',
+                color: 'var(--apple-red, #f87171)',
+                fontSize: '0.82rem',
                 fontWeight: 700,
-                marginBottom: '16px',
+                marginBottom: '18px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px'
               }}
             >
               <span>⚠️</span>
@@ -283,203 +207,32 @@ export default function LoginScreen({ onLoginSuccess, theme, onToggleTheme }) {
             </div>
           )}
 
-          {/* Submit Button */}
+          {/* Sign In Button */}
           <button
             type="submit"
             disabled={isLoading}
             style={{
               width: '100%',
               height: '48px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--apple-orange)',
-              color: 'var(--text-on-accent)',
-              fontSize: '0.98rem',
+              borderRadius: 'var(--radius-sm, 10px)',
+              background: 'var(--apple-orange, #f59e0b)',
+              color: 'var(--text-on-accent, #ffffff)',
+              fontSize: '1rem',
               fontWeight: 850,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
-              boxShadow: 'var(--shadow-subtle)',
+              gap: '8px',
+              border: 'none',
               cursor: isLoading ? 'not-allowed' : 'pointer',
-              opacity: isLoading ? 0.7 : 1
+              opacity: isLoading ? 0.75 : 1,
+              boxShadow: 'var(--shadow-subtle, 0 2px 10px rgba(245, 158, 11, 0.3))',
+              transition: 'all 0.2s ease'
             }}
           >
-            {isLoading ? (
-              <span>⏳ Signing in...</span>
-            ) : (
-              <>
-                <span>Sign In to Waiter Panel</span>
-                <span style={{ fontSize: '1.05rem' }}>→</span>
-              </>
-            )}
+            {isLoading ? <span>Signing in...</span> : <span>Sign In</span>}
           </button>
         </form>
-
-        {/* Quick Demo Logins Bar */}
-        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-light)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.04em', marginBottom: '8px' }}>
-            Quick 1-Click Fill
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('res-cap-3', '3')}
-              style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-xs)',
-                background: 'var(--apple-orange-subtle)',
-                border: '1.5px solid var(--apple-orange)',
-                color: 'var(--text-primary)',
-                fontSize: '0.72rem',
-                fontWeight: 750
-              }}
-            >
-              ⭐ Captain 3
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('waiter1', '1234')}
-              style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-xs)',
-                background: 'var(--bg-surface-secondary)',
-                border: '1px solid var(--border-medium)',
-                color: 'var(--text-primary)',
-                fontSize: '0.72rem',
-                fontWeight: 700
-              }}
-            >
-              Waiter 1
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('admin', '1234')}
-              style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-xs)',
-                background: 'var(--bg-surface-secondary)',
-                border: '1px solid var(--border-medium)',
-                color: 'var(--text-primary)',
-                fontSize: '0.72rem',
-                fontWeight: 700
-              }}
-            >
-              Admin Master
-            </button>
-          </div>
-
-          {/* Optional Server IP Config Toggle */}
-          <div style={{ marginTop: '14px' }}>
-            <button
-              type="button"
-              onClick={() => setShowServerConfig(!showServerConfig)}
-              style={{ background: 'none', color: 'var(--text-secondary)', fontSize: '0.70rem', textDecoration: 'underline', cursor: 'pointer' }}
-            >
-              {showServerConfig ? '▲ Close Server Settings' : '⚙️ Server Connection Settings'}
-            </button>
-
-            {showServerConfig && (
-              <div style={{ marginTop: '8px', textAlign: 'left', padding: '12px', background: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-medium)' }}>
-                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginBottom: '8px', wordBreak: 'break-all' }}>
-                  <strong>Active Target:</strong> <code style={{ color: 'var(--apple-blue)' }}>{getBaseUrl()}</code>
-                </div>
-
-                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>
-                  Quick Presets:
-                </div>
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset(CLOUD_TUNNEL_URL)}
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      borderRadius: 'var(--radius-xs)',
-                      background: 'var(--apple-green-subtle)',
-                      border: '1px solid var(--apple-green)',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ☁️ Cloud HTTPS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset(`http://${LOCAL_WIFI_IP}:3000`)}
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      borderRadius: 'var(--radius-xs)',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-medium)',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    📶 Hotel Wi-Fi
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset('')}
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      borderRadius: 'var(--radius-xs)',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-medium)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    🔄 Auto-Detect
-                  </button>
-                </div>
-
-                <label style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                  Custom Server URL:
-                </label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input
-                    type="text"
-                    value={serverHost}
-                    onChange={(e) => setServerHost(e.target.value)}
-                    placeholder="https://... or http://..."
-                    style={{
-                      flex: 1,
-                      height: '34px',
-                      padding: '0 8px',
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-medium)',
-                      borderRadius: 'var(--radius-xs)',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.78rem'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveServerHost}
-                    style={{
-                      padding: '0 12px',
-                      height: '34px',
-                      background: 'var(--apple-blue)',
-                      color: 'var(--text-on-accent)',
-                      borderRadius: 'var(--radius-xs)',
-                      fontSize: '0.72rem',
-                      fontWeight: 750,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
