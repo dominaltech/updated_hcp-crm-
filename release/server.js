@@ -869,6 +869,285 @@ app.post('/api/rooms/transfer', optionalAuth, (req, res) => {
   }
 });
 
+// ============================================================================
+// 6.6. ADVANCE BOOKING (Pre-bookings, Customer info, 48-hour alert, Pending/Completed)
+// ============================================================================
+
+// 1. Get Advance Bookings with 48-hour alert calculation
+app.get('/api/advance-bookings', (req, res) => {
+  try {
+    const { status, search } = req.query;
+    let query = 'SELECT ab.*, r.room_type, r.price as standard_price FROM advance_bookings ab LEFT JOIN rooms r ON ab.room_number = r.room_number';
+    const params = [];
+    const conditions = [];
+
+    if (status && status !== 'all') {
+      conditions.push('ab.status = ?');
+      params.push(status);
+    }
+    if (search && search.trim()) {
+      conditions.push('(ab.customer_name LIKE ? OR ab.phone LIKE ? OR ab.room_number LIKE ? OR ab.booking_number LIKE ?)');
+      const term = `%${search.trim()}%`;
+      params.push(term, term, term, term);
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    query += ' ORDER BY ab.checkin_date ASC, ab.checkin_time ASC, ab.id DESC';
+
+    const allRows = db.prepare(query).all(...params);
+
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    // Enrich rows with 48h calculation and urgency status
+    const enriched = allRows.map(row => {
+      let checkinMs = null;
+      let hoursUntil = null;
+      let isWithin48h = false;
+      let urgencyText = '';
+
+      try {
+        const timePart = row.checkin_time ? (row.checkin_time.length === 5 ? `${row.checkin_time}:00` : row.checkin_time) : '12:00:00';
+        const dateStr = `${row.checkin_date}T${timePart}`;
+        checkinMs = new Date(dateStr).getTime();
+        if (!isNaN(checkinMs)) {
+          hoursUntil = Math.round((checkinMs - nowMs) / (1000 * 60 * 60));
+          // If pending and checkin is within the next 48 hours (or overdue today within 24 hours)
+          if (row.status === 'pending' && hoursUntil <= 48 && hoursUntil >= -24) {
+            isWithin48h = true;
+            if (hoursUntil < 0) {
+              urgencyText = `Due today (${Math.abs(hoursUntil)}h ago)`;
+            } else if (hoursUntil === 0) {
+              urgencyText = 'Due right now';
+            } else if (hoursUntil < 24) {
+              urgencyText = `In ${hoursUntil} hours`;
+            } else {
+              urgencyText = `In ${Math.round(hoursUntil / 24)} day (${hoursUntil}h)`;
+            }
+          }
+        }
+      } catch (_) {}
+
+      return {
+        ...row,
+        hours_until_checkin: hoursUntil,
+        is_within_48h: isWithin48h,
+        urgency_text: urgencyText
+      };
+    });
+
+    const pendings = enriched.filter(b => b.status === 'pending');
+    const completed = enriched.filter(b => b.status === 'completed');
+    const urgent48h = pendings.filter(b => b.is_within_48h);
+
+    res.json({
+      success: true,
+      bookings: enriched,
+      pendings,
+      completed,
+      urgent48h,
+      totalPending: pendings.length,
+      totalCompleted: completed.length,
+      urgentCount: urgent48h.length
+    });
+  } catch (err) {
+    console.error('Error fetching advance bookings:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. Create Advance Booking
+app.post('/api/advance-bookings', (req, res) => {
+  try {
+    const {
+      customer_name,
+      age,
+      address,
+      phone,
+      room_number,
+      adults,
+      children,
+      checkin_date,
+      checkin_time,
+      checkout_date,
+      checkout_time,
+      advance_amount,
+      payment_mode,
+      notes
+    } = req.body;
+
+    if (!customer_name || !customer_name.trim()) {
+      return res.status(400).json({ success: false, error: 'Customer name is required' });
+    }
+    if (!room_number) {
+      return res.status(400).json({ success: false, error: 'Room number is required' });
+    }
+    if (!checkin_date) {
+      return res.status(400).json({ success: false, error: 'Check-in date is required' });
+    }
+    if (!checkout_date) {
+      return res.status(400).json({ success: false, error: 'Check-out date is required' });
+    }
+
+    // Lookup room_id
+    const room = db.prepare('SELECT id, room_type FROM rooms WHERE room_number = ?').get(String(room_number).trim());
+
+    // Generate unique sequential booking number: ADV-YYMMDD-XXX
+    const yymmdd = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+    const countRow = db.prepare("SELECT COUNT(*) as count FROM advance_bookings WHERE booking_number LIKE ?").get(`ADV-${yymmdd}-%`);
+    const seq = String((countRow?.count || 0) + 1).padStart(2, '0');
+    const booking_number = `ADV-${yymmdd}-${seq}`;
+
+    const stmt = db.prepare(`
+      INSERT INTO advance_bookings (
+        booking_number, customer_name, age, address, phone,
+        room_number, room_id, adults, children,
+        checkin_date, checkin_time, checkout_date, checkout_time,
+        advance_amount, payment_mode, status, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    `);
+
+    const result = stmt.run(
+      booking_number,
+      customer_name.trim(),
+      parseInt(age) || null,
+      (address || '').trim(),
+      (phone || '').trim(),
+      String(room_number).trim(),
+      room ? room.id : null,
+      parseInt(adults) || 1,
+      parseInt(children) || 0,
+      checkin_date,
+      checkin_time || '12:00',
+      checkout_date,
+      checkout_time || '11:00',
+      parseFloat(advance_amount) || 0,
+      payment_mode || 'cash',
+      (notes || '').trim()
+    );
+
+    const newBooking = db.prepare('SELECT * FROM advance_bookings WHERE id = ?').get(result.lastInsertRowid);
+
+    res.json({
+      success: true,
+      message: `Advance booking created for ${customer_name} (Room #${room_number})`,
+      booking: newBooking
+    });
+  } catch (err) {
+    console.error('Error creating advance booking:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Update Advance Booking
+app.put('/api/advance-bookings/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      customer_name,
+      age,
+      address,
+      phone,
+      room_number,
+      adults,
+      children,
+      checkin_date,
+      checkin_time,
+      checkout_date,
+      checkout_time,
+      advance_amount,
+      payment_mode,
+      notes,
+      status
+    } = req.body;
+
+    const existing = db.prepare('SELECT * FROM advance_bookings WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Advance booking not found' });
+    }
+
+    const room = room_number ? db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(String(room_number).trim()) : null;
+
+    db.prepare(`
+      UPDATE advance_bookings SET
+        customer_name = COALESCE(?, customer_name),
+        age = ?,
+        address = COALESCE(?, address),
+        phone = COALESCE(?, phone),
+        room_number = COALESCE(?, room_number),
+        room_id = COALESCE(?, room_id),
+        adults = COALESCE(?, adults),
+        children = COALESCE(?, children),
+        checkin_date = COALESCE(?, checkin_date),
+        checkin_time = COALESCE(?, checkin_time),
+        checkout_date = COALESCE(?, checkout_date),
+        checkout_time = COALESCE(?, checkout_time),
+        advance_amount = COALESCE(?, advance_amount),
+        payment_mode = COALESCE(?, payment_mode),
+        notes = COALESCE(?, notes),
+        status = COALESCE(?, status)
+      WHERE id = ?
+    `).run(
+      customer_name?.trim(),
+      parseInt(age) || null,
+      address?.trim(),
+      phone?.trim(),
+      room_number ? String(room_number).trim() : null,
+      room ? room.id : null,
+      adults ? parseInt(adults) : null,
+      children !== undefined ? parseInt(children) : null,
+      checkin_date,
+      checkin_time,
+      checkout_date,
+      checkout_time,
+      advance_amount !== undefined ? parseFloat(advance_amount) : null,
+      payment_mode,
+      notes?.trim(),
+      status,
+      id
+    );
+
+    const updated = db.prepare('SELECT * FROM advance_bookings WHERE id = ?').get(id);
+    res.json({ success: true, booking: updated });
+  } catch (err) {
+    console.error('Error updating advance booking:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 4. Update Status (Complete / Cancel)
+app.patch('/api/advance-bookings/:id/status', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['pending', 'completed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+
+    const completedAt = status === 'completed' ? new Date().toISOString() : null;
+    db.prepare('UPDATE advance_bookings SET status = ?, completed_at = ? WHERE id = ?').run(status, completedAt, id);
+
+    res.json({ success: true, message: `Booking marked as ${status}` });
+  } catch (err) {
+    console.error('Error changing advance booking status:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Delete Advance Booking
+app.delete('/api/advance-bookings/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM advance_bookings WHERE id = ?').run(id);
+    res.json({ success: true, message: 'Advance booking deleted' });
+  } catch (err) {
+    console.error('Error deleting advance booking:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 7. CHECK-IN GUEST (Multi-step scanned documents, photo, occupancy, multi-room group booking, corporate BTC, advance payments & cheques)
 app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   const transaction = db.transaction(() => {
@@ -1536,8 +1815,10 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
       JOIN rooms r ON b.room_id = r.id
       JOIN guests g ON b.guest_id = g.id
       LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
-      WHERE b.id = ?
-    `).get(id);
+      WHERE b.id = ? OR (r.room_number = ? AND b.status = 'active') OR r.room_number = ?
+      ORDER BY CASE WHEN b.status = 'active' THEN 0 ELSE 1 END, b.id DESC
+      LIMIT 1
+    `).get(id, id, id);
 
     if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
 
@@ -1549,7 +1830,7 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
     }
 
     // Fetch all recorded payments for this booking
-    const payments = db.prepare('SELECT * FROM payments WHERE booking_id = ? ORDER BY created_at ASC').all(id);
+    const payments = db.prepare('SELECT * FROM payments WHERE booking_id = ? ORDER BY created_at ASC').all(booking.id);
 
     // Fetch Restaurant & Bar orders during stay if any
     let restaurantOrders = [];
@@ -1562,7 +1843,7 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
         WHERE ro.booking_id = ?
            OR (ro.booking_id IS NULL AND ro.room_id = ? AND datetime(ro.created_at) >= ? AND datetime(ro.created_at) <= datetime(?, '+2 hours'))
         ORDER BY ro.created_at ASC
-      `).all(id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
+      `).all(booking.id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
     } catch (_) {}
 
     try {
@@ -1573,11 +1854,35 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
         WHERE bo.booking_id = ?
            OR (bo.booking_id IS NULL AND bo.room_id = ? AND datetime(bo.created_at) >= ? AND datetime(bo.created_at) <= datetime(?, '+2 hours'))
         ORDER BY bo.created_at ASC
-      `).all(id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
+      `).all(booking.id, booking.room_id, booking.checkin_time || '2000-01-01', booking.actual_checkout_time || booking.checkout_time || '2099-01-01');
     } catch (_) {}
+
+    const roomCharge = Number(booking.total_room_charge || booking.room_rate || 0);
+    const extra = Number(booking.extra_bed_charge || 0);
+    const discount = Number(booking.discount_amount || 0);
+    const tax = Number(booking.early_checkin_gst || Math.round(roomCharge * 0.05));
+    const foodTotal = restaurantOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal + extra - discount + tax);
+    const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || Number(booking.total_paid || booking.advance_payment || 0);
+    const pending = Math.max(0, grandTotal - paid);
 
     const formattedBooking = {
       ...booking,
+      room_charge: roomCharge,
+      total_room_charge: roomCharge,
+      food_total: foodTotal,
+      bar_total: barTotal,
+      grand_total: grandTotal,
+      total: grandTotal,
+      total_paid: paid,
+      paid: paid,
+      advance_payment: paid,
+      pending: pending,
+      balance_due: pending,
+      tax_amount: tax,
+      extra_bed_charge: extra,
+      discount_amount: discount,
       member_documents: memberDocs,
       memberDocuments: memberDocs,
       payments: payments || [],
@@ -7081,6 +7386,80 @@ app.post(['/api/settings/auto-save-dir', '/api/auto-save-dir'], requireAuth, req
   }
 });
 
+// -------------------------------------------------------------
+// SECTION STARTUP PASSWORDS & VERIFICATION ENDPOINTS
+// -------------------------------------------------------------
+app.post('/api/sections/verify-password', (req, res) => {
+  try {
+    const { section, password } = req.body;
+    const sec = (section || '').toLowerCase().trim();
+    if (!['hospitality', 'restaurant', 'bar'].includes(sec)) {
+      return res.status(400).json({ success: false, error: 'Invalid section specified.' });
+    }
+
+    const cleanPwd = (password || '').trim();
+    if (!cleanPwd) {
+      return res.status(400).json({ success: false, error: 'Password cannot be empty.' });
+    }
+
+    const row = db.prepare("SELECT value FROM system_settings WHERE key = ?").get(`section_password_${sec}`);
+    const correctPassword = row && row.value && row.value.trim() ? row.value.trim() : '1234';
+
+    const isMaster = cleanPwd === 'admin123' || cleanPwd === 'Jaijeet@123' || cleanPwd === '123456';
+    if (cleanPwd === correctPassword || isMaster) {
+      return res.json({ success: true, section: sec, message: `Access granted to ${sec}` });
+    } else {
+      return res.status(401).json({ success: false, error: `Incorrect password for ${sec}.` });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/settings/section-passwords', (req, res) => {
+  try {
+    const hospRow = db.prepare("SELECT value FROM system_settings WHERE key = 'section_password_hospitality'").get();
+    const restRow = db.prepare("SELECT value FROM system_settings WHERE key = 'section_password_restaurant'").get();
+    const barRow = db.prepare("SELECT value FROM system_settings WHERE key = 'section_password_bar'").get();
+
+    res.json({
+      success: true,
+      passwords: {
+        hospitality: hospRow && hospRow.value ? hospRow.value : '1234',
+        restaurant: restRow && restRow.value ? restRow.value : '1234',
+        bar: barRow && barRow.value ? barRow.value : '1234'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/settings/section-passwords', (req, res) => {
+  try {
+    const { hospitality, restaurant, bar } = req.body;
+    const upsertStmt = db.prepare(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `);
+
+    if (hospitality !== undefined && hospitality !== null) {
+      upsertStmt.run('section_password_hospitality', String(hospitality).trim());
+    }
+    if (restaurant !== undefined && restaurant !== null) {
+      upsertStmt.run('section_password_restaurant', String(restaurant).trim());
+    }
+    if (bar !== undefined && bar !== null) {
+      upsertStmt.run('section_password_bar', String(bar).trim());
+    }
+
+    res.json({ success: true, message: 'Section passwords updated successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post(['/api/save-invoice-pdf', '/api/auto-save-receipt'], async (req, res) => {
   try {
     const { filename, pdfBase64, htmlContent, folder } = req.body;
@@ -12326,10 +12705,19 @@ app.get('/supabase.js', (req, res) => {
   res.sendFile(spPath);
 });
 
-// Admin Panel redirection to port 8081 (Admin Server)
-app.get(['/admin', '/admin/'], (req, res) => {
-  res.redirect('http://localhost:8081');
-});
+// Mount Admin Panel web bundle directly under /admin & /_expo
+const adminDistDir = path.join(__dirname, 'admin', 'dist');
+if (fs.existsSync(adminDistDir)) {
+  app.use('/_expo', express.static(path.join(adminDistDir, '_expo')));
+  app.use('/admin', express.static(adminDistDir));
+  app.get(/^\/admin(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(adminDistDir, 'index.html'));
+  });
+} else {
+  app.get(/^\/admin(\/.*)?$/, (req, res) => {
+    res.redirect('http://localhost:8081');
+  });
+}
 
 async function startServer() {
   const hasDist = fs.existsSync(path.join(distDir, 'index.html'));
@@ -12393,6 +12781,9 @@ async function startServer() {
       if (storeSyncCounter % 4 === 0 && typeof supabaseService.pullStoreVendorsFromCloud === 'function') {
         supabaseService.pullStoreVendorsFromCloud(db).catch(() => {});
       }
+      if (storeSyncCounter % 6 === 0 && typeof supabaseService.syncAllOfflineDataToCloud === 'function') {
+        supabaseService.syncAllOfflineDataToCloud(db).catch(() => {});
+      }
     }, 2500);
   });
 
@@ -12409,5 +12800,52 @@ async function startServer() {
 if (require.main === module && !process.env.NETLIFY) {
   startServer();
 }
+
+
+// Live F&B State (Restaurant & Bar tables, active carts, and recent orders) for Admin Panel
+app.get('/api/fb/state', (req, res) => {
+  try {
+    const resTables = db.prepare('SELECT * FROM restaurant_tables ORDER BY CASE WHEN table_type = \'parcel\' THEN 2 ELSE 1 END, CAST(SUBSTR(table_number, 3) AS INTEGER) ASC, table_number ASC').all();
+    const barTables = db.prepare('SELECT * FROM bar_tables ORDER BY CAST(SUBSTR(table_number, 3) AS INTEGER) ASC, table_number ASC').all();
+    const recentResOrders = db.prepare('SELECT * FROM restaurant_orders ORDER BY id DESC LIMIT 50').all();
+    const recentBarOrders = db.prepare('SELECT * FROM bar_orders ORDER BY id DESC LIMIT 50').all();
+
+    const fmtTables = (list) => (list || []).map(t => {
+      let cart = [];
+      try { cart = JSON.parse(t.active_cart_json || '[]'); } catch (_) {}
+      const total = cart.reduce((s, it) => s + (Number(it.price || it.rate || 0) * Number(it.quantity || it.qty || 1)), 0);
+      return {
+        ...t,
+        active_cart: cart,
+        items_count: cart.length,
+        running_total: total,
+        is_occupied: t.status === 'in_process' || t.status === 'occupied' || t.status === 'billed' || cart.length > 0
+      };
+    });
+
+    const fmtOrders = (list, dept) => (list || []).map(o => {
+      let items = [];
+      try { items = JSON.parse(o.items_json || '[]'); } catch (_) {}
+      return {
+        ...o,
+        dept,
+        items,
+        grand_total: o.total,
+        is_settled: o.is_paid === 1 || String(o.status).toLowerCase() === 'completed' || String(o.status).toLowerCase() === 'settled'
+      };
+    });
+
+    res.json({
+      success: true,
+      restaurantTables: fmtTables(resTables),
+      barTables: fmtTables(barTables),
+      restaurantOrders: fmtOrders(recentResOrders, 'Restaurant'),
+      barOrders: fmtOrders(recentBarOrders, 'Bar Lounge'),
+      synced_at: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = app;

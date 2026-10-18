@@ -1,0 +1,12 @@
+{
+  "appId": "com.hotelcitypark.waiter",
+  "appName": "Hotel City Park - Waiter",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "http"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

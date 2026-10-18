@@ -342,6 +342,21 @@ export const api = {
 
   // Generic HTTP helper (underlying request function)
   cleanDemoData: () => request('/settings/clean-demo-data', { method: 'POST' }),
+
+  // Advance Bookings
+  getAdvanceBookings: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/advance-bookings${q ? `?${q}` : ''}`);
+  },
+  createAdvanceBooking: (data) => request('/advance-bookings', { method: 'POST', body: data }),
+  updateAdvanceBooking: (id, data) => request(`/advance-bookings/${id}`, { method: 'PUT', body: data }),
+  updateAdvanceBookingStatus: (id, status) => request(`/advance-bookings/${id}/status`, { method: 'PATCH', body: { status } }),
+  deleteAdvanceBooking: (id) => request(`/advance-bookings/${id}`, { method: 'DELETE' }),
+  // Section Startup Passwords & Verification
+  verifySectionPassword: (section, password) => request('/sections/verify-password', { method: 'POST', body: { section, password } }),
+  getSectionPasswords: () => request('/settings/section-passwords'),
+  saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
+
   request,
 
   // Auth Token Management

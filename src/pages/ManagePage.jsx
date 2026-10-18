@@ -230,6 +230,19 @@ export default function ManagePage({ onPrintClosingReport }) {
   });
   const [isSavingInvoiceSettings, setIsSavingInvoiceSettings] = useState(false);
 
+  // Section Startup Passwords Configuration
+  const [sectionPasswords, setSectionPasswords] = useState({
+    hospitality: '1234',
+    restaurant: '1234',
+    bar: '1234'
+  });
+  const [showSectionPwd, setShowSectionPwd] = useState({
+    hospitality: false,
+    restaurant: false,
+    bar: false
+  });
+  const [isSavingSectionPasswords, setIsSavingSectionPasswords] = useState(false);
+
   useEffect(() => {
     if (minCheckinAdvancePct !== undefined) {
       setAdvancePolicyPct(minCheckinAdvancePct);
@@ -1179,6 +1192,35 @@ export default function ManagePage({ onPrintClosingReport }) {
       setIsSavingInvoiceSettings(false);
     }
   };
+
+  useEffect(() => {
+    api.getSectionPasswords().then((res) => {
+      if (res && res.success && res.passwords) {
+        setSectionPasswords({
+          hospitality: res.passwords.hospitality || '1234',
+          restaurant: res.passwords.restaurant || '1234',
+          bar: res.passwords.bar || '1234'
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveSectionPasswords = async () => {
+    setIsSavingSectionPasswords(true);
+    try {
+      const res = await api.saveSectionPasswords(sectionPasswords);
+      if (res && res.success) {
+        showToast('✓ Section startup passwords saved successfully!', 'green');
+      } else {
+        showToast('Failed to save section passwords: ' + (res?.error || 'Server error'), 'red');
+      }
+    } catch (err) {
+      showToast('Error saving section passwords: ' + err.message, 'red');
+    } finally {
+      setIsSavingSectionPasswords(false);
+    }
+  };
+
 
   const handleOpenCleanerModal = (cleaner = null) => {
     if (cleaner) {
@@ -3948,9 +3990,149 @@ export default function ManagePage({ onPrintClosingReport }) {
       )}
 
       {/* Subview 6: Settings */}
-      {/* Subview 6: Settings */}
       {subTab === 'settings' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', maxWidth: '1100px', margin: '0 auto' }}>
+          {/* Section Startup Passwords & Access Control Card */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>🔒</span> Section Startup Passwords &amp; Access Control
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Set passwords required to open each department when launching or switching the software. (Default: 1234).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                id="btn-save-section-passwords"
+                disabled={isSavingSectionPasswords}
+                onClick={handleSaveSectionPasswords}
+                style={{
+                  height: '42px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  padding: '0 20px',
+                  borderRadius: '10px',
+                  cursor: isSavingSectionPasswords ? 'not-allowed' : 'pointer',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                }}
+              >
+                <span>{isSavingSectionPasswords ? '⏳' : '💾'}</span>
+                {isSavingSectionPasswords ? 'Saving...' : 'Save Section Passwords'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '14px' }}>
+              {/* Hospitality Password */}
+              <div style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #bfdbfe', background: '#eff6ff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>🏨</span>
+                  <label style={{ fontSize: '0.88rem', fontWeight: 850, margin: 0, color: '#1e3a8a' }}>
+                    Hospitality (Front Desk)
+                  </label>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showSectionPwd.hospitality ? 'text' : 'password'}
+                    className="form-input"
+                    id="input-pwd-hospitality"
+                    value={sectionPasswords.hospitality}
+                    onChange={(e) => setSectionPasswords({ ...sectionPasswords, hospitality: e.target.value })}
+                    style={{ height: '42px', fontSize: '1.05rem', fontWeight: 800, background: '#ffffff', paddingRight: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSectionPwd({ ...showSectionPwd, hospitality: !showSectionPwd.hospitality })}
+                    style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                    title={showSectionPwd.hospitality ? 'Hide password' : 'Show password'}
+                  >
+                    {showSectionPwd.hospitality ? '👁️' : '🔒'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#1e40af', margin: '6px 0 0' }}>
+                  Protects room folios, bookings, check-ins &amp; bills.
+                </p>
+              </div>
+
+              {/* Restaurant POS Password */}
+              <div style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #fed7aa', background: '#fff7ed' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>🍽️</span>
+                  <label style={{ fontSize: '0.88rem', fontWeight: 850, margin: 0, color: '#9a3412' }}>
+                    Restaurant POS Counter
+                  </label>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showSectionPwd.restaurant ? 'text' : 'password'}
+                    className="form-input"
+                    id="input-pwd-restaurant"
+                    value={sectionPasswords.restaurant}
+                    onChange={(e) => setSectionPasswords({ ...sectionPasswords, restaurant: e.target.value })}
+                    style={{ height: '42px', fontSize: '1.05rem', fontWeight: 800, background: '#ffffff', paddingRight: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSectionPwd({ ...showSectionPwd, restaurant: !showSectionPwd.restaurant })}
+                    style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                    title={showSectionPwd.restaurant ? 'Hide password' : 'Show password'}
+                  >
+                    {showSectionPwd.restaurant ? '👁️' : '🔒'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#c2410c', margin: '6px 0 0' }}>
+                  Protects food orders, KOT &amp; dining tables.
+                </p>
+              </div>
+
+              {/* Bar Lounge POS Password */}
+              <div style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #ddd6fe', background: '#faf5ff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>🍸</span>
+                  <label style={{ fontSize: '0.88rem', fontWeight: 850, margin: 0, color: '#5b21b6' }}>
+                    Bar Lounge POS Counter
+                  </label>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showSectionPwd.bar ? 'text' : 'password'}
+                    className="form-input"
+                    id="input-pwd-bar"
+                    value={sectionPasswords.bar}
+                    onChange={(e) => setSectionPasswords({ ...sectionPasswords, bar: e.target.value })}
+                    style={{ height: '42px', fontSize: '1.05rem', fontWeight: 800, background: '#ffffff', paddingRight: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSectionPwd({ ...showSectionPwd, bar: !showSectionPwd.bar })}
+                    style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                    title={showSectionPwd.bar ? 'Hide password' : 'Show password'}
+                  >
+                    {showSectionPwd.bar ? '👁️' : '🔒'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#6d28d9', margin: '6px 0 0' }}>
+                  Protects liquor billing, cocktail &amp; bar tables.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* AI Vision Document OCR Engine Card */}
           <div
             className="folio-card"

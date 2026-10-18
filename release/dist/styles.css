@@ -4091,8 +4091,9 @@ body.dark-theme .doc-action-card {
 /* ==========================================================================
    CUSTOM CONFIRM / PROMPT DIALOG MODAL (APPLE SLEEK CARD)
    ========================================================================== */
-.custom-confirm-overlay {
-  z-index: 10000;
+.custom-confirm-overlay,
+.custom-alert-overlay {
+  z-index: 999999 !important;
 }
 
 .custom-confirm-card {
@@ -14579,6 +14580,147 @@ body.dark-theme .room-service-card:hover,
   filter: grayscale(0.5) !important;
   pointer-events: none !important;
   cursor: not-allowed !important;
+}
+
+/* ==========================================================================
+   ADVANCE BOOKING & 48-HOUR RED BLINKING POPUP STYLES
+   ========================================================================== */
+@keyframes redBlinkPulse {
+  0% {
+    background-color: #ef4444;
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    background-color: #b91c1c;
+    border-color: #f87171;
+    box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+    transform: scale(1.02);
+  }
+  100% {
+    background-color: #ef4444;
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transform: scale(1);
+  }
+}
+
+.adv-urgent-blinking-popup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background-color: #ef4444;
+  border: 1.5px solid #fca5a5;
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  animation: redBlinkPulse 1.25s infinite ease-in-out;
+  white-space: nowrap;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+  transition: filter 0.15s ease;
+}
+
+.adv-urgent-blinking-popup:hover {
+  filter: brightness(1.15);
+}
+
+.btn-advance-booking {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3.5px 12px;
+  border-radius: 14px;
+  border: 1.5px solid #cbd5e1;
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #334155);
+  font-weight: 750;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  line-height: 1.25;
+}
+
+.btn-advance-booking:hover {
+  border-color: #e2b25e;
+  color: #b45309;
+  background: #fefce8;
+  box-shadow: 0 2px 8px rgba(226, 178, 94, 0.2);
+}
+
+[data-theme="dark"] .btn-advance-booking {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .btn-advance-booking:hover {
+  background: #243547;
+  border-color: #e2b25e;
+  color: #e2b25e;
+}
+
+.adv-badge-count {
+  background: #e2b25e;
+  color: #0a191c;
+  font-size: 0.64rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 2px;
+  letter-spacing: 0.3px;
+}
+
+/* ========================================================================= */
+/* ADVANCE BOOKING FULLSCREEN MODAL & THEME AWARE STYLES                      */
+/* ========================================================================= */
+.adv-fullscreen-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background-color: var(--bg-app, #f8fafc) !important;
+  transition: background-color 0.2s ease;
+}
+
+.adv-fullscreen-container {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+  background: var(--bg-app, #f8fafc) !important;
+}
+
+/* Light Theme Defaults */
+.adv-fullscreen-overlay[data-theme="light"],
+[data-theme="light"] .adv-fullscreen-overlay {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Dark Theme Overrides */
+.adv-fullscreen-overlay[data-theme="dark"],
+[data-theme="dark"] .adv-fullscreen-overlay,
+body.dark-theme .adv-fullscreen-overlay {
+  background-color: #0a191c !important;
+  color: #f8fafc !important;
 }
 
 

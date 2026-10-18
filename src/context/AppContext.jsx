@@ -64,6 +64,43 @@ export function AppProvider({ children }) {
     return path === 'accounting' ? 'accounting' : 'analytics';
   });
 
+  // Section Startup Access & Locked/Unlocked State
+  const [unlockedSection, setUnlockedSection] = useState(() => {
+    try {
+      return sessionStorage.getItem('hcp_unlocked_section') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [isSectionSelectOpen, setIsSectionSelectOpen] = useState(() => {
+    try {
+      return !sessionStorage.getItem('hcp_unlocked_section');
+    } catch {
+      return true;
+    }
+  });
+
+  const openSectionSelect = useCallback(() => {
+    setIsSectionSelectOpen(true);
+  }, []);
+
+  const closeSectionSelect = useCallback(() => {
+    if (unlockedSection) {
+      setIsSectionSelectOpen(false);
+    }
+  }, [unlockedSection]);
+
+  const unlockSection = useCallback((section) => {
+    setUnlockedSection(section);
+    try {
+      sessionStorage.setItem('hcp_unlocked_section', section);
+    } catch (_) {}
+    setIsSectionSelectOpen(false);
+    setActivePanelState(section);
+    window.history.pushState({}, '', `/${section}`);
+  }, []);
+
   // Dark Theme Management ('light' | 'dark')
   const [theme, setThemeState] = useState(() => {
     try {
@@ -259,12 +296,70 @@ export function AppProvider({ children }) {
     setTimeout(() => setToast(null), 320);
   }, []);
 
-  // Global window.alert override: route any native browser alert call to custom red alert toast
+  // Universal Custom Alert Dialog Modal
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    title: 'Notice',
+    message: '',
+    icon: '⚠️',
+    buttonText: 'OK',
+    type: 'warning',
+    resolver: null
+  });
+
+  const showAlert = useCallback((options, optionalTitle) => {
+    return new Promise((resolve) => {
+      let title = 'Notice';
+      let message = '';
+      let icon = '⚠️';
+      let buttonText = 'OK';
+      let type = 'warning';
+
+      if (typeof options === 'string') {
+        message = options;
+        if (optionalTitle) title = optionalTitle;
+        if (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('cannot')) {
+          icon = '❌';
+          type = 'danger';
+          if (!optionalTitle) title = 'Alert';
+        } else if (message.toLowerCase().includes('success') || message.toLowerCase().includes('✓')) {
+          icon = '✅';
+          type = 'success';
+          if (!optionalTitle) title = 'Success';
+        }
+      } else if (options && typeof options === 'object') {
+        message = options.message || message;
+        title = options.title || title;
+        icon = options.icon || (options.type === 'danger' ? '❌' : options.type === 'success' ? '✅' : icon);
+        buttonText = options.buttonText || buttonText;
+        type = options.type || type;
+      }
+
+      setAlertState({
+        isOpen: true,
+        title,
+        message,
+        icon,
+        buttonText,
+        type,
+        resolver: () => {
+          resolve(true);
+        }
+      });
+    });
+  }, []);
+
+  const handleAlertOk = () => {
+    if (alertState.resolver) alertState.resolver();
+    setAlertState((prev) => ({ ...prev, isOpen: false, resolver: null }));
+  };
+
+  // Global window.alert override: route any native browser alert call to custom alert dialog modal
   useEffect(() => {
-    window.alert = (message) => {
-      showToast(String(message), 'red', 6000);
+    window.alert = (message, title = 'Hotel City Park') => {
+      showAlert({ message: String(message), title });
     };
-  }, [showToast]);
+  }, [showAlert]);
 
   // Universal Custom Confirm Modal
   const [confirmState, setConfirmState] = useState({
@@ -573,6 +668,9 @@ export function AppProvider({ children }) {
     showToast,
     hideToast,
     toast,
+    showAlert,
+    alertState,
+    handleAlertOk,
     showConfirm,
     confirmState,
     handleConfirmOk,
@@ -614,7 +712,12 @@ export function AppProvider({ children }) {
     refreshCheckinPolicy,
     theme,
     setTheme,
-    toggleTheme
+    toggleTheme,
+    unlockedSection,
+    isSectionSelectOpen,
+    openSectionSelect,
+    closeSectionSelect,
+    unlockSection
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

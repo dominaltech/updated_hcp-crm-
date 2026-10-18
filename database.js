@@ -292,6 +292,29 @@ db.exec(`
     new_items_json TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS advance_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_number TEXT UNIQUE,
+    customer_name TEXT NOT NULL,
+    age INTEGER DEFAULT NULL,
+    address TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    room_number TEXT NOT NULL,
+    room_id INTEGER DEFAULT NULL,
+    adults INTEGER NOT NULL DEFAULT 1,
+    children INTEGER NOT NULL DEFAULT 0,
+    checkin_date TEXT NOT NULL,
+    checkin_time TEXT DEFAULT '12:00',
+    checkout_date TEXT NOT NULL,
+    checkout_time TEXT DEFAULT '11:00',
+    advance_amount REAL DEFAULT 0,
+    payment_mode TEXT DEFAULT 'cash',
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'completed', 'cancelled'
+    notes TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME DEFAULT NULL
+  );
 `);
 
 // Migrations

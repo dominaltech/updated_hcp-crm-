@@ -11,6 +11,7 @@
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 
 const rootDir = path.resolve(__dirname, '..');
 const adminDir = path.join(rootDir, 'admin');
@@ -80,23 +81,48 @@ async function main() {
     adminProcess.on('error', (err) => console.error('❌ Admin Panel failed to start:', err.message));
   }
 
-  // 3. Wait for readiness
+  // 3. Start Cloudflare Worldwide Tunnel for remote admin access
+  let tunnelProcess = null;
+  const cloudflaredExe = path.join(rootDir, 'tools', 'cloudflared.exe');
+  if (fs.existsSync(cloudflaredExe)) {
+    console.log('🌐 [Worldwide Cloud] Starting Cloudflare Tunnel...');
+    try {
+      const { startTunnel } = require('./tunnel');
+      tunnelProcess = startTunnel();
+    } catch (e) {
+      console.warn('Could not start tunnel automatically:', e.message);
+    }
+  }
+
+  // 4. Wait for readiness
   console.log('\n⏳ Waiting for all panels to become ready...');
   const crmReady = crmActive || await waitForPort(3000);
   const adminReady = adminActive || await waitForPort(8081);
 
+  let remoteUrl = 'https://delayed-eligible-gazette-related.trycloudflare.com';
+  try {
+    const rFile = path.join(rootDir, 'remote_url.txt');
+    if (fs.existsSync(rFile)) {
+      remoteUrl = fs.readFileSync(rFile, 'utf8').trim() || remoteUrl;
+    }
+  } catch (_) {}
+
   console.log('\n------------------------------------------------------------------');
-  console.log('  ALL LOCAL PANELS ARE ONLINE AND ACCESSIBLE:');
+  console.log('  ALL HOTEL CITY PARK SERVICES ARE ONLINE:');
   console.log('------------------------------------------------------------------');
   console.log('  🏨 CRM (Hospitality):    http://localhost:3000/hospitality');
   console.log('  🍽️ Restaurant POS:       http://localhost:3000/restaurant');
   console.log('  🍸 Bar POS:              http://localhost:3000/bar');
   console.log('  ⚙️ Manage Rooms:         http://localhost:3000/manage');
-  console.log('  ----------------------------------------------------------------');
-  console.log('  📱 Admin / Owner Panel:  http://localhost:8081');
-  console.log('  ----------------------------------------------------------------');
+  console.log('  📱 Admin / Owner Panel:  http://localhost:3000/admin/ (or :8081)');
   console.log('  📦 Storeman Panel:       http://localhost:3000/storeman');
   console.log('  📋 Store Admin Panel:    http://localhost:3000/store-admin');
+  console.log('  ⬇️ Download Apps & EXE:  http://localhost:3000/download.html');
+  console.log('  ----------------------------------------------------------------');
+  console.log('  🌐 WORLDWIDE REMOTE ACCESS (From Anywhere in the World):');
+  console.log('  👑 Admin / Owner Cloud:  ' + remoteUrl + '/admin/');
+  console.log('  🏨 Front Desk Cloud:     ' + remoteUrl + '/hospitality');
+  console.log('  💻 Admin Software (.EXE): HotelCityPark-Admin.exe');
   console.log('------------------------------------------------------------------');
   console.log('  Press Ctrl+C to stop all servers when finished.\n');
 

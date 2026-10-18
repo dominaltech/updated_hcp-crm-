@@ -17,7 +17,8 @@ export default function Header() {
     manageSubTab,
     setManageSubTab,
     theme,
-    toggleTheme
+    toggleTheme,
+    openSectionSelect
   } = useApp();
 
   const hospitalityContext = useHospitality();
@@ -67,96 +68,64 @@ export default function Header() {
         {/* Navigation Section: 3 Little Department Switcher Icons on Left + Section Dynamic Navs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* 3 Little Department Icons on Left */}
+          {/* Active Section Badge & Switch Section Button */}
           <div
-            id="dept-quick-switcher"
+            id="dept-active-indicator"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              background: 'rgba(0, 0, 0, 0.07)',
-              padding: '4px',
-              borderRadius: '16px',
-              gap: '4px'
+              gap: '6px'
             }}
           >
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                background: 'var(--bg-surface, #ffffff)',
+                border: '1.5px solid var(--border-color, #cbd5e1)',
+                borderRadius: '12px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                color: 'var(--text-primary, #0f172a)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+              }}
+            >
+              <span>
+                {activeDepartment === 'restaurant' ? '🍽️' : activeDepartment === 'bar' ? '🍸' : '🏨'}
+              </span>
+              <span>
+                {activeDepartment === 'restaurant'
+                  ? 'Restaurant POS'
+                  : activeDepartment === 'bar'
+                  ? 'Bar Lounge POS'
+                  : 'Hospitality'}
+              </span>
+            </div>
+
             <button
               type="button"
-              id="icon-btn-hospitality"
-              title="1) Hospitality / Front Desk"
-              onClick={() => {
-                setActivePanel('hospitality');
-                setHospSubTab('rooms');
-              }}
+              id="btn-header-switch-section"
+              onClick={openSectionSelect}
+              title="Lock & switch department (requires password)"
               style={{
-                border: 'none',
-                background: activeDepartment === 'hospitality' ? '#ffffff' : 'transparent',
-                borderRadius: '11px',
-                width: '38px',
-                height: '38px',
-                fontSize: '1.28rem',
-                cursor: 'pointer',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow:
-                  activeDepartment === 'hospitality' ? '0 2px 8px rgba(0,0,0,0.12)' : 'none',
-                transform: activeDepartment === 'hospitality' ? 'scale(1.04)' : 'scale(1)',
+                gap: '5px',
+                padding: '6px 10px',
+                background: 'rgba(0, 0, 0, 0.06)',
+                border: '1px solid rgba(0, 0, 0, 0.12)',
+                borderRadius: '10px',
+                fontSize: '0.78rem',
+                fontWeight: 750,
+                color: 'var(--text-secondary, #64748b)',
+                cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
             >
-              🏨
-            </button>
-            <button
-              type="button"
-              id="icon-btn-restaurant"
-              title="2) Restaurant POS"
-              onClick={() => {
-                setActivePanel('restaurant');
-                if (setRestaurantSubTab) setRestaurantSubTab('tables');
-              }}
-              style={{
-                border: 'none',
-                background: activeDepartment === 'restaurant' ? '#ffffff' : 'transparent',
-                borderRadius: '11px',
-                width: '38px',
-                height: '38px',
-                fontSize: '1.28rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow:
-                  activeDepartment === 'restaurant' ? '0 2px 8px rgba(0,0,0,0.12)' : 'none',
-                transform: activeDepartment === 'restaurant' ? 'scale(1.04)' : 'scale(1)',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              🍽️
-            </button>
-            <button
-              type="button"
-              id="icon-btn-bar"
-              title="3) Bar Lounge POS"
-              onClick={() => {
-                setActivePanel('bar');
-                if (setBarSubTab) setBarSubTab('tables');
-              }}
-              style={{
-                border: 'none',
-                background: activeDepartment === 'bar' ? '#ffffff' : 'transparent',
-                borderRadius: '11px',
-                width: '38px',
-                height: '38px',
-                fontSize: '1.28rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: activeDepartment === 'bar' ? '0 2px 8px rgba(0,0,0,0.12)' : 'none',
-                transform: activeDepartment === 'bar' ? 'scale(1.04)' : 'scale(1)',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              🍸
+              <span>🔒</span>
+              <span>Switch</span>
             </button>
           </div>
 

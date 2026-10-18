@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useApp } from '../../context/AppContext';
 
 export default function StoreManagerView() {
+  const { showAlert, showToast } = useApp();
   const [subTab, setSubTab] = useState('live'); // 'live' | 'history'
   const [viewMode, setViewMode] = useState('party'); // 'party' | 'bill'
   const [search, setSearch] = useState('');
@@ -84,7 +86,7 @@ export default function StoreManagerView() {
   const handleExecutePayment = async () => {
     const amt = parseFloat(payModal.amount);
     if (isNaN(amt) || amt <= 0) {
-      alert('Please enter a valid payment amount.');
+      showAlert('Please enter a valid payment amount.', 'Invalid Amount');
       return;
     }
 
@@ -105,11 +107,11 @@ export default function StoreManagerView() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Payment failed');
 
-      alert(`Payment of ₹${amt.toLocaleString('en-IN')} recorded successfully!`);
+      showToast(`Payment of ₹${amt.toLocaleString('en-IN')} recorded successfully! ✓`, 'success', 4000);
       setPayModal({ open: false, bill: null, vendor: null, amount: '', mode: 'upi', refNo: '', submitting: false });
       loadData();
     } catch (e) {
-      alert('Error: ' + e.message);
+      showAlert('Error: ' + e.message, 'Payment Error');
       setPayModal(prev => ({ ...prev, submitting: false }));
     }
   };

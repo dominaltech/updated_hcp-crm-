@@ -177,8 +177,9 @@ function requireRole(...allowedRoles) {
       });
     }
     
-    const hasManagerAccess = Boolean(req.user.can_access_manager || req.user.role === 'manager');
-    const isAllowed = allowedRoles.includes(req.user.role) || (allowedRoles.includes('manager') && hasManagerAccess);
+    const isAllowed = allowedRoles.includes(req.user.role) 
+      || (allowedRoles.includes('manager') && hasManagerAccess)
+      || (req.user.role === 'waiter' && (allowedRoles.includes('restaurant') || allowedRoles.includes('bar')));
 
     if (!isAllowed) {
       return res.status(403).json({ 

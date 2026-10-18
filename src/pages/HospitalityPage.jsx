@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useHospitality } from '../context/HospitalityContext';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
@@ -6,6 +6,7 @@ import RoomCard from '../components/hospitality/RoomCard';
 import RoomContextMenu from '../components/hospitality/RoomContextMenu';
 import RoomCleaningModal from '../components/hospitality/RoomCleaningModal';
 import HospitalityHistory from '../components/hospitality/HospitalityHistory';
+import AdvanceBookingModal from '../components/hospitality/AdvanceBookingModal';
 import { formatCurrency } from '../utils/formatters';
 
 const FLOOR_ORDER = [
@@ -50,6 +51,71 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
 
   const [hoveredLinkedGroup, setHoveredLinkedGroup] = useState('');
   const [cleaningModalRoom, setCleaningModalRoom] = useState(null);
+
+  // Advance Booking & 48-Hour Alert State
+  const [isAdvBookingOpen, setIsAdvBookingOpen] = useState(false);
+  const [advInitialTab, setAdvInitialTab] = useState('pending');
+  const [advPendingCount, setAdvPendingCount] = useState(0);
+  const [urgentBookings, setUrgentBookings] = useState([]);
+  const [urgentIndex, setUrgentIndex] = useState(0);
+
+  const loadAdvanceAlerts = async () => {
+    try {
+      const res = await api.getAdvanceBookings();
+      if (res && res.success) {
+        setAdvPendingCount(res.totalPending || 0);
+        setUrgentBookings(res.urgent48h || []);
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    loadAdvanceAlerts();
+    const interval = setInterval(loadAdvanceAlerts, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (urgentBookings.length <= 1) {
+      setUrgentIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setUrgentIndex((prev) => (prev + 1) % urgentBookings.length);
+    }, 3800);
+    return () => clearInterval(timer);
+  }, [urgentBookings.length]);
+
+  const handleOpenAdvanceBooking = (tab = 'pending') => {
+    setAdvInitialTab(tab);
+    setIsAdvBookingOpen(true);
+  };
+
+  const handleStartCheckinFromBooking = (booking) => {
+    const targetRoom = rooms.find((r) => String(r.room_number) === String(booking.room_number));
+    if (targetRoom) {
+      if (targetRoom.status === 'occupied') {
+        showToast(
+          `Room #${targetRoom.room_number} is currently occupied! Please clear or shift room first, or choose another room.`,
+          'warning',
+          5000
+        );
+      }
+      if (onStartCheckin) {
+        onStartCheckin(targetRoom, [], {
+          guestName: booking.customer_name,
+          mobile: booking.phone,
+          address: booking.address,
+          adultsMale: booking.adults || 1,
+          children: booking.children || 0,
+          advanceBookingId: booking.id,
+          advanceAmount: booking.advance_amount || 0
+        });
+      }
+    } else {
+      showToast(`Room #${booking.room_number} not found in room inventory.`, 'error', 4000);
+    }
+  };
 
   // Room Transfer (same room type to same room type) state
   const [isTransferMode, setIsTransferMode] = useState(false);
@@ -347,7 +413,54 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              {/* 48-Hour Urgent Blinking Alert Popup (Little left side of Advance Booking button) */}
+              {urgentBookings.length > 0 && urgentBookings[urgentIndex] && (
+                <div
+                  className="adv-urgent-blinking-popup"
+                  id="adv-urgent-blinking-popup"
+                  onClick={() => handleOpenAdvanceBooking('pending')}
+                  title="⚠️ Check-in due within 48 hours! Click to view pending advance bookings"
+                >
+                  <span style={{ fontSize: '0.82rem' }}>🔴</span>
+                  <span>
+                    <strong>c/n :</strong> {urgentBookings[urgentIndex].checkin_date} {urgentBookings[urgentIndex].checkin_time || '12:00'} ·{' '}
+                    <strong>c/o :</strong> {urgentBookings[urgentIndex].checkout_date} {urgentBookings[urgentIndex].checkout_time || '11:00'} |{' '}
+                    <strong>Room :</strong> #{urgentBookings[urgentIndex].room_number} |{' '}
+                    <strong>Adults :</strong> {urgentBookings[urgentIndex].adults}
+                    {urgentBookings[urgentIndex].children > 0 ? ` (${urgentBookings[urgentIndex].children} children)` : ''}
+                  </span>
+                  {urgentBookings.length > 1 && (
+                    <span
+                      style={{
+                        background: '#7f1d1d',
+                        padding: '1px 5px',
+                        borderRadius: '6px',
+                        fontSize: '0.66rem',
+                        marginLeft: '3px'
+                      }}
+                    >
+                      {urgentIndex + 1}/{urgentBookings.length}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Advance Booking Button (Left side of Room Transfer) */}
+              <button
+                type="button"
+                className="btn-advance-booking"
+                id="btn-advance-booking"
+                onClick={() => handleOpenAdvanceBooking('pending')}
+                title="Manage Advance Pre-Bookings, Pendings & Completed Reservations"
+              >
+                <span style={{ fontSize: '0.88rem' }}>📅</span>
+                <span>Advance Booking</span>
+                {advPendingCount > 0 && (
+                  <span className="adv-badge-count">{advPendingCount}</span>
+                )}
+              </button>
+
               <button
                 type="button"
                 className={`btn-room-transfer-mode ${isTransferMode ? 'active' : ''}`}
@@ -683,6 +796,18 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
           loadRooms(true);
           loadStats();
         }}
+      />
+
+      {/* Advance Booking & Pre-Reservations Modal */}
+      <AdvanceBookingModal
+        isOpen={isAdvBookingOpen}
+        onClose={() => {
+          setIsAdvBookingOpen(false);
+          loadAdvanceAlerts();
+        }}
+        rooms={rooms}
+        initialTab={advInitialTab}
+        onStartCheckinFromBooking={handleStartCheckinFromBooking}
       />
     </section>
   );

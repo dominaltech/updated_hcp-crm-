@@ -66,6 +66,8 @@ function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
   return Promise.race([nativePromise, timeoutPromise]);
 }
 
+let activeLocalDbInstance = null;
+
 function markNetworkFailure(err) {
   isOffline = true;
   lastOfflineTime = Date.now();
@@ -73,7 +75,12 @@ function markNetworkFailure(err) {
 }
 
 function markNetworkSuccess() {
+  const wasOffline = isOffline;
   isOffline = false;
+  if (wasOffline && activeLocalDbInstance) {
+    console.log('[Supabase] 🌐 Reconnected to internet! Syncing all offline CRM updates to cloud...');
+    syncAllOfflineDataToCloud(activeLocalDbInstance).catch(() => {});
+  }
 }
 
 function canAttemptCloud() {
@@ -85,7 +92,7 @@ function canAttemptCloud() {
 }
 
 /**
- * Upserts a live occupied room into Supabase active_occupancies.
+ * Upserts a live occupied room into Supabase active_occupancies AND syncs its billing folio to room_charges_inbox.
  */
 async function syncActiveOccupancy(data) {
   if (!canAttemptCloud() || !data || !data.room_number) return null;
@@ -113,6 +120,60 @@ async function syncActiveOccupancy(data) {
       console.warn(`[Supabase] syncActiveOccupancy notice for Room ${data.room_number}:`, error.message);
       return null;
     }
+
+    // Sync financial & billing folio into room_charges_inbox so Admin APK never shows 0 entries
+    if (data.folio) {
+      try {
+        const f = data.folio;
+        const folioPayload = {
+          room_number: String(data.room_number),
+          room_id: data.room_id || null,
+          department: 'room_folio',
+          bill_no: f.voucherNumber || ('BK-' + (data.booking_id || data.room_number)),
+          subtotal: Number(f.roomCharge || 0),
+          gst: Number(f.tax || 0),
+          grand_total: Number(f.total || 0),
+          items_summary: JSON.stringify({
+            roomCharge: Number(f.roomCharge || 0),
+            total: Number(f.total || 0),
+            paid: Number(f.paid || 0),
+            pending: Number(f.pending || 0),
+            extra: Number(f.extra || 0),
+            discount: Number(f.discount || 0),
+            restaurant: Number(f.restaurant || 0),
+            bar: Number(f.bar || 0),
+            advanceReceiptNo: f.advanceReceiptNo || '',
+            voucherNumber: f.voucherNumber || '',
+            paymentMode: f.paymentMode || 'Cash',
+            checkinTime: data.checkin_time || new Date().toISOString(),
+            approxCheckout: f.approxCheckout || '',
+            source: f.source || 'Walk-in',
+            checkedInBy: f.checkedInBy || 'Front Desk',
+            guestName: data.guest_name,
+            mobile: data.guest_mobile || '',
+            address: f.address || '',
+            dob: f.dob || '',
+            roomType: data.room_type || 'Standard Room'
+          }),
+          settled_by: f.checkedInBy || 'Front Desk',
+          status: (Number(f.pending || 0) > 0) ? 'due' : 'settled',
+          created_at: new Date().toISOString()
+        };
+
+        // Purge old room_folio for this room if any, then insert fresh
+        await withTimeout(
+          supabase.from('room_charges_inbox').delete().eq('room_number', String(data.room_number)).eq('department', 'room_folio'),
+          REQUEST_TIMEOUT_MS
+        );
+        await withTimeout(
+          supabase.from('room_charges_inbox').insert(folioPayload),
+          REQUEST_TIMEOUT_MS
+        );
+      } catch (folioErr) {
+        console.warn(`[Supabase] syncActiveOccupancy folio notice for Room ${data.room_number}:`, folioErr.message);
+      }
+    }
+
     markNetworkSuccess();
     return result;
   } catch (err) {
@@ -122,7 +183,7 @@ async function syncActiveOccupancy(data) {
 }
 
 /**
- * Removes a checked-out room from Supabase active_occupancies.
+ * Removes a checked-out room from Supabase active_occupancies and room_charges_inbox.
  */
 async function removeActiveOccupancy(roomNumber) {
   if (!canAttemptCloud() || !roomNumber) return false;
@@ -135,6 +196,16 @@ async function removeActiveOccupancy(roomNumber) {
       REQUEST_TIMEOUT_MS
     );
 
+    // Also delete room_folio from room_charges_inbox
+    await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .delete()
+        .eq('room_number', String(roomNumber))
+        .eq('department', 'room_folio'),
+      REQUEST_TIMEOUT_MS
+    ).catch(() => {});
+
     if (error) {
       console.warn(`[Supabase] removeActiveOccupancy notice for Room ${roomNumber}:`, error.message);
       return false;
@@ -143,6 +214,7 @@ async function removeActiveOccupancy(roomNumber) {
     return true;
   } catch (err) {
     markNetworkFailure(err);
+
     return false;
   }
 }
@@ -373,7 +445,21 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         r.room_type,
         g.name as guest_name,
         g.mobile as guest_mobile,
-        b.checkin_time
+        g.address,
+        g.dob,
+        b.checkin_time,
+        b.approx_checkout_time,
+        b.room_rate,
+        b.total_room_charge,
+        b.advance_payment,
+        b.total_paid,
+        b.discount_amount,
+        b.extra_bed_charge,
+        b.voucher_number,
+        b.advance_receipt_no,
+        b.advance_payment_mode,
+        b.booking_source,
+        b.checked_in_by
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
       JOIN guests g ON b.guest_id = g.id
@@ -382,7 +468,7 @@ async function syncAllActiveRoomsFromLocal(localDb) {
 
     const activeRoomSet = new Set((activeBookings || []).map(b => String(b.room_number)));
 
-    // 1. Reconcile: Purge any checked-out / stale room numbers from Supabase active_occupancies
+    // 1. Reconcile: Purge any checked-out / stale room numbers from Supabase active_occupancies & room_charges_inbox
     try {
       const { data: cloudRooms } = await withTimeout(
         supabase.from('active_occupancies').select('room_number'),
@@ -402,9 +488,17 @@ async function syncAllActiveRoomsFromLocal(localDb) {
 
     if (!activeBookings || activeBookings.length === 0) return;
 
-    // 2. Sync all current active rooms to cloud
+    // 2. Sync all current active rooms WITH billing folios to cloud
     for (const b of activeBookings) {
       if (!canAttemptCloud()) break; // Exit immediately if offline circuit breaker tripped
+      const roomCharge = Number(b.total_room_charge || b.room_rate || 0);
+      const extra = Number(b.extra_bed_charge || 0);
+      const discount = Number(b.discount_amount || 0);
+      const tax = Math.round(roomCharge * 0.05);
+      const total = Math.max(0, roomCharge + extra - discount + tax);
+      const paid = Number(b.total_paid || b.advance_payment || 0);
+      const pending = Math.max(0, total - paid);
+
       await syncActiveOccupancy({
         room_number: b.room_number,
         room_id: b.room_id,
@@ -412,14 +506,118 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         guest_name: b.guest_name,
         guest_mobile: b.guest_mobile,
         booking_id: b.booking_id,
-        checkin_time: b.checkin_time
+        checkin_time: b.checkin_time,
+        folio: {
+          roomCharge,
+          extra,
+          discount,
+          tax,
+          total,
+          paid,
+          pending,
+          voucherNumber: b.voucher_number || '',
+          advanceReceiptNo: b.advance_receipt_no || '',
+          paymentMode: b.advance_payment_mode || 'Cash',
+          approxCheckout: b.approx_checkout_time || '',
+          source: b.booking_source || 'Walk-in',
+          checkedInBy: b.checked_in_by || 'Front Desk',
+          address: b.address || '',
+          dob: b.dob || ''
+        }
       });
     }
-    console.log(`[Supabase] Synced ${activeBookings.length} active room(s) to cloud directory.`);
+    console.log(`[Supabase] Synced ${activeBookings.length} active room(s) with full billing folios to cloud directory.`);
   } catch (err) {
-    console.warn('[Supabase] Startup sync notice:', err.message);
+    console.warn('[Supabase] Room sync notice:', err.message);
   }
 }
+
+/**
+ * Synchronizes live Restaurant and Bar tables and recent orders into Supabase room_charges_inbox snapshot.
+ */
+async function syncLiveFBStateToCloud(localDb) {
+  if (!canAttemptCloud() || !localDb) return;
+  try {
+    const resTables = localDb.prepare('SELECT id, table_number, table_type, capacity, status, active_cart_json, order_started_at, waiter_name, special_notes, room_id FROM restaurant_tables').all();
+    const barTables = localDb.prepare('SELECT id, table_number, table_type, capacity, status, active_cart_json, order_started_at, waiter_name, special_notes, room_id FROM bar_tables').all();
+    const recentResOrders = localDb.prepare('SELECT * FROM restaurant_orders ORDER BY id DESC LIMIT 50').all();
+    const recentBarOrders = localDb.prepare('SELECT * FROM bar_orders ORDER BY id DESC LIMIT 50').all();
+
+    const fmtTables = (list) => (list || []).map(t => {
+      let cart = [];
+      try { cart = JSON.parse(t.active_cart_json || '[]'); } catch {}
+      const total = cart.reduce((s, it) => s + (Number(it.price || it.rate || 0) * Number(it.quantity || it.qty || 1)), 0);
+      return { ...t, active_cart: cart, items_count: cart.length, running_total: total, is_occupied: t.status === 'in_process' || t.status === 'occupied' || t.status === 'billed' || cart.length > 0 };
+    });
+
+    const fmtOrders = (list, dept) => (list || []).map(o => {
+      let items = [];
+      try { items = JSON.parse(o.items_json || '[]'); } catch {}
+      return { ...o, dept, items, grand_total: o.total, is_settled: o.is_paid === 1 || String(o.status).toLowerCase() === 'completed' || String(o.status).toLowerCase() === 'settled' };
+    });
+
+    const payload = {
+      restaurantTables: fmtTables(resTables),
+      barTables: fmtTables(barTables),
+      restaurantOrders: fmtOrders(recentResOrders, 'Restaurant'),
+      barOrders: fmtOrders(recentBarOrders, 'Bar Lounge'),
+      synced_at: new Date().toISOString()
+    };
+
+    // Upsert or update snapshot row in room_charges_inbox with department: 'fb_live_state'
+    const { data: existing } = await withTimeout(
+      supabase.from('room_charges_inbox').select('id').eq('department', 'fb_live_state').limit(1),
+      REQUEST_TIMEOUT_MS
+    );
+    if (Array.isArray(existing) && existing.length > 0) {
+      await withTimeout(
+        supabase.from('room_charges_inbox').update({
+          grand_total: 0,
+          items_summary: JSON.stringify(payload),
+          status: 'live'
+        }).eq('id', existing[0].id),
+        REQUEST_TIMEOUT_MS
+      );
+    } else {
+      await withTimeout(
+        supabase.from('room_charges_inbox').insert({
+          room_number: 'ALL',
+          department: 'fb_live_state',
+          bill_no: 'FB-STATE',
+          subtotal: 0,
+          gst: 0,
+          grand_total: 0,
+          items_summary: JSON.stringify(payload),
+          settled_by: 'System',
+          status: 'live'
+        }),
+        REQUEST_TIMEOUT_MS
+      );
+    }
+  } catch (err) {
+    // non-blocking
+  }
+}
+
+/**
+ * Universal offline sync: whenever CRM is updated while offline,
+ * pushes all active occupancies, folios, daily analytics, store data, and F&B live state when connected.
+ */
+async function syncAllOfflineDataToCloud(localDb) {
+  if (localDb) activeLocalDbInstance = localDb;
+  if (!canAttemptCloud() || !localDb) return;
+  try {
+    await syncAllActiveRoomsFromLocal(localDb);
+    await syncDailyAnalyticsToCloud(localDb);
+    await syncLiveFBStateToCloud(localDb);
+    await pullStoreBillsFromCloud(localDb);
+    await pullStoreVendorsFromCloud(localDb);
+    await pullCloudRoomChargesToLocal(localDb);
+  } catch (err) {
+    console.warn('[Offline Sync] Sync caught error:', err.message);
+  }
+}
+
 
 
 /**
@@ -773,7 +971,10 @@ module.exports = {
   pollCloudApprovals,
   syncDailyAnalyticsToCloud,
   pullCloudRoomChargesToLocal,
+  syncLiveFBStateToCloud,
+  syncAllOfflineDataToCloud,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };
+
 

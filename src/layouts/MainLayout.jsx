@@ -3,9 +3,11 @@ import { useApp } from '../context/AppContext';
 import Header from './Header';
 import ToastContainer from '../components/common/ToastContainer';
 import ConfirmModal from '../components/common/ConfirmModal';
+import CustomAlertModal from '../components/common/CustomAlertModal';
 import StaffLoginModal from '../components/common/StaffLoginModal';
 import CashierLogoutModal from '../components/common/CashierLogoutModal';
 import ManagerLockModal from '../components/common/ManagerLockModal';
+import SectionSelectModal from '../components/common/SectionSelectModal';
 
 export default function MainLayout({ children, hasActiveFolio = false }) {
   const {
@@ -20,7 +22,11 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
     isLoginMandatory,
     isManagerLockModalOpen,
     closeManagerLock,
-    managerLockTargetDept
+    managerLockTargetDept,
+    unlockedSection,
+    isSectionSelectOpen,
+    closeSectionSelect,
+    unlockSection
   } = useApp();
 
   const isPosPanel = activePanel === 'restaurant' || activePanel === 'bar';
@@ -72,6 +78,7 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
       </main>
       <ToastContainer />
       <ConfirmModal />
+      <CustomAlertModal />
 
       {/* Global Staff Shift Modals - Accessible from any section */}
       <StaffLoginModal
@@ -93,6 +100,15 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
         isOpen={isManagerLockModalOpen}
         onClose={closeManagerLock}
         targetDepartment={managerLockTargetDept}
+      />
+
+      {/* Section Startup & Access Control Modal */}
+      <SectionSelectModal
+        isOpen={isSectionSelectOpen}
+        canCancel={Boolean(unlockedSection)}
+        onClose={closeSectionSelect}
+        initialSection={unlockedSection || (['restaurant', 'bar'].includes(activePanel) ? activePanel : 'hospitality')}
+        onUnlocked={unlockSection}
       />
     </>
   );

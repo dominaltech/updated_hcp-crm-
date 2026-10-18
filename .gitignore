@@ -14,7 +14,17 @@ nnnnew/
 nnnnew.zip
 scratch_gen.mjs
 release/runtime/
-release-electron/
+release-electron/*
+!release-electron/Hotel City Park CRM-win32-x64/
+release-electron/Hotel City Park CRM-win32-x64/*
+!release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/node_modules/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/dist/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/android/.gradle/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/android/build/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/android/app/build/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/android/capacitor-cordova-android-plugins/build/
+release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/android/local.properties
 runtime/
 test_hotel.db
 test_hotel.db-shm
@@ -29,6 +39,8 @@ backup-file/
 google-services*.json
 firebase-service-account.json
 *.apk
+!public/*.apk
+!release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/HotelCityPark-Waiter.apk
 *.idsig
 crm.db
 .agents/
