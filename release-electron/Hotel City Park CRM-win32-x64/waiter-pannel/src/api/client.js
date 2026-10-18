@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://speech-recording-ordering-designer.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://den-tickets-differential-highlighted.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {
