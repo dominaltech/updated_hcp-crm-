@@ -154,6 +154,20 @@ select,
   caret-color: auto !important;
 }
 
+button, .btn {
+  font-family: var(--font-system);
+  cursor: pointer;
+  outline: none;
+  transition: all var(--transition-fast);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button:active, .btn:active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
+}
+
 body {
   font-family: var(--font-system);
   background-color: var(--bg-app);

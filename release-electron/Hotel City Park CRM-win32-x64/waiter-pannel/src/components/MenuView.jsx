@@ -130,39 +130,52 @@ export default function MenuView({
       {/* Sticky Active Destination Banner on Top */}
       <div
         style={{
-          padding: '8px 12px',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+          paddingBottom: '10px',
+          paddingLeft: '14px',
+          paddingRight: '14px',
+          minHeight: 'calc(52px + env(safe-area-inset-top, 0px))',
           background: 'var(--bg-surface)',
-          borderBottom: '1px solid var(--border-light)',
+          borderBottom: '1.5px solid var(--border-medium)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '8px',
-          boxShadow: 'var(--shadow-subtle)'
+          gap: '10px',
+          boxShadow: 'var(--shadow-subtle)',
+          boxSizing: 'border-box',
+          flexShrink: 0
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
           <button
             type="button"
+            id="btn-back-to-destinations"
             onClick={onBackToDestinations}
             style={{
-              padding: '5px 10px',
-              borderRadius: 'var(--radius-xs)',
-              background: 'var(--bg-surface-secondary)',
-              border: '1px solid var(--border-light)',
+              padding: '8px 16px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-surface)',
+              border: '1.5px solid var(--theme-highlight-border)',
               color: 'var(--text-primary)',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              cursor: 'pointer'
+              fontSize: '0.86rem',
+              fontWeight: 900,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.10)',
+              cursor: 'pointer',
+              flexShrink: 0
             }}
           >
-            ← Back
+            <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--theme-highlight-dark)' }}>←</span>
+            <span>Back</span>
           </button>
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: '0.96rem', fontWeight: 900, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               📍 {destination?.label || 'Destination'}
             </div>
             {destination?.guest_phone && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--apple-blue)', fontWeight: 700 }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--theme-highlight-dark)', fontWeight: 750 }}>
                 📞 {destination.guest_phone}
               </div>
             )}
@@ -171,17 +184,20 @@ export default function MenuView({
 
         <span
           style={{
-            fontSize: '0.66rem',
-            fontWeight: 800,
-            padding: '2px 7px',
-            borderRadius: 'var(--radius-xs)',
-            background: accentColor,
-            color: 'var(--text-on-accent)',
+            fontSize: '0.68rem',
+            fontWeight: 850,
+            padding: '4px 9px',
+            borderRadius: 'var(--radius-xl)',
+            background: 'var(--theme-blush)',
+            color: 'var(--theme-highlight-dark)',
+            border: '1px solid var(--theme-highlight-border)',
             textTransform: 'uppercase',
-            letterSpacing: '0.04em'
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
-          {isBar ? 'Bar Menu' : 'Food Menu'}
+          {isBar ? '🍸 Bar' : '🍽️ Resto'}
         </span>
       </div>
 
@@ -238,8 +254,8 @@ export default function MenuView({
       <div
         style={{
           display: 'flex',
-          gap: '6px',
-          padding: '6px 12px 8px',
+          gap: '7px',
+          padding: '6px 12px 10px',
           overflowX: 'auto',
           flexShrink: 0
         }}
@@ -248,16 +264,16 @@ export default function MenuView({
           type="button"
           onClick={() => setSelectedCat('all')}
           style={{
-            padding: '5px 12px',
+            padding: '6px 14px',
             borderRadius: 'var(--radius-xl)',
-            border: 'none',
-            background: selectedCat === 'all' ? accentColor : 'var(--bg-surface)',
-            color: selectedCat === 'all' ? 'var(--text-on-accent)' : 'var(--text-secondary)',
-            fontSize: '0.74rem',
-            fontWeight: 800,
+            border: selectedCat === 'all' ? '1.5px solid var(--theme-highlight-dark)' : '1px solid var(--border-medium)',
+            background: selectedCat === 'all' ? 'linear-gradient(135deg, var(--apple-orange), var(--theme-highlight-dark))' : 'var(--bg-surface)',
+            color: selectedCat === 'all' ? '#ffffff' : 'var(--text-secondary)',
+            fontSize: '0.76rem',
+            fontWeight: 850,
             whiteSpace: 'nowrap',
             cursor: 'pointer',
-            boxShadow: 'var(--shadow-subtle)'
+            boxShadow: selectedCat === 'all' ? '0 2px 6px rgba(140, 93, 119, 0.35)' : '0 1px 3px rgba(0, 0, 0, 0.08)'
           }}
         >
           All Items ({menuItems.length})
@@ -270,16 +286,16 @@ export default function MenuView({
               type="button"
               onClick={() => setSelectedCat(cat.id)}
               style={{
-                padding: '5px 12px',
+                padding: '6px 14px',
                 borderRadius: 'var(--radius-xl)',
-                border: 'none',
-                background: isSelected ? accentColor : 'var(--bg-surface)',
-                color: isSelected ? 'var(--text-on-accent)' : 'var(--text-secondary)',
-                fontSize: '0.74rem',
-                fontWeight: 800,
+                border: isSelected ? '1.5px solid var(--theme-highlight-dark)' : '1px solid var(--border-medium)',
+                background: isSelected ? 'linear-gradient(135deg, var(--apple-orange), var(--theme-highlight-dark))' : 'var(--bg-surface)',
+                color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                fontSize: '0.76rem',
+                fontWeight: 850,
                 whiteSpace: 'nowrap',
                 cursor: 'pointer',
-                boxShadow: 'var(--shadow-subtle)'
+                boxShadow: isSelected ? '0 2px 6px rgba(140, 93, 119, 0.35)' : '0 1px 3px rgba(0, 0, 0, 0.08)'
               }}
             >
               {cat.name}
@@ -393,9 +409,10 @@ export default function MenuView({
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      background: 'var(--bg-surface-secondary)',
-                      border: `1.5px solid ${accentColor}`,
-                      borderRadius: 'var(--radius-xs)',
+                      background: 'var(--bg-surface)',
+                      border: '1.5px solid var(--theme-highlight-dark)',
+                      borderRadius: 'var(--radius-sm)',
+                      boxShadow: '0 2px 5px rgba(0, 0, 0, 0.08)',
                       overflow: 'hidden'
                     }}
                   >
@@ -403,39 +420,41 @@ export default function MenuView({
                       type="button"
                       onClick={() => onUpdateCartQty(item.id, inCart.quantity - 1)}
                       style={{
-                        width: '32px',
-                        height: '32px',
-                        background: 'transparent',
+                        width: '34px',
+                        height: '34px',
+                        background: 'rgba(220, 38, 38, 0.08)',
                         color: 'var(--apple-red)',
-                        fontSize: '1.1rem',
+                        fontSize: '1.2rem',
                         fontWeight: 900,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        border: 'none'
+                        border: 'none',
+                        borderRight: '1px solid var(--border-light)'
                       }}
                     >
                       −
                     </button>
-                    <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 900, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                    <span style={{ minWidth: '28px', textAlign: 'center', fontWeight: 900, color: 'var(--text-primary)', fontSize: '0.92rem' }}>
                       {inCart.quantity}
                     </span>
                     <button
                       type="button"
                       onClick={() => onUpdateCartQty(item.id, inCart.quantity + 1)}
                       style={{
-                        width: '32px',
-                        height: '32px',
-                        background: 'transparent',
+                        width: '34px',
+                        height: '34px',
+                        background: 'rgba(22, 163, 74, 0.10)',
                         color: 'var(--apple-green)',
-                        fontSize: '1.1rem',
+                        fontSize: '1.2rem',
                         fontWeight: 900,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: 'pointer',
-                        border: 'none'
+                        border: 'none',
+                        borderLeft: '1px solid var(--border-light)'
                       }}
                     >
                       +
@@ -447,21 +466,22 @@ export default function MenuView({
                     onClick={() => handleAddClick(item)}
                     className={isBouncing ? 'anim-bounce' : ''}
                     style={{
-                      padding: '7px 16px',
-                      borderRadius: 'var(--radius-xs)',
-                      background: accentColor,
-                      color: 'var(--text-on-accent)',
-                      fontSize: '0.80rem',
-                      fontWeight: 850,
+                      padding: '8px 18px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'linear-gradient(135deg, var(--apple-orange), var(--theme-highlight-dark))',
+                      color: '#ffffff',
+                      fontSize: '0.82rem',
+                      fontWeight: 900,
+                      letterSpacing: '0.03em',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      boxShadow: 'var(--shadow-subtle)',
-                      cursor: 'pointer',
-                      border: 'none'
+                      gap: '5px',
+                      boxShadow: '0 2px 6px rgba(140, 93, 119, 0.35)',
+                      border: '1px solid rgba(0, 0, 0, 0.12)',
+                      cursor: 'pointer'
                     }}
                   >
-                    <span>+</span>
+                    <span style={{ fontSize: '1rem', fontWeight: 900 }}>+</span>
                     <span>ADD</span>
                   </button>
                 )}
@@ -520,21 +540,21 @@ export default function MenuView({
             id="btn-open-cart-drawer"
             onClick={onOpenCart}
             style={{
-              padding: '8px 14px',
+              padding: '9px 18px',
               borderRadius: 'var(--radius-sm)',
-              background: accentColor,
-              color: 'var(--text-on-accent)',
-              fontSize: '0.84rem',
-              fontWeight: 850,
+              background: 'linear-gradient(135deg, var(--apple-orange), var(--theme-highlight-dark))',
+              color: '#ffffff',
+              fontSize: '0.86rem',
+              fontWeight: 900,
               display: 'flex',
               alignItems: 'center',
-              gap: '5px',
-              boxShadow: 'var(--shadow-subtle)',
-              cursor: 'pointer',
-              border: 'none'
+              gap: '6px',
+              boxShadow: '0 3px 8px rgba(140, 93, 119, 0.40)',
+              border: '1px solid rgba(0, 0, 0, 0.12)',
+              cursor: 'pointer'
             }}
           >
-            <span>🛒</span>
+            <span style={{ fontSize: '1rem' }}>🛒</span>
             <span>View Cart →</span>
           </button>
         </div>

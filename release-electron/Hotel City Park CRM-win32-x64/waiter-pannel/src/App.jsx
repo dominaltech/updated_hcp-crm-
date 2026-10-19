@@ -658,14 +658,16 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Header */}
-      <HeaderBar
-        user={currentUser}
-        department={department}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        offlineCount={offlineQueue.length}
-        isOnline={isOnline}
-      />
+      {/* Top Header - only visible when choosing destination */}
+      {!destination && (
+        <HeaderBar
+          user={currentUser}
+          department={department}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          offlineCount={offlineQueue.length}
+          isOnline={isOnline}
+        />
+      )}
 
       {/* Offline Pending Queue Banner */}
       {offlineQueue.length > 0 && (
@@ -765,11 +767,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Department Switcher: RESTAURANT vs BAR */}
-      <DepartmentSwitcher
-        department={department}
-        onDepartmentChange={handleDepartmentChange}
-      />
+      {/* Department Switcher: RESTAURANT vs BAR - hidden when taking an order */}
+      {!destination && (
+        <DepartmentSwitcher
+          department={department}
+          onDepartmentChange={handleDepartmentChange}
+        />
+      )}
 
       {/* Main View Area: Either taking order for Destination or choosing Destination */}
       {destination ? (

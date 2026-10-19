@@ -71,13 +71,15 @@ body, html {
 button {
   font-family: var(--font-system);
   cursor: pointer;
-  border: none;
   outline: none;
   transition: all var(--transition-fast);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 button:active {
-  transform: scale(0.97);
+  transform: scale(0.96) !important;
+  filter: brightness(0.94);
 }
 
 input, textarea, select {

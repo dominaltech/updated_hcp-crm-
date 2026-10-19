@@ -125,13 +125,15 @@ export default function CartDrawer({
               type="button"
               onClick={onClearCart}
               style={{
-                padding: '5px 10px',
-                borderRadius: 'var(--radius-xs)',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-sm)',
                 background: 'var(--apple-red-subtle)',
-                border: '1px solid var(--apple-red)',
+                border: '1.5px solid var(--apple-red)',
                 color: 'var(--apple-red)',
-                fontSize: '0.72rem',
-                fontWeight: 750
+                fontSize: '0.74rem',
+                fontWeight: 850,
+                boxShadow: '0 1px 3px rgba(220, 38, 38, 0.15)',
+                cursor: 'pointer'
               }}
             >
               Clear Cart
@@ -140,16 +142,19 @@ export default function CartDrawer({
               type="button"
               onClick={onClose}
               style={{
-                width: '30px',
-                height: '30px',
+                width: '32px',
+                height: '32px',
                 borderRadius: '50%',
                 background: 'var(--bg-surface-secondary)',
-                border: '1px solid var(--border-light)',
+                border: '1.5px solid var(--border-medium)',
                 color: 'var(--text-primary)',
                 fontSize: '1rem',
+                fontWeight: 800,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                cursor: 'pointer'
               }}
             >
               ✕
@@ -197,25 +202,52 @@ export default function CartDrawer({
                   display: 'flex',
                   alignItems: 'center',
                   background: 'var(--bg-surface)',
-                  border: `1.5px solid ${accentColor}`,
-                  borderRadius: 'var(--radius-xs)',
+                  border: `1.5px solid var(--theme-highlight-dark)`,
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow: '0 2px 5px rgba(0, 0, 0, 0.08)',
                   overflow: 'hidden'
                 }}
               >
                 <button
                   type="button"
                   onClick={() => onUpdateCartQty(item.id, item.quantity - 1)}
-                  style={{ width: '30px', height: '30px', background: 'transparent', color: 'var(--apple-red)', fontSize: '1.1rem', fontWeight: 900 }}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'rgba(220, 38, 38, 0.08)',
+                    color: 'var(--apple-red)',
+                    fontSize: '1.15rem',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderRight: '1px solid var(--border-light)'
+                  }}
                 >
                   −
                 </button>
-                <span style={{ minWidth: '22px', textAlign: 'center', fontWeight: 900, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
+                <span style={{ minWidth: '26px', textAlign: 'center', fontWeight: 900, color: 'var(--text-primary)', fontSize: '0.90rem' }}>
                   {item.quantity}
                 </span>
                 <button
                   type="button"
                   onClick={() => onUpdateCartQty(item.id, item.quantity + 1)}
-                  style={{ width: '30px', height: '30px', background: 'transparent', color: 'var(--apple-green)', fontSize: '1.1rem', fontWeight: 900 }}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'rgba(22, 163, 74, 0.10)',
+                    color: 'var(--apple-green)',
+                    fontSize: '1.15rem',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    border: 'none',
+                    borderLeft: '1px solid var(--border-light)'
+                  }}
                 >
                   +
                 </button>
@@ -288,13 +320,15 @@ export default function CartDrawer({
                     type="button"
                     onClick={() => handleChipToggle(chip)}
                     style={{
-                      padding: '4px 9px',
-                      borderRadius: 'var(--radius-xs)',
-                      background: isSelected ? accentBg : 'var(--bg-surface-secondary)',
-                      border: isSelected ? `1.5px solid ${accentColor}` : '1px solid var(--border-medium)',
-                      color: isSelected ? accentColor : 'var(--text-secondary)',
-                      fontSize: '0.72rem',
-                      fontWeight: 750
+                      padding: '5px 11px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: isSelected ? 'linear-gradient(135deg, var(--apple-orange), var(--theme-highlight-dark))' : 'var(--bg-surface)',
+                      border: isSelected ? '1.5px solid var(--theme-highlight-dark)' : '1px solid var(--border-medium)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      boxShadow: isSelected ? '0 2px 5px rgba(140, 93, 119, 0.35)' : '0 1px 3px rgba(0, 0, 0, 0.06)',
+                      cursor: 'pointer'
                     }}
                   >
                     {chip}
@@ -358,7 +392,7 @@ export default function CartDrawer({
               width: '100%',
               height: '48px',
               borderRadius: 'var(--radius-sm)',
-              background: 'var(--apple-green)',
+              background: 'linear-gradient(135deg, #16a34a, #15803d)',
               color: 'var(--text-on-accent)',
               fontSize: '1rem',
               fontWeight: 900,
@@ -366,7 +400,8 @@ export default function CartDrawer({
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              boxShadow: 'var(--shadow-subtle)',
+              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.35)',
+              border: '1px solid rgba(0, 0, 0, 0.12)',
               cursor: (isPunching || cart.length === 0) ? 'not-allowed' : 'pointer'
             }}
           >
