@@ -73,65 +73,66 @@ export default function RoomServiceView({
             paddingBottom: '80px'
           }}
         >
-          {filtered.map((room) => (
-            <button
-              key={room.id}
-              type="button"
-              id={`room-card-${room.id}`}
-              onClick={() => onSelectRoom(room)}
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-medium)',
-                borderRadius: 'var(--radius-md)',
-                padding: '12px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                textAlign: 'left',
-                boxShadow: 'var(--shadow-subtle)',
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {/* Room Number Badge */}
-                <div
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--apple-blue)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-on-accent)',
-                    flexShrink: 0,
-                    boxShadow: 'var(--shadow-subtle)'
-                  }}
-                >
-                  <span style={{ fontSize: '0.60rem', fontWeight: 700, textTransform: 'uppercase' }}>ROOM</span>
-                  <span style={{ fontSize: '1.15rem', fontWeight: 900, lineHeight: 1 }}>{room.room_number}</span>
-                </div>
+          {filtered.map((room) => {
+            const guestDisplayName = (room.guest_name && room.guest_name.trim()) ? room.guest_name.trim() : 'In-House Guest';
+            const rawPhone = room.guest_phone || room.guest_mobile || room.mobile;
+            const guestDisplayPhone = (rawPhone && rawPhone !== '—' && rawPhone.trim()) ? rawPhone.trim() : null;
 
-                {/* Guest Details */}
-                <div>
-                  <div style={{ fontSize: '0.96rem', fontWeight: 850, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                    {room.guest_name || 'In-House Guest'}
+            return (
+              <button
+                key={room.id}
+                type="button"
+                id={`room-card-${room.id}`}
+                onClick={() => onSelectRoom(room)}
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  textAlign: 'left',
+                  boxShadow: 'var(--shadow-subtle)',
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-fast)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Room Number Badge */}
+                  <div
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--apple-blue)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-on-accent)',
+                      flexShrink: 0,
+                      boxShadow: 'var(--shadow-subtle)'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.60rem', fontWeight: 700, textTransform: 'uppercase' }}>ROOM</span>
+                    <span style={{ fontSize: '1.15rem', fontWeight: 900, lineHeight: 1 }}>{room.room_number}</span>
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--apple-blue)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span>📞</span>
-                    <span>
-                      {(room.guest_phone && room.guest_phone !== '—')
-                        ? room.guest_phone
-                        : (room.guest_mobile && room.guest_mobile !== '—' ? room.guest_mobile : 'Mobile Not Stored')}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
-                    {room.room_type || 'Standard Room'} • Floor {room.floor || '1'}
+
+                  {/* Guest Details */}
+                  <div>
+                    <div style={{ fontSize: '0.96rem', fontWeight: 850, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                      {guestDisplayName}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: guestDisplayPhone ? 'var(--apple-blue)' : 'var(--text-tertiary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>📞</span>
+                      <span>{guestDisplayPhone || 'Mobile Not Stored'}</span>
+                    </div>
+                    <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
+                      {room.room_type || 'Standard Room'} • Floor {room.floor || '1'}
+                    </div>
                   </div>
                 </div>
-              </div>
 
               {/* Action Chevron */}
               <div
@@ -151,8 +152,9 @@ export default function RoomServiceView({
                 ➔
               </div>
             </button>
-          ))}
-        </div>
+          );
+        })}
+      </div>
       )}
     </div>
   );

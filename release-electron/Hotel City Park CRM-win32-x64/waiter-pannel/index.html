@@ -42,6 +42,7 @@
           navigator.serviceWorker.register('/sw.js')
             .then(function(reg) {
               console.log('[PWA] Service Worker registered with scope:', reg.scope);
+              reg.update();
             })
             .catch(function(err) {
               console.warn('[PWA] Service Worker registration failed:', err);

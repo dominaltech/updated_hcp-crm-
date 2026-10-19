@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://trunk-samples-disabilities-rca.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://blond-ethnic-oxide-tiles.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {
@@ -50,28 +50,31 @@ if (typeof window !== 'undefined') {
 }
 
 export const getBaseUrl = () => {
-  // 1. Check if user/app cached a custom server address
-  const customHost = localStorage.getItem('hcp_waiter_server_host');
-  if (customHost && customHost.trim()) {
-    let clean = customHost.trim().replace(/\/+$/, '');
-    if (!clean.endsWith('/api')) clean += '/api';
-    return clean;
-  }
-
-  // 2. If running inside the Android APK (Native Mobile)
-  if (isNativePlatform()) {
-    return `http://${LOCAL_WIFI_IP}:3000/api`;
-  }
-
-  // 3. If running inside a standard Web Browser
+  // 1. If running inside a standard Web Browser on HTTPS or Netlify/Vercel
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname || '';
     const isHttps = window.location.protocol === 'https:';
 
     // When deployed on Netlify, Vercel, or loaded over HTTPS:
     if (isHttps || hostname.includes('netlify.app') || hostname.includes('vercel.app')) {
+      // Clear out any old expired cloudflare tunnel URLs that might have been saved in localStorage
+      try {
+        const stored = localStorage.getItem('hcp_waiter_server_host');
+        if (stored && stored.includes('trycloudflare.com') && !stored.includes(CLOUD_TUNNEL_URL.replace('https://', ''))) {
+          localStorage.removeItem('hcp_waiter_server_host');
+        }
+      } catch (e) {}
+
       const tunnel = cachedTunnelUrl || CLOUD_TUNNEL_URL;
       return `${tunnel}/api`;
+    }
+
+    // Check if user/app cached a custom server address for local dev
+    const customHost = localStorage.getItem('hcp_waiter_server_host');
+    if (customHost && customHost.trim() && !customHost.includes('trycloudflare.com')) {
+      let clean = customHost.trim().replace(/\/+$/, '');
+      if (!clean.endsWith('/api')) clean += '/api';
+      return clean;
     }
 
     // If on localhost (PC desktop dev browser)
@@ -87,6 +90,11 @@ export const getBaseUrl = () => {
       return '/api';
     }
     return `http://${hostname || LOCAL_WIFI_IP}:3000/api`;
+  }
+
+  // 2. If running inside the Android APK (Native Mobile)
+  if (isNativePlatform()) {
+    return `http://${LOCAL_WIFI_IP}:3000/api`;
   }
 
   return `http://${LOCAL_WIFI_IP}:3000/api`;
@@ -188,8 +196,10 @@ export const request = async (endpoint, options = {}) => {
         try {
           const fallbackUrl = `${fallbackBase}${normEndpoint}`;
           const res = await doFetch(fallbackUrl, options, options.timeout || 8000);
-          console.log(`[WaiterAPI] Fallback to ${fallbackBase} succeeded! Saving host.`);
-          localStorage.setItem('hcp_waiter_server_host', fallbackBase);
+          console.log(`[WaiterAPI] Fallback to ${fallbackBase} succeeded!`);
+          if (!fallbackBase.includes('trycloudflare.com')) {
+            localStorage.setItem('hcp_waiter_server_host', fallbackBase);
+          }
           return res;
         } catch (fallbackErr) {
           console.warn(`[WaiterAPI] Fallback also failed:`, fallbackErr.message);

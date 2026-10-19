@@ -52,24 +52,18 @@ function saveRemoteUrl(url) {
   // Sync active tunnel URL to Supabase cloud directory so remote clients (Netlify, Mobile APK) stay connected
   try {
     const sbBody = JSON.stringify({
-      id: '00000000-0000-0000-0000-000000000099',
-      room_number: 'TUNNEL',
-      department: 'cloud_tunnel_url',
       items_summary: url,
-      grand_total: 0,
-      subtotal: 0,
-      gst: 0,
       status: 'active'
     });
-    const sbReq = https.request('https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox', {
-      method: 'POST',
+    const sbReq = https.request('https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox?id=eq.00000000-0000-0000-0000-000000000099', {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates',
+        'Prefer': 'return=representation',
         'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
       }
     });
-    sbReq.on('error', () => {});
+    sbReq.on('error', (err) => console.warn('[Supabase Sync Error]:', err.message));
     sbReq.write(sbBody);
     sbReq.end();
   } catch (e) {}

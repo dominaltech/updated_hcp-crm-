@@ -1,5 +1,5 @@
 // Service Worker for Hotel City Park - Waiter Order Panel PWA
-const CACHE_NAME = 'hcp-waiter-cache-v2';
+const CACHE_NAME = 'hcp-waiter-cache-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,22 +10,24 @@ const STATIC_ASSETS = [
   '/pwa-512.png'
 ];
 
-// Install: Pre-cache core app shell
+// Install: Pre-cache core app shell and immediately activate
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
-// Activate: Clean up old caches
+// Activate: Delete all previous caches immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[SW] Purging stale cache:', key);
             return caches.delete(key);
           }
         })
@@ -34,16 +36,16 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Smart caching strategy
+// Fetch: Network-First strategy ensures fresh code while online, cache while offline
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Ignore chrome-extension, non-http schemes, and POST/PUT/DELETE
+  // Ignore non-http schemes and non-GET requests
   if (!url.protocol.startsWith('http')) return;
   if (req.method !== 'GET') return;
 
-  // 1. Navigation requests (HTML pages) -> Network-first with fallback to /index.html
+  // 1. Navigation requests (HTML pages) -> Network-First with fallback to cached index.html
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(() => caches.match('/index.html'))
@@ -51,7 +53,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static assets (JS, CSS, fonts, images) -> Stale-While-Revalidate
+  // 2. Static assets (JS, CSS, fonts, images) -> Network-First so updates take effect immediately
   const isStatic = url.pathname.endsWith('.js') ||
                    url.pathname.endsWith('.css') ||
                    url.pathname.endsWith('.png') ||
@@ -61,22 +63,18 @@ self.addEventListener('fetch', (event) => {
 
   if (isStatic) {
     event.respondWith(
-      caches.match(req).then((cached) => {
-        const fetchPromise = fetch(req).then((networkRes) => {
-          if (networkRes && networkRes.status === 200) {
-            const resClone = networkRes.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
-          }
-          return networkRes;
-        }).catch(() => null);
-
-        return cached || fetchPromise;
-      })
+      fetch(req).then((networkRes) => {
+        if (networkRes && networkRes.status === 200) {
+          const resClone = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
+        }
+        return networkRes;
+      }).catch(() => caches.match(req))
     );
     return;
   }
 
-  // 3. API GET calls -> Network-first with cache fallback
+  // 3. API GET calls -> Network-First with cache fallback
   if (url.pathname.includes('/api/')) {
     event.respondWith(
       fetch(req).then((networkRes) => {
