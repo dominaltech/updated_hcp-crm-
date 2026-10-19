@@ -53,14 +53,18 @@ function saveRemoteUrl(url) {
   // Sync active tunnel URL to Supabase cloud directory so remote clients (Netlify, Mobile APK) stay connected
   try {
     const sbBody = JSON.stringify({
+      id: '00000000-0000-0000-0000-000000000099',
+      room_number: '0',
+      department: 'cloud_tunnel_url',
       items_summary: url,
-      status: 'active'
+      status: 'active',
+      grand_total: 0
     });
-    const sbReq = https.request('https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox?id=eq.00000000-0000-0000-0000-000000000099', {
-      method: 'PATCH',
+    const sbReq = https.request('https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Prefer': 'return=representation',
+        'Prefer': 'resolution=merge-duplicates',
         'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
       }
     });
