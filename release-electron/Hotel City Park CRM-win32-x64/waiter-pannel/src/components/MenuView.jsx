@@ -307,7 +307,7 @@ export default function MenuView({
             flex: 1,
             overflowY: 'auto',
             padding: '4px 12px',
-            paddingBottom: cartTotalItems > 0 ? '90px' : '30px',
+            paddingBottom: cartTotalItems > 0 ? '115px' : '30px',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px'
@@ -476,14 +476,15 @@ export default function MenuView({
         <div
           style={{
             position: 'absolute',
-            bottom: '10px',
+            bottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
             left: '12px',
             right: '12px',
-            padding: '10px 14px',
+            minHeight: '54px',
+            padding: '8px 16px',
             background: 'var(--bg-surface)',
             border: `1.5px solid ${accentColor}`,
             borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-floating)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.16)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',

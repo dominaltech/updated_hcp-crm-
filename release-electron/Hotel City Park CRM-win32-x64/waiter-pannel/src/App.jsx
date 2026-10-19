@@ -32,9 +32,9 @@ export default function App() {
     try {
       const saved = localStorage.getItem('hcp_theme');
       if (saved === 'dark' || saved === 'light') return saved;
-      return 'dark';
+      return 'light';
     } catch {
-      return 'dark';
+      return 'light';
     }
   });
 

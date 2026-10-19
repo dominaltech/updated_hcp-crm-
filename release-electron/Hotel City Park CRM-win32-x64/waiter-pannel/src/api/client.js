@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://blond-ethnic-oxide-tiles.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://clocks-point-kick-medicare.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {

@@ -80,6 +80,7 @@ export default function CartDrawer({
       <div
         style={{
           width: '100%',
+          height: '84dvh',
           maxHeight: '88dvh',
           background: 'var(--bg-surface)',
           borderTopLeftRadius: 'var(--radius-xl)',
@@ -94,14 +95,20 @@ export default function CartDrawer({
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Top Pull Handle */}
+        <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '10px', paddingBottom: '4px', flexShrink: 0 }}>
+          <div style={{ width: '44px', height: '5px', borderRadius: '4px', background: 'var(--border-medium)' }} />
+        </div>
+
         {/* Drawer Header */}
         <div
           style={{
-            padding: '14px 18px',
+            padding: '10px 18px 12px',
             borderBottom: '1px solid var(--border-light)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            flexShrink: 0
           }}
         >
           <div>
@@ -319,9 +326,10 @@ export default function CartDrawer({
         {/* Bill Summary & Punch Action Bar */}
         <div
           style={{
-            padding: '12px 18px 18px',
+            padding: '12px 18px calc(16px + env(safe-area-inset-bottom, 0px))',
             background: 'var(--bg-surface)',
-            borderTop: '1px solid var(--border-light)'
+            borderTop: '1px solid var(--border-light)',
+            flexShrink: 0
           }}
         >
           {/* Subtotal, GST, Total Breakdown */}

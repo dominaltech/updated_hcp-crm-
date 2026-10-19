@@ -4,46 +4,61 @@
    ========================================================================== */
 
 :root {
-  /* Core Apple Palette */
+  /* Core Apple & Modern Typography */
   --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   
-  --bg-app: #f5f5f7;
+  /* 70% Light Dominant Backgrounds & Surfaces */
+  --bg-app: #fcf9fb;
   --bg-surface: #ffffff;
-  --bg-surface-secondary: #fbfbfd;
-  --bg-tertiary: #f8fafc;
-  --bg-glass: rgba(255, 255, 255, 0.82);
-  --bg-dark-glass: rgba(18, 18, 20, 0.85);
+  --bg-surface-secondary: #fef4f8; /* 20% soft blush tint */
+  --bg-tertiary: #faf3f7;
+  --bg-glass: rgba(255, 255, 255, 0.88);
+  --bg-dark-glass: rgba(36, 24, 32, 0.90);
 
-  --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --text-tertiary: #86868b;
+  --text-primary: #21181f;
+  --text-secondary: #6e5e68;
+  --text-tertiary: #968690;
   --text-on-accent: #ffffff;
 
-  /* Accent & Status Colors */
-  --apple-blue: #0071e3;
-  --apple-blue-hover: #0077ed;
-  --apple-blue-subtle: rgba(0, 113, 227, 0.08);
+  /* 20% Soft Blush Tone - rgb(251, 211, 228) */
+  --theme-blush: rgb(251, 211, 228);
+  --theme-blush-subtle: rgba(251, 211, 228, 0.50);
+  --theme-blush-soft: rgba(251, 211, 228, 0.25);
+  --theme-blush-border: rgb(251, 211, 228);
 
-  --apple-green: #34c759;
-  --apple-green-hover: #2db34f;
-  --apple-green-subtle: rgba(52, 199, 89, 0.12);
+  /* 10% Dark / Highlight Purpose - rgb(199, 163, 184) & Deep Mauve Accent */
+  --theme-highlight: rgb(199, 163, 184);
+  --theme-highlight-dark: #8c5d77;
+  --theme-highlight-subtle: rgba(199, 163, 184, 0.22);
+  --theme-highlight-border: rgb(199, 163, 184);
 
-  --apple-orange: #ff9500;
-  --apple-orange-subtle: rgba(255, 149, 0, 0.12);
+  /* Core Accent & Navigation Buttons mapped to 10% Dark Highlight & 20% Blush */
+  --apple-blue: #8c5d77;
+  --apple-blue-hover: #73465f;
+  --apple-blue-subtle: rgba(251, 211, 228, 0.55);
 
-  --apple-purple: #af52de;
-  --apple-purple-subtle: rgba(175, 82, 222, 0.12);
+  --apple-orange: #a86483;
+  --apple-orange-subtle: rgba(251, 211, 228, 0.50);
 
-  --apple-red: #ff3b30;
-  --apple-red-subtle: rgba(255, 59, 48, 0.12);
+  --apple-purple: #965478;
+  --apple-purple-subtle: rgba(251, 211, 228, 0.50);
 
-  --apple-indigo: #5856d6;
-  --apple-indigo-subtle: rgba(88, 86, 214, 0.12);
+  --apple-indigo: #824f6e;
+  --apple-indigo-subtle: rgba(251, 211, 228, 0.50);
+
+  /* Remaining: Reddish & Green maintained as same */
+  --apple-green: #16a34a;
+  --apple-green-hover: #15803d;
+  --apple-green-subtle: rgba(22, 163, 74, 0.12);
+
+  --apple-red: #dc2626;
+  --apple-red-hover: #b91c1c;
+  --apple-red-subtle: rgba(220, 38, 38, 0.12);
 
   /* Borders & Shadows */
-  --border-light: rgba(0, 0, 0, 0.08);
-  --border-medium: rgba(0, 0, 0, 0.14);
-  --border-focus: #0071e3;
+  --border-light: rgba(199, 163, 184, 0.25);
+  --border-medium: rgba(199, 163, 184, 0.45);
+  --border-focus: rgb(199, 163, 184);
 
   --radius-xs: 6px;
   --radius-sm: 10px;
@@ -51,11 +66,11 @@
   --radius-lg: 22px;
   --radius-xl: 30px;
 
-  --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.06);
-  --shadow-floating: 0 20px 40px rgba(0, 0, 0, 0.12);
-  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.22);
-  --shadow-scanner: 0 0 25px rgba(0, 113, 227, 0.45);
+  --shadow-subtle: 0 2px 8px rgba(33, 24, 31, 0.04);
+  --shadow-card: 0 4px 20px rgba(33, 24, 31, 0.06);
+  --shadow-floating: 0 20px 40px rgba(33, 24, 31, 0.12);
+  --shadow-modal: 0 24px 60px rgba(33, 24, 31, 0.22);
+  --shadow-scanner: 0 0 25px rgba(140, 93, 119, 0.45);
 
   --transition-fast: 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   --transition-smooth: 0.32s cubic-bezier(0.16, 1, 0.3, 1);
@@ -63,56 +78,62 @@
 }
 
 /* ==========================================================================
-   DARK THEME PALETTE & DESIGN TOKENS (APPLE AESTHETIC - OBSIDIAN & SLATE)
+   DARK THEME PALETTE & DESIGN TOKENS
    ========================================================================== */
 :root[data-theme="dark"],
 html.dark-theme,
 body.dark-theme {
   color-scheme: dark;
 
-  --bg-app: #0c0e12;
-  --bg-surface: #171a21;
-  --bg-surface-secondary: #21252e;
-  --bg-tertiary: #1e232d;
-  --bg-glass: rgba(23, 26, 33, 0.88);
-  --bg-dark-glass: rgba(12, 14, 18, 0.94);
+  --bg-app: #140f13;
+  --bg-surface: #1e171d;
+  --bg-surface-secondary: #2b2029;
+  --bg-tertiary: #231a22;
+  --bg-glass: rgba(30, 23, 29, 0.88);
+  --bg-dark-glass: rgba(20, 15, 19, 0.94);
 
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-tertiary: #6b7280;
+  --text-primary: #fdf8fb;
+  --text-secondary: #c7bac2;
+  --text-tertiary: #9c8e98;
   --text-on-accent: #ffffff;
 
-  /* Accent & Status Colors tailored for Dark Mode Luminescence */
-  --apple-blue: #38bdf8;
-  --apple-blue-hover: #0ea5e9;
-  --apple-blue-subtle: rgba(56, 189, 248, 0.16);
+  /* 20% Blush in Dark Mode */
+  --theme-blush: rgb(251, 211, 228);
+  --theme-blush-subtle: rgba(251, 211, 228, 0.18);
+  --theme-blush-soft: rgba(251, 211, 228, 0.08);
 
+  /* 10% Highlight in Dark Mode */
+  --theme-highlight: rgb(199, 163, 184);
+  --apple-blue: rgb(199, 163, 184);
+  --apple-blue-hover: #d9bfcf;
+  --apple-blue-subtle: rgba(199, 163, 184, 0.18);
+
+  --apple-orange: #e2a8c3;
+  --apple-orange-subtle: rgba(251, 211, 228, 0.16);
+
+  --apple-purple: #c7a3b8;
+  --apple-purple-subtle: rgba(199, 163, 184, 0.16);
+
+  --apple-indigo: #c7a3b8;
+  --apple-indigo-subtle: rgba(199, 163, 184, 0.16);
+
+  /* Remaining: Red & Green Maintained */
   --apple-green: #34d399;
   --apple-green-hover: #10b981;
   --apple-green-subtle: rgba(52, 211, 153, 0.16);
 
-  --apple-orange: #fbbf24;
-  --apple-orange-subtle: rgba(251, 191, 36, 0.16);
-
-  --apple-purple: #c084fc;
-  --apple-purple-subtle: rgba(192, 132, 252, 0.16);
-
   --apple-red: #f87171;
   --apple-red-subtle: rgba(248, 113, 113, 0.16);
 
-  --apple-indigo: #818cf8;
-  --apple-indigo-subtle: rgba(129, 140, 248, 0.16);
-
-  /* Borders & Shadows */
-  --border-light: rgba(255, 255, 255, 0.09);
-  --border-medium: rgba(255, 255, 255, 0.16);
-  --border-focus: #38bdf8;
+  --border-light: rgba(199, 163, 184, 0.18);
+  --border-medium: rgba(199, 163, 184, 0.32);
+  --border-focus: rgb(199, 163, 184);
 
   --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.45);
   --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.55);
   --shadow-floating: 0 20px 40px rgba(0, 0, 0, 0.70);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.85);
-  --shadow-scanner: 0 0 25px rgba(56, 189, 248, 0.5);
+  --shadow-scanner: 0 0 25px rgba(199, 163, 184, 0.5);
 }
 
 /* Base Resets */

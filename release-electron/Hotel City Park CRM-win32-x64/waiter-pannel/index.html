@@ -19,7 +19,7 @@
     <script>
       (function() {
         try {
-          var savedTheme = localStorage.getItem('hcp_theme') || 'dark';
+          var savedTheme = localStorage.getItem('hcp_theme') || 'light';
           document.documentElement.setAttribute('data-theme', savedTheme);
           if (savedTheme === 'dark') {
             document.documentElement.classList.add('dark-theme');
