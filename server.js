@@ -2873,8 +2873,26 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
 
           return res.json({
             success: true,
+            guest: {
+              name: room.guest_name || '',
+              mobile: room.mobile || ''
+            },
+            booking: {
+              id: room.booking_id,
+              guest_name: room.guest_name || '',
+              guest_mobile: room.mobile || ''
+            },
             folio: {
               room,
+              guest: {
+                name: room.guest_name || '',
+                mobile: room.mobile || ''
+              },
+              booking: {
+                id: room.booking_id,
+                guest_name: room.guest_name || '',
+                guest_mobile: room.mobile || ''
+              },
               restaurantOrders,
               barOrders,
               extraExpenses: extraExpenses || [],

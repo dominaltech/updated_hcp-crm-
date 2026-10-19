@@ -11,8 +11,8 @@ export default function RoomServiceView({
     const q = searchTerm.toLowerCase();
     const roomNum = (r.room_number || '').toLowerCase();
     const guestName = (r.guest_name || '').toLowerCase();
-    const guestPhone = (r.guest_phone || '').toLowerCase();
-    return roomNum.includes(q) || guestName.includes(q) || guestPhone.includes(q);
+    const phone = (r.guest_phone || r.guest_mobile || '').toLowerCase();
+    return roomNum.includes(q) || guestName.includes(q) || phone.includes(q);
   });
 
   return (
@@ -121,7 +121,11 @@ export default function RoomServiceView({
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--apple-blue)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>📞</span>
-                    <span>{room.guest_phone || 'Mobile Not Stored'}</span>
+                    <span>
+                      {(room.guest_phone && room.guest_phone !== '—')
+                        ? room.guest_phone
+                        : (room.guest_mobile && room.guest_mobile !== '—' ? room.guest_mobile : 'Mobile Not Stored')}
+                    </span>
                   </div>
                   <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
                     {room.room_type || 'Standard Room'} • Floor {room.floor || '1'}

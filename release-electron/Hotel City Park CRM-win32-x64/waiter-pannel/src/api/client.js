@@ -255,33 +255,15 @@ export const api = {
     // Filter rooms that are occupied or have current_booking_id
     const occupied = rooms.filter(r => r.status === 'occupied' || r.current_booking_id);
 
-    // Fetch live guest folios in parallel for accurate names & phones
-    const enriched = await Promise.all(
-      occupied.map(async (r) => {
-        try {
-          const folio = await request(`/rooms/${r.id}/folio`);
-          const booking = folio && (folio.booking || folio.bookingDetails);
-          const guest = folio && folio.guest;
-          return {
-            ...r,
-            guest_name: guest?.name || booking?.guest_name || 'In-House Guest',
-            guest_phone: guest?.mobile || booking?.guest_mobile || '—',
-            booking_id: booking?.id || r.current_booking_id,
-            checkin_date: booking?.checkin_date || '—',
-            stay_nights: booking?.stay_duration_nights || 1
-          };
-        } catch {
-          return {
-            ...r,
-            guest_name: 'In-House Guest',
-            guest_phone: '—',
-            booking_id: r.current_booking_id
-          };
-        }
-      })
-    );
-
-    return enriched;
+    return occupied.map(r => ({
+      ...r,
+      guest_name: r.guest_name || 'In-House Guest',
+      guest_phone: r.guest_mobile || r.mobile || r.guest_phone || '—',
+      guest_mobile: r.guest_mobile || r.mobile || r.guest_phone || '—',
+      booking_id: r.booking_id || r.current_booking_id,
+      checkin_date: r.checkin_time || '—',
+      stay_nights: 1
+    }));
   },
 
   // Order Placement (Tables, Rooms, Parcels)
