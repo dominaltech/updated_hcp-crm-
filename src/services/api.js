@@ -357,6 +357,10 @@ export const api = {
   getSectionPasswords: () => request('/settings/section-passwords'),
   saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
 
+  // Print Queue for Auto-Printing
+  getPendingPrintJobs: () => request('/print-queue/pending'),
+  ackPrintJob: (id) => request(`/print-queue/${id}/ack`, { method: 'POST' }),
+
   request,
 
   // Auth Token Management

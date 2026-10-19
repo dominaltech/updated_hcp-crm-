@@ -19,6 +19,7 @@ import {
   printDailyClosingReport,
   printKOTSlip,
   printBOTSlip,
+  printPreBillSlip,
   printThermalBillSlip
 } from './services/printService';
 import { api } from './services/api';
@@ -60,6 +61,43 @@ function AppContent() {
       document.body.classList.remove('modal-open');
     };
   }, [isAnyModalOpen]);
+
+  // Auto-Print Queue Poller for CRM Computer
+  // Automatically prints KOT, BOT, and Pre-bill whenever placed from waiter panel or CRM
+  useEffect(() => {
+    let isProcessing = false;
+    const pollPrintQueue = async () => {
+      if (isProcessing) return;
+      try {
+        isProcessing = true;
+        const res = await api.getPendingPrintJobs();
+        if (res && res.success && Array.isArray(res.jobs) && res.jobs.length > 0) {
+          for (const job of res.jobs) {
+            try {
+              if (job.type === 'kot') {
+                printKOTSlip(job.data?.kot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
+              } else if (job.type === 'bot') {
+                printBOTSlip(job.data?.bot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
+              } else if (job.type === 'prebill') {
+                printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
+              }
+            } catch (err) {
+              console.error('[AutoPrint] Error processing print job:', job.id, err);
+            } finally {
+              await api.ackPrintJob(job.id).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        // Silent catch for background polling
+      } finally {
+        isProcessing = false;
+      }
+    };
+
+    const interval = setInterval(pollPrintQueue, 1500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handlers for Hospitality Page
   const handleStartCheckin = (primaryRoom, additionalRooms = []) => {

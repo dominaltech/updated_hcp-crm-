@@ -323,67 +323,97 @@ export const api = {
     }
 
     if (destination_type === 'room') {
-      // Room service order charged directly to room booking folio
-      const endpoint = department === 'bar' ? '/bar/order' : '/restaurant/order';
-      return await request(endpoint, {
+      // Room service order: Route through tables (RS-<room_number>) so:
+      // 1) KOT prints automatically on CRM computer
+      // 2) Order stays active in "My Orders" on Waiter Panel until settled
+      const roomNum = String(orderData.room_number || destination_label || '').match(/\d+/)?.[0] || String(destination_id);
+      const tableNumber = `RS-${roomNum}`;
+      const guestName = orderData.customer_name || orderData.guest_name || `Room ${roomNum} Guest`;
+
+      // 1. Create or retrieve active room service table
+      const tableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
+      const tblRes = await request(tableEndpoint, {
         method: 'POST',
         body: {
-          order_type: 'room',
+          table_number: tableNumber,
+          table_type: 'room_service',
+          capacity: 2,
           room_id: destination_id,
-          department,
-          payment_mode: 'room_folio',
-          subtotal,
-          tax: gstAmount,
-          discount: 0,
-          total: grandTotal,
-          table_number: destination_label || `Room ${destination_id}`,
+          special_notes: `Room ${roomNum} (${guestName})`
+        }
+      });
+
+      const tableId = tblRes?.tableId || tblRes?.table?.id;
+      if (!tableId) throw new Error('Could not initialize room service table');
+
+      // 2. Dispatch KOT/BOT through table endpoint (enqueues auto-print & appears in My Orders)
+      const kotEndpoint = department === 'bar'
+        ? `/bar/tables/${tableId}/bot`
+        : `/restaurant/tables/${tableId}/kot`;
+
+      return await request(kotEndpoint, {
+        method: 'POST',
+        body: {
           items: items.map(it => ({
             id: it.id,
             name: it.name,
-            price: parseFloat(it.price) || 0,
-            qty: parseInt(it.quantity || it.qty || 1, 10) || 1,
-            quantity: parseInt(it.quantity || it.qty || 1, 10) || 1,
-            total: (parseFloat(it.price) || 0) * (parseInt(it.quantity || it.qty || 1, 10) || 1),
+            price: it.price,
+            qty: it.quantity || it.qty || 1,
+            quantity: it.quantity || it.qty || 1,
             notes: it.notes || ''
           })),
-          notes: notes || `Room Service by ${waiter_name}`,
           waiter_id,
           waiter_name,
-          payment_method: 'room_folio',
-          is_room_service: true
+          customer_name: guestName,
+          customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+          guest_phone: orderData.guest_phone || orderData.customer_phone || '',
+          notes: notes || `Room Service for Room ${roomNum}`,
+          timestamp: new Date().toISOString()
         }
       });
     }
 
     // Parcel / Takeaway order
-    const parcelEndpoint = department === 'bar' ? '/bar/order' : '/restaurant/order';
-    return await request(parcelEndpoint, {
+    // Route through parcel table (P-<token>) so KOT auto-prints and order shows in My Orders
+    const pToken = String(destination_id || orderData.customer_name || Date.now().toString().slice(-4)).replace(/^P-/i, '');
+    const parcelTableNumber = `P-${pToken}`;
+
+    const parcelTableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
+    const parcelTblRes = await request(parcelTableEndpoint, {
       method: 'POST',
       body: {
-        order_type: 'parcel',
-        department,
-        customer_name: orderData.customer_name || destination_label || 'Parcel Customer',
-        table_number: destination_label || 'Parcel',
-        guest_phone: orderData.guest_phone || orderData.customer_phone || '',
-        customer_phone: orderData.guest_phone || orderData.customer_phone || '',
-        payment_mode: 'cash',
-        subtotal,
-        tax: gstAmount,
-        discount: 0,
-        total: grandTotal,
+        table_number: parcelTableNumber,
+        table_type: 'parcel',
+        capacity: 1,
+        special_notes: notes || `Takeaway Parcel #${pToken}`
+      }
+    });
+
+    const parcelTableId = parcelTblRes?.tableId || parcelTblRes?.table?.id;
+    if (!parcelTableId) throw new Error('Could not initialize parcel order');
+
+    const parcelKotEndpoint = department === 'bar'
+      ? `/bar/tables/${parcelTableId}/bot`
+      : `/restaurant/tables/${parcelTableId}/kot`;
+
+    return await request(parcelKotEndpoint, {
+      method: 'POST',
+      body: {
         items: items.map(it => ({
           id: it.id,
           name: it.name,
-          price: parseFloat(it.price) || 0,
-          qty: parseInt(it.quantity || it.qty || 1, 10) || 1,
-          quantity: parseInt(it.quantity || it.qty || 1, 10) || 1,
-          total: (parseFloat(it.price) || 0) * (parseInt(it.quantity || it.qty || 1, 10) || 1),
+          price: it.price,
+          qty: it.quantity || it.qty || 1,
+          quantity: it.quantity || it.qty || 1,
           notes: it.notes || ''
         })),
-        notes: notes || `Takeaway by ${waiter_name}`,
         waiter_id,
         waiter_name,
-        payment_method: 'pending'
+        customer_name: orderData.customer_name || `Parcel #${pToken}`,
+        customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+        guest_phone: orderData.guest_phone || orderData.customer_phone || '',
+        notes: notes || `Takeaway Parcel #${pToken}`,
+        timestamp: new Date().toISOString()
       }
     });
   },

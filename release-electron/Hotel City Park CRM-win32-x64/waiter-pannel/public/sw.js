@@ -1,5 +1,5 @@
 // Service Worker for Hotel City Park - Waiter Order Panel PWA
-const CACHE_NAME = 'hcp-waiter-cache-v4';
+const CACHE_NAME = 'hcp-waiter-cache-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

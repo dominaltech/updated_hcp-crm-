@@ -17,6 +17,8 @@ export default function MyOrdersView({
   const [selectedOrder, setSelectedOrder] = useState(null); // Full order view modal
   const [orderToCancel, setOrderToCancel] = useState(null); // Cancel confirmation modal
   const [settleModalTable, setSettleModalTable] = useState(null);
+  const [rsSettleMode, setRsSettleMode] = useState('pay'); // 'pay' | 'room'
+  const [rsPayMethod, setRsPayMethod] = useState('cash'); // 'cash' | 'upi' | 'card'
   const [paymentMode, setPaymentMode] = useState('cash');
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [isPaidAtRoom, setIsPaidAtRoom] = useState(false);
@@ -28,14 +30,19 @@ export default function MyOrdersView({
   const myName = currentUser?.full_name || currentUser?.username || 'Waiter';
   const myId = currentUser?.id;
 
-  // Filter active tables attended by this waiter
+  // Filter active tables attended by this waiter (or room service/parcel orders)
   const myActiveTables = tables.filter((t) => {
+    const isRS = t.table_type === 'room_service' || String(t.table_number || '').startsWith('RS-');
+    const isParcel = t.table_type === 'parcel' || t.is_parcel || t.is_takeaway || String(t.table_number || '').startsWith('P-');
     const isAttendedByMe = (
+      !t.waiter_name ||
+      t.waiter_name === 'Staff' ||
+      t.waiter_name === 'Waiter' ||
       (t.waiter_name && (t.waiter_name.toLowerCase() === myName.toLowerCase() || t.waiter_name.toLowerCase() === currentUser?.username?.toLowerCase())) ||
       (t.waiter_id && t.waiter_id === myId)
     );
     const hasActiveOrder = (t.status !== 'available' && t.status !== '') || (t.cart && t.cart.length > 0);
-    return isAttendedByMe && hasActiveOrder;
+    return (isAttendedByMe || isRS || isParcel) && hasActiveOrder;
   });
 
   // Filter recent orders placed by this waiter
@@ -114,7 +121,7 @@ export default function MyOrdersView({
     try {
       setActionInProgress(`print-${table.id}`);
       await api.requestBillPrint(department, table.id);
-      setMsg(`🧾 Bill printed for ${table.table_number || table.name}!`);
+      setMsg(`🧾 Pre-Bill sent to CRM Printer for ${table.table_number || table.name}!`);
       setTimeout(() => setMsg(''), 4000);
       onRefresh();
     } catch (err) {
@@ -130,37 +137,77 @@ export default function MyOrdersView({
     try {
       setActionInProgress(`settle-${settleModalTable.id}`);
       
-      const settlePayload = {
-        payment_method: paymentMode,
-        payment_mode: paymentMode,
-        waiter_name: myName
-      };
+      const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
 
-      if (paymentMode === 'room_folio') {
-        if (!selectedRoomId) {
-          setMsg('⚠️ Please select an occupied room for Room Folio settlement.');
-          setTimeout(() => setMsg(''), 4000);
-          setActionInProgress(null);
-          return;
+      let settlePayload;
+
+      if (isRS) {
+        // Room Service Order: 2 distinct options
+        const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').trim();
+        const matchedRoom = occupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id));
+        const resolvedRoomId = matchedRoom?.id || settleModalTable.room_id || null;
+
+        if (rsSettleMode === 'pay') {
+          // 1. Pay Now -> Shows in green "✓ Paid" in room folio
+          settlePayload = {
+            payment_mode: rsPayMethod || 'cash',
+            payment_method: rsPayMethod || 'cash',
+            is_paid: 1,
+            room_id: resolvedRoomId,
+            room_number: rawRoomNum,
+            waiter_name: myName,
+            customer_name: matchedRoom?.guest_name ? `Room ${rawRoomNum} - ${matchedRoom.guest_name}` : (settleModalTable.customer_name || `Room ${rawRoomNum}`),
+            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || ''
+          };
+        } else {
+          // 2. Add to Room -> Shows in red "⏳ Pending" in room folio
+          settlePayload = {
+            payment_mode: 'room_folio',
+            payment_method: 'room_folio',
+            is_paid: 0,
+            room_id: resolvedRoomId,
+            room_number: rawRoomNum,
+            waiter_name: myName,
+            customer_name: matchedRoom?.guest_name ? `Room ${rawRoomNum} - ${matchedRoom.guest_name}` : (settleModalTable.customer_name || `Room ${rawRoomNum}`),
+            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || ''
+          };
         }
-        const roomObj = occupiedRooms.find(r => String(r.id) === String(selectedRoomId));
-        settlePayload.room_id = selectedRoomId;
-        settlePayload.room_number = roomObj?.room_number || '';
-        settlePayload.is_paid = isPaidAtRoom ? 1 : 0;
-        if (roomObj?.guest_name) settlePayload.customer_name = `Room ${roomObj.room_number} - ${roomObj.guest_name}`;
-        if (roomObj?.guest_phone && roomObj.guest_phone !== '—') settlePayload.guest_phone = roomObj.guest_phone;
-      } else if (paymentMode === 'owner') {
-        settlePayload.payment_mode = 'owner';
-        settlePayload.payment_method = 'owner';
-        settlePayload.owner_name = selectedOwner;
-        settlePayload.customer_name = `${selectedOwner} (Owner)`;
-        settlePayload.is_paid = 0; // Unpaid / Owner charge, zero cash discrepancy
-        settlePayload.room_service_for = `Owner: ${selectedOwner}${ownerNote.trim() ? ` - ${ownerNote.trim()}` : ''}`;
-        settlePayload.special_notes = ownerNote.trim() || `Charged to ${selectedOwner}`;
+      } else {
+        // Dine-in table or parcel settlement
+        settlePayload = {
+          payment_method: paymentMode,
+          payment_mode: paymentMode,
+          waiter_name: myName
+        };
+
+        if (paymentMode === 'room_folio') {
+          if (!selectedRoomId) {
+            setMsg('⚠️ Please select an occupied room for Room Folio settlement.');
+            setTimeout(() => setMsg(''), 4000);
+            setActionInProgress(null);
+            return;
+          }
+          const roomObj = occupiedRooms.find(r => String(r.id) === String(selectedRoomId));
+          settlePayload.room_id = selectedRoomId;
+          settlePayload.room_number = roomObj?.room_number || '';
+          settlePayload.is_paid = isPaidAtRoom ? 1 : 0;
+          if (roomObj?.guest_name) settlePayload.customer_name = `Room ${roomObj.room_number} - ${roomObj.guest_name}`;
+          if (roomObj?.guest_phone && roomObj.guest_phone !== '—') settlePayload.guest_phone = roomObj.guest_phone;
+        } else if (paymentMode === 'owner') {
+          settlePayload.payment_mode = 'owner';
+          settlePayload.payment_method = 'owner';
+          settlePayload.owner_name = selectedOwner;
+          settlePayload.customer_name = `${selectedOwner} (Owner)`;
+          settlePayload.is_paid = 0; // Unpaid / Owner charge, zero cash discrepancy
+          settlePayload.room_service_for = `Owner: ${selectedOwner}${ownerNote.trim() ? ` - ${ownerNote.trim()}` : ''}`;
+          settlePayload.special_notes = ownerNote.trim() || `Charged to ${selectedOwner}`;
+        } else {
+          settlePayload.is_paid = 1;
+        }
       }
 
       await api.settleTable(department, settleModalTable.id, settlePayload);
-      setMsg(`✅ Table ${settleModalTable.table_number || settleModalTable.name} settled successfully!`);
+      setMsg(`✅ Order for ${settleModalTable.table_number || settleModalTable.name} settled successfully!`);
       setSettleModalTable(null);
       setSelectedOrder(null);
       setTimeout(() => setMsg(''), 4000);
@@ -473,7 +520,7 @@ export default function MyOrdersView({
                         cursor: 'pointer'
                       }}
                     >
-                      {actionInProgress === `print-${t.id}` ? '...' : '🧾 Bill'}
+                      {actionInProgress === `print-${t.id}` ? '...' : '🧾 Pre-Bill'}
                     </button>
 
                     <button
@@ -949,163 +996,301 @@ export default function MyOrdersView({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ fontSize: '1.10rem', fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 4px' }}>
-              💵 Settle Table {settleModalTable.table_number || settleModalTable.name}
-            </h3>
-            <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-              Select payment mode received from guest:
-            </p>
+            {(() => {
+              const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
+              const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').trim();
+              const settleItems = settleModalTable.cart || [];
+              const settleSubtotal = settleModalTable.cart_total || settleItems.reduce((s, it) => s + ((Number(it.price) || 0) * (it.qty || it.quantity || 1)), 0);
+              const settleGst = Math.round((settleSubtotal * 5) / 100);
+              const settleGrand = Math.round(settleSubtotal + settleGst);
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '14px' }}>
-              {[
-                { id: 'cash', label: '💵 Cash' },
-                { id: 'upi', label: '📱 UPI / QR' },
-                { id: 'card', label: '💳 Card POS' },
-                { id: 'room_folio', label: '🛏️ Room Folio' },
-                { id: 'owner', label: '👤 Owner Account' }
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setPaymentMode(m.id)}
-                  style={{
-                    padding: '9px 6px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: paymentMode === m.id ? 'var(--apple-blue-subtle)' : 'var(--bg-surface-secondary)',
-                    border: paymentMode === m.id ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
-                    color: paymentMode === m.id ? 'var(--apple-blue)' : 'var(--text-secondary)',
-                    fontSize: '0.76rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    gridColumn: m.id === 'owner' ? 'span 2' : 'auto'
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+              if (isRS) {
+                return (
+                  <div>
+                    <h3 style={{ fontSize: '1.10rem', fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 2px' }}>
+                      🛎️ Room Service - Room {rawRoomNum}
+                    </h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 12px', padding: '6px 10px', background: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-xs)' }}>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Amount to Settle:</span>
+                      <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--apple-blue)' }}>₹{settleGrand.toLocaleString('en-IN')}</span>
+                    </div>
 
-            {/* Room Folio Sub-options */}
-            {paymentMode === 'room_folio' && (
-              <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Select In-House Room:
-                </label>
-                <select
-                  value={selectedRoomId}
-                  onChange={(e) => setSelectedRoomId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-xs)',
-                    border: '1px solid var(--border-medium)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    marginBottom: '10px'
-                  }}
-                >
-                  <option value="">-- Choose Occupied Room --</option>
-                  {occupiedRooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      Room {r.room_number} {r.guest_name ? `(${r.guest_name})` : ''}
-                    </option>
-                  ))}
-                </select>
+                    <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 10px' }}>
+                      Choose how this room service bill should be settled:
+                    </p>
 
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Billing Status:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsPaidAtRoom(false)}
-                    style={{
-                      padding: '8px 6px',
-                      borderRadius: 'var(--radius-xs)',
-                      border: !isPaidAtRoom ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
-                      background: !isPaidAtRoom ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
-                      color: !isPaidAtRoom ? 'var(--apple-blue)' : 'var(--text-secondary)',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ⏳ Pending (Checkout)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPaidAtRoom(true)}
-                    style={{
-                      padding: '8px 6px',
-                      borderRadius: 'var(--radius-xs)',
-                      border: isPaidAtRoom ? '1.5px solid var(--apple-green)' : '1px solid var(--border-medium)',
-                      background: isPaidAtRoom ? 'rgba(52, 199, 89, 0.12)' : 'var(--bg-surface)',
-                      color: isPaidAtRoom ? 'var(--apple-green)' : 'var(--text-secondary)',
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ✅ Paid at Room
-                  </button>
+                    {/* 2 Clear Options Requested by User */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px' }}>
+                      {/* Option 1: Pay Now */}
+                      <button
+                        type="button"
+                        onClick={() => setRsSettleMode('pay')}
+                        style={{
+                          padding: '12px 8px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: rsSettleMode === 'pay' ? '2px solid #16a34a' : '1px solid var(--border-medium)',
+                          background: rsSettleMode === 'pay' ? 'rgba(22, 163, 74, 0.12)' : 'var(--bg-surface-secondary)',
+                          color: rsSettleMode === 'pay' ? '#16a34a' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.3rem' }}>💵</span>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 900, color: rsSettleMode === 'pay' ? '#16a34a' : 'var(--text-primary)' }}>
+                          Pay Now
+                        </span>
+                        <span style={{ fontSize: '0.64rem', color: '#16a34a', fontWeight: 750, marginTop: '2px' }}>
+                          ✓ Shows Green "Paid" in Room
+                        </span>
+                      </button>
+
+                      {/* Option 2: Add to Room */}
+                      <button
+                        type="button"
+                        onClick={() => setRsSettleMode('room')}
+                        style={{
+                          padding: '12px 8px',
+                          borderRadius: 'var(--radius-sm)',
+                          border: rsSettleMode === 'room' ? '2px solid #dc2626' : '1px solid var(--border-medium)',
+                          background: rsSettleMode === 'room' ? 'rgba(220, 38, 38, 0.10)' : 'var(--bg-surface-secondary)',
+                          color: rsSettleMode === 'room' ? '#dc2626' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.3rem' }}>🏨</span>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 900, color: rsSettleMode === 'room' ? '#dc2626' : 'var(--text-primary)' }}>
+                          Add to Room
+                        </span>
+                        <span style={{ fontSize: '0.64rem', color: '#dc2626', fontWeight: 750, marginTop: '2px' }}>
+                          ⏳ Shows Red "Pending" in Room
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Method details based on selected option */}
+                    {rsSettleMode === 'pay' ? (
+                      <div style={{ background: 'var(--bg-surface-secondary)', padding: '10px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                          Payment Method Received:
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                          {[
+                            { id: 'cash', label: '💵 Cash' },
+                            { id: 'upi', label: '📱 UPI' },
+                            { id: 'card', label: '💳 Card' }
+                          ].map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setRsPayMethod(m.id)}
+                              style={{
+                                padding: '8px 4px',
+                                borderRadius: 'var(--radius-xs)',
+                                background: rsPayMethod === m.id ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
+                                border: rsPayMethod === m.id ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                                color: rsPayMethod === m.id ? 'var(--apple-blue)' : 'var(--text-primary)',
+                                fontSize: '0.76rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 700, marginTop: '8px', textAlign: 'center' }}>
+                          Guest paid ₹{settleGrand.toLocaleString('en-IN')} via {rsPayMethod.toUpperCase()}. Room folio will reflect as <strong>PAID (Green)</strong>.
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ background: 'rgba(220, 38, 38, 0.08)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px dashed #fca5a5' }}>
+                        <div style={{ fontSize: '0.74rem', color: '#b91c1c', fontWeight: 800, marginBottom: '2px' }}>
+                          ⏳ Unpaid Room Folio Charge
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: '#b91c1c', lineHeight: 1.35 }}>
+                          ₹{settleGrand.toLocaleString('en-IN')} will be posted to Room {rawRoomNum}'s checkout balance. It will display in <strong>RED as "Pending"</strong> in Room Folio.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div>
+                  <h3 style={{ fontSize: '1.10rem', fontWeight: 900, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+                    💵 Settle {settleModalTable.table_number || settleModalTable.name}
+                  </h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 12px', padding: '6px 10px', background: 'var(--bg-surface-secondary)', borderRadius: 'var(--radius-xs)' }}>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Bill Total:</span>
+                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--apple-blue)' }}>₹{settleGrand.toLocaleString('en-IN')}</span>
+                  </div>
+                  <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+                    Select payment mode received from guest:
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '14px' }}>
+                    {[
+                      { id: 'cash', label: '💵 Cash' },
+                      { id: 'upi', label: '📱 UPI / QR' },
+                      { id: 'card', label: '💳 Card POS' },
+                      { id: 'room_folio', label: '🛏️ Room Folio' },
+                      { id: 'owner', label: '👤 Owner Account' }
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPaymentMode(m.id)}
+                        style={{
+                          padding: '9px 6px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: paymentMode === m.id ? 'var(--apple-blue-subtle)' : 'var(--bg-surface-secondary)',
+                          border: paymentMode === m.id ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                          color: paymentMode === m.id ? 'var(--apple-blue)' : 'var(--text-secondary)',
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          textAlign: 'center',
+                          gridColumn: m.id === 'owner' ? 'span 2' : 'auto'
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Room Folio Sub-options for Dine-in Table */}
+                  {paymentMode === 'room_folio' && (
+                    <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        Select In-House Room:
+                      </label>
+                      <select
+                        value={selectedRoomId}
+                        onChange={(e) => setSelectedRoomId(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: 'var(--radius-xs)',
+                          border: '1px solid var(--border-medium)',
+                          background: 'var(--bg-surface)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          marginBottom: '10px'
+                        }}
+                      >
+                        <option value="">-- Choose Occupied Room --</option>
+                        {occupiedRooms.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            Room {r.room_number} {r.guest_name ? `(${r.guest_name})` : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        Billing Status in Room Folio:
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsPaidAtRoom(false)}
+                          style={{
+                            padding: '8px 6px',
+                            borderRadius: 'var(--radius-xs)',
+                            border: !isPaidAtRoom ? '1.5px solid var(--apple-red)' : '1px solid var(--border-medium)',
+                            background: !isPaidAtRoom ? 'rgba(220, 38, 38, 0.10)' : 'var(--bg-surface)',
+                            color: !isPaidAtRoom ? 'var(--apple-red)' : 'var(--text-secondary)',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ⏳ Pending (Red)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsPaidAtRoom(true)}
+                          style={{
+                            padding: '8px 6px',
+                            borderRadius: 'var(--radius-xs)',
+                            border: isPaidAtRoom ? '1.5px solid #16a34a' : '1px solid var(--border-medium)',
+                            background: isPaidAtRoom ? 'rgba(22, 163, 74, 0.12)' : 'var(--bg-surface)',
+                            color: isPaidAtRoom ? '#16a34a' : 'var(--text-secondary)',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✓ Paid (Green)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Owner Account Sub-options */}
+                  {paymentMode === 'owner' && (
+                    <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        Select Owner Account:
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                        {['Jaijeet sir', 'Mahesh Sir'].map((owner) => (
+                          <button
+                            key={owner}
+                            type="button"
+                            onClick={() => setSelectedOwner(owner)}
+                            style={{
+                              padding: '10px 8px',
+                              borderRadius: 'var(--radius-xs)',
+                              border: selectedOwner === owner ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                              background: selectedOwner === owner ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
+                              color: selectedOwner === owner ? 'var(--apple-blue)' : 'var(--text-secondary)',
+                              fontSize: '0.78rem',
+                              fontWeight: 850,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {owner}
+                          </button>
+                        ))}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={ownerNote}
+                        onChange={(e) => setOwnerNote(e.target.value)}
+                        placeholder="Note / Reference (e.g. Guest hospitality, meeting)..."
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: 'var(--radius-xs)',
+                          border: '1px solid var(--border-medium)',
+                          background: 'var(--bg-surface)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.76rem',
+                          boxSizing: 'border-box',
+                          marginBottom: '8px'
+                        }}
+                      />
+
+                      <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
+                        ℹ️ Logged as Owner Unpaid Khata. Cash register total will not be altered.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Owner Account Sub-options */}
-            {paymentMode === 'owner' && (
-              <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
-                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                  Select Owner Account:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                  {['Jaijeet sir', 'Mahesh Sir'].map((owner) => (
-                    <button
-                      key={owner}
-                      type="button"
-                      onClick={() => setSelectedOwner(owner)}
-                      style={{
-                        padding: '10px 8px',
-                        borderRadius: 'var(--radius-xs)',
-                        border: selectedOwner === owner ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
-                        background: selectedOwner === owner ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
-                        color: selectedOwner === owner ? 'var(--apple-blue)' : 'var(--text-secondary)',
-                        fontSize: '0.78rem',
-                        fontWeight: 850,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {owner}
-                    </button>
-                  ))}
-                </div>
-
-                <input
-                  type="text"
-                  value={ownerNote}
-                  onChange={(e) => setOwnerNote(e.target.value)}
-                  placeholder="Note / Reference (e.g. Guest hospitality, meeting)..."
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-xs)',
-                    border: '1px solid var(--border-medium)',
-                    background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.76rem',
-                    boxSizing: 'border-box',
-                    marginBottom: '8px'
-                  }}
-                />
-
-                <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
-                  ℹ️ Logged as Owner Unpaid Khata. Cash register total will not be altered.
-                </p>
-              </div>
-            )}
+              );
+            })()}
 
             <div style={{ display: 'flex', gap: '8px' }}>
               <button

@@ -4279,7 +4279,7 @@ app.get('/api/restaurant/tables', (req, res) => {
   }
 });
 
-app.post('/api/restaurant/tables', requireAuth, requireRole('manager', 'restaurant'), (req, res) => {
+app.post('/api/restaurant/tables', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
   try {
     const { table_number, table_type, capacity, special_notes, room_id } = req.body;
     if (!table_number) return res.status(400).json({ success: false, error: 'Table number is required' });
@@ -4446,6 +4446,50 @@ app.post('/api/restaurant/tables/:id/cart', requireAuth, requireRole('manager', 
   }
 });
 
+// Global In-Memory Print Queue for Auto-Printing KOTs, BOTs, and Pre-Bills on the CRM Computer
+const kotPrintQueue = [];
+let printJobCounter = 1;
+
+function enqueuePrintJob(type, payload) {
+  const job = {
+    id: printJobCounter++,
+    type, // 'kot' | 'bot' | 'prebill'
+    data: payload,
+    created_at: new Date().toISOString(),
+    printed: false
+  };
+  kotPrintQueue.push(job);
+  // Keep queue size manageable (max 100 entries)
+  if (kotPrintQueue.length > 100) {
+    kotPrintQueue.shift();
+  }
+  return job;
+}
+
+// Endpoint to fetch unprinted print jobs for CRM computer auto-print
+app.get('/api/print-queue/pending', (req, res) => {
+  try {
+    const unprinted = kotPrintQueue.filter(j => !j.printed);
+    res.json({ success: true, jobs: unprinted });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint to acknowledge that a job was printed
+app.post('/api/print-queue/:id/ack', (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const job = kotPrintQueue.find(j => j.id === id);
+    if (job) {
+      job.printed = true;
+    }
+    res.json({ success: true, message: 'Job acknowledged' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Incremental KOT Dispatch (J Key)
 app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
   try {
@@ -4518,6 +4562,19 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
       items: incrementalItems.length > 0 ? incrementalItems : itemsArr
     };
 
+    // Auto-enqueue KOT print job for CRM computer thermal printer
+    enqueuePrintJob('kot', {
+      tableNumber: table.table_number,
+      tokenNumber: tokenNum,
+      waiterName: waiter_name || table.waiter_name || 'Staff',
+      notes: special_notes || table.special_notes || '',
+      customerName: custNameParam,
+      kot: kotPayload,
+      items: incrementalItems.length > 0 ? incrementalItems : itemsArr,
+      department: 'restaurant',
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       success: true,
       kotNumber: nextKotCount,
@@ -4535,7 +4592,7 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
 });
 
 // Release Pre-Bill / Customer Check (R Key) -> Switches table to Red
-app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager', 'restaurant'), (req, res) => {
+app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar'), (req, res) => {
   try {
     const { id } = req.params;
     const { cart, items: bodyItems, waiter_name, special_notes } = req.body || {};
@@ -4572,6 +4629,20 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
     );
 
     const updatedTable = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
+    const formattedTbl = formatTableOutput(updatedTable);
+
+    // Auto-enqueue Prebill print job for CRM computer thermal printer
+    enqueuePrintJob('prebill', {
+      tableNumber: table.table_number,
+      tokenNumber: tokenNum,
+      items,
+      subtotal,
+      tax,
+      grandTotal,
+      table: formattedTbl,
+      department: 'restaurant',
+      timestamp: new Date().toISOString()
+    });
 
     res.json({
       success: true,
@@ -4581,7 +4652,7 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
       subtotal,
       tax,
       grandTotal,
-      table: formatTableOutput(updatedTable),
+      table: formattedTbl,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -4590,7 +4661,7 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
 });
 
 // Cancel Order
-app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager', 'restaurant'), (req, res) => {
+app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager', 'restaurant', 'waiter'), (req, res) => {
   try {
     const { id } = req.params;
     const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
@@ -4618,7 +4689,7 @@ app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager'
 });
 
 // Settle Bill & Final Payment (L Key)
-app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager', 'restaurant'), (req, res) => {
+app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
     const {
@@ -5890,7 +5961,7 @@ app.get('/api/bar/tables', (req, res) => {
   }
 });
 
-app.post('/api/bar/tables', requireAuth, requireRole('manager', 'bar'), (req, res) => {
+app.post('/api/bar/tables', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant', 'hospitality'), (req, res) => {
   try {
     const { table_number, table_type, capacity, special_notes, room_id } = req.body;
     if (!table_number) return res.status(400).json({ success: false, error: 'Table/Seat number is required' });
@@ -6105,6 +6176,31 @@ app.post('/api/bar/tables/:id/bot', requireAuth, requireRole('manager', 'bar', '
       id
     );
 
+    const botPayload = {
+      botNumber: nextBotCount,
+      kotNumber: nextBotCount,
+      tokenNumber: tokenNum,
+      tableNumber: table.table_number,
+      waiterName: waiter_name || table.waiter_name || 'Bartender',
+      timestamp: new Date().toISOString(),
+      incrementalItems: incrementalItems.length > 0 ? incrementalItems : itemsArr,
+      items: incrementalItems.length > 0 ? incrementalItems : itemsArr,
+      isFullReorder: incrementalItems.length === 0
+    };
+
+    // Auto-enqueue BOT print job for CRM computer thermal printer
+    enqueuePrintJob('bot', {
+      tableNumber: table.table_number,
+      tokenNumber: tokenNum,
+      waiterName: waiter_name || table.waiter_name || 'Bartender',
+      notes: special_notes || table.special_notes || '',
+      customerName: custNameParam,
+      bot: botPayload,
+      items: incrementalItems.length > 0 ? incrementalItems : itemsArr,
+      department: 'bar',
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       success: true,
       botNumber: nextBotCount,
@@ -6120,14 +6216,14 @@ app.post('/api/bar/tables/:id/bot', requireAuth, requireRole('manager', 'bar', '
     res.status(500).json({ success: false, error: error.message });
   }
 });
-app.post('/api/bar/tables/:id/kot', requireAuth, requireRole('manager', 'bar'), (req, res) => {
+app.post('/api/bar/tables/:id/kot', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant'), (req, res) => {
   // Alias to bot
   req.url = `/api/bar/tables/${req.params.id}/bot`;
   app.handle(req, res);
 });
 
 // Bar Pre-Bill
-app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar'), (req, res) => {
+app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant'), (req, res) => {
   try {
     const { id } = req.params;
     const { cart, items: bodyItems, waiter_name, special_notes } = req.body || {};
@@ -6164,6 +6260,20 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
     );
 
     const updatedTable = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(id);
+    const formattedBarTbl = formatBarTableOutput(updatedTable);
+
+    // Auto-enqueue Prebill print job for CRM computer thermal printer
+    enqueuePrintJob('prebill', {
+      tableNumber: table.table_number,
+      tokenNumber: tokenNum,
+      items,
+      subtotal,
+      tax,
+      grandTotal,
+      table: formattedBarTbl,
+      department: 'bar',
+      timestamp: new Date().toISOString()
+    });
 
     res.json({
       success: true,
@@ -6173,7 +6283,7 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
       subtotal,
       tax,
       grandTotal,
-      table: formatBarTableOutput(updatedTable),
+      table: formattedBarTbl,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -6182,7 +6292,7 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
 });
 
 // Bar Cancel Order
-app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar'), (req, res) => {
+app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar', 'waiter'), (req, res) => {
   try {
     const { id } = req.params;
     const table = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(id);
@@ -6209,7 +6319,7 @@ app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar'
 });
 
 // Bar Settle Bill & Final Payment
-app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'), (req, res) => {
+app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
     const {
