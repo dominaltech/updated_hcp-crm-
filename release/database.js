@@ -583,6 +583,10 @@ try { db.exec("ALTER TABLE rooms ADD COLUMN max_extra_beds INTEGER DEFAULT 1;");
 try { db.exec("ALTER TABLE rooms ADD COLUMN extra_bed_price REAL DEFAULT 500;"); } catch (e) {}
 try { db.exec("ALTER TABLE restaurant_tables ADD COLUMN room_id INTEGER DEFAULT NULL;"); } catch (e) {}
 try { db.exec("ALTER TABLE bar_tables ADD COLUMN room_id INTEGER DEFAULT NULL;"); } catch (e) {}
+try { db.exec("ALTER TABLE restaurant_tables ADD COLUMN customer_name TEXT DEFAULT '';"); } catch (e) {}
+try { db.exec("ALTER TABLE restaurant_tables ADD COLUMN customer_phone TEXT DEFAULT '';"); } catch (e) {}
+try { db.exec("ALTER TABLE bar_tables ADD COLUMN customer_name TEXT DEFAULT '';"); } catch (e) {}
+try { db.exec("ALTER TABLE bar_tables ADD COLUMN customer_phone TEXT DEFAULT '';"); } catch (e) {}
 
 // Room Visitors Table for Guest Visitor Logging & Photo Verification
 db.exec(`

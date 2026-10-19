@@ -4468,13 +4468,17 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
     const nextKotCount = (table.kot_count || 0) + 1;
     const tokenNum = (!table.token_number || table.token_number === 0) ? getNextDailyToken() : table.token_number;
     const orderStartedAt = table.order_started_at || new Date().toISOString();
+    const custNameParam = (req.body.customer_name || req.body.customerName || req.body.guest_name || '').trim();
+    const custPhoneParam = (req.body.customer_phone || req.body.customerPhone || req.body.guest_phone || req.body.guestPhone || '').trim();
 
-    // Update table with new active cart, updated printed cart, and token
+    // Update table with new active cart, updated printed cart, token, and customer details
     db.prepare(`
       UPDATE restaurant_tables 
       SET active_cart_json = ?, printed_cart_json = ?, kot_count = ?,
           status = ?, order_started_at = ?, token_number = ?,
-          waiter_name = ?, special_notes = ?
+          waiter_name = ?, special_notes = ?,
+          customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
+          customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END
       WHERE id = ?
     `).run(
       JSON.stringify(itemsArr),
@@ -4485,6 +4489,8 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
       tokenNum,
       waiter_name !== undefined ? waiter_name : table.waiter_name,
       special_notes !== undefined ? special_notes : table.special_notes,
+      custNameParam, custNameParam,
+      custPhoneParam, custPhoneParam,
       id
     );
 
@@ -4634,12 +4640,21 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
     const total = taxable + tax;
 
     const orderNumber = 'RES-' + Date.now().toString().slice(-6);
-    const isPaid = (req.body.is_paid !== undefined) ? (req.body.is_paid ? 1 : 0) : (payment_mode === 'room_folio' ? 0 : 1);
+    const isPaid = (req.body.is_paid !== undefined) ? (req.body.is_paid ? 1 : 0) : ((payment_mode === 'room_folio' || payment_mode === 'owner') ? 0 : 1);
 
     let targetRoomId = null;
-    let custName = (customer_name || '').trim();
+    let custName = (customer_name || table.customer_name || '').trim();
+
+    if (payment_mode === 'owner' && (req.body.owner_name || req.body.owner)) {
+      custName = `${req.body.owner_name || req.body.owner} (Owner)`;
+    }
 
     let resolvedRoomId = room_id || table.room_id || null;
+    if (!resolvedRoomId && req.body.room_number) {
+      const rNum = String(req.body.room_number).replace(/^RS-/i, '').trim();
+      const rRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(rNum);
+      if (rRow) resolvedRoomId = rRow.id;
+    }
     if (!resolvedRoomId && (table.table_type === 'room_service' || String(table.table_number || '').startsWith('RS-'))) {
       const rNum = String(table.table_number || '').replace(/^RS-/i, '').trim();
       const rRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(rNum);
@@ -4651,7 +4666,7 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
       if (room && room.status === 'occupied') {
         targetRoomId = room.id;
         const booking = db.prepare('SELECT g.name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
-        if (booking && !custName) custName = `Room ${room.room_number} - ${booking.name}`;
+        if (booking && (!custName || custName.startsWith('Table '))) custName = `Room ${room.room_number} - ${booking.name}`;
       }
     }
     if (!custName) {
@@ -4664,8 +4679,8 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
       online: parseFloat(split_online) || 0
     };
     const utr_number = (req.body.utr_number || req.body.online_utr || req.body.utr || '').trim() || null;
-    const room_service_for = req.body.room_service_for || req.body.roomServiceFor || null;
-    const guest_phone = req.body.guest_phone || req.body.guestPhone || req.body.mobile || null;
+    const room_service_for = req.body.room_service_for || req.body.roomServiceFor || (req.body.owner_name ? `Owner: ${req.body.owner_name}` : null);
+    const guest_phone = req.body.guest_phone || req.body.guestPhone || req.body.customer_phone || req.body.customerPhone || req.body.mobile || table.customer_phone || null;
     
     // Card Surcharge & UPI Tax (Configurable via Manager Panel)
     const surchargeCfg = getSurchargeSettings();
@@ -4754,13 +4769,13 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
       if (table.parent_table_id) {
         db.prepare('DELETE FROM restaurant_tables WHERE id = ?').run(id);
       } else {
-        db.prepare("UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
+        db.prepare("UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '', customer_name = '', customer_phone = '' WHERE id = ?").run(id);
       }
       cleanupSplitPair(parentId);
     } else if (table.table_type === 'parcel' || table.table_type === 'room_service' || String(table.table_number || '').startsWith('RS-') || String(table.table_number || '').startsWith('P-')) {
       db.prepare('DELETE FROM restaurant_tables WHERE id = ?').run(id);
     } else {
-      db.prepare("UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
+      db.prepare("UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '', customer_name = '', customer_phone = '' WHERE id = ?").run(id);
     }
 
     return {
@@ -6026,12 +6041,16 @@ app.post('/api/bar/tables/:id/bot', requireAuth, requireRole('manager', 'bar'), 
     const nextBotCount = (table.bot_count || 0) + 1;
     const tokenNum = (!table.token_number || table.token_number === 0) ? getNextDailyToken() : table.token_number;
     const orderStartedAt = table.order_started_at || new Date().toISOString();
+    const custNameParam = (req.body.customer_name || req.body.customerName || req.body.guest_name || '').trim();
+    const custPhoneParam = (req.body.customer_phone || req.body.customerPhone || req.body.guest_phone || req.body.guestPhone || '').trim();
 
     db.prepare(`
       UPDATE bar_tables 
       SET active_cart_json = ?, printed_cart_json = ?, bot_count = ?,
           status = ?, order_started_at = ?, token_number = ?,
-          waiter_name = ?, special_notes = ?
+          waiter_name = ?, special_notes = ?,
+          customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
+          customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END
       WHERE id = ?
     `).run(
       JSON.stringify(itemsArr),
@@ -6042,6 +6061,8 @@ app.post('/api/bar/tables/:id/bot', requireAuth, requireRole('manager', 'bar'), 
       tokenNum,
       waiter_name !== undefined ? waiter_name : table.waiter_name,
       special_notes !== undefined ? special_notes : table.special_notes,
+      custNameParam, custNameParam,
+      custPhoneParam, custPhoneParam,
       id
     );
 
@@ -6189,12 +6210,21 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
     const total = taxable + tax;
 
     const orderNumber = 'BAR-' + Date.now().toString().slice(-6);
-    const isPaid = (req.body.is_paid !== undefined) ? (req.body.is_paid ? 1 : 0) : (payment_mode === 'room_folio' ? 0 : 1);
+    const isPaid = (req.body.is_paid !== undefined) ? (req.body.is_paid ? 1 : 0) : ((payment_mode === 'room_folio' || payment_mode === 'owner') ? 0 : 1);
 
     let targetRoomId = null;
-    let custName = (customer_name || '').trim();
+    let custName = (customer_name || table.customer_name || '').trim();
+
+    if (payment_mode === 'owner' && (req.body.owner_name || req.body.owner)) {
+      custName = `${req.body.owner_name || req.body.owner} (Owner)`;
+    }
 
     let resolvedRoomId = room_id || table.room_id || null;
+    if (!resolvedRoomId && req.body.room_number) {
+      const rNum = String(req.body.room_number).replace(/^RS-/i, '').trim();
+      const rRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(rNum);
+      if (rRow) resolvedRoomId = rRow.id;
+    }
     if (!resolvedRoomId && (table.table_type === 'room_service' || String(table.table_number || '').startsWith('RS-'))) {
       const rNum = String(table.table_number || '').replace(/^RS-/i, '').trim();
       const rRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(rNum);
@@ -6206,7 +6236,7 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
       if (room && room.status === 'occupied') {
         targetRoomId = room.id;
         const booking = db.prepare('SELECT g.name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
-        if (booking && !custName) custName = `Room ${room.room_number} - ${booking.name}`;
+        if (booking && (!custName || custName.startsWith('Bar Table '))) custName = `Room ${room.room_number} - ${booking.name}`;
       }
     }
     if (!custName) {
@@ -6219,8 +6249,8 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
       online: parseFloat(split_online) || 0
     };
     const utr_number = (req.body.utr_number || req.body.online_utr || req.body.utr || '').trim() || null;
-    const room_service_for = req.body.room_service_for || req.body.roomServiceFor || null;
-    const guest_phone = req.body.guest_phone || req.body.guestPhone || req.body.mobile || null;
+    const room_service_for = req.body.room_service_for || req.body.roomServiceFor || (req.body.owner_name ? `Owner: ${req.body.owner_name}` : null);
+    const guest_phone = req.body.guest_phone || req.body.guestPhone || req.body.customer_phone || req.body.customerPhone || req.body.mobile || table.customer_phone || null;
     
     // Card Surcharge & UPI Tax (Configurable via Manager Panel)
     const surchargeCfg = getSurchargeSettings();
@@ -6307,13 +6337,13 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
       if (table.parent_table_id) {
         db.prepare('DELETE FROM bar_tables WHERE id = ?').run(id);
       } else {
-        db.prepare("UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
+        db.prepare("UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '', customer_name = '', customer_phone = '' WHERE id = ?").run(id);
       }
       cleanupBarSplitPair(parentId);
     } else if (table.table_type === 'parcel' || table.table_type === 'room_service' || String(table.table_number || '').startsWith('RS-') || String(table.table_number || '').startsWith('P-') || String(table.table_number || '').startsWith('BP-')) {
       db.prepare('DELETE FROM bar_tables WHERE id = ?').run(id);
     } else {
-      db.prepare("UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
+      db.prepare("UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '', customer_name = '', customer_phone = '' WHERE id = ?").run(id);
     }
 
     return {

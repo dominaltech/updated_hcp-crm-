@@ -37,8 +37,16 @@ function saveRemoteUrl(url) {
   try {
     fs.writeFileSync(path.join(rootDir, 'remote_url.txt'), url, 'utf8');
     fs.writeFileSync(path.join(publicDir, 'remote_url.json'), JSON.stringify(payload, null, 2), 'utf8');
+    
+    // Also auto-sync waiter panel client.js with the active tunnel URL
+    const waiterClientPath = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64', 'waiter-pannel', 'src', 'api', 'client.js');
+    if (fs.existsSync(waiterClientPath)) {
+      let clientContent = fs.readFileSync(waiterClientPath, 'utf8');
+      clientContent = clientContent.replace(/export const CLOUD_TUNNEL_URL = '[^']*';/, `export const CLOUD_TUNNEL_URL = '${url}';`);
+      fs.writeFileSync(waiterClientPath, clientContent, 'utf8');
+    }
   } catch (err) {
-    console.warn('Could not save remote_url.txt:', err.message);
+    console.warn('Could not save remote_url.txt or update waiter client:', err.message);
   }
 
   // Sync active tunnel URL to Supabase cloud directory so remote clients (Netlify, Mobile APK) stay connected

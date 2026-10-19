@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { App as CapApp } from '@capacitor/app';
 import { api } from './api/client';
 import LoginScreen from './components/LoginScreen';
 import HeaderBar from './components/HeaderBar';
@@ -103,6 +104,117 @@ export default function App() {
       setToastMessage((prev) => (prev === message ? '' : prev));
     }, duration);
   };
+
+  // Reference to hold current UI state for Android Back Button navigation
+  const stateRef = useRef({
+    modalConfig,
+    isSettingsOpen,
+    isCartOpen,
+    destination,
+    activeTab,
+    currentUser
+  });
+  useEffect(() => {
+    stateRef.current = {
+      modalConfig,
+      isSettingsOpen,
+      isCartOpen,
+      destination,
+      activeTab,
+      currentUser
+    };
+  }, [modalConfig, isSettingsOpen, isCartOpen, destination, activeTab, currentUser]);
+
+  const lastBackPressRef = useRef(0);
+
+  const handleBackStep = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.currentUser) return false;
+
+    // 1. If any modal is active (CustomModal)
+    if (s.modalConfig) {
+      setModalConfig(null);
+      return true;
+    }
+
+    // 2. If settings modal is open
+    if (s.isSettingsOpen) {
+      setIsSettingsOpen(false);
+      return true;
+    }
+
+    // 3. If cart drawer is open
+    if (s.isCartOpen) {
+      setIsCartOpen(false);
+      return true;
+    }
+
+    // 4. If viewing menu for a destination (table / room / parcel)
+    if (s.destination) {
+      setDestination(null);
+      return true;
+    }
+
+    // 5. If on another tab than 'tables'
+    if (s.activeTab !== 'tables') {
+      setActiveTab('tables');
+      return true;
+    }
+
+    // 6. At root 'tables' view: double-press back to exit cleanly
+    const now = Date.now();
+    if (now - lastBackPressRef.current < 2000) {
+      return false; // signals exit
+    } else {
+      lastBackPressRef.current = now;
+      showToast('Press back again to exit', 2000);
+      return true; // handled
+    }
+  }, []);
+
+  // Capacitor Android Hardware / Gesture Back Button Listener
+  useEffect(() => {
+    let removeListener = null;
+
+    try {
+      const sub = CapApp.addListener('backButton', () => {
+        const handled = handleBackStep();
+        if (!handled) {
+          CapApp.exitApp();
+        }
+      });
+      if (sub && typeof sub.then === 'function') {
+        sub.then((handler) => {
+          removeListener = handler;
+        });
+      } else {
+        removeListener = sub;
+      }
+    } catch (e) {
+      console.log('Capacitor backButton not available in web context:', e);
+    }
+
+    return () => {
+      if (removeListener && typeof removeListener.remove === 'function') {
+        removeListener.remove();
+      }
+    };
+  }, [handleBackStep]);
+
+  // Browser / PWA back button listener (popstate)
+  useEffect(() => {
+    const onPopState = () => {
+      const handled = handleBackStep();
+      if (handled) {
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [handleBackStep]);
 
   const handleDepartmentChange = (newDept) => {
     if (newDept === department) return;
@@ -379,9 +491,12 @@ export default function App() {
   };
 
   // Punch KOT order with offline queue resilience
-  const handlePunchOrder = async ({ notes }) => {
+  const handlePunchOrder = async ({ notes, customerName, customerPhone }) => {
     if (!destination || cart.length === 0) return;
     setIsPunching(true);
+
+    const resolvedCustName = customerName || destination.customerName || (destination.type === 'parcel' ? destination.label : '');
+    const resolvedCustPhone = customerPhone || destination.customerPhone || '';
 
     const orderPayload = {
       department,
@@ -391,6 +506,9 @@ export default function App() {
       items: cart,
       waiter_id: currentUser.id,
       waiter_name: currentUser.full_name || currentUser.username,
+      customer_name: resolvedCustName,
+      customer_phone: resolvedCustPhone,
+      guest_phone: resolvedCustPhone,
       notes
     };
 
@@ -709,6 +827,7 @@ export default function App() {
               currentUser={currentUser}
               tables={tables}
               recentOrders={recentOrders}
+              occupiedRooms={occupiedRooms}
               onSelectDestinationForMore={handleSelectTable}
               onRefresh={fetchLiveData}
               isLoading={isLoading}

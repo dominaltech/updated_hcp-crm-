@@ -6,6 +6,7 @@ export default function MyOrdersView({
   currentUser,
   tables = [],
   recentOrders = [],
+  occupiedRooms = [],
   onSelectDestinationForMore,
   onRefresh,
   isLoading
@@ -17,6 +18,10 @@ export default function MyOrdersView({
   const [orderToCancel, setOrderToCancel] = useState(null); // Cancel confirmation modal
   const [settleModalTable, setSettleModalTable] = useState(null);
   const [paymentMode, setPaymentMode] = useState('cash');
+  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [isPaidAtRoom, setIsPaidAtRoom] = useState(false);
+  const [selectedOwner, setSelectedOwner] = useState('Jaijeet sir');
+  const [ownerNote, setOwnerNote] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const isBar = department === 'bar';
@@ -124,10 +129,37 @@ export default function MyOrdersView({
     if (!settleModalTable) return;
     try {
       setActionInProgress(`settle-${settleModalTable.id}`);
-      await api.settleTable(department, settleModalTable.id, {
+      
+      const settlePayload = {
         payment_method: paymentMode,
+        payment_mode: paymentMode,
         waiter_name: myName
-      });
+      };
+
+      if (paymentMode === 'room_folio') {
+        if (!selectedRoomId) {
+          setMsg('⚠️ Please select an occupied room for Room Folio settlement.');
+          setTimeout(() => setMsg(''), 4000);
+          setActionInProgress(null);
+          return;
+        }
+        const roomObj = occupiedRooms.find(r => String(r.id) === String(selectedRoomId));
+        settlePayload.room_id = selectedRoomId;
+        settlePayload.room_number = roomObj?.room_number || '';
+        settlePayload.is_paid = isPaidAtRoom ? 1 : 0;
+        if (roomObj?.guest_name) settlePayload.customer_name = `Room ${roomObj.room_number} - ${roomObj.guest_name}`;
+        if (roomObj?.guest_phone && roomObj.guest_phone !== '—') settlePayload.guest_phone = roomObj.guest_phone;
+      } else if (paymentMode === 'owner') {
+        settlePayload.payment_mode = 'owner';
+        settlePayload.payment_method = 'owner';
+        settlePayload.owner_name = selectedOwner;
+        settlePayload.customer_name = `${selectedOwner} (Owner)`;
+        settlePayload.is_paid = 0; // Unpaid / Owner charge, zero cash discrepancy
+        settlePayload.room_service_for = `Owner: ${selectedOwner}${ownerNote.trim() ? ` - ${ownerNote.trim()}` : ''}`;
+        settlePayload.special_notes = ownerNote.trim() || `Charged to ${selectedOwner}`;
+      }
+
+      await api.settleTable(department, settleModalTable.id, settlePayload);
       setMsg(`✅ Table ${settleModalTable.table_number || settleModalTable.name} settled successfully!`);
       setSettleModalTable(null);
       setSelectedOrder(null);
@@ -924,32 +956,156 @@ export default function MyOrdersView({
               Select payment mode received from guest:
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '14px' }}>
               {[
                 { id: 'cash', label: '💵 Cash' },
                 { id: 'upi', label: '📱 UPI / QR' },
-                { id: 'card', label: '💳 Card' },
-                { id: 'room_folio', label: '🛏️ Room Folio' }
+                { id: 'card', label: '💳 Card POS' },
+                { id: 'room_folio', label: '🛏️ Room Folio' },
+                { id: 'owner', label: '👤 Owner Account' }
               ].map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => setPaymentMode(m.id)}
                   style={{
-                    padding: '10px 8px',
+                    padding: '9px 6px',
                     borderRadius: 'var(--radius-sm)',
                     background: paymentMode === m.id ? 'var(--apple-blue-subtle)' : 'var(--bg-surface-secondary)',
                     border: paymentMode === m.id ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
                     color: paymentMode === m.id ? 'var(--apple-blue)' : 'var(--text-secondary)',
-                    fontSize: '0.80rem',
+                    fontSize: '0.76rem',
                     fontWeight: 800,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    gridColumn: m.id === 'owner' ? 'span 2' : 'auto'
                   }}
                 >
                   {m.label}
                 </button>
               ))}
             </div>
+
+            {/* Room Folio Sub-options */}
+            {paymentMode === 'room_folio' && (
+              <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Select In-House Room:
+                </label>
+                <select
+                  value={selectedRoomId}
+                  onChange={(e) => setSelectedRoomId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-xs)',
+                    border: '1px solid var(--border-medium)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    marginBottom: '10px'
+                  }}
+                >
+                  <option value="">-- Choose Occupied Room --</option>
+                  {occupiedRooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      Room {r.room_number} {r.guest_name ? `(${r.guest_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Billing Status:
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsPaidAtRoom(false)}
+                    style={{
+                      padding: '8px 6px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: !isPaidAtRoom ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                      background: !isPaidAtRoom ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
+                      color: !isPaidAtRoom ? 'var(--apple-blue)' : 'var(--text-secondary)',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⏳ Pending (Checkout)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPaidAtRoom(true)}
+                    style={{
+                      padding: '8px 6px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: isPaidAtRoom ? '1.5px solid var(--apple-green)' : '1px solid var(--border-medium)',
+                      background: isPaidAtRoom ? 'rgba(52, 199, 89, 0.12)' : 'var(--bg-surface)',
+                      color: isPaidAtRoom ? 'var(--apple-green)' : 'var(--text-secondary)',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✅ Paid at Room
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Owner Account Sub-options */}
+            {paymentMode === 'owner' && (
+              <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                  Select Owner Account:
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                  {['Jaijeet sir', 'Mahesh Sir'].map((owner) => (
+                    <button
+                      key={owner}
+                      type="button"
+                      onClick={() => setSelectedOwner(owner)}
+                      style={{
+                        padding: '10px 8px',
+                        borderRadius: 'var(--radius-xs)',
+                        border: selectedOwner === owner ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                        background: selectedOwner === owner ? 'var(--apple-blue-subtle)' : 'var(--bg-surface)',
+                        color: selectedOwner === owner ? 'var(--apple-blue)' : 'var(--text-secondary)',
+                        fontSize: '0.78rem',
+                        fontWeight: 850,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {owner}
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="text"
+                  value={ownerNote}
+                  onChange={(e) => setOwnerNote(e.target.value)}
+                  placeholder="Note / Reference (e.g. Guest hospitality, meeting)..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-xs)',
+                    border: '1px solid var(--border-medium)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.76rem',
+                    boxSizing: 'border-box',
+                    marginBottom: '8px'
+                  }}
+                />
+
+                <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
+                  ℹ️ Logged as Owner Unpaid Khata. Cash register total will not be altered.
+                </p>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '8px' }}>
               <button

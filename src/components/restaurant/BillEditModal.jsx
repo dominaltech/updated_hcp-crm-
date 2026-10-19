@@ -569,10 +569,11 @@ export default function BillEditModal({
                 value={paymentMode}
                 onChange={(val) => setPaymentMode(val)}
                 options={[
-                  { value: 'cash', label: '💵 Cash' },
-                  { value: 'card', label: '💳 Credit / Debit Card' },
-                  { value: 'online', label: '📱 UPI / Online Transfer' },
-                  { value: 'room_folio', label: '🏨 Settled to Room' }
+                  { value: 'cash', label: 'Cash' },
+                  { value: 'card', label: 'Credit / Debit Card' },
+                  { value: 'online', label: 'UPI / Online Transfer' },
+                  { value: 'room_folio', label: 'Settled to Room' },
+                  { value: 'owner', label: 'Owner Account' }
                 ]}
                 colorTheme="blue"
                 style={{ width: '100%', height: '38px' }}

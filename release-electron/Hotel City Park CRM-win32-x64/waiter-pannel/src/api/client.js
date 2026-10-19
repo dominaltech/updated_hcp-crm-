@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://den-tickets-differential-highlighted.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://trunk-samples-disabilities-rca.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {
@@ -11,32 +11,43 @@ export const isNativePlatform = () => {
   }
 };
 
-let cachedTunnelUrl = null;
+let cachedTunnelUrl = (typeof localStorage !== 'undefined' ? localStorage.getItem('hcp_cached_tunnel_url') : null) || null;
 
-// Fetch latest active tunnel URL from Supabase cloud sync if ever needed
-export const fetchCloudTunnelUrl = async () => {
-  if (cachedTunnelUrl) return cachedTunnelUrl;
+// Fetch latest active tunnel URL from Supabase cloud sync
+export const fetchCloudTunnelUrl = async (force = false) => {
+  if (!force && cachedTunnelUrl) return cachedTunnelUrl;
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
       'https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox?department=eq.cloud_tunnel_url&select=items_summary&limit=1',
       {
+        signal: controller.signal,
         headers: {
           'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
         }
       }
     );
+    clearTimeout(timer);
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data[0]?.items_summary) {
-        cachedTunnelUrl = data[0].items_summary.replace(/\/+$/, '');
-        return cachedTunnelUrl;
+        const fresh = data[0].items_summary.replace(/\/+$/, '');
+        cachedTunnelUrl = fresh;
+        try { localStorage.setItem('hcp_cached_tunnel_url', fresh); } catch (e) {}
+        return fresh;
       }
     }
   } catch (e) {
     console.warn('[WaiterAPI] Could not fetch tunnel from Supabase:', e.message);
   }
-  return CLOUD_TUNNEL_URL;
+  return cachedTunnelUrl || CLOUD_TUNNEL_URL;
 };
+
+// Eagerly resolve active cloud tunnel in background on web/pwa load
+if (typeof window !== 'undefined') {
+  fetchCloudTunnelUrl(true).catch(() => {});
+}
 
 export const getBaseUrl = () => {
   // 1. Check if user/app cached a custom server address
@@ -310,6 +321,9 @@ export const api = {
           })),
           waiter_id,
           waiter_name,
+          customer_name: orderData.customer_name || '',
+          customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+          guest_phone: orderData.guest_phone || orderData.customer_phone || '',
           notes: notes || '',
           timestamp: new Date().toISOString()
         }
@@ -356,8 +370,10 @@ export const api = {
       body: {
         order_type: 'parcel',
         department,
-        customer_name: destination_label || 'Parcel Customer',
+        customer_name: orderData.customer_name || destination_label || 'Parcel Customer',
         table_number: destination_label || 'Parcel',
+        guest_phone: orderData.guest_phone || orderData.customer_phone || '',
+        customer_phone: orderData.guest_phone || orderData.customer_phone || '',
         payment_mode: 'cash',
         subtotal,
         tax: gstAmount,
@@ -412,5 +428,6 @@ export const api = {
   getOrderDetail: (department, orderId) => {
     const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
     return request(endpoint);
-  }
+  },
+  fetchCloudTunnelUrl
 };

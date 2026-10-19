@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 
 export default function LoginScreen({ onLoginSuccess }) {
@@ -7,6 +7,13 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Eagerly sync latest active tunnel from cloud in background
+    if (typeof api.fetchCloudTunnelUrl === 'function') {
+      api.fetchCloudTunnelUrl(true).catch(() => {});
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();

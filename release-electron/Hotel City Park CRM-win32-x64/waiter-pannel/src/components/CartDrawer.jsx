@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function CartDrawer({
   isOpen,
@@ -13,6 +13,13 @@ export default function CartDrawer({
 }) {
   const [orderNotes, setOrderNotes] = useState('');
   const [selectedChips, setSelectedChips] = useState([]);
+  const [customerName, setCustomerName] = useState(() => destination?.customerName || '');
+  const [customerPhone, setCustomerPhone] = useState(() => destination?.customerPhone || '');
+
+  useEffect(() => {
+    if (destination?.customerName) setCustomerName(destination.customerName);
+    if (destination?.customerPhone) setCustomerPhone(destination.customerPhone);
+  }, [destination]);
 
   if (!isOpen) return null;
 
@@ -46,7 +53,9 @@ export default function CartDrawer({
     ].filter(Boolean).join(' • ');
 
     onPunchOrder({
-      notes: combinedNotes
+      notes: combinedNotes,
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim()
     });
   };
 
@@ -212,10 +221,56 @@ export default function CartDrawer({
             </div>
           ))}
 
+          {/* Customer Name & Phone Number */}
+          <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Guest Details (Optional):
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Guest Name..."
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 10px',
+                  background: 'var(--bg-surface-secondary)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-xs)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="Mobile (10 digits)..."
+                maxLength={10}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 10px',
+                  background: 'var(--bg-surface-secondary)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-xs)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          </div>
+
           {/* Quick Cooking Notes Chips */}
           <div style={{ marginTop: '8px' }}>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              📝 Special Instructions:
+              Special Instructions:
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
               {cookingChips.map((chip) => {

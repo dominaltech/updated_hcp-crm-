@@ -10,6 +10,9 @@ export function getPaymentModeBadge(mode) {
   if (m === 'room_folio' || m === 'room' || m.includes('folio') || m === 'settled to room') {
     return { label: 'Settled to Room', cls: 'badge-room-folio', icon: '🏨' };
   }
+  if (m === 'owner' || m.includes('owner')) {
+    return { label: 'Owner Account', cls: 'badge-owner', icon: '' };
+  }
   if (m === 'cash') {
     return { label: 'Cash', cls: 'badge-cash', icon: '💵' };
   }

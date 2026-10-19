@@ -98,24 +98,12 @@ export default function ParcelsView({
             />
           </div>
 
-          {/* Token Number */}
+          {/* Parcel Number (System Locked - cannot change) */}
           <div style={{ marginBottom: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', margin: 0 }}>
-                🏷️ Token / Slip Number
-              </label>
-              <button
-                type="button"
-                onClick={() => setTokenNo(Math.floor(100 + Math.random() * 900))}
-                style={{ background: 'none', color: 'var(--apple-blue)', fontSize: '0.72rem', fontWeight: 700 }}
-              >
-                Regenerate
-              </button>
-            </div>
-            <input
-              type="number"
-              value={tokenNo}
-              onChange={(e) => setTokenNo(e.target.value)}
+            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+              Parcel Number (Auto-assigned)
+            </label>
+            <div
               style={{
                 width: '100%',
                 height: '42px',
@@ -123,12 +111,20 @@ export default function ParcelsView({
                 background: 'var(--bg-surface-secondary)',
                 border: '1px solid var(--border-medium)',
                 borderRadius: 'var(--radius-sm)',
-                color: 'var(--apple-orange)',
-                fontSize: '1.05rem',
+                color: deptColor,
+                fontSize: '1rem',
                 fontWeight: 900,
-                outline: 'none'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                boxSizing: 'border-box'
               }}
-            />
+            >
+              <span>Parcel #{tokenNo}</span>
+              <span style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                System Assigned
+              </span>
+            </div>
           </div>
 
           {/* Submit Button */}
