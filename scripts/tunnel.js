@@ -9,6 +9,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
 const rootDir = path.resolve(__dirname, '..');
 const cloudflaredPath = path.join(rootDir, 'tools', 'cloudflared.exe');

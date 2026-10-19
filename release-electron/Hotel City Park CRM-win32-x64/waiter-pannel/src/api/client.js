@@ -13,9 +13,15 @@ export const isNativePlatform = () => {
 
 let cachedTunnelUrl = (typeof localStorage !== 'undefined' ? localStorage.getItem('hcp_cached_tunnel_url') : null) || null;
 
+// Clean up stale or non-resolving tunnel from initial memory cache
+if (cachedTunnelUrl && cachedTunnelUrl.includes('blond-ethnic')) {
+  cachedTunnelUrl = null;
+  try { localStorage.removeItem('hcp_cached_tunnel_url'); } catch (e) {}
+}
+
 // Fetch latest active tunnel URL from Supabase cloud sync
 export const fetchCloudTunnelUrl = async (force = false) => {
-  if (!force && cachedTunnelUrl) return cachedTunnelUrl;
+  if (!force && cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) return cachedTunnelUrl;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
@@ -33,15 +39,17 @@ export const fetchCloudTunnelUrl = async (force = false) => {
       const data = await res.json();
       if (Array.isArray(data) && data[0]?.items_summary) {
         const fresh = data[0].items_summary.replace(/\/+$/, '');
-        cachedTunnelUrl = fresh;
-        try { localStorage.setItem('hcp_cached_tunnel_url', fresh); } catch (e) {}
-        return fresh;
+        if (fresh && fresh.includes('trycloudflare.com')) {
+          cachedTunnelUrl = fresh;
+          try { localStorage.setItem('hcp_cached_tunnel_url', fresh); } catch (e) {}
+          return fresh;
+        }
       }
     }
   } catch (e) {
     console.warn('[WaiterAPI] Could not fetch tunnel from Supabase:', e.message);
   }
-  return cachedTunnelUrl || CLOUD_TUNNEL_URL;
+  return (cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) ? cachedTunnelUrl : CLOUD_TUNNEL_URL;
 };
 
 // Eagerly resolve active cloud tunnel in background on web/pwa load
@@ -60,12 +68,17 @@ export const getBaseUrl = () => {
       // Clear out any old expired cloudflare tunnel URLs that might have been saved in localStorage
       try {
         const stored = localStorage.getItem('hcp_waiter_server_host');
-        if (stored && stored.includes('trycloudflare.com') && !stored.includes(CLOUD_TUNNEL_URL.replace('https://', ''))) {
+        if (stored && stored.includes('trycloudflare.com')) {
           localStorage.removeItem('hcp_waiter_server_host');
+        }
+        const cached = localStorage.getItem('hcp_cached_tunnel_url');
+        if (cached && (cached.includes('blond-ethnic') || !cached.includes('trycloudflare.com'))) {
+          localStorage.removeItem('hcp_cached_tunnel_url');
+          cachedTunnelUrl = null;
         }
       } catch (e) {}
 
-      const tunnel = cachedTunnelUrl || CLOUD_TUNNEL_URL;
+      const tunnel = (cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) ? cachedTunnelUrl : CLOUD_TUNNEL_URL;
       return `${tunnel}/api`;
     }
 
@@ -185,10 +198,14 @@ export const request = async (endpoint, options = {}) => {
         // Was trying cloud tunnel on HTTP, fall back to local Wi-Fi
         fallbackBase = `http://${LOCAL_WIFI_IP}:3000/api`;
       } else {
-        // Check if Supabase has a newer tunnel URL
-        const freshTunnel = await fetchCloudTunnelUrl();
+        // Primary tunnel failed (e.g. ERR_NAME_NOT_RESOLVED). Invalidate cache and fetch fresh from Supabase!
+        cachedTunnelUrl = null;
+        try { localStorage.removeItem('hcp_cached_tunnel_url'); } catch (e) {}
+        const freshTunnel = await fetchCloudTunnelUrl(true);
         if (freshTunnel && !base.includes(freshTunnel)) {
           fallbackBase = `${freshTunnel}/api`;
+        } else if (!base.includes(CLOUD_TUNNEL_URL)) {
+          fallbackBase = `${CLOUD_TUNNEL_URL}/api`;
         }
       }
 

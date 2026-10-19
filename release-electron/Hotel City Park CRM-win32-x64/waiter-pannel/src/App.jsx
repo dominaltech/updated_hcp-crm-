@@ -752,7 +752,12 @@ export default function App() {
           <span>⚠️ Connecting to POS Server... Check Wi-Fi connection</span>
           <button
             type="button"
-            onClick={fetchLiveData}
+            onClick={async () => {
+              if (typeof api.fetchCloudTunnelUrl === 'function') {
+                await api.fetchCloudTunnelUrl(true).catch(() => {});
+              }
+              fetchLiveData();
+            }}
             style={{
               padding: '2px 8px',
               borderRadius: 'var(--radius-xs)',
