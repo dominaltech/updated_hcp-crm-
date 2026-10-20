@@ -305,7 +305,7 @@ export default function MenuView({
       </div>
 
       {/* Dish Items List */}
-      {isLoading ? (
+      {isLoading && menuItems.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
           ⏳ Loading menu items...
         </div>

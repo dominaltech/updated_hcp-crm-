@@ -243,10 +243,12 @@ export const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
 
 let inMemoryCloudPkg = null;
+let lastCloudPkgFetch = 0;
 
 // Eagerly fetch and cache the entire live waiter package from Supabase Cloud
 export const fetchCloudWaiterPackage = async (force = false) => {
-  if (!force && inMemoryCloudPkg) return inMemoryCloudPkg;
+  const now = Date.now();
+  if (!force && inMemoryCloudPkg && (now - lastCloudPkgFetch < 5000)) return inMemoryCloudPkg;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6000);
@@ -266,6 +268,7 @@ export const fetchCloudWaiterPackage = async (force = false) => {
       if (Array.isArray(data) && data[0]?.items_summary) {
         const pkg = JSON.parse(data[0].items_summary);
         inMemoryCloudPkg = pkg;
+        lastCloudPkgFetch = Date.now();
         try {
           localStorage.setItem('hcp_cloud_waiter_pkg', JSON.stringify(pkg));
           if (pkg.restaurantMenu && pkg.restaurantCategories) {

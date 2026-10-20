@@ -66,7 +66,7 @@ export default function TablesView({
       </div>
 
       {/* Tables Grid */}
-      {isLoading ? (
+      {isLoading && tables.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
           <span>⏳ Loading tables...</span>
         </div>

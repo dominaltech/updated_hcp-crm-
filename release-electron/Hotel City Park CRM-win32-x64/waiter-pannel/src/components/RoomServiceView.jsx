@@ -53,7 +53,7 @@ export default function RoomServiceView({
       </div>
 
       {/* Rooms List */}
-      {isLoading ? (
+      {isLoading && rooms.length === 0 ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
           <span>⏳ Loading occupied rooms &amp; guests...</span>
         </div>

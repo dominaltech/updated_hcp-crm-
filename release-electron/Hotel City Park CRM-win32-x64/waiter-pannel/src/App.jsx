@@ -98,6 +98,13 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
   const [installPrompt, setInstallPrompt] = useState(null);
 
+  // Data cache and diffing refs to eliminate 100% of UI blinking
+  const tablesHashRef = useRef('');
+  const roomsHashRef = useRef('');
+  const ordersHashRef = useRef('');
+  const menuHashRef = useRef('');
+  const isInitialLoadRef = useRef(true);
+
   const showToast = (message, duration = 4000) => {
     setToastMessage(message);
     setTimeout(() => {
@@ -242,27 +249,42 @@ export default function App() {
     }
   };
 
-  // 1. Fetch live tables, rooms, and orders with offline cache backup
-  const fetchLiveData = useCallback(async () => {
+  // 1. Fetch live tables, rooms, and orders with smart diffing (Never blinks UI)
+  const fetchLiveData = useCallback(async (isSilent = false) => {
     if (!currentUser) return;
-    setIsLoading(true);
+    
+    // Only display spinner on very first initial load if no data is present yet
+    const shouldShowSpinner = !isSilent && isInitialLoadRef.current && !tablesHashRef.current;
+    if (shouldShowSpinner) {
+      setIsLoading(true);
+    }
+
     try {
+      let rawTables = [];
       if (department === 'bar') {
         const res = await api.getBarTables();
-        const rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
-        setTables(rawTables);
-        setCachedTables('bar', rawTables);
+        rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
       } else {
         const res = await api.getRestaurantTables();
-        const rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
+        rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
+      }
+
+      // Smart diffing: Only update state and re-render if tables data actually changed
+      const tablesHash = JSON.stringify(rawTables);
+      if (tablesHash !== tablesHashRef.current) {
+        tablesHashRef.current = tablesHash;
         setTables(rawTables);
-        setCachedTables('restaurant', rawTables);
+        setCachedTables(department, rawTables);
       }
 
       // Fetch occupied rooms for Room Service
       try {
         const rooms = await api.getOccupiedRooms();
-        setOccupiedRooms(rooms);
+        const roomsHash = JSON.stringify(rooms);
+        if (roomsHash !== roomsHashRef.current) {
+          roomsHashRef.current = roomsHash;
+          setOccupiedRooms(rooms);
+        }
       } catch (rErr) {
         console.warn('Occupied rooms fetch warning:', rErr.message);
       }
@@ -271,7 +293,11 @@ export default function App() {
       try {
         const ordRes = department === 'bar' ? await api.getBarOrders() : await api.getRestaurantOrders();
         const ordList = (ordRes && ordRes.orders) || (ordRes && ordRes.data) || [];
-        setRecentOrders(ordList);
+        const ordersHash = JSON.stringify(ordList);
+        if (ordersHash !== ordersHashRef.current) {
+          ordersHashRef.current = ordersHash;
+          setRecentOrders(ordList);
+        }
       } catch (oErr) {
         console.warn('Recent orders fetch warning:', oErr.message);
       }
@@ -280,41 +306,49 @@ export default function App() {
     } catch (err) {
       console.error('Data fetch error:', err.message);
       setServerStatus('error');
-      // Load cached tables if current tables list is empty
       const cached = getCachedTables(department);
       if (cached && cached.length > 0) {
         setTables((prev) => (prev && prev.length > 0 ? prev : cached));
       }
     } finally {
-      setIsLoading(false);
+      if (shouldShowSpinner) {
+        setIsLoading(false);
+      }
+      isInitialLoadRef.current = false;
     }
   }, [currentUser, department]);
 
-  // 2. Fetch menu items and categories with offline cache backup
-  const fetchMenu = useCallback(async () => {
+  // 2. Fetch menu items and categories with smart diffing
+  const fetchMenu = useCallback(async (isSilent = false) => {
     if (!currentUser) return;
-    setIsLoadingMenu(true);
+    if (!isSilent && isInitialLoadRef.current) {
+      setIsLoadingMenu(true);
+    }
     try {
+      let items = [];
+      let cats = [];
       if (department === 'bar') {
         const [menuRes, catRes] = await Promise.all([
           api.getBarMenu(),
           api.getBarCategories()
         ]);
-        const items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
-        const cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
-        setMenuItems(items);
-        setCategories(cats);
-        setCachedMenu('bar', items, cats);
+        items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
+        cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
       } else {
         const [menuRes, catRes] = await Promise.all([
           api.getRestaurantMenu(),
           api.getRestaurantCategories()
         ]);
-        const items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
-        const cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
+        items = (menuRes && menuRes.items) || (menuRes && menuRes.data) || (Array.isArray(menuRes) ? menuRes : []);
+        cats = (catRes && catRes.categories) || (catRes && catRes.data) || (Array.isArray(catRes) ? catRes : []);
+      }
+
+      const menuHash = JSON.stringify({ items, cats });
+      if (menuHash !== menuHashRef.current) {
+        menuHashRef.current = menuHash;
         setMenuItems(items);
         setCategories(cats);
-        setCachedMenu('restaurant', items, cats);
+        setCachedMenu(department, items, cats);
       }
     } catch (err) {
       console.error('Menu fetch error:', err.message);
@@ -414,12 +448,12 @@ export default function App() {
     }
   }, [currentUser, department, fetchLiveData, fetchMenu]);
 
-  // Auto-refresh tables periodically every 12 seconds when idle
+  // Auto-refresh tables periodically every 7 seconds when idle, completely silent background fetch
   useEffect(() => {
     if (!currentUser || destination) return;
     const interval = setInterval(() => {
-      fetchLiveData();
-    }, 12000);
+      fetchLiveData(true);
+    }, 7000);
     return () => clearInterval(interval);
   }, [currentUser, destination, fetchLiveData]);
 
@@ -561,8 +595,8 @@ export default function App() {
       setDestination(null);
       setActiveTab('orders');
 
-      // Refresh live tables and orders
-      fetchLiveData();
+      // Refresh live tables and orders silently
+      fetchLiveData(true);
     } catch (err) {
       console.error('Order punch failed:', err);
 
@@ -860,7 +894,7 @@ export default function App() {
               recentOrders={recentOrders}
               occupiedRooms={occupiedRooms}
               onSelectDestinationForMore={handleSelectDestinationForMore}
-              onRefresh={fetchLiveData}
+              onRefresh={() => fetchLiveData(true)}
               isLoading={isLoading}
             />
           )}
