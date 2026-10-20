@@ -11,10 +11,10 @@ export default function DestinationTabs({
   const activeBg = isBar ? 'var(--apple-purple-subtle)' : 'var(--apple-orange-subtle)';
 
   const tabs = [
+    { id: 'orders', label: 'My Orders', icon: '📋', count: myOrdersCount },
     { id: 'tables', label: isBar ? 'Bar Tables' : 'Tables', icon: isBar ? '🍸' : '🍽️' },
     { id: 'rooms', label: 'Room Service', icon: '🛏️' },
-    { id: 'parcels', label: 'Parcels', icon: '📦' },
-    { id: 'orders', label: 'My Orders', icon: '📋', count: myOrdersCount }
+    { id: 'parcels', label: 'Parcels', icon: '📦' }
   ];
 
   return (

@@ -71,7 +71,7 @@ export default function App() {
     }
   }, [theme]);
 
-  const [activeTab, setActiveTab] = useState('tables'); // 'tables' | 'rooms' | 'parcels' | 'orders'
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'tables' | 'rooms' | 'parcels'
   const [destination, setDestination] = useState(null); // active destination when taking an order
 
   // Data states
@@ -456,13 +456,35 @@ export default function App() {
     }
   };
 
-  // Destination pickers
   const handleSelectTable = (table) => {
+    const numStr = String(table.table_number || table.name || '');
+    const isRS = table.table_type === 'room_service' || numStr.startsWith('RS-');
+    const isP = table.table_type === 'parcel' || numStr.startsWith('P-');
     setDestination({
-      type: 'table',
+      type: isRS ? 'room' : (isP ? 'parcel' : 'table'),
       id: table.id,
       label: table.name || table.table_number || `Table ${table.id}`,
-      rawTable: table
+      rawTable: table,
+      isExistingOrder: (table.cart && table.cart.length > 0) || table.status !== 'available'
+    });
+    setCart([]);
+  };
+
+  const handleSelectDestinationForMore = (dest) => {
+    let type = dest.type || 'table';
+    const label = dest.label || dest.table_number || `Table ${dest.id}`;
+    if (label.startsWith('RS-') || type === 'room') {
+      type = 'room';
+    } else if (label.startsWith('P-') || type === 'parcel') {
+      type = 'parcel';
+    }
+    setDestination({
+      type,
+      id: dest.id,
+      label,
+      rawTable: dest.rawTable || null,
+      rawOrder: dest.rawOrder || null,
+      isExistingOrder: true
     });
     setCart([]);
   };
@@ -519,7 +541,7 @@ export default function App() {
       setIsCartOpen(false);
       setCart([]);
       setDestination(null);
-      setActiveTab('tables');
+      setActiveTab('orders');
       setIsPunching(false);
       showToast('⚡ Saved Offline! Will auto-sync when Wi-Fi connects.', 5000);
       return;
@@ -537,7 +559,7 @@ export default function App() {
       setIsCartOpen(false);
       setCart([]);
       setDestination(null);
-      setActiveTab('tables');
+      setActiveTab('orders');
 
       // Refresh live tables and orders
       fetchLiveData();
@@ -837,7 +859,7 @@ export default function App() {
               tables={tables}
               recentOrders={recentOrders}
               occupiedRooms={occupiedRooms}
-              onSelectDestinationForMore={handleSelectTable}
+              onSelectDestinationForMore={handleSelectDestinationForMore}
               onRefresh={fetchLiveData}
               isLoading={isLoading}
             />

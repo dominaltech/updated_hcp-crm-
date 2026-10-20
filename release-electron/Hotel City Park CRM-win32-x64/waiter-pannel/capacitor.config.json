@@ -3,8 +3,14 @@
   "appName": "Hotel City Park - Waiter",
   "webDir": "dist",
   "server": {
+    "url": "https://shiny-wisp-05380a.netlify.app",
     "cleartext": true,
-    "androidScheme": "http"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "shiny-wisp-05380a.netlify.app",
+      "*.netlify.app",
+      "*.supabase.co"
+    ]
   },
   "android": {
     "allowMixedContent": true

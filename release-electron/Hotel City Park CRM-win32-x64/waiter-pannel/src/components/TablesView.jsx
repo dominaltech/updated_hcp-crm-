@@ -10,7 +10,18 @@ export default function TablesView({
   const [searchTerm, setSearchTerm] = useState('');
   const isBar = department === 'bar';
 
+  const isRoomService = (t) => {
+    const num = String(t.table_number || t.name || '').toUpperCase();
+    return t.table_type === 'room_service' || num.startsWith('RS-') || num.includes('ROOM');
+  };
+  const isParcel = (t) => {
+    const num = String(t.table_number || t.name || '').toUpperCase();
+    return t.table_type === 'parcel' || num.startsWith('P-');
+  };
+
   const filtered = tables.filter(t => {
+    // Room Service and Parcels belong in their respective tabs / My Orders, not the Tables grid
+    if (isRoomService(t) || isParcel(t)) return false;
     const num = (t.table_number || t.name || '').toLowerCase();
     return num.includes(searchTerm.toLowerCase());
   });
@@ -137,11 +148,12 @@ export default function TablesView({
                   cursor: 'pointer',
                   position: 'relative',
                   minHeight: '124px',
+                  overflow: 'hidden',
                   transition: 'all var(--transition-fast)'
                 }}
               >
                 {/* Status Badge in Top-Right Corner */}
-                <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
+                <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 2 }}>
                   <span
                     style={{
                       fontSize: '0.62rem',
@@ -164,19 +176,32 @@ export default function TablesView({
                   </span>
                 </div>
 
-                {/* Big Bold Table Number */}
-                <div
-                  style={{
-                    fontSize: '2.2rem',
-                    fontWeight: 900,
-                    lineHeight: 1,
-                    color: 'var(--text-primary)',
-                    letterSpacing: '-0.03em',
-                    margin: '8px 0 4px'
-                  }}
-                >
-                  {t.table_number || `T${t.id}`}
-                </div>
+                {/* Big Bold Table Number with auto-scaling to avoid overflow */}
+                {(() => {
+                  const label = t.table_number || `T${t.id}`;
+                  const len = label.length;
+                  const fontSize = len > 9 ? '0.95rem' : (len > 5 ? '1.35rem' : '2.1rem');
+                  return (
+                    <div
+                      style={{
+                        fontSize,
+                        fontWeight: 900,
+                        lineHeight: 1.15,
+                        color: 'var(--text-primary)',
+                        letterSpacing: len > 5 ? '-0.01em' : '-0.03em',
+                        margin: '10px 0 4px',
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        wordBreak: 'break-word',
+                        padding: '0 4px'
+                      }}
+                      title={label}
+                    >
+                      {label}
+                    </div>
+                  );
+                })()}
 
                 {/* Bill Amount or Table Type */}
                 {isOccupied && billTotal > 0 ? (

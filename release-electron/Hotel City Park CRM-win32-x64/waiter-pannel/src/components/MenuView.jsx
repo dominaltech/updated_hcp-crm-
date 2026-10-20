@@ -512,29 +512,7 @@ export default function MenuView({
             animation: 'fadeInModal var(--transition-fast)'
           }}
         >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span
-                style={{
-                  background: accentColor,
-                  color: 'var(--text-on-accent)',
-                  fontSize: '0.70rem',
-                  fontWeight: 900,
-                  padding: '2px 7px',
-                  borderRadius: 'var(--radius-xl)'
-                }}
-              >
-                {cartTotalItems} {cartTotalItems === 1 ? 'Item' : 'Items'}
-              </span>
-              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                ₹{cartGrandTotal.toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
-              Includes ₹{cartGst} GST (5%)
-            </div>
-          </div>
-
+          {/* Left: View Cart button */}
           <button
             type="button"
             id="btn-open-cart-drawer"
@@ -557,6 +535,30 @@ export default function MenuView({
             <span style={{ fontSize: '1rem' }}>🛒</span>
             <span>View Cart →</span>
           </button>
+
+          {/* Right: Items count & Grand Total */}
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+              <span
+                style={{
+                  background: accentColor,
+                  color: 'var(--text-on-accent)',
+                  fontSize: '0.70rem',
+                  fontWeight: 900,
+                  padding: '2px 7px',
+                  borderRadius: 'var(--radius-xl)'
+                }}
+              >
+                {cartTotalItems} {cartTotalItems === 1 ? 'Item' : 'Items'}
+              </span>
+              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+                ₹{cartGrandTotal.toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
+              Includes ₹{cartGst} GST (5%)
+            </div>
+          </div>
         </div>
       )}
     </div>

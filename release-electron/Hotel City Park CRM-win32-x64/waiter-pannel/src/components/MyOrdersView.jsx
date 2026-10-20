@@ -30,30 +30,19 @@ export default function MyOrdersView({
   const myName = currentUser?.full_name || currentUser?.username || 'Waiter';
   const myId = currentUser?.id;
 
-  // Filter active tables attended by this waiter (or room service/parcel orders)
+  // Show all active running tables and room service orders for this department
   const myActiveTables = tables.filter((t) => {
     const isRS = t.table_type === 'room_service' || String(t.table_number || '').startsWith('RS-');
     const isParcel = t.table_type === 'parcel' || t.is_parcel || t.is_takeaway || String(t.table_number || '').startsWith('P-');
-    const isAttendedByMe = (
-      !t.waiter_name ||
-      t.waiter_name === 'Staff' ||
-      t.waiter_name === 'Waiter' ||
-      (t.waiter_name && (t.waiter_name.toLowerCase() === myName.toLowerCase() || t.waiter_name.toLowerCase() === currentUser?.username?.toLowerCase())) ||
-      (t.waiter_id && t.waiter_id === myId)
-    );
     const hasActiveOrder = (t.status !== 'available' && t.status !== '') || (t.cart && t.cart.length > 0);
-    return (isAttendedByMe || isRS || isParcel) && hasActiveOrder;
+    return hasActiveOrder;
   });
 
-  // Filter recent orders placed by this waiter
-  const myRecentOrders = recentOrders.filter((o) => {
+  // Recent orders in this department
+  const allDepartmentOrders = recentOrders.filter((o) => {
     if (!o) return false;
-    const waiterMatches = (
-      (o.waiter_name && (o.waiter_name.toLowerCase() === myName.toLowerCase() || o.waiter_name.toLowerCase() === currentUser?.username?.toLowerCase())) ||
-      (o.waiter_id && o.waiter_id === myId) ||
-      (o.notes && o.notes.toLowerCase().includes(myName.toLowerCase()))
-    );
-    return waiterMatches;
+    if (department && o.department && o.department.toLowerCase() !== department.toLowerCase()) return false;
+    return true;
   });
 
   // Filter active tables by search query
@@ -62,11 +51,12 @@ export default function MyOrdersView({
     const q = searchQuery.toLowerCase().trim();
     const matchTable = String(t.table_number || t.name || '').toLowerCase().includes(q);
     const matchItems = Array.isArray(t.cart) && t.cart.some((it) => it.name && it.name.toLowerCase().includes(q));
-    return matchTable || matchItems;
+    const matchWaiter = String(t.waiter_name || '').toLowerCase().includes(q);
+    return matchTable || matchItems || matchWaiter;
   });
 
   // Filter recent orders by search query
-  const filteredRecentOrders = myRecentOrders.filter((o) => {
+  const filteredRecentOrders = allDepartmentOrders.filter((o) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     const matchNum = String(o.order_number || o.id || '').toLowerCase().includes(q);
@@ -78,14 +68,15 @@ export default function MyOrdersView({
       items = o.items || [];
     }
     const matchItems = items.some((it) => it.name && it.name.toLowerCase().includes(q));
-    return matchNum || matchDest || matchItems;
+    const matchWaiter = String(o.waiter_name || '').toLowerCase().includes(q);
+    return matchNum || matchDest || matchItems || matchWaiter;
   });
 
   // Cancel Active Table Order (Void Table)
   const handleConfirmCancelTable = async (table) => {
     try {
       setActionInProgress(`cancel-table-${table.id}`);
-      await api.cancelTable(department, table.id);
+      await api.cancelTable(department, table.id, table);
       setMsg(`🗑️ Table ${table.table_number || table.name} order has been canceled.`);
       setSelectedOrder(null);
       setOrderToCancel(null);
@@ -103,7 +94,7 @@ export default function MyOrdersView({
   const handleConfirmCancelOrder = async (order) => {
     try {
       setActionInProgress(`cancel-order-${order.id}`);
-      await api.cancelOrder(department, order.id);
+      await api.cancelOrder(department, order.id, order);
       setMsg(`🗑️ Order #${order.order_number || order.id} has been canceled.`);
       setSelectedOrder(null);
       setOrderToCancel(null);
@@ -416,6 +407,8 @@ export default function MyOrdersView({
                         </div>
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
                           Token #{t.token_number || 1} • KOT #{t.kot_count || t.bot_count || 1}
+                          {t.order_started_at && ` • 🕒 ${new Date(t.order_started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                          {t.waiter_name && ` • 👤 ${t.waiter_name}`}
                         </div>
                       </div>
                     </div>
@@ -476,16 +469,20 @@ export default function MyOrdersView({
                   </div>
 
                   {/* Actions for this table */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.2fr', gap: '5px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr 1.1fr', gap: '5px' }}>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        const numStr = String(t.table_number || '');
+                        const isRS = t.table_type === 'room_service' || numStr.startsWith('RS-');
+                        const isP = t.table_type === 'parcel' || numStr.startsWith('P-');
                         onSelectDestinationForMore({
-                          type: 'table',
+                          type: isRS ? 'room' : (isP ? 'parcel' : 'table'),
                           id: t.id,
                           label: t.table_number || `Table ${t.id}`,
-                          rawTable: t
+                          rawTable: t,
+                          isExistingOrder: true
                         });
                       }}
                       style={{
@@ -499,7 +496,7 @@ export default function MyOrdersView({
                         cursor: 'pointer'
                       }}
                     >
-                      + Add
+                      + Add Items
                     </button>
 
                     <button
@@ -641,15 +638,45 @@ export default function MyOrdersView({
                       </div>
                       <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                         <strong>{o.table_number || o.customer_name || 'Counter'}</strong>
-                        {o.created_at && ` • ${new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                        {o.created_at && ` • 🕒 ${new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                         {o.waiter_name && ` • 👤 ${o.waiter_name}`}
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--apple-blue)' }}>
+                    <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '0.98rem', fontWeight: 900, color: 'var(--apple-blue)', marginRight: '4px' }}>
                         ₹{Number(o.total || o.grand_total || 0).toLocaleString('en-IN')}
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const tableStr = String(o.table_number || '');
+                          const isRS = tableStr.startsWith('RS-') || o.destination_type === 'room';
+                          const isP = tableStr.startsWith('P-') || o.destination_type === 'parcel';
+                          onSelectDestinationForMore({
+                            type: isRS ? 'room' : (isP ? 'parcel' : 'table'),
+                            id: o.room_id || o.table_id || o.id,
+                            label: o.table_number || `Order #${o.id}`,
+                            rawOrder: o,
+                            isExistingOrder: true
+                          });
+                        }}
+                        title="Add more items to this order"
+                        style={{
+                          padding: '5px 8px',
+                          borderRadius: 'var(--radius-xs)',
+                          background: isBar ? 'var(--apple-purple-subtle)' : 'var(--apple-orange-subtle)',
+                          border: isBar ? '1px solid var(--apple-purple)' : '1px solid var(--apple-orange)',
+                          color: isBar ? 'var(--apple-purple)' : 'var(--apple-orange)',
+                          fontSize: '0.70rem',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Add Items
+                      </button>
 
                       <button
                         type="button"
@@ -659,7 +686,7 @@ export default function MyOrdersView({
                         }}
                         title="Cancel this order"
                         style={{
-                          padding: '4px 8px',
+                          padding: '5px 8px',
                           borderRadius: 'var(--radius-xs)',
                           background: 'var(--apple-red-subtle)',
                           border: '1px solid var(--apple-red)',
@@ -832,6 +859,38 @@ export default function MyOrdersView({
 
             {/* Modal Bottom Actions */}
             <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const data = selectedOrder.data;
+                  const numStr = String(data.table_number || data.name || '');
+                  const isRS = data.table_type === 'room_service' || numStr.startsWith('RS-');
+                  const isP = data.table_type === 'parcel' || numStr.startsWith('P-');
+                  setSelectedOrder(null);
+                  onSelectDestinationForMore({
+                    type: isRS ? 'room' : (isP ? 'parcel' : 'table'),
+                    id: data.id,
+                    label: data.table_number || data.customer_name || `Order #${data.id}`,
+                    rawTable: selectedOrder.type === 'table' ? data : null,
+                    rawOrder: selectedOrder.type === 'order' ? data : null,
+                    isExistingOrder: true
+                  });
+                }}
+                style={{
+                  flex: 1.2,
+                  height: '40px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: isBar ? 'var(--apple-purple-subtle)' : 'var(--apple-orange-subtle)',
+                  border: isBar ? '1.5px solid var(--apple-purple)' : '1.5px solid var(--apple-orange)',
+                  color: isBar ? 'var(--apple-purple)' : 'var(--apple-orange)',
+                  fontSize: '0.82rem',
+                  fontWeight: 850,
+                  cursor: 'pointer'
+                }}
+              >
+                + Add Items
+              </button>
+
               <button
                 type="button"
                 onClick={() => {

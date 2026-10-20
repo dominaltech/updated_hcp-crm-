@@ -749,14 +749,176 @@ export const api = {
     return fetchCloudRecentOrders('bar');
   },
 
-  cancelTable: (department, tableId) => {
-    const endpoint = department === 'bar' ? `/bar/tables/${tableId}/cancel` : `/restaurant/tables/${tableId}/cancel`;
-    return request(endpoint, { method: 'POST' });
+  cancelTable: async (department, tableId, tableObj = null) => {
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
+
+    if (!isRemoteHosted) {
+      try {
+        const endpoint = department === 'bar' ? `/bar/tables/${tableId}/cancel` : `/restaurant/tables/${tableId}/cancel`;
+        const res = await request(endpoint, { method: 'POST', timeout: 2500 });
+        if (res && res.success) return res;
+      } catch (err) {
+        console.warn('[WaiterAPI] Local cancelTable attempt failed, falling back to Supabase Cloud void:', err.message);
+      }
+    }
+
+    // Supabase Cloud Cancellation
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const tableNumberStr = tableObj?.table_number || String(tableId);
+
+      // Cancel matching pending order in cloud inbox
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&room_number=eq.${encodeURIComponent(tableNumberStr)}`,
+        {
+          method: 'PATCH',
+          signal: controller.signal,
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'cancelled' })
+        }
+      ).catch(() => {});
+
+      // Dispatch cancel event for local CRM printer and SQLite cleanup
+      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room_number: tableNumberStr,
+          room_id: Number(tableId) || 0,
+          department: 'waiter_kot_cancel',
+          order_id: 0,
+          bill_no: 'VOID',
+          subtotal: 0,
+          gst: 0,
+          grand_total: 0,
+          settled_by: 'Waiter',
+          items_summary: JSON.stringify({
+            action: 'cancel_table',
+            department: department || 'restaurant',
+            table_id: tableId,
+            table_number: tableNumberStr
+          }),
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+      clearTimeout(timer);
+    } catch (e) {
+      console.warn('[WaiterAPI] Cloud cancel notice:', e.message);
+    }
+
+    // Clean up local cached table status immediately in localStorage
+    try {
+      const cacheKey = department === 'bar' ? 'hcp_cached_tables_bar' : 'hcp_cached_tables_restaurant';
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        let tables = JSON.parse(raw);
+        tables = tables.map(t => {
+          if (String(t.id) === String(tableId) || t.table_number === tableObj?.table_number) {
+            return {
+              ...t,
+              status: 'available',
+              cart: [],
+              cart_total: 0,
+              token_number: 0,
+              kot_count: 0,
+              order_started_at: null,
+              waiter_name: '',
+              special_notes: ''
+            };
+          }
+          return t;
+        }).filter(t => {
+          if (String(t.id) === String(tableId) || t.table_number === tableObj?.table_number) {
+            const num = String(t.table_number || '');
+            if (t.table_type === 'room_service' || t.table_type === 'parcel' || num.startsWith('RS-') || num.startsWith('P-')) {
+              return false;
+            }
+          }
+          return true;
+        });
+        localStorage.setItem(cacheKey, JSON.stringify(tables));
+      }
+    } catch (_) {}
+
+    return { success: true, message: 'Table order cancelled and voided successfully' };
   },
 
-  cancelOrder: (department, orderId) => {
-    const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
-    return request(endpoint, { method: 'DELETE' });
+  cancelOrder: async (department, orderId, orderObj = null) => {
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
+
+    if (!isRemoteHosted) {
+      try {
+        const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
+        const res = await request(endpoint, { method: 'DELETE', timeout: 2500 });
+        if (res && res.success) return res;
+      } catch (err) {
+        console.warn('[WaiterAPI] Local cancelOrder attempt failed, falling back to Supabase Cloud void:', err.message);
+      }
+    }
+
+    // Cancel in Supabase Cloud
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/room_charges_inbox?id=eq.${orderId}`,
+        {
+          method: 'PATCH',
+          signal: controller.signal,
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'cancelled' })
+        }
+      ).catch(() => {});
+
+      // Send cancel event to CRM
+      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          room_number: String(orderObj?.table_number || orderId),
+          room_id: 0,
+          department: 'waiter_kot_cancel',
+          order_id: Number(orderId) || 0,
+          bill_no: 'VOID',
+          subtotal: 0,
+          gst: 0,
+          grand_total: 0,
+          settled_by: 'Waiter',
+          items_summary: JSON.stringify({
+            action: 'cancel_order',
+            department: department || 'restaurant',
+            order_id: orderId
+          }),
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
+      }).catch(() => {});
+
+      clearTimeout(timer);
+    } catch (_) {}
+
+    return { success: true, message: 'Order cancelled successfully' };
   },
 
   getSettledBills: (department) => {

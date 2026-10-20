@@ -52,3 +52,24 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+android.applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+        def outputFile = output.outputFile
+        if (outputFile != null && outputFile.name.endsWith('.apk')) {
+            tasks.named("assemble${variant.name.capitalize()}").configure {
+                doLast {
+                    def targetDir = file("../../../../../apks")
+                    if (!targetDir.exists()) targetDir.mkdirs()
+                    copy {
+                        from outputFile
+                        into targetDir
+                        rename { "HotelCityPark-Waiter.apk" }
+                    }
+                    println ">>> Auto-copied updated APK to: apks/HotelCityPark-Waiter.apk"
+                }
+            }
+        }
+    }
+}
+
