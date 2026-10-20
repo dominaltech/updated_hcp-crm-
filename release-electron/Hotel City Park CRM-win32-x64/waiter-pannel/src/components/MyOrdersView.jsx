@@ -302,7 +302,7 @@ export default function MyOrdersView({
             transition: 'all 0.15s ease'
           }}
         >
-          <span>📜 All Orders ({myRecentOrders.length})</span>
+          <span>📜 All Orders ({allDepartmentOrders.length})</span>
         </button>
       </div>
 
