@@ -9,7 +9,10 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Eagerly sync latest active tunnel from cloud in background
+    // Eagerly pre-fetch cloud package and tunnel from Supabase Cloud in background
+    if (typeof api.fetchCloudWaiterPackage === 'function') {
+      api.fetchCloudWaiterPackage(true).catch(() => {});
+    }
     if (typeof api.fetchCloudTunnelUrl === 'function') {
       api.fetchCloudTunnelUrl(true).catch(() => {});
     }

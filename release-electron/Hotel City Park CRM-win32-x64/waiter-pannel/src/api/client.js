@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-export const CLOUD_TUNNEL_URL = 'https://clocks-point-kick-medicare.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://hudson-universal-quite-talented.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {
@@ -237,18 +237,228 @@ export const request = async (endpoint, options = {}) => {
   }
 };
 
-export const api = {
-  // Auth
-  login: async (username, password) => {
-    const res = await request('/staff/login', {
-      method: 'POST',
-      body: { username, password }
-    });
-    if (res && res.success) {
-      setAuthToken(res.token);
-      localStorage.setItem('hcp_waiter_user', JSON.stringify(res.user));
+// Supabase Cloud Direct Endpoints for Independent Internet & Cellular Sync
+export const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+
+let inMemoryCloudPkg = null;
+
+// Eagerly fetch and cache the entire live waiter package from Supabase Cloud
+export const fetchCloudWaiterPackage = async (force = false) => {
+  if (!force && inMemoryCloudPkg) return inMemoryCloudPkg;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_cloud_sync_pkg&select=items_summary&limit=1`,
+      {
+        signal: controller.signal,
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      }
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]?.items_summary) {
+        const pkg = JSON.parse(data[0].items_summary);
+        inMemoryCloudPkg = pkg;
+        try {
+          localStorage.setItem('hcp_cloud_waiter_pkg', JSON.stringify(pkg));
+          if (pkg.restaurantMenu && pkg.restaurantCategories) {
+            localStorage.setItem('hcp_cached_menu_restaurant', JSON.stringify({ items: pkg.restaurantMenu, categories: pkg.restaurantCategories }));
+          }
+          if (pkg.barMenu && pkg.barCategories) {
+            localStorage.setItem('hcp_cached_menu_bar', JSON.stringify({ items: pkg.barMenu, categories: pkg.barCategories }));
+          }
+          if (pkg.restaurantTables) {
+            localStorage.setItem('hcp_cached_tables_restaurant', JSON.stringify(pkg.restaurantTables));
+          }
+          if (pkg.barTables) {
+            localStorage.setItem('hcp_cached_tables_bar', JSON.stringify(pkg.barTables));
+          }
+          if (pkg.staff) {
+            localStorage.setItem('hcp_cached_staff', JSON.stringify(pkg.staff));
+          }
+        } catch (_) {}
+        return pkg;
+      }
     }
-    return res;
+  } catch (err) {
+    console.warn('[WaiterAPI] Supabase cloud package fetch notice:', err.message);
+  }
+
+  // Fallback to cached package in localStorage
+  try {
+    const raw = localStorage.getItem('hcp_cloud_waiter_pkg');
+    if (raw) {
+      inMemoryCloudPkg = JSON.parse(raw);
+      return inMemoryCloudPkg;
+    }
+  } catch (_) {}
+
+  return null;
+};
+
+// Push order directly to Supabase cloud inbox so local CRM can pull and auto-print KOT
+export const pushWaiterOrderToCloud = async (orderData) => {
+  const items = Array.isArray(orderData.items) ? orderData.items : [];
+  const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.quantity || item.qty || 1)), 0);
+  const gstAmount = Math.round((subtotal * 5) / 100);
+  const grandTotal = Math.round(subtotal + gstAmount);
+
+  const payload = {
+    room_number: String(orderData.destination_label || orderData.room_number || 'Table'),
+    room_id: orderData.destination_id || 0,
+    department: 'waiter_kot_order',
+    order_id: 0,
+    bill_no: 'KOT',
+    subtotal: subtotal,
+    gst: gstAmount,
+    grand_total: grandTotal,
+    settled_by: orderData.waiter_name || 'Captain',
+    items_summary: JSON.stringify(orderData),
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+    method: 'POST',
+    signal: controller.signal,
+    headers: {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(payload)
+  });
+  clearTimeout(timer);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `Supabase cloud error HTTP ${res.status}`);
+  }
+  const inserted = await res.json();
+  return Array.isArray(inserted) ? inserted[0] : inserted;
+};
+
+// Fetch recent cloud orders for My Orders view
+export const fetchCloudRecentOrders = async (dept = 'restaurant') => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&order=created_at.desc&limit=30`,
+      {
+        signal: controller.signal,
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      }
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const rows = await res.json();
+      const mapped = rows.map(r => {
+        let p = {};
+        try { p = JSON.parse(r.items_summary || '{}'); } catch (_) {}
+        return {
+          id: r.id,
+          table_number: p.destination_label || r.room_number,
+          waiter_name: p.waiter_name || r.settled_by,
+          total: r.grand_total,
+          created_at: r.created_at,
+          status: r.status === 'printed' ? 'KOT Dispatched' : (r.status === 'pending' ? 'Queued' : r.status),
+          items: p.items || [],
+          department: p.department || 'restaurant'
+        };
+      }).filter(o => !dept || o.department.toLowerCase() === dept.toLowerCase());
+      return { success: true, orders: mapped };
+    }
+  } catch (e) {
+    console.warn('[WaiterAPI] Could not fetch cloud orders:', e.message);
+  }
+  return { success: true, orders: [] };
+};
+
+export const api = {
+  // Auth: Supports Local CRM + Supabase Cloud Package Auth (Cellular/Netlify) + Offline Cached Auth
+  login: async (username, password) => {
+    const uClean = String(username).trim().toLowerCase();
+    const pClean = String(password).trim();
+
+    // 1. Try local server first if on same Wi-Fi
+    try {
+      const res = await request('/staff/login', {
+        method: 'POST',
+        body: { username, password },
+        timeout: 3000
+      });
+      if (res && res.success) {
+        setAuthToken(res.token);
+        localStorage.setItem('hcp_waiter_user', JSON.stringify(res.user));
+        // Cache staff credential locally
+        try {
+          const cachedStaff = JSON.parse(localStorage.getItem('hcp_cached_staff') || '[]');
+          const idx = cachedStaff.findIndex(s => String(s.username).toLowerCase() === uClean);
+          if (idx >= 0) cachedStaff[idx] = { ...cachedStaff[idx], ...res.user, password: pClean };
+          else cachedStaff.push({ ...res.user, password: pClean });
+          localStorage.setItem('hcp_cached_staff', JSON.stringify(cachedStaff));
+        } catch (_) {}
+        return res;
+      }
+    } catch (locErr) {
+      console.log('[WaiterAPI] Local login unavailable, validating via Supabase Cloud package...');
+    }
+
+    // 2. Fall back to Supabase Cloud Package (Independent 4G/5G, Netlify link, or outside Wi-Fi)
+    let pkg = null;
+    try {
+      pkg = await fetchCloudWaiterPackage(true);
+    } catch (_) {}
+    if (!pkg) {
+      try {
+        const raw = localStorage.getItem('hcp_cloud_waiter_pkg');
+        if (raw) pkg = JSON.parse(raw);
+      } catch (_) {}
+    }
+
+    let staffList = (pkg && Array.isArray(pkg.staff)) ? pkg.staff : [];
+    if (staffList.length === 0) {
+      try {
+        staffList = JSON.parse(localStorage.getItem('hcp_cached_staff') || '[]');
+      } catch (_) {}
+    }
+
+    if (staffList.length > 0) {
+      const staffMember = staffList.find(s =>
+        String(s.username || '').toLowerCase() === uClean &&
+        String(s.password || '') === pClean
+      );
+
+      if (staffMember) {
+        const userObj = {
+          id: staffMember.id,
+          username: staffMember.username,
+          full_name: staffMember.full_name || staffMember.username,
+          role: staffMember.role || 'waiter',
+          phone: staffMember.phone || ''
+        };
+        const pseudoToken = 'cloud_' + Date.now();
+        setAuthToken(pseudoToken);
+        localStorage.setItem('hcp_waiter_user', JSON.stringify(userObj));
+        return { success: true, token: pseudoToken, user: userObj };
+      } else {
+        return { success: false, error: 'Invalid ID or password. Please verify your credentials.' };
+      }
+    }
+
+    throw new Error('Could not connect to CRM or Cloud. Please check your internet connection.');
   },
 
   logout: () => {
@@ -266,29 +476,85 @@ export const api = {
   },
 
   // Tables
-  getRestaurantTables: () => request('/restaurant/tables'),
-  getBarTables: () => request('/bar/tables'),
+  getRestaurantTables: async () => {
+    try {
+      const res = await request('/restaurant/tables', { timeout: 3000 });
+      if (res && (res.tables || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, tables: pkg?.restaurantTables || [] };
+  },
+
+  getBarTables: async () => {
+    try {
+      const res = await request('/bar/tables', { timeout: 3000 });
+      if (res && (res.tables || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, tables: pkg?.barTables || [] };
+  },
 
   // Menus & Categories
-  getRestaurantMenu: () => request('/restaurant/menu'),
-  getRestaurantCategories: () => request('/restaurant/categories'),
-  getBarMenu: () => request('/bar/menu'),
-  getBarCategories: () => request('/bar/categories'),
+  getRestaurantMenu: async () => {
+    try {
+      const res = await request('/restaurant/menu', { timeout: 3000 });
+      if (res && (res.items || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, items: pkg?.restaurantMenu || [] };
+  },
+
+  getRestaurantCategories: async () => {
+    try {
+      const res = await request('/restaurant/categories', { timeout: 3000 });
+      if (res && (res.categories || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, categories: pkg?.restaurantCategories || [] };
+  },
+
+  getBarMenu: async () => {
+    try {
+      const res = await request('/bar/menu', { timeout: 3000 });
+      if (res && (res.items || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, items: pkg?.barMenu || [] };
+  },
+
+  getBarCategories: async () => {
+    try {
+      const res = await request('/bar/categories', { timeout: 3000 });
+      if (res && (res.categories || Array.isArray(res))) return res;
+    } catch (_) {}
+    const pkg = await fetchCloudWaiterPackage();
+    return { success: true, categories: pkg?.barCategories || [] };
+  },
 
   // Room Service - Occupied Rooms with Guest Info
   getOccupiedRooms: async () => {
-    const res = await request('/rooms');
-    const rooms = res && res.rooms ? res.rooms : (Array.isArray(res) ? res : []);
-    // Filter rooms that are occupied or have current_booking_id
-    const occupied = rooms.filter(r => r.status === 'occupied' || r.current_booking_id);
+    try {
+      const res = await request('/rooms', { timeout: 3000 });
+      const rooms = res && res.rooms ? res.rooms : (Array.isArray(res) ? res : []);
+      const occupied = rooms.filter(r => r.status === 'occupied' || r.current_booking_id);
+      if (occupied.length > 0) {
+        return occupied.map(r => ({
+          ...r,
+          guest_name: r.guest_name || 'In-House Guest',
+          guest_phone: r.guest_mobile || r.mobile || r.guest_phone || '—',
+          guest_mobile: r.guest_mobile || r.mobile || r.guest_phone || '—',
+          booking_id: r.booking_id || r.current_booking_id,
+          checkin_date: r.checkin_time || '—',
+          stay_nights: 1
+        }));
+      }
+    } catch (_) {}
 
-    return occupied.map(r => ({
+    const pkg = await fetchCloudWaiterPackage();
+    return (pkg?.occupiedRooms || []).map(r => ({
       ...r,
       guest_name: r.guest_name || 'In-House Guest',
-      guest_phone: r.guest_mobile || r.mobile || r.guest_phone || '—',
-      guest_mobile: r.guest_mobile || r.mobile || r.guest_phone || '—',
-      booking_id: r.booking_id || r.current_booking_id,
-      checkin_date: r.checkin_time || '—',
+      guest_phone: r.guest_phone || r.guest_mobile || '—',
       stay_nights: 1
     }));
   },
@@ -296,143 +562,134 @@ export const api = {
   // Order Placement (Tables, Rooms, Parcels)
   punchOrder: async (orderData) => {
     const {
-      department, // 'restaurant' | 'bar'
-      destination_type, // 'table' | 'room' | 'parcel'
-      destination_id, // table_id, room_id, or parcel token/customer name
-      destination_label, // 'Table 3', 'Room 204', 'Parcel #12'
-      items, // [{ id, name, price, quantity, notes }]
+      department,
+      destination_type,
+      destination_id,
+      destination_label,
+      items,
       waiter_id,
       waiter_name,
       notes
     } = orderData;
 
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
-    const gstRate = department === 'bar' ? 5 : 5; // standard 5% GST
+    const subtotal = (items || []).reduce((sum, item) => sum + (parseFloat(item.price || 0) * (item.quantity || item.qty || 1)), 0);
+    const gstRate = 5;
     const gstAmount = Math.round((subtotal * gstRate) / 100);
     const grandTotal = Math.round(subtotal + gstAmount);
 
-    if (destination_type === 'table') {
-      const endpoint = department === 'bar'
-        ? `/bar/tables/${destination_id}/bot`
-        : `/restaurant/tables/${destination_id}/kot`;
+    // 1. Try local CRM if reachable (fast path on local Wi-Fi)
+    try {
+      if (destination_type === 'table') {
+        const endpoint = department === 'bar'
+          ? `/bar/tables/${destination_id}/bot`
+          : `/restaurant/tables/${destination_id}/kot`;
 
-      return await request(endpoint, {
-        method: 'POST',
-        body: {
-          items: items.map(it => ({
-            id: it.id,
-            name: it.name,
-            price: it.price,
-            qty: it.quantity,
-            quantity: it.quantity,
-            notes: it.notes || ''
-          })),
-          waiter_id,
-          waiter_name,
-          customer_name: orderData.customer_name || '',
-          customer_phone: orderData.guest_phone || orderData.customer_phone || '',
-          guest_phone: orderData.guest_phone || orderData.customer_phone || '',
-          notes: notes || '',
-          timestamp: new Date().toISOString()
+        return await request(endpoint, {
+          method: 'POST',
+          body: {
+            items: items.map(it => ({
+              id: it.id,
+              name: it.name,
+              price: it.price,
+              qty: it.quantity || it.qty || 1,
+              quantity: it.quantity || it.qty || 1,
+              notes: it.notes || ''
+            })),
+            waiter_id,
+            waiter_name,
+            customer_name: orderData.customer_name || '',
+            customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+            guest_phone: orderData.guest_phone || orderData.customer_phone || '',
+            notes: notes || '',
+            timestamp: new Date().toISOString()
+          },
+          timeout: 3500
+        });
+      } else if (destination_type === 'room') {
+        const roomNum = String(orderData.room_number || destination_label || '').match(/\d+/)?.[0] || String(destination_id);
+        const tableNumber = `RS-${roomNum}`;
+        const guestName = orderData.customer_name || orderData.guest_name || `Room ${roomNum} Guest`;
+
+        const tableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
+        const tblRes = await request(tableEndpoint, {
+          method: 'POST',
+          body: {
+            table_number: tableNumber,
+            table_type: 'room_service',
+            capacity: 2,
+            room_id: destination_id,
+            special_notes: `Room ${roomNum} (${guestName})`
+          },
+          timeout: 3500
+        });
+
+        const tableId = tblRes?.tableId || tblRes?.table?.id;
+        if (tableId) {
+          const kotEndpoint = department === 'bar' ? `/bar/tables/${tableId}/bot` : `/restaurant/tables/${tableId}/kot`;
+          return await request(kotEndpoint, {
+            method: 'POST',
+            body: {
+              items: items.map(it => ({
+                id: it.id,
+                name: it.name,
+                price: it.price,
+                qty: it.quantity || it.qty || 1,
+                quantity: it.quantity || it.qty || 1,
+                notes: it.notes || ''
+              })),
+              waiter_id,
+              waiter_name,
+              customer_name: guestName,
+              customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+              notes: notes || `Room Service for Room ${roomNum}`,
+              timestamp: new Date().toISOString()
+            },
+            timeout: 3500
+          });
         }
-      });
-    }
-
-    if (destination_type === 'room') {
-      // Room service order: Route through tables (RS-<room_number>) so:
-      // 1) KOT prints automatically on CRM computer
-      // 2) Order stays active in "My Orders" on Waiter Panel until settled
-      const roomNum = String(orderData.room_number || destination_label || '').match(/\d+/)?.[0] || String(destination_id);
-      const tableNumber = `RS-${roomNum}`;
-      const guestName = orderData.customer_name || orderData.guest_name || `Room ${roomNum} Guest`;
-
-      // 1. Create or retrieve active room service table
-      const tableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
-      const tblRes = await request(tableEndpoint, {
-        method: 'POST',
-        body: {
-          table_number: tableNumber,
-          table_type: 'room_service',
-          capacity: 2,
-          room_id: destination_id,
-          special_notes: `Room ${roomNum} (${guestName})`
-        }
-      });
-
-      const tableId = tblRes?.tableId || tblRes?.table?.id;
-      if (!tableId) throw new Error('Could not initialize room service table');
-
-      // 2. Dispatch KOT/BOT through table endpoint (enqueues auto-print & appears in My Orders)
-      const kotEndpoint = department === 'bar'
-        ? `/bar/tables/${tableId}/bot`
-        : `/restaurant/tables/${tableId}/kot`;
-
-      return await request(kotEndpoint, {
-        method: 'POST',
-        body: {
-          items: items.map(it => ({
-            id: it.id,
-            name: it.name,
-            price: it.price,
-            qty: it.quantity || it.qty || 1,
-            quantity: it.quantity || it.qty || 1,
-            notes: it.notes || ''
-          })),
-          waiter_id,
-          waiter_name,
-          customer_name: guestName,
-          customer_phone: orderData.guest_phone || orderData.customer_phone || '',
-          guest_phone: orderData.guest_phone || orderData.customer_phone || '',
-          notes: notes || `Room Service for Room ${roomNum}`,
-          timestamp: new Date().toISOString()
-        }
-      });
-    }
-
-    // Parcel / Takeaway order
-    // Route through parcel table (P-<token>) so KOT auto-prints and order shows in My Orders
-    const pToken = String(destination_id || orderData.customer_name || Date.now().toString().slice(-4)).replace(/^P-/i, '');
-    const parcelTableNumber = `P-${pToken}`;
-
-    const parcelTableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
-    const parcelTblRes = await request(parcelTableEndpoint, {
-      method: 'POST',
-      body: {
-        table_number: parcelTableNumber,
-        table_type: 'parcel',
-        capacity: 1,
-        special_notes: notes || `Takeaway Parcel #${pToken}`
       }
-    });
+    } catch (locErr) {
+      console.log('[WaiterAPI] Local CRM not reachable, dispatching order via Supabase Cloud...', locErr.message);
+    }
 
-    const parcelTableId = parcelTblRes?.tableId || parcelTblRes?.table?.id;
-    if (!parcelTableId) throw new Error('Could not initialize parcel order');
-
-    const parcelKotEndpoint = department === 'bar'
-      ? `/bar/tables/${parcelTableId}/bot`
-      : `/restaurant/tables/${parcelTableId}/kot`;
-
-    return await request(parcelKotEndpoint, {
-      method: 'POST',
-      body: {
+    // 2. Direct Supabase Cloud Order Placement (Works on 4G/5G, Netlify link, remote Wi-Fi!)
+    try {
+      const cloudRes = await pushWaiterOrderToCloud({
+        department: department || 'restaurant',
+        destination_type: destination_type || 'table',
+        destination_id: destination_id,
+        destination_label: destination_label || `Table ${destination_id}`,
         items: items.map(it => ({
           id: it.id,
           name: it.name,
           price: it.price,
           qty: it.quantity || it.qty || 1,
           quantity: it.quantity || it.qty || 1,
+          is_parcel: Boolean(it.is_parcel || destination_type === 'parcel'),
           notes: it.notes || ''
         })),
         waiter_id,
         waiter_name,
-        customer_name: orderData.customer_name || `Parcel #${pToken}`,
+        customer_name: orderData.customer_name || '',
         customer_phone: orderData.guest_phone || orderData.customer_phone || '',
-        guest_phone: orderData.guest_phone || orderData.customer_phone || '',
-        notes: notes || `Takeaway Parcel #${pToken}`,
+        notes: notes || '',
+        subtotal,
+        gst: gstAmount,
+        grand_total: grandTotal,
         timestamp: new Date().toISOString()
-      }
-    });
+      });
+
+      return {
+        success: true,
+        cloud: true,
+        kotNumber: cloudRes?.id ? String(cloudRes.id).slice(-4) : 'OK',
+        tokenNumber: '1',
+        message: 'Order dispatched via Cloud Sync'
+      };
+    } catch (cloudErr) {
+      console.error('[WaiterAPI] Cloud order dispatch error:', cloudErr);
+      throw cloudErr;
+    }
   },
 
   // Settle or Request Bill
@@ -440,7 +697,18 @@ export const api = {
     const endpoint = department === 'bar'
       ? `/bar/tables/${destinationId}/prebill`
       : `/restaurant/tables/${destinationId}/prebill`;
-    return request(endpoint, { method: 'POST' });
+    return request(endpoint, { method: 'POST', timeout: 4000 }).catch(async () => {
+      // Fallback: enqueue prebill in cloud
+      return pushWaiterOrderToCloud({
+        department: department || 'restaurant',
+        destination_type: 'table',
+        destination_id: destinationId,
+        destination_label: `Table ${destinationId}`,
+        waiter_name: 'Captain',
+        notes: 'PREBILL_REQUEST',
+        items: []
+      });
+    });
   },
 
   settleTable: (department, destinationId, paymentData) => {
@@ -450,23 +718,43 @@ export const api = {
     return request(endpoint, { method: 'POST', body: paymentData });
   },
 
-  getRestaurantOrders: () => request('/restaurant/orders'),
-  getBarOrders: () => request('/bar/orders'),
+  getRestaurantOrders: async () => {
+    try {
+      const res = await request('/restaurant/orders', { timeout: 3000 });
+      if (res && (res.orders || res.data || Array.isArray(res))) return res;
+    } catch (_) {}
+    return fetchCloudRecentOrders('restaurant');
+  },
+
+  getBarOrders: async () => {
+    try {
+      const res = await request('/bar/orders', { timeout: 3000 });
+      if (res && (res.orders || res.data || Array.isArray(res))) return res;
+    } catch (_) {}
+    return fetchCloudRecentOrders('bar');
+  },
+
   cancelTable: (department, tableId) => {
     const endpoint = department === 'bar' ? `/bar/tables/${tableId}/cancel` : `/restaurant/tables/${tableId}/cancel`;
     return request(endpoint, { method: 'POST' });
   },
+
   cancelOrder: (department, orderId) => {
     const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
     return request(endpoint, { method: 'DELETE' });
   },
+
   getSettledBills: (department) => {
     const endpoint = department === 'bar' ? '/bar/settled-bills' : '/restaurant/settled-bills';
     return request(endpoint);
   },
+
   getOrderDetail: (department, orderId) => {
     const endpoint = department === 'bar' ? `/bar/orders/${orderId}` : `/restaurant/orders/${orderId}`;
     return request(endpoint);
   },
-  fetchCloudTunnelUrl
+
+  fetchCloudTunnelUrl,
+  fetchCloudWaiterPackage,
+  pushWaiterOrderToCloud
 };
