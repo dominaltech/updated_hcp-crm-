@@ -595,9 +595,14 @@ export const api = {
     const gstAmount = Math.round((subtotal * gstRate) / 100);
     const grandTotal = Math.round(subtotal + gstAmount);
 
-    // 1. Try local CRM if reachable (fast path on local Wi-Fi)
-    try {
-      if (destination_type === 'table') {
+    // 1. Try local CRM if reachable on local Wi-Fi or active tunnel
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('vercel.app'));
+    const hasLiveTunnel = cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic') && !cachedTunnelUrl.includes('hudson-universal');
+
+    if (!isRemoteHosted || hasLiveTunnel) {
+      try {
+        if (destination_type === 'table') {
         const endpoint = department === 'bar'
           ? `/bar/tables/${destination_id}/bot`
           : `/restaurant/tables/${destination_id}/kot`;
@@ -669,6 +674,7 @@ export const api = {
     } catch (locErr) {
       console.log('[WaiterAPI] Local CRM not reachable, dispatching order via Supabase Cloud...', locErr.message);
     }
+  }
 
     // 2. Direct Supabase Cloud Order Placement (Works on 4G/5G, Netlify link, remote Wi-Fi!)
     try {
