@@ -130,8 +130,24 @@ if (cscExe && fs.existsSync(launcherSource)) {
     console.warn('  ⚠️ Note: Could not recompile Launcher.cs with csc:', err.message);
   }
 }
+
+// Sync Admin web bundle (admin/dist) if available
+const adminDistSrc = path.join(rootDir, 'admin', 'dist');
+if (fs.existsSync(adminDistSrc)) {
+  copyDirSync(adminDistSrc, path.join(releaseDir, 'admin', 'dist'));
+  console.log('  ✓ release/admin/dist updated.');
+}
+
+// Sync Admin dedicated desktop launcher
+const adminLauncherSrc = path.join(publicDir, 'HotelCityPark-Admin.exe');
+if (fs.existsSync(adminLauncherSrc)) {
+  fs.copyFileSync(adminLauncherSrc, path.join(releaseDir, 'HotelCityPark-Admin.exe'));
+  console.log('  ✓ release/HotelCityPark-Admin.exe updated.');
+}
+
 // Also sync to standalone Electron package if present
-const electronAppDir = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64', 'resources', 'app');
+const electronRootDir = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64');
+const electronAppDir = path.join(electronRootDir, 'resources', 'app');
 if (fs.existsSync(electronAppDir)) {
   console.log('⚡ Synchronizing Electron desktop application bundle (release-electron)...');
   copyDirSync(publicDir, path.join(electronAppDir, 'public'), assetFilter);
@@ -160,6 +176,29 @@ if (fs.existsSync(electronAppDir)) {
   if (fs.existsSync(path.join(rootDir, '.env'))) {
     fs.copyFileSync(path.join(rootDir, '.env'), path.join(electronAppDir, '.env'));
   }
+
+  // Sync admin/dist to electron app
+  if (fs.existsSync(adminDistSrc)) {
+    copyDirSync(adminDistSrc, path.join(electronAppDir, 'admin', 'dist'));
+    console.log('  ✓ release-electron/resources/app/admin/dist updated.');
+  }
+
+  // Sync standalone admin launcher
+  if (fs.existsSync(adminLauncherSrc)) {
+    fs.copyFileSync(adminLauncherSrc, path.join(electronRootDir, 'HotelCityPark-Admin.exe'));
+    console.log('  ✓ release-electron/HotelCityPark-Admin.exe updated.');
+  }
+
+  // Keep Hotel City Park Admin.exe aligned with Hotel City Park CRM.exe
+  const masterExe = path.join(electronRootDir, 'Hotel City Park CRM.exe');
+  const adminExe = path.join(electronRootDir, 'Hotel City Park Admin.exe');
+  if (fs.existsSync(masterExe)) {
+    try {
+      fs.copyFileSync(masterExe, adminExe);
+      console.log('  ✓ release-electron/Hotel City Park Admin.exe synchronized.');
+    } catch (_) {}
+  }
+
   // Remove src folder in packaged app so it runs pure compiled production code
   const electronSrcDir = path.join(electronAppDir, 'src');
   if (fs.existsSync(electronSrcDir)) {
@@ -174,7 +213,7 @@ if (fs.existsSync(electronAppDir)) {
 console.log('✅ Backend code and configurations synchronized.\n');
 
 // 5. Verification & Integrity Check
-console.log('🔍 [5/5] Running release verification and integrity checks...');
+console.log('🔍 [5/6] Running release verification and integrity checks...');
 
 // Check syntax of release/server.js
 try {
@@ -192,6 +231,17 @@ try {
 } catch (e) {
   console.error('❌ Syntax error in release/database.js:', e.message);
   process.exit(1);
+}
+
+// Check syntax of electronAppDir server.js
+if (fs.existsSync(electronAppDir)) {
+  try {
+    execSync(`node -c "${path.join(electronAppDir, 'server.js')}"`, { cwd: rootDir, stdio: 'pipe' });
+    console.log('  ✓ release-electron/server.js syntax OK');
+  } catch (e) {
+    console.error('❌ Syntax error in release-electron/server.js:', e.message);
+    process.exit(1);
+  }
 }
 
 // Verify index.html points to an existing asset
@@ -229,8 +279,55 @@ for (const reqFile of requiredReleaseFiles) {
   }
 }
 
+// 6. Zip packaging for client distribution
+console.log('\n📦 [6/6] Packaging updated release-electron zip archive for client delivery...');
+const electronFolder = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64');
+const zipFile = path.join(rootDir, 'release-electron', 'Hotel City Park CRM-win32-x64.zip');
+
+if (fs.existsSync(electronFolder)) {
+  let zipped = false;
+  const s7zPath = 'C:\\Users\\91937\\scoop\\shims\\7z.exe';
+  if (fs.existsSync(s7zPath)) {
+    try {
+      console.log('  ⚡ Compressing package with high-speed 7-Zip...');
+      if (fs.existsSync(zipFile)) fs.unlinkSync(zipFile);
+      execSync(`"${s7zPath}" a -tzip -mx=3 "${zipFile}" "Hotel City Park CRM-win32-x64"`, {
+        cwd: path.join(rootDir, 'release-electron'),
+        stdio: 'inherit'
+      });
+      zipped = true;
+    } catch (err) {
+      console.warn('  ⚠️ 7-Zip compression error:', err.message);
+    }
+  }
+
+  if (!zipped) {
+    try {
+      console.log('  ⚡ Compressing package with PowerShell Compress-Archive...');
+      if (fs.existsSync(zipFile)) fs.unlinkSync(zipFile);
+      execSync(`powershell -NoProfile -Command "Compress-Archive -Path '${electronFolder}' -DestinationPath '${zipFile}' -Force"`, {
+        cwd: rootDir,
+        stdio: 'inherit'
+      });
+      zipped = true;
+    } catch (err) {
+      console.warn('  ⚠️ Compress-Archive error:', err.message);
+    }
+  }
+
+  if (zipped && fs.existsSync(zipFile)) {
+    const stats = fs.statSync(zipFile);
+    console.log(`  ✓ Successfully packaged: release-electron/Hotel City Park CRM-win32-x64.zip (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
+  }
+}
+
 console.log('\n========================================================================');
 console.log('🎉 HOTEL CITY PARK CRM RELEASE SUCCESSFULLY UPDATED!');
 console.log('   All frontend, backend, database schema, and assets are in sync.');
-console.log('   Users can launch the updated CRM via release/HotelCityPark.exe');
+console.log('   Users can launch the updated CRM via:');
+console.log('   • release/HotelCityPark.exe (Master Local Launcher)');
+console.log('   • release-electron/Hotel City Park CRM-win32-x64/Hotel City Park CRM.exe');
+console.log('   • release-electron/Hotel City Park CRM-win32-x64/Hotel City Park Admin.exe');
+console.log('   Client Distribution Zip:');
+console.log('   • release-electron/Hotel City Park CRM-win32-x64.zip');
 console.log('========================================================================\n');

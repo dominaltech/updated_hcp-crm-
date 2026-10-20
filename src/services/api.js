@@ -358,7 +358,10 @@ export const api = {
   saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
 
   // Print Queue for Auto-Printing
-  getPendingPrintJobs: () => request('/print-queue/pending'),
+  getPendingPrintJobs: (params) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request(`/print-queue/pending${qs}`);
+  },
   ackPrintJob: (id) => request(`/print-queue/${id}/ack`, { method: 'POST' }),
 
   request,

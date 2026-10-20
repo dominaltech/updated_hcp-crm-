@@ -48,7 +48,22 @@ print("Verifying...")
 subprocess.check_call([apksigner, "verify", "--verbose", aligned_apk])
 
 os.replace(aligned_apk, apk_path)
-shutil.copyfile(apk_path, r"c:\Aamir Delta\city_backup\public\HotelCityPark-Owner.apk")
+targets = [
+    r"c:\Aamir Delta\city_backup\public\HotelCityPark-Owner.apk",
+    r"c:\Aamir Delta\city_backup\public\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner.apk",
+    r"c:\Aamir Delta\city_backup\release\dist\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner.apk"
+]
+for t in targets:
+    try:
+        os.makedirs(os.path.dirname(t), exist_ok=True)
+        shutil.copyfile(apk_path, t)
+        print("Copied to:", t)
+    except Exception as e:
+        print("Warning copying to", t, e)
 
 if os.path.exists(temp_apk):
     os.remove(temp_apk)

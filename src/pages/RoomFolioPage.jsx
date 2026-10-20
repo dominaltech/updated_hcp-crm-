@@ -459,6 +459,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
   useEffect(() => {
     loadFolio();
+    const interval = setInterval(() => {
+      loadFolio(true);
+    }, 2000);
+    return () => clearInterval(interval);
   }, [loadFolio]);
 
   const handleOpenExtendPaymentModal = () => {

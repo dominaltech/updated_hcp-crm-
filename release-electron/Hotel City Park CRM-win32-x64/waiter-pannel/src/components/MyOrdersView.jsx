@@ -203,6 +203,12 @@ export default function MyOrdersView({
       
       const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
 
+      // Extract items and calculate exact financial totals
+      const items = extractOrderItems(settleModalTable);
+      const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+      const gst = Math.round((subtotal * 5) / 100);
+      const grand = Math.round(Number(settleModalTable.total_amount || settleModalTable.cart_total || (subtotal + gst)) || (subtotal + gst));
+
       let settlePayload;
 
       if (isRS) {
@@ -221,7 +227,13 @@ export default function MyOrdersView({
             room_number: rawRoomNum,
             waiter_name: myName,
             customer_name: matchedRoom?.guest_name ? `Room ${rawRoomNum} - ${matchedRoom.guest_name}` : (settleModalTable.customer_name || `Room ${rawRoomNum}`),
-            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || ''
+            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || '',
+            items,
+            subtotal,
+            gst,
+            grand_total: grand,
+            total: grand,
+            amount: grand
           };
         } else {
           // 2. Add to Room -> Shows in red "⏳ Pending" in room folio
@@ -233,7 +245,13 @@ export default function MyOrdersView({
             room_number: rawRoomNum,
             waiter_name: myName,
             customer_name: matchedRoom?.guest_name ? `Room ${rawRoomNum} - ${matchedRoom.guest_name}` : (settleModalTable.customer_name || `Room ${rawRoomNum}`),
-            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || ''
+            guest_phone: matchedRoom?.guest_phone || settleModalTable.customer_phone || '',
+            items,
+            subtotal,
+            gst,
+            grand_total: grand,
+            total: grand,
+            amount: grand
           };
         }
       } else {
@@ -241,7 +259,13 @@ export default function MyOrdersView({
         settlePayload = {
           payment_method: paymentMode,
           payment_mode: paymentMode,
-          waiter_name: myName
+          waiter_name: myName,
+          items,
+          subtotal,
+          gst,
+          grand_total: grand,
+          total: grand,
+          amount: grand
         };
 
         if (paymentMode === 'room_folio') {
@@ -1228,10 +1252,10 @@ export default function MyOrdersView({
             {(() => {
               const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
               const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').trim();
-              const settleItems = settleModalTable.cart || [];
+              const settleItems = extractOrderItems(settleModalTable);
               const settleSubtotal = settleModalTable.cart_total || settleItems.reduce((s, it) => s + ((Number(it.price) || 0) * (it.qty || it.quantity || 1)), 0);
               const settleGst = Math.round((settleSubtotal * 5) / 100);
-              const settleGrand = Math.round(settleSubtotal + settleGst);
+              const settleGrand = Math.round(Number(settleModalTable.total_amount || (settleSubtotal + settleGst)) || (settleSubtotal + settleGst));
 
               if (isRS) {
                 return (

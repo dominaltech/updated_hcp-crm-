@@ -19,6 +19,9 @@ try {
       bill_number TEXT,
       guest_name TEXT,
       room_number TEXT,
+      members TEXT,
+      expected_checkout TEXT,
+      meal_plan TEXT,
       discount REAL DEFAULT 0,
       discount_pct REAL DEFAULT 0,
       current_total REAL DEFAULT 0,
@@ -429,9 +432,9 @@ function getActivityFeed(type = 'all', limit = 100) {
   }
 }
 
-try {
-  db.prepare('ALTER TABLE owner_approvals ADD COLUMN meal_plan TEXT').run();
-} catch (_) {}
+try { db.prepare('ALTER TABLE owner_approvals ADD COLUMN meal_plan TEXT').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE owner_approvals ADD COLUMN members TEXT').run(); } catch (_) {}
+try { db.prepare('ALTER TABLE owner_approvals ADD COLUMN expected_checkout TEXT').run(); } catch (_) {}
 
 function createApprovalRequest({
   type = 'discount',

@@ -62,24 +62,34 @@ function AppContent() {
     };
   }, [isAnyModalOpen]);
 
-  // Auto-Print Queue Poller for CRM Computer
-  // Automatically prints KOT, BOT, and Pre-bill whenever placed from waiter panel or CRM
+  // Auto-Print Queue Poller - Solution B: Department-wise Routing
+  // - Hospitality (Front Desk) NEVER triggers KOT or BOT printing popups
+  // - Restaurant screen ONLY triggers Food KOT slips and restaurant pre-bills
+  // - Bar screen ONLY triggers Drink BOT slips and bar pre-bills
   useEffect(() => {
+    // Front desk, expenses, and management screens completely ignore kitchen/bar print queues
+    if (activePanel !== 'restaurant' && activePanel !== 'bar') {
+      return;
+    }
+
     let isProcessing = false;
     const pollPrintQueue = async () => {
       if (isProcessing) return;
       try {
         isProcessing = true;
-        const res = await api.getPendingPrintJobs();
+        const res = await api.getPendingPrintJobs({ dept: activePanel });
         if (res && res.success && Array.isArray(res.jobs) && res.jobs.length > 0) {
           for (const job of res.jobs) {
             try {
-              if (job.type === 'kot') {
+              if (activePanel === 'restaurant' && job.type === 'kot') {
                 printKOTSlip(job.data?.kot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
-              } else if (job.type === 'bot') {
+              } else if (activePanel === 'bar' && job.type === 'bot') {
                 printBOTSlip(job.data?.bot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
               } else if (job.type === 'prebill') {
-                printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
+                const jobDept = String(job.data?.department || (activePanel === 'bar' ? 'bar' : 'restaurant')).toLowerCase();
+                if (jobDept === activePanel) {
+                  printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
+                }
               }
             } catch (err) {
               console.error('[AutoPrint] Error processing print job:', job.id, err);
@@ -97,7 +107,7 @@ function AppContent() {
 
     const interval = setInterval(pollPrintQueue, 1500);
     return () => clearInterval(interval);
-  }, []);
+  }, [activePanel]);
 
   // Handlers for Hospitality Page
   const handleStartCheckin = (primaryRoom, additionalRooms = []) => {

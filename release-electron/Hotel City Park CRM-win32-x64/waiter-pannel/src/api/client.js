@@ -758,18 +758,40 @@ export const api = {
     // Remote Netlify / Cloud Settlement via Supabase room_charges_inbox
     try {
       const roomNum = String(paymentData.room_number || tableObj?.table_number || destinationId || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
+
+      // Extract item list reliably
+      let itemsList = Array.isArray(paymentData.items) && paymentData.items.length > 0 ? paymentData.items : [];
+      if (itemsList.length === 0 && tableObj) {
+        if (Array.isArray(tableObj.cart) && tableObj.cart.length > 0) itemsList = tableObj.cart;
+        else if (Array.isArray(tableObj.items) && tableObj.items.length > 0) itemsList = tableObj.items;
+        else if (typeof tableObj.active_cart_json === 'string') {
+          try { const p = JSON.parse(tableObj.active_cart_json); if (Array.isArray(p)) itemsList = p; } catch (_) {}
+        }
+        if (itemsList.length === 0 && typeof tableObj.printed_cart_json === 'string') {
+          try { const p = JSON.parse(tableObj.printed_cart_json); if (Array.isArray(p)) itemsList = p; } catch (_) {}
+        }
+      }
+
+      const subtotalAmt = Number(paymentData.subtotal) || itemsList.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+      const gstAmt = Number(paymentData.gst) || Math.round((subtotalAmt * 5) / 100);
+      const grandAmt = Number(paymentData.grand_total || paymentData.total || paymentData.amount || tableObj?.total_amount || (subtotalAmt + gstAmt)) || (subtotalAmt + gstAmt);
+
       const payload = {
         room_number: roomNum,
         room_id: paymentData.room_id || 0,
         department: department === 'bar' ? 'bar' : 'restaurant',
         order_id: 0,
         bill_no: 'SETTLE-' + Date.now().toString().slice(-4),
-        subtotal: paymentData.subtotal || 0,
-        gst: paymentData.gst || 0,
-        grand_total: paymentData.total || paymentData.grand_total || paymentData.amount || (tableObj?.total_amount || 0),
+        subtotal: subtotalAmt,
+        gst: gstAmt,
+        grand_total: grandAmt,
         settled_by: paymentData.waiter_name || 'Captain',
         items_summary: JSON.stringify({
           ...paymentData,
+          items: itemsList,
+          subtotal: subtotalAmt,
+          gst: gstAmt,
+          grand_total: grandAmt,
           destinationId,
           table_number: tableObj?.table_number || `RS-${roomNum}`,
           settled_at: new Date().toISOString()

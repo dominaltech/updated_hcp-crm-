@@ -2278,19 +2278,74 @@ function calculateActualStayAndExtension({
 async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bookingId, guestName) {
   if (!supabaseService || !roomNumber) return [];
   try {
-    const pending = await supabaseService.fetchPendingRoomCharges(roomNumber);
-    if (!pending || pending.length === 0) return [];
+    const rawNum = String(roomNumber).trim();
+    const cleanNum = rawNum.replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
+
+    // Fetch pending room charges for both rawNum and cleanNum
+    const pendingRaw = await supabaseService.fetchPendingRoomCharges(rawNum);
+    const pendingClean = cleanNum !== rawNum ? await supabaseService.fetchPendingRoomCharges(cleanNum) : [];
+    const pendingCombined = [...(pendingRaw || []), ...(pendingClean || [])];
+
+    // Deduplicate by charge ID
+    const pendingMap = new Map();
+    for (const p of pendingCombined) {
+      if (p && p.id && !pendingMap.has(p.id)) pendingMap.set(p.id, p);
+    }
+    const pending = Array.from(pendingMap.values());
+    if (pending.length === 0) return [];
     
+    // Resolve active booking & room ID if missing
+    let curBookingId = bookingId;
+    let curRoomId = roomId;
+    let curGuestName = guestName;
+    if (!curBookingId || !curRoomId) {
+      const b = dbInstance.prepare(`
+        SELECT b.id as booking_id, b.room_id, g.name as guest_name
+        FROM rooms r
+        JOIN bookings b ON r.current_booking_id = b.id
+        JOIN guests g ON b.guest_id = g.id
+        WHERE (r.room_number = ? OR r.room_number = ?) AND b.status = 'active'
+        ORDER BY b.id DESC LIMIT 1
+      `).get(cleanNum, rawNum);
+      if (b) {
+        curBookingId = curBookingId || b.booking_id;
+        curRoomId = curRoomId || b.room_id;
+        curGuestName = curGuestName || b.guest_name;
+      }
+    }
+    if (!curGuestName) curGuestName = 'In-House Guest';
+
     const importedIds = [];
     for (const cc of pending) {
-      const totalAmt = parseFloat(cc.grand_total) || 0;
+      let parsedSummary = null;
+      try {
+        parsedSummary = typeof cc.items_summary === 'string' ? JSON.parse(cc.items_summary) : cc.items_summary;
+      } catch (_) {}
+
+      const totalAmt = parseFloat(cc.grand_total) || (parsedSummary ? parseFloat(parsedSummary.grand_total || parsedSummary.total) : 0) || 0;
       if (totalAmt <= 0) continue;
+
       const orderNum = cc.bill_no || `CLD-${cc.id}`;
-      const itemsJson = cc.items_summary ? JSON.stringify([{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }]) : '[]';
-      const subtotalAmt = parseFloat(cc.subtotal) || Math.round(totalAmt / 1.05);
-      const taxAmt = parseFloat(cc.gst) || (totalAmt - subtotalAmt);
-      const cashierName = cc.cashier_name || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
+
+      let itemsList = [];
+      if (parsedSummary && Array.isArray(parsedSummary.items) && parsedSummary.items.length > 0) {
+        itemsList = parsedSummary.items;
+      } else if (Array.isArray(cc.items) && cc.items.length > 0) {
+        itemsList = cc.items;
+      } else if (typeof cc.items_summary === 'string' && !cc.items_summary.startsWith('{') && !cc.items_summary.startsWith('[')) {
+        itemsList = [{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }];
+      } else {
+        itemsList = [{ name: `${cc.department === 'bar' ? 'Bar' : 'Restaurant'} Room Service`, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }];
+      }
+      const itemsJson = JSON.stringify(itemsList);
+
+      const subtotalAmt = parseFloat(cc.subtotal) || (parsedSummary?.subtotal ? parseFloat(parsedSummary.subtotal) : Math.round(totalAmt / 1.05));
+      const taxAmt = parseFloat(cc.gst) || (parsedSummary?.gst ? parseFloat(parsedSummary.gst) : (totalAmt - subtotalAmt));
+      const cashierName = cc.settled_by || (parsedSummary?.waiter_name) || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
       const createdAt = cc.created_at ? cc.created_at.replace('T', ' ').substring(0, 19) : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+      let paymentMode = cc.payment_mode || (parsedSummary?.payment_mode) || (parsedSummary?.payment_method) || 'room_folio';
+      let isPaid = (cc.is_paid !== undefined) ? Number(cc.is_paid) : (parsedSummary?.is_paid !== undefined ? Number(parsedSummary.is_paid) : 0);
 
       if (cc.department === 'bar') {
         const existing = dbInstance.prepare('SELECT id FROM bar_orders WHERE order_number = ?').get(orderNum);
@@ -2301,8 +2356,10 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
               items_json, subtotal, tax, discount, total,
               payment_mode, is_paid, status, cashier_name,
               booking_id, created_at
-            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
-          `).run(orderNum, roomId, guestName || 'In-House Guest', itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, ?, ?, 'completed', ?, ?, ?)
+          `).run(orderNum, curRoomId, curGuestName, itemsJson, subtotalAmt, taxAmt, totalAmt, paymentMode, isPaid, cashierName, curBookingId, createdAt);
+          importedIds.push(cc.id);
+        } else {
           importedIds.push(cc.id);
         }
       } else {
@@ -2314,11 +2371,24 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
               items_json, subtotal, tax, discount, total,
               payment_mode, is_paid, status, cashier_name,
               booking_id, created_at
-            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
-          `).run(orderNum, roomId, guestName || 'In-House Guest', itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, ?, ?, 'completed', ?, ?, ?)
+          `).run(orderNum, curRoomId, curGuestName, itemsJson, subtotalAmt, taxAmt, totalAmt, paymentMode, isPaid, cashierName, curBookingId, createdAt);
+          importedIds.push(cc.id);
+        } else {
           importedIds.push(cc.id);
         }
       }
+
+      // Clear or delete matching table from active tables
+      const rsNumber = `RS-${cleanNum}`;
+      try {
+        dbInstance.prepare(`DELETE FROM restaurant_tables WHERE table_number = ? OR table_number = ? OR table_number = ?`).run(rsNumber, `Room ${cleanNum}`, rawNum);
+        dbInstance.prepare(`DELETE FROM bar_tables WHERE table_number = ? OR table_number = ? OR table_number = ?`).run(rsNumber, `Room ${cleanNum}`, rawNum);
+      } catch (_) {}
+    }
+
+    if (importedIds.length > 0) {
+      await supabaseService.markChargesImported(importedIds);
     }
     return importedIds;
   } catch (err) {
@@ -2423,8 +2493,8 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       JOIN bookings b ON r.current_booking_id = b.id
       JOIN guests g ON b.guest_id = g.id
       LEFT JOIN btc_companies c ON (b.btc_company_id = c.id OR (b.btc_company_name IS NOT NULL AND b.btc_company_name != '' AND b.btc_company_name = c.company_name))
-      WHERE r.id = ? AND b.status = 'active'
-    `).get(id);
+      WHERE (r.id = ? OR r.room_number = ? OR b.id = ?) AND b.status = 'active'
+    `).get(id, id, id);
 
     if (!room) {
       return res.status(404).json({ success: false, error: 'Active booking not found for this room' });
@@ -2567,16 +2637,14 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     }, '2099-01-01 00:00:00');
     const validCheckinLocal = minCheckinLocal === '2099-01-01 00:00:00' ? '2000-01-01 00:00:00' : minCheckinLocal;
 
-    // Non-blocking background sync of any cloud room charges (never blocks local folio delivery)
-    setImmediate(() => {
-      try {
-        const allRoomNums = room.all_group_room_numbers || [room.room_number];
-        for (const rNum of allRoomNums) {
-          const gb = groupBookings.find(g => g.room_number === rNum) || { booking_id: room.booking_id, room_id: room.id };
-          importCloudRoomChargesToSqlite(db, rNum, gb.room_id, gb.booking_id, room.guest_name).catch(() => {});
-        }
-      } catch (_) {}
-    });
+    // Rapid sync: Import any pending cloud charges for this room BEFORE fetching orders
+    try {
+      const allRoomNums = room.all_group_room_numbers || [room.room_number];
+      for (const rNum of allRoomNums) {
+        const gb = groupBookings.find(g => g.room_number === rNum) || { booking_id: room.booking_id, room_id: room.id };
+        await importCloudRoomChargesToSqlite(db, rNum, gb.room_id, gb.booking_id, room.guest_name);
+      }
+    } catch (_) {}
 
     // Auto-sync any visitor breakfast records into restaurant_orders if not yet created
     try {

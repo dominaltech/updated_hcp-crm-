@@ -370,29 +370,72 @@ async function pullCloudRoomChargesToLocal(localDb) {
 
     const importedIds = [];
     for (const cc of pendingCharges) {
-      const roomNum = cc.room_number;
-      if (!roomNum) continue;
+      const rawRoomNum = cc.room_number;
+      if (!rawRoomNum) continue;
+
+      const roomNum = String(rawRoomNum).replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
 
       const booking = localDb.prepare(`
         SELECT b.id as booking_id, b.room_id, g.name as guest_name
         FROM bookings b
         JOIN rooms r ON b.room_id = r.id
         JOIN guests g ON b.guest_id = g.id
-        WHERE r.room_number = ? AND b.status = 'active'
-      `).get(String(roomNum));
+        WHERE (r.room_number = ? OR r.room_number = ? OR r.id = ?) AND b.status = 'active'
+        ORDER BY b.id DESC LIMIT 1
+      `).get(roomNum, rawRoomNum, cc.room_id || 0);
 
-      const roomId = booking ? booking.room_id : null;
-      const bookingId = booking ? booking.booking_id : null;
-      const guestName = booking ? booking.guest_name : 'In-House Guest';
+      let roomId = booking ? booking.room_id : null;
+      let bookingId = booking ? booking.booking_id : null;
+      let guestName = booking ? booking.guest_name : null;
 
-      const totalAmt = parseFloat(cc.grand_total) || 0;
+      if (!roomId) {
+        const roomRow = localDb.prepare(`
+          SELECT r.id, r.current_booking_id, g.name as guest_name
+          FROM rooms r
+          LEFT JOIN bookings b ON r.current_booking_id = b.id
+          LEFT JOIN guests g ON b.guest_id = g.id
+          WHERE r.room_number = ? OR r.room_number = ? OR r.id = ?
+          LIMIT 1
+        `).get(roomNum, rawRoomNum, cc.room_id || 0);
+
+        if (roomRow) {
+          roomId = roomRow.id;
+          bookingId = roomRow.current_booking_id;
+          guestName = roomRow.guest_name || 'In-House Guest';
+        }
+      }
+      if (!guestName) guestName = 'In-House Guest';
+
+      let parsedSummary = null;
+      try {
+        parsedSummary = typeof cc.items_summary === 'string' ? JSON.parse(cc.items_summary) : cc.items_summary;
+      } catch (_) {}
+
+      const totalAmt = parseFloat(cc.grand_total) || (parsedSummary ? parseFloat(parsedSummary.grand_total || parsedSummary.total) : 0) || 0;
       if (totalAmt <= 0) continue;
+
       const orderNum = cc.bill_no || `CLD-${cc.id}`;
-      const itemsJson = cc.items_summary ? JSON.stringify([{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }]) : '[]';
-      const subtotalAmt = parseFloat(cc.subtotal) || Math.round(totalAmt / 1.05);
-      const taxAmt = parseFloat(cc.gst) || (totalAmt - subtotalAmt);
-      const cashierName = cc.settled_by || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
+
+      // Extract real item breakdown
+      let itemsList = [];
+      if (parsedSummary && Array.isArray(parsedSummary.items) && parsedSummary.items.length > 0) {
+        itemsList = parsedSummary.items;
+      } else if (Array.isArray(cc.items) && cc.items.length > 0) {
+        itemsList = cc.items;
+      } else if (typeof cc.items_summary === 'string' && !cc.items_summary.startsWith('{') && !cc.items_summary.startsWith('[')) {
+        itemsList = [{ name: cc.items_summary, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }];
+      } else {
+        itemsList = [{ name: `${cc.department === 'bar' ? 'Bar' : 'Restaurant'} Room Service`, quantity: 1, qty: 1, price: totalAmt, total: totalAmt }];
+      }
+      const itemsJson = JSON.stringify(itemsList);
+
+      const subtotalAmt = parseFloat(cc.subtotal) || (parsedSummary?.subtotal ? parseFloat(parsedSummary.subtotal) : Math.round(totalAmt / 1.05));
+      const taxAmt = parseFloat(cc.gst) || (parsedSummary?.gst ? parseFloat(parsedSummary.gst) : (totalAmt - subtotalAmt));
+      const cashierName = cc.settled_by || (parsedSummary?.waiter_name) || (cc.department === 'bar' ? 'Bar Cashier' : 'Restaurant Cashier');
       const createdAt = cc.created_at ? cc.created_at.replace('T', ' ').substring(0, 19) : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+      let paymentMode = cc.payment_mode || (parsedSummary?.payment_mode) || (parsedSummary?.payment_method) || 'room_folio';
+      let isPaid = (cc.is_paid !== undefined) ? Number(cc.is_paid) : (parsedSummary?.is_paid !== undefined ? Number(parsedSummary.is_paid) : 0);
 
       if (cc.department === 'bar') {
         const existing = localDb.prepare('SELECT id FROM bar_orders WHERE order_number = ?').get(orderNum);
@@ -403,8 +446,8 @@ async function pullCloudRoomChargesToLocal(localDb) {
               items_json, subtotal, tax, discount, total,
               payment_mode, is_paid, status, cashier_name,
               booking_id, created_at
-            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
-          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, ?, ?, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, paymentMode, isPaid, cashierName, bookingId, createdAt);
           importedIds.push(cc.id);
         } else {
           importedIds.push(cc.id);
@@ -418,8 +461,8 @@ async function pullCloudRoomChargesToLocal(localDb) {
               items_json, subtotal, tax, discount, total,
               payment_mode, is_paid, status, cashier_name,
               booking_id, created_at
-            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, 'room_folio', 0, 'completed', ?, ?, ?)
-          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, cashierName, bookingId, createdAt);
+            ) VALUES (?, ?, ?, 'room', ?, ?, ?, 0, ?, ?, ?, 'completed', ?, ?, ?)
+          `).run(orderNum, roomId, guestName, itemsJson, subtotalAmt, taxAmt, totalAmt, paymentMode, isPaid, cashierName, bookingId, createdAt);
           importedIds.push(cc.id);
         } else {
           importedIds.push(cc.id);
@@ -427,17 +470,18 @@ async function pullCloudRoomChargesToLocal(localDb) {
       }
 
       // Clear or delete matching table from active tables
-      const rsNumber = `RS-${String(roomNum).replace(/^RS-/i, '').trim()}`;
+      const rsNumber = `RS-${roomNum}`;
       try {
-        localDb.prepare(`DELETE FROM restaurant_tables WHERE table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`);
-        localDb.prepare(`DELETE FROM bar_tables WHERE table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`);
-        localDb.prepare(`UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ?`).run(String(roomNum));
-        localDb.prepare(`UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ?`).run(String(roomNum));
+        localDb.prepare(`DELETE FROM restaurant_tables WHERE table_number = ? OR table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`, rawRoomNum);
+        localDb.prepare(`DELETE FROM bar_tables WHERE table_number = ? OR table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`, rawRoomNum);
+        localDb.prepare(`UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ? OR table_number = ?`).run(roomNum, rawRoomNum);
+        localDb.prepare(`UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ? OR table_number = ?`).run(roomNum, rawRoomNum);
       } catch (_) {}
     }
 
     if (importedIds.length > 0) {
       await markChargesImported(importedIds);
+      await syncAllActiveRoomsFromLocal(localDb);
       await syncWaiterDataToCloud(localDb);
       console.log(`[Supabase] Automatically adopted ${importedIds.length} cloud charge(s) into local SQLite storage.`);
     }
