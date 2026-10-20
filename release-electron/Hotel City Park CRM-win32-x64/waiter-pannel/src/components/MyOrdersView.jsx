@@ -822,7 +822,7 @@ export default function MyOrdersView({
           <div
             style={{
               width: '100%',
-              maxWidth: '380px',
+              maxWidth: '430px',
               maxHeight: '85dvh',
               background: 'var(--bg-surface)',
               borderRadius: 'var(--radius-lg, 16px)',
@@ -880,68 +880,143 @@ export default function MyOrdersView({
             </div>
 
             {/* Modal Items List */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
               <div style={{ fontSize: '0.70rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
                 All Order Dishes &amp; Items:
+              </div>
+
+              {/* 4 Column Header: Dish, Price, Quantity, Amount */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2.1fr 0.9fr 0.7fr 1.1fr',
+                  gap: '6px',
+                  padding: '6px 4px',
+                  background: 'var(--bg-surface-secondary)',
+                  borderRadius: 'var(--radius-xs)',
+                  borderBottom: '2px solid var(--border-medium)',
+                  fontSize: '0.68rem',
+                  fontWeight: 900,
+                  color: 'var(--text-secondary)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                <div>Dish</div>
+                <div style={{ textAlign: 'right' }}>Price</div>
+                <div style={{ textAlign: 'center' }}>Qty</div>
+                <div style={{ textAlign: 'right' }}>Amount</div>
               </div>
 
               {(() => {
                 const items = extractOrderItems(selectedOrder.data);
 
                 if (items.length === 0) {
-                  return <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>No items found.</div>;
+                  return (
+                    <div style={{ padding: '20px 0', textAlign: 'center', fontSize: '0.80rem', color: 'var(--text-tertiary)' }}>
+                      No items found.
+                    </div>
+                  );
                 }
 
-                return items.map((it, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '8px 0',
-                      borderBottom: '1px solid var(--border-light)',
-                      fontSize: '0.82rem'
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                        {it.qty || it.quantity || 1}x {it.name}
+                return items.map((it, idx) => {
+                  const itemQty = Number(it.qty || it.quantity) || 1;
+                  const itemPrice = Number(it.price) || 0;
+                  const itemAmount = itemPrice * itemQty;
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '2.1fr 0.9fr 0.7fr 1.1fr',
+                        gap: '6px',
+                        alignItems: 'center',
+                        padding: '9px 4px',
+                        borderBottom: '1px solid var(--border-light)',
+                        fontSize: '0.78rem'
+                      }}
+                    >
+                      {/* Dish Column */}
+                      <div style={{ minWidth: 0, paddingRight: '4px' }}>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.25 }}>
+                          {it.name}
+                        </div>
+                        {(it.added_at || it.time) && (
+                          <div style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                            🕒 Added at {new Date(it.added_at || it.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                        {it.notes && (
+                          <div style={{ fontSize: '0.66rem', color: 'var(--apple-orange)', fontStyle: 'italic', marginTop: '1px' }}>
+                            Note: {it.notes}
+                          </div>
+                        )}
                       </div>
-                      {(it.added_at || it.time) && (
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
-                          🕒 Added at {new Date(it.added_at || it.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      )}
-                      {it.notes && (
-                        <div style={{ fontSize: '0.68rem', color: 'var(--apple-orange)', fontStyle: 'italic' }}>
-                          Note: {it.notes}
-                        </div>
-                      )}
+
+                      {/* Price Column */}
+                      <div style={{ textAlign: 'right', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                        ₹{itemPrice.toLocaleString('en-IN')}
+                      </div>
+
+                      {/* Quantity Column */}
+                      <div style={{ textAlign: 'center', fontWeight: 850, color: 'var(--text-primary)' }}>
+                        {itemQty}
+                      </div>
+
+                      {/* Amount Column */}
+                      <div style={{ textAlign: 'right', fontWeight: 900, color: 'var(--text-primary)' }}>
+                        ₹{itemAmount.toLocaleString('en-IN')}
+                      </div>
                     </div>
-                    <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                      ₹{((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)).toLocaleString('en-IN')}
-                    </div>
-                  </div>
-                ));
+                  );
+                });
               })()}
 
-              {/* Total Calculation */}
-              <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1.5px solid var(--border-medium)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.96rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                  <span>Grand Total:</span>
-                  <span style={{ color: 'var(--apple-blue)' }}>
-                    ₹{(() => {
-                      const items = extractOrderItems(selectedOrder.data);
-                      const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
-                      if (selectedOrder.type === 'table') {
-                        return (Number(selectedOrder.data.total_amount || selectedOrder.data.cart_total) || Math.round(subtotal * 1.05)).toLocaleString('en-IN');
-                      }
-                      return (Number(selectedOrder.data.grand_total || selectedOrder.data.total) || subtotal).toLocaleString('en-IN');
-                    })()}
-                  </span>
-                </div>
-              </div>
+              {/* Bill Summary: Sub Total, GST Charges, Total Payable */}
+              {(() => {
+                const items = extractOrderItems(selectedOrder.data);
+                const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+                const gst = Math.round((subtotal * 5) / 100);
+                const totalPayable = selectedOrder.type === 'table'
+                  ? (Number(selectedOrder.data.total_amount || selectedOrder.data.cart_total) || Math.round(subtotal + gst))
+                  : (Number(selectedOrder.data.grand_total || selectedOrder.data.total) || Math.round(subtotal + gst));
+
+                return (
+                  <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '2px dashed var(--border-medium)' }}>
+                    {/* Sub Total */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.80rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      <span style={{ fontWeight: 700 }}>Sub Total:</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>₹{subtotal.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {/* GST Charges (5%) */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.80rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                      <span style={{ fontWeight: 700 }}>GST Charges (5%):</span>
+                      <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>₹{gst.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {/* Total Payable */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingTop: '8px',
+                        borderTop: '1.5px solid var(--border-medium)',
+                        fontSize: '1rem',
+                        fontWeight: 900,
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      <span>Total Payable:</span>
+                      <span style={{ color: 'var(--apple-blue)', fontSize: '1.14rem', fontWeight: 950 }}>
+                        ₹{totalPayable.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Bottom Actions */}
