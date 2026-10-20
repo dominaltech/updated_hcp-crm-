@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import bcrypt from 'bcryptjs';
 
 export const CLOUD_TUNNEL_URL = 'https://hudson-universal-quite-talented.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
@@ -65,21 +66,21 @@ export const getBaseUrl = () => {
 
     // When deployed on Netlify, Vercel, or loaded over HTTPS:
     if (isHttps || hostname.includes('netlify.app') || hostname.includes('vercel.app')) {
-      // Clear out any old expired cloudflare tunnel URLs that might have been saved in localStorage
       try {
         const stored = localStorage.getItem('hcp_waiter_server_host');
-        if (stored && stored.includes('trycloudflare.com')) {
+        if (stored && (stored.includes('trycloudflare.com') || stored.includes('hudson-universal'))) {
           localStorage.removeItem('hcp_waiter_server_host');
         }
         const cached = localStorage.getItem('hcp_cached_tunnel_url');
-        if (cached && (cached.includes('blond-ethnic') || !cached.includes('trycloudflare.com'))) {
+        if (cached && (cached.includes('blond-ethnic') || cached.includes('hudson-universal') || !cached.includes('trycloudflare.com'))) {
           localStorage.removeItem('hcp_cached_tunnel_url');
           cachedTunnelUrl = null;
         }
       } catch (e) {}
 
-      const tunnel = (cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) ? cachedTunnelUrl : CLOUD_TUNNEL_URL;
-      return `${tunnel}/api`;
+      const tunnel = (cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic') && !cachedTunnelUrl.includes('hudson-universal')) ? cachedTunnelUrl : null;
+      if (tunnel) return `${tunnel}/api`;
+      return '/api';
     }
 
     // Check if user/app cached a custom server address for local dev
@@ -392,31 +393,36 @@ export const api = {
     const uClean = String(username).trim().toLowerCase();
     const pClean = String(password).trim();
 
-    // 1. Try local server first if on same Wi-Fi
-    try {
-      const res = await request('/staff/login', {
-        method: 'POST',
-        body: { username, password },
-        timeout: 3000
-      });
-      if (res && res.success) {
-        setAuthToken(res.token);
-        localStorage.setItem('hcp_waiter_user', JSON.stringify(res.user));
-        // Cache staff credential locally
-        try {
-          const cachedStaff = JSON.parse(localStorage.getItem('hcp_cached_staff') || '[]');
-          const idx = cachedStaff.findIndex(s => String(s.username).toLowerCase() === uClean);
-          if (idx >= 0) cachedStaff[idx] = { ...cachedStaff[idx], ...res.user, password: pClean };
-          else cachedStaff.push({ ...res.user, password: pClean });
-          localStorage.setItem('hcp_cached_staff', JSON.stringify(cachedStaff));
-        } catch (_) {}
-        return res;
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
+
+    // 1. Try local server first if NOT on remote Vercel/Netlify (where local IP won't reach)
+    if (!isRemoteHosted) {
+      try {
+        const res = await request('/staff/login', {
+          method: 'POST',
+          body: { username, password },
+          timeout: 2500
+        });
+        if (res && res.success) {
+          setAuthToken(res.token);
+          localStorage.setItem('hcp_waiter_user', JSON.stringify(res.user));
+          try {
+            const cachedStaff = JSON.parse(localStorage.getItem('hcp_cached_staff') || '[]');
+            const idx = cachedStaff.findIndex(s => String(s.username).toLowerCase() === uClean);
+            if (idx >= 0) cachedStaff[idx] = { ...cachedStaff[idx], ...res.user, password: pClean };
+            else cachedStaff.push({ ...res.user, password: pClean });
+            localStorage.setItem('hcp_cached_staff', JSON.stringify(cachedStaff));
+          } catch (_) {}
+          return res;
+        }
+      } catch (locErr) {
+        console.log('[WaiterAPI] Local login unavailable, validating via Supabase Cloud package...');
       }
-    } catch (locErr) {
-      console.log('[WaiterAPI] Local login unavailable, validating via Supabase Cloud package...');
     }
 
-    // 2. Fall back to Supabase Cloud Package (Independent 4G/5G, Netlify link, or outside Wi-Fi)
+    // 2. Validate via Supabase Cloud Package (Independent 4G/5G, Netlify link, Vercel, or outside Wi-Fi)
+    console.log('[WaiterAPI] Validating credentials via Supabase Cloud package...');
     let pkg = null;
     try {
       pkg = await fetchCloudWaiterPackage(true);
@@ -436,10 +442,19 @@ export const api = {
     }
 
     if (staffList.length > 0) {
-      const staffMember = staffList.find(s =>
-        String(s.username || '').toLowerCase() === uClean &&
-        String(s.password || '') === pClean
-      );
+      const staffMember = staffList.find(s => {
+        if (String(s.username || '').toLowerCase() !== uClean) return false;
+        const storedPass = String(s.password || '');
+        if (storedPass.startsWith('$2')) {
+          try {
+            return bcrypt.compareSync(pClean, storedPass);
+          } catch (bErr) {
+            console.warn('[WaiterAPI] Bcrypt compare warning:', bErr);
+            return false;
+          }
+        }
+        return storedPass === pClean;
+      });
 
       if (staffMember) {
         const userObj = {
