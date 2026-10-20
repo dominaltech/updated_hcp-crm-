@@ -739,11 +739,80 @@ export const api = {
     });
   },
 
-  settleTable: (department, destinationId, paymentData) => {
-    const endpoint = department === 'bar'
-      ? `/bar/tables/${destinationId}/settle`
-      : `/restaurant/tables/${destinationId}/settle`;
-    return request(endpoint, { method: 'POST', body: paymentData });
+  settleTable: async (department, destinationId, paymentData, tableObj = null) => {
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
+
+    if (!isRemoteHosted) {
+      try {
+        const endpoint = department === 'bar'
+          ? `/bar/tables/${destinationId}/settle`
+          : `/restaurant/tables/${destinationId}/settle`;
+        const res = await request(endpoint, { method: 'POST', body: paymentData, timeout: 3000 });
+        if (res && res.success) return res;
+      } catch (locErr) {
+        console.warn('[WaiterAPI] Local settleTable failed, falling back to Supabase Cloud:', locErr.message);
+      }
+    }
+
+    // Remote Netlify / Cloud Settlement via Supabase room_charges_inbox
+    try {
+      const roomNum = String(paymentData.room_number || tableObj?.table_number || destinationId || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
+      const payload = {
+        room_number: roomNum,
+        room_id: paymentData.room_id || 0,
+        department: department === 'bar' ? 'bar' : 'restaurant',
+        order_id: 0,
+        bill_no: 'SETTLE-' + Date.now().toString().slice(-4),
+        subtotal: paymentData.subtotal || 0,
+        gst: paymentData.gst || 0,
+        grand_total: paymentData.total || paymentData.grand_total || paymentData.amount || (tableObj?.total_amount || 0),
+        settled_by: paymentData.waiter_name || 'Captain',
+        items_summary: JSON.stringify({
+          ...paymentData,
+          destinationId,
+          table_number: tableObj?.table_number || `RS-${roomNum}`,
+          settled_at: new Date().toISOString()
+        }),
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(payload)
+      });
+      clearTimeout(timer);
+
+      // Also mark any matching active orders in room_charges_inbox as settled
+      const tableNumberStr = tableObj?.table_number || String(destinationId);
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&room_number=eq.${encodeURIComponent(tableNumberStr)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'settled' })
+        }
+      ).catch(() => {});
+
+      return { success: true, message: 'Settlement dispatched to cloud successfully' };
+    } catch (cErr) {
+      console.error('[WaiterAPI] Cloud settlement failed:', cErr);
+      throw cErr;
+    }
   },
 
   getRestaurantOrders: async () => {

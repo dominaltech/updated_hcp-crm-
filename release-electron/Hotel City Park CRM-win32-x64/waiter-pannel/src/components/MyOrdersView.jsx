@@ -270,7 +270,15 @@ export default function MyOrdersView({
         }
       }
 
-      await api.settleTable(department, settleModalTable.id, settlePayload);
+      // Optimistically remove settled table from active list immediately (0ms instant response)
+      if (typeof setTables === 'function') {
+        setTables(prev => prev.filter(t => 
+          String(t.id) !== String(settleModalTable.id) && 
+          t.table_number !== settleModalTable.table_number
+        ));
+      }
+
+      await api.settleTable(department, settleModalTable.id, settlePayload, settleModalTable);
       setMsg(`✅ Order for ${settleModalTable.table_number || settleModalTable.name} settled successfully!`);
       setSettleModalTable(null);
       setSelectedOrder(null);

@@ -12,14 +12,28 @@ export default function CartDrawer({
   isPunching
 }) {
   const [orderNotes, setOrderNotes] = useState('');
+  const getInitialName = () => {
+    return destination?.customerName || destination?.guest_name || destination?.rawTable?.customer_name || destination?.rawOrder?.customer_name || '';
+  };
+  const getInitialPhone = () => {
+    return destination?.customerPhone || destination?.guest_phone || destination?.rawTable?.customer_phone || destination?.rawOrder?.customer_phone || '';
+  };
+
   const [selectedChips, setSelectedChips] = useState([]);
-  const [customerName, setCustomerName] = useState(() => destination?.customerName || '');
-  const [customerPhone, setCustomerPhone] = useState(() => destination?.customerPhone || '');
+  const [customerName, setCustomerName] = useState(getInitialName);
+  const [customerPhone, setCustomerPhone] = useState(getInitialPhone);
+  const [isEditingGuest, setIsEditingGuest] = useState(false);
 
   useEffect(() => {
-    if (destination?.customerName) setCustomerName(destination.customerName);
-    if (destination?.customerPhone) setCustomerPhone(destination.customerPhone);
+    const name = getInitialName();
+    const phone = getInitialPhone();
+    if (name) setCustomerName(name);
+    if (phone) setCustomerPhone(phone);
+    setIsEditingGuest(false);
   }, [destination]);
+
+  const isRoomService = destination?.type === 'room' || String(destination?.label || '').startsWith('RS-') || destination?.rawTable?.table_type === 'room_service';
+  const hasSavedDetails = Boolean(customerName?.trim() || customerPhone?.trim());
 
   if (!isOpen) return null;
 
@@ -261,50 +275,158 @@ export default function CartDrawer({
           ))}
 
           {/* Customer Name & Phone Number */}
-          <div style={{ marginTop: '10px', marginBottom: '10px' }}>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              Guest Details (Optional):
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Guest Name..."
+          {isRoomService ? (
+            /* Room Service: Automatically taken from occupied room, never asks */
+            <div
+              style={{
+                marginTop: '10px',
+                marginBottom: '10px',
+                padding: '9px 12px',
+                background: 'var(--apple-blue-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                border: '1px solid var(--apple-blue)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.66rem', fontWeight: 850, color: 'var(--apple-blue)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                  🏨 Room Service Guest (Automatic)
+                </div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', marginTop: '2px' }}>
+                  {customerName || destination?.guest_name || destination?.customerName || 'In-House Guest'}
+                  {(customerPhone || destination?.guest_phone || destination?.customerPhone) && (
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 650, fontSize: '0.78rem' }}>
+                      {' '}• 📞 {customerPhone || destination?.guest_phone || destination?.customerPhone}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span
                 style={{
-                  width: '100%',
-                  height: '36px',
-                  padding: '0 10px',
-                  background: 'var(--bg-surface-secondary)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: 'var(--radius-xs)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
+                  fontSize: '0.68rem',
+                  fontWeight: 850,
+                  color: 'var(--apple-blue)',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  padding: '2px 8px',
+                  borderRadius: '4px'
                 }}
-              />
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="Mobile (10 digits)..."
-                maxLength={10}
-                style={{
-                  width: '100%',
-                  height: '36px',
-                  padding: '0 10px',
-                  background: 'var(--bg-surface-secondary)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: 'var(--radius-xs)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
+              >
+                Auto Linked
+              </span>
             </div>
-          </div>
+          ) : hasSavedDetails && !isEditingGuest ? (
+            /* Guest details already filled: do not ask again, show confirmed badge */
+            <div
+              style={{
+                marginTop: '10px',
+                marginBottom: '10px',
+                padding: '9px 12px',
+                background: 'var(--apple-green-subtle)',
+                borderRadius: 'var(--radius-xs)',
+                border: '1px solid var(--apple-green)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.66rem', fontWeight: 850, color: 'var(--apple-green)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                  ✓ Guest Details (Saved)
+                </div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 850, color: 'var(--text-primary)', marginTop: '2px' }}>
+                  {customerName || 'Guest'}
+                  {customerPhone && (
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 650, fontSize: '0.78rem' }}>
+                      {' '}• 📞 {customerPhone}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingGuest(true)}
+                style={{
+                  fontSize: '0.70rem',
+                  fontWeight: 800,
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-xs)',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-medium)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer'
+                }}
+              >
+                ✏️ Edit
+              </button>
+            </div>
+          ) : (
+            /* Unfilled or Editing: Show guest inputs */
+            <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>
+                  Guest Details (Optional):
+                </label>
+                {isEditingGuest && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingGuest(false)}
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--apple-blue)',
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    Done
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Guest Name..."
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    background: 'var(--bg-surface-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-xs)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="Mobile (10 digits)..."
+                  maxLength={10}
+                  style={{
+                    width: '100%',
+                    height: '36px',
+                    padding: '0 10px',
+                    background: 'var(--bg-surface-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-xs)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Quick Cooking Notes Chips */}
           <div style={{ marginTop: '8px' }}>

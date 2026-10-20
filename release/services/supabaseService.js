@@ -425,10 +425,20 @@ async function pullCloudRoomChargesToLocal(localDb) {
           importedIds.push(cc.id);
         }
       }
+
+      // Clear or delete matching table from active tables
+      const rsNumber = `RS-${String(roomNum).replace(/^RS-/i, '').trim()}`;
+      try {
+        localDb.prepare(`DELETE FROM restaurant_tables WHERE table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`);
+        localDb.prepare(`DELETE FROM bar_tables WHERE table_number = ? OR table_number = ?`).run(rsNumber, `Room ${roomNum}`);
+        localDb.prepare(`UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ?`).run(String(roomNum));
+        localDb.prepare(`UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE table_number = ?`).run(String(roomNum));
+      } catch (_) {}
     }
 
     if (importedIds.length > 0) {
       await markChargesImported(importedIds);
+      await syncWaiterDataToCloud(localDb);
       console.log(`[Supabase] Automatically adopted ${importedIds.length} cloud charge(s) into local SQLite storage.`);
     }
     return importedIds;

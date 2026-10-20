@@ -543,6 +543,10 @@ export default function App() {
       id: table.id,
       label: table.name || table.table_number || `Table ${table.id}`,
       rawTable: table,
+      customerName: table.customer_name || '',
+      customerPhone: table.customer_phone || '',
+      guest_name: table.customer_name || '',
+      guest_phone: table.customer_phone || '',
       isExistingOrder: (table.cart && table.cart.length > 0) || table.status !== 'available'
     });
     setCart([]);
@@ -556,12 +560,19 @@ export default function App() {
     } else if (label.startsWith('P-') || type === 'parcel') {
       type = 'parcel';
     }
+    const custName = dest.customerName || dest.rawTable?.customer_name || dest.rawOrder?.customer_name || dest.guest_name || '';
+    const custPhone = dest.customerPhone || dest.rawTable?.customer_phone || dest.rawOrder?.customer_phone || dest.guest_phone || '';
+
     setDestination({
       type,
       id: dest.id,
       label,
       rawTable: dest.rawTable || null,
       rawOrder: dest.rawOrder || null,
+      customerName: custName,
+      customerPhone: custPhone,
+      guest_name: custName,
+      guest_phone: custPhone,
       isExistingOrder: true
     });
     setCart([]);
@@ -572,8 +583,10 @@ export default function App() {
       type: 'room',
       id: room.id,
       label: `Room ${room.room_number} • ${room.guest_name || 'Guest'}`,
-      guest_phone: room.guest_phone,
-      guest_name: room.guest_name,
+      guest_phone: room.guest_phone || '',
+      guest_name: room.guest_name || '',
+      customerName: room.guest_name || '',
+      customerPhone: room.guest_phone || '',
       room_number: room.room_number
     });
     setCart([]);
@@ -705,7 +718,9 @@ export default function App() {
           token_number: res?.tokenNumber || (idx >= 0 ? copy[idx].token_number : 1) || 1,
           kot_count: ((idx >= 0 ? copy[idx].kot_count : 0) || 0) + 1,
           order_started_at: (idx >= 0 && copy[idx].order_started_at) ? copy[idx].order_started_at : nowIso,
-          waiter_name: currentUser.full_name || currentUser.username || 'Waiter'
+          waiter_name: currentUser.full_name || currentUser.username || 'Waiter',
+          customer_name: resolvedCustName || (idx >= 0 ? copy[idx].customer_name : ''),
+          customer_phone: resolvedCustPhone || (idx >= 0 ? copy[idx].customer_phone : '')
         };
 
         if (idx >= 0) {
