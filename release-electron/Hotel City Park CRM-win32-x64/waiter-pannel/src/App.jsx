@@ -308,16 +308,34 @@ export default function App() {
           const pendingOptimistic = (prev || []).filter(pt => {
             const isOccupied = pt.status === 'occupied' || (Array.isArray(pt.cart) && pt.cart.length > 0);
             const isRecent = pt.order_started_at && (Date.now() - new Date(pt.order_started_at).getTime() < 45000);
-            const alreadyInServer = normalizedTables.some(nt => 
-              String(nt.id) === String(pt.id) || 
-              nt.table_number === pt.table_number ||
-              (pt.table_number && nt.table_number && String(nt.table_number).replace(/^RS-/i, '').trim() === String(pt.table_number).replace(/^RS-/i, '').trim())
-            );
+            const ptCleanNum = String(pt.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+            const alreadyInServer = normalizedTables.some(nt => {
+              const ntCleanNum = String(nt.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+              if (String(nt.id) === String(pt.id)) return true;
+              if (nt.table_number === pt.table_number) return true;
+              if (ptCleanNum && ntCleanNum && ptCleanNum === ntCleanNum) return true;
+              return false;
+            });
             return isOccupied && isRecent && !alreadyInServer;
           });
           const merged = [...pendingOptimistic, ...normalizedTables];
-          setCachedTables(department, merged);
-          return merged;
+
+          // Deduplicate merged tables by normalized room/table key so duplicates NEVER appear
+          const deduped = [];
+          const seenKeys = new Set();
+          for (const tbl of merged) {
+            const raw = String(tbl.table_number || tbl.name || tbl.id || '');
+            const clean = raw.replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+            const isRS = tbl.table_type === 'room_service' || raw.startsWith('RS-') || raw.startsWith('Room ');
+            const key = isRS ? `room_${clean}` : (raw.startsWith('P-') ? `parcel_${raw}` : `tbl_${clean || raw}`);
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              deduped.push(tbl);
+            }
+          }
+
+          setCachedTables(department, deduped);
+          return deduped;
         });
       }
 
@@ -579,15 +597,16 @@ export default function App() {
   };
 
   const handleSelectRoom = (room) => {
+    const cleanRoomNum = String(room.room_number || room.id || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
     setDestination({
       type: 'room',
       id: room.id,
-      label: `Room ${room.room_number} • ${room.guest_name || 'Guest'}`,
+      label: `RS-Room ${cleanRoomNum}`,
+      room_number: cleanRoomNum,
       guest_phone: room.guest_phone || '',
       guest_name: room.guest_name || '',
       customerName: room.guest_name || '',
-      customerPhone: room.guest_phone || '',
-      room_number: room.room_number
+      customerPhone: room.guest_phone || ''
     });
     setCart([]);
   };

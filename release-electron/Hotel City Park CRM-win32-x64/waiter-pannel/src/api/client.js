@@ -314,8 +314,12 @@ export const pushWaiterOrderToCloud = async (orderData) => {
   const grandTotal = Math.round(subtotal + gstAmount);
 
   const cleanShortKot = 'KOT-' + Date.now().toString().slice(-4);
+  const cleanRoom = orderData.destination_type === 'room'
+    ? String(orderData.room_number || orderData.destination_label || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim()
+    : String(orderData.destination_label || 'Table');
+
   const payload = {
-    room_number: String(orderData.destination_label || orderData.room_number || 'Table'),
+    room_number: cleanRoom,
     room_id: orderData.destination_id || 0,
     department: 'waiter_kot_order',
     order_id: 0,
@@ -757,7 +761,7 @@ export const api = {
 
     // Remote Netlify / Cloud Settlement via Supabase room_charges_inbox
     try {
-      const roomNum = String(paymentData.room_number || tableObj?.table_number || destinationId || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
+      const roomNum = String(paymentData.room_number || tableObj?.table_number || destinationId || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
 
       // Extract item list reliably
       let itemsList = Array.isArray(paymentData.items) && paymentData.items.length > 0 ? paymentData.items : [];

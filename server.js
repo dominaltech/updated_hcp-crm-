@@ -2322,6 +2322,12 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
 
     const importedIds = [];
     for (const cc of pending) {
+      const orderNum = cc.bill_no || `CLD-${cc.id}`;
+      // CRITICAL: Running kitchen KOT tickets must NEVER be imported as room charges into restaurant_orders!
+      if (cc.department === 'waiter_kot_order' || cc.department === 'discount_approval' || cc.department === 'fb_live_state' || String(orderNum).startsWith('KOT-')) {
+        continue;
+      }
+
       let parsedSummary = null;
       try {
         parsedSummary = typeof cc.items_summary === 'string' ? JSON.parse(cc.items_summary) : cc.items_summary;
@@ -2329,8 +2335,6 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
 
       const totalAmt = parseFloat(cc.grand_total) || (parsedSummary ? parseFloat(parsedSummary.grand_total || parsedSummary.total) : 0) || 0;
       if (totalAmt <= 0) continue;
-
-      const orderNum = cc.bill_no || `CLD-${cc.id}`;
 
       let itemsList = [];
       if (parsedSummary && Array.isArray(parsedSummary.items) && parsedSummary.items.length > 0) {

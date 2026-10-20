@@ -307,6 +307,7 @@ async function fetchPendingRoomCharges(roomNumber) {
         .select('*')
         .eq('room_number', String(roomNumber))
         .eq('status', 'pending')
+        .in('department', ['restaurant', 'bar', 'room_service', 'room_folio'])
         .order('created_at', { ascending: true }),
       REQUEST_TIMEOUT_MS
     );
@@ -316,7 +317,12 @@ async function fetchPendingRoomCharges(roomNumber) {
       return [];
     }
     markNetworkSuccess();
-    return data || [];
+    // Exclude any running KOT tickets or non-settled items
+    const settledCharges = (data || []).filter(row => 
+      row.department !== 'waiter_kot_order' && 
+      !String(row.bill_no || '').startsWith('KOT-')
+    );
+    return settledCharges;
   } catch (err) {
     markNetworkFailure(err);
     return [];
@@ -361,7 +367,7 @@ async function pullCloudRoomChargesToLocal(localDb) {
         .from('room_charges_inbox')
         .select('*')
         .eq('status', 'pending')
-        .neq('department', 'discount_approval')
+        .in('department', ['restaurant', 'bar', 'room_service', 'room_folio'])
         .order('created_at', { ascending: true }),
       REQUEST_TIMEOUT_MS
     );
@@ -370,6 +376,12 @@ async function pullCloudRoomChargesToLocal(localDb) {
 
     const importedIds = [];
     for (const cc of pendingCharges) {
+      const orderNum = cc.bill_no || `CLD-${cc.id}`;
+      // CRITICAL: Running kitchen KOT tickets must NEVER be imported as room charges into restaurant_orders!
+      if (cc.department === 'waiter_kot_order' || String(orderNum).startsWith('KOT-')) {
+        continue;
+      }
+
       const rawRoomNum = cc.room_number;
       if (!rawRoomNum) continue;
 
@@ -413,8 +425,6 @@ async function pullCloudRoomChargesToLocal(localDb) {
 
       const totalAmt = parseFloat(cc.grand_total) || (parsedSummary ? parseFloat(parsedSummary.grand_total || parsedSummary.total) : 0) || 0;
       if (totalAmt <= 0) continue;
-
-      const orderNum = cc.bill_no || `CLD-${cc.id}`;
 
       // Extract real item breakdown
       let itemsList = [];
@@ -1205,15 +1215,30 @@ async function pullCloudWaiterOrdersToLocal(db) {
         let tableId = destId;
         const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
 
+        // Clean room service table identifier
+        const cleanRoomNum = String(orderData.room_number || destLabel || '')
+          .replace(/^RS-/i, '')
+          .replace(/^Room\s*/i, '')
+          .replace(/•.*$/, '')
+          .trim();
+        const rsNumber = `RS-Room ${cleanRoomNum}`;
+
         // Find table by ID or table_number
         let targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ? OR table_number = ?`).get(destId, destLabel);
         if (!targetTable && destType === 'room') {
-          // Room service virtual table
-          const rsNumber = `RS-${String(destLabel).replace(/^RS-/i, '').trim()}`;
-          targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ?`).get(rsNumber);
+          // Room service virtual table - look for RS-Room 501, RS-501, or any variation
+          targetTable = db.prepare(`
+            SELECT * FROM ${tableName} 
+            WHERE table_number = ? 
+               OR table_number = ? 
+               OR table_number LIKE ? 
+               OR table_number LIKE ? 
+            LIMIT 1
+          `).get(rsNumber, `RS-${cleanRoomNum}`, `RS-Room ${cleanRoomNum}%`, `RS-${cleanRoomNum}%`);
+
           if (!targetTable) {
             try {
-              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status, order_started_at) VALUES (?, 'room_service', 2, ?, 'occupied', datetime('now', 'localtime'))`).run(rsNumber, `Room Service for ${destLabel}`);
+              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status, order_started_at) VALUES (?, 'room_service', 2, ?, 'occupied', datetime('now', 'localtime'))`).run(rsNumber, notes || `Room Service for Room ${cleanRoomNum}`);
               targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
             } catch (_) {}
           }

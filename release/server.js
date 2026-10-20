@@ -51,6 +51,11 @@ const distDir = path.join(__dirname, 'dist');
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));
 
+// Health check endpoint for desktop launcher, mobile apps, and monitoring
+app.get(['/api/health', '/health'], (req, res) => {
+  res.json({ success: true, status: 'ok', server: 'Hotel City Park CRM', time: new Date().toISOString() });
+});
+
 // Development helper: Programmatic frontend build endpoint
 app.get('/api/build-frontend', (req, res) => {
   exec('npx.cmd vite build', { cwd: __dirname }, (err, stdout, stderr) => {
@@ -2317,6 +2322,12 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
 
     const importedIds = [];
     for (const cc of pending) {
+      const orderNum = cc.bill_no || `CLD-${cc.id}`;
+      // CRITICAL: Running kitchen KOT tickets must NEVER be imported as room charges into restaurant_orders!
+      if (cc.department === 'waiter_kot_order' || cc.department === 'discount_approval' || cc.department === 'fb_live_state' || String(orderNum).startsWith('KOT-')) {
+        continue;
+      }
+
       let parsedSummary = null;
       try {
         parsedSummary = typeof cc.items_summary === 'string' ? JSON.parse(cc.items_summary) : cc.items_summary;
@@ -2324,8 +2335,6 @@ async function importCloudRoomChargesToSqlite(dbInstance, roomNumber, roomId, bo
 
       const totalAmt = parseFloat(cc.grand_total) || (parsedSummary ? parseFloat(parsedSummary.grand_total || parsedSummary.total) : 0) || 0;
       if (totalAmt <= 0) continue;
-
-      const orderNum = cc.bill_no || `CLD-${cc.id}`;
 
       let itemsList = [];
       if (parsedSummary && Array.isArray(parsedSummary.items) && parsedSummary.items.length > 0) {
@@ -4533,11 +4542,24 @@ function enqueuePrintJob(type, payload) {
   }
   return job;
 }
+global.enqueuePrintJob = enqueuePrintJob;
 
-// Endpoint to fetch unprinted print jobs for CRM computer auto-print
+// Endpoint to fetch unprinted print jobs for CRM computer auto-print (scoped by department)
 app.get('/api/print-queue/pending', (req, res) => {
   try {
-    const unprinted = kotPrintQueue.filter(j => !j.printed);
+    const { dept, type } = req.query;
+    let unprinted = kotPrintQueue.filter(j => !j.printed);
+    if (type) {
+      const allowedTypes = type.split(',').map(s => s.trim().toLowerCase());
+      unprinted = unprinted.filter(j => allowedTypes.includes(String(j.type || '').toLowerCase()));
+    }
+    if (dept) {
+      const targetDept = dept.trim().toLowerCase();
+      unprinted = unprinted.filter(j => {
+        const jobDept = String(j.data?.department || (j.type === 'kot' ? 'restaurant' : j.type === 'bot' ? 'bar' : '')).toLowerCase();
+        return !jobDept || jobDept === targetDept;
+      });
+    }
     res.json({ success: true, jobs: unprinted });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -8842,7 +8864,7 @@ app.delete('/api/manager/cleaners/:id', requireAuth, requireRole('manager'), (re
 // ==========================================================================
 app.get('/api/hospitality/history', (req, res) => {
   try {
-    const { q, limit = 100 } = req.query;
+    const { q, limit = 100, from_date, to_date, startDate, endDate } = req.query;
 
     let query = `
       SELECT 
@@ -8934,6 +8956,16 @@ app.get('/api/hospitality/history', (req, res) => {
     `;
 
     const params = [];
+    const start = from_date || startDate;
+    const end = to_date || endDate;
+    if (start && end) {
+      query += ` AND (DATE(COALESCE(b.actual_checkout_time, b.checkin_time, b.created_at), 'localtime') BETWEEN DATE(?) AND DATE(?))`;
+      params.push(start, end);
+    } else if (start) {
+      query += ` AND (DATE(COALESCE(b.actual_checkout_time, b.checkin_time, b.created_at), 'localtime') = DATE(?))`;
+      params.push(start);
+    }
+
     if (q && q.trim().length > 0) {
       const searchTerm = `%${q.trim()}%`;
       query += ` AND (
@@ -12987,6 +13019,15 @@ if (fs.existsSync(adminDistDir)) {
   });
 }
 
+// Mount Waiter Panel web bundle directly under /waiter
+const waiterDistDir = path.join(__dirname, 'release-electron', 'Hotel City Park CRM-win32-x64', 'waiter-pannel', 'dist');
+if (fs.existsSync(waiterDistDir)) {
+  app.use('/waiter', express.static(waiterDistDir));
+  app.get(/^\/waiter(\/.*)?$/, (req, res) => {
+    res.sendFile(path.join(waiterDistDir, 'index.html'));
+  });
+}
+
 async function startServer() {
   const hasDist = fs.existsSync(path.join(distDir, 'index.html'));
   const isDev = process.env.VITE_DEV === '1' || (process.env.NODE_ENV === 'development' && !hasDist);
@@ -13045,14 +13086,25 @@ async function startServer() {
       if (typeof supabaseService.pullCloudRoomChargesToLocal === 'function') {
         supabaseService.pullCloudRoomChargesToLocal(db).catch(() => {});
       }
+      if (typeof supabaseService.pullCloudWaiterOrdersToLocal === 'function') {
+        supabaseService.pullCloudWaiterOrdersToLocal(db).catch(() => {});
+      }
       storeSyncCounter++;
+      if (storeSyncCounter % 4 === 0 && typeof supabaseService.syncWaiterDataToCloud === 'function') {
+        supabaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
       if (storeSyncCounter % 4 === 0 && typeof supabaseService.pullStoreVendorsFromCloud === 'function') {
         supabaseService.pullStoreVendorsFromCloud(db).catch(() => {});
       }
       if (storeSyncCounter % 6 === 0 && typeof supabaseService.syncAllOfflineDataToCloud === 'function') {
         supabaseService.syncAllOfflineDataToCloud(db).catch(() => {});
       }
-    }, 2500);
+    }, 1000);
+
+    // Initial sync of live waiter menu, tables, and staff to cloud
+    if (typeof supabaseService.syncWaiterDataToCloud === 'function') {
+      supabaseService.syncWaiterDataToCloud(db).catch(() => {});
+    }
   });
 
   server.on('error', (err) => {

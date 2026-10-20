@@ -13,7 +13,7 @@
 }
 
 body, html {
-  font-family: var(--font-system);
+  font-family: var(--font-system, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif);
   background-color: var(--bg-app);
   color: var(--text-primary);
   height: 100dvh;
@@ -21,7 +21,9 @@ body, html {
   overflow: hidden;
   font-size: 15px;
   line-height: 1.45;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--transition-fast, 0.18s ease), color var(--transition-fast, 0.18s ease);
 }
 
 #root {
@@ -36,8 +38,8 @@ body, html {
 /* Micro-animations */
 @keyframes bounceAdd {
   0% { transform: scale(1); }
-  35% { transform: scale(1.28) rotate(-6deg); }
-  65% { transform: scale(0.94) rotate(3deg); }
+  35% { transform: scale(1.22) rotate(-4deg); }
+  65% { transform: scale(0.96) rotate(2deg); }
   100% { transform: scale(1); }
 }
 
@@ -47,12 +49,12 @@ body, html {
 }
 
 @keyframes fadeInModal {
-  from { opacity: 0; transform: scale(0.97); }
+  from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
 }
 
 .anim-bounce {
-  animation: bounceAdd var(--transition-smooth);
+  animation: bounceAdd var(--transition-smooth, 0.3s ease);
 }
 
 /* Custom Scrollbars */
@@ -65,24 +67,37 @@ body, html {
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-medium);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-xl, 20px);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 button {
-  font-family: var(--font-system);
+  font-family: var(--font-system, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif);
   cursor: pointer;
   outline: none;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.18s ease);
   -webkit-appearance: none;
   appearance: none;
 }
 
 button:active {
   transform: scale(0.96) !important;
-  filter: brightness(0.94);
+  filter: brightness(0.95);
 }
 
 input, textarea, select {
-  font-family: var(--font-system);
+  font-family: var(--font-system, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif);
   user-select: text;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--apple-blue, #8c5d77) !important;
+  box-shadow: 0 0 0 3px rgba(140, 93, 119, 0.15) !important;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { api } from '../api/client';
 
 export const extractOrderItems = (target) => {
@@ -79,11 +79,52 @@ export default function MyOrdersView({
   const myId = currentUser?.id;
 
   // Show all active running tables and room service orders for this department
-  const myActiveTables = tables.filter((t) => {
-    const items = extractOrderItems(t);
-    const hasActiveOrder = (t.status !== 'available' && t.status !== '') || items.length > 0;
-    return hasActiveOrder;
-  });
+  // Deduplicate by clean destination key so duplicate entries never render
+  const myActiveTables = useMemo(() => {
+    const rawActive = tables.filter((t) => {
+      const items = extractOrderItems(t);
+      const hasActiveOrder = (t.status !== 'available' && t.status !== '') || items.length > 0;
+      return hasActiveOrder;
+    });
+
+    const dedupedMap = new Map();
+    for (const t of rawActive) {
+      const rawNum = String(t.table_number || t.name || t.id || '');
+      const cleanNum = rawNum.replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+      const isRS = t.table_type === 'room_service' || rawNum.startsWith('RS-') || rawNum.startsWith('Room ');
+      const key = isRS ? `room_${cleanNum}` : (rawNum.startsWith('P-') ? `parcel_${rawNum}` : `table_${cleanNum || rawNum}`);
+
+      if (!dedupedMap.has(key)) {
+        dedupedMap.set(key, { ...t });
+      } else {
+        // Merge duplicate table into single card
+        const existing = dedupedMap.get(key);
+        const existingItems = extractOrderItems(existing);
+        const newItems = extractOrderItems(t);
+        const mergedItems = [...existingItems];
+        for (const it of newItems) {
+          const mIdx = mergedItems.findIndex(m => String(m.id) === String(it.id));
+          if (mIdx < 0) {
+            mergedItems.push(it);
+          } else {
+            mergedItems[mIdx] = {
+              ...mergedItems[mIdx],
+              qty: Math.max(Number(mergedItems[mIdx].qty || mergedItems[mIdx].quantity) || 1, Number(it.qty || it.quantity) || 1),
+              quantity: Math.max(Number(mergedItems[mIdx].qty || mergedItems[mIdx].quantity) || 1, Number(it.qty || it.quantity) || 1)
+            };
+          }
+        }
+        existing.cart = mergedItems;
+        existing.active_cart_json = JSON.stringify(mergedItems);
+        const sub = mergedItems.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+        const grand = Math.round(sub + (sub * 0.05));
+        existing.cart_total = grand;
+        existing.total_amount = grand;
+        if (t.customer_name && !existing.customer_name) existing.customer_name = t.customer_name;
+      }
+    }
+    return Array.from(dedupedMap.values());
+  }, [tables]);
 
   // Recent orders in this department
   const allDepartmentOrders = recentOrders.filter((o) => {
@@ -213,7 +254,7 @@ export default function MyOrdersView({
 
       if (isRS) {
         // Room Service Order: 2 distinct options
-        const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').trim();
+        const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
         const matchedRoom = occupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id));
         const resolvedRoomId = matchedRoom?.id || settleModalTable.room_id || null;
 
@@ -296,10 +337,13 @@ export default function MyOrdersView({
 
       // Optimistically remove settled table from active list immediately (0ms instant response)
       if (typeof setTables === 'function') {
-        setTables(prev => prev.filter(t => 
-          String(t.id) !== String(settleModalTable.id) && 
-          t.table_number !== settleModalTable.table_number
-        ));
+        setTables(prev => prev.filter(t => {
+          const tClean = String(t.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+          if (String(t.id) === String(settleModalTable.id)) return false;
+          if (t.table_number === settleModalTable.table_number) return false;
+          if (rawRoomNum && tClean && tClean === rawRoomNum) return false;
+          return true;
+        }));
       }
 
       await api.settleTable(department, settleModalTable.id, settlePayload, settleModalTable);
@@ -321,11 +365,11 @@ export default function MyOrdersView({
       {/* Top Bar with Title, Subtitle & Refresh */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '1.08rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+          <h2 style={{ fontSize: '1.10rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>
             📋 My Orders
           </h2>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '1px 0 0' }}>
-            Attended by: <strong style={{ color: 'var(--apple-blue)' }}>{myName}</strong>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '2px 0 0', fontWeight: 600 }}>
+            Attended by: <strong style={{ color: 'var(--apple-blue)', fontWeight: 800 }}>{myName}</strong>
           </p>
         </div>
 
@@ -334,18 +378,19 @@ export default function MyOrdersView({
           onClick={onRefresh}
           disabled={isLoading}
           style={{
-            padding: '6px 12px',
-            borderRadius: 'var(--radius-xs)',
+            padding: '6px 14px',
+            borderRadius: 'var(--radius-sm, 10px)',
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-medium)',
             color: 'var(--text-primary)',
             fontSize: '0.76rem',
             fontWeight: 800,
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
-            gap: '4px',
+            gap: '5px',
             boxShadow: 'var(--shadow-subtle)',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
           }}
         >
           <span>🔄</span>
@@ -355,94 +400,107 @@ export default function MyOrdersView({
 
       {/* Tabs: Active Running Orders vs All Punched Orders */}
       <div
+        role="tablist"
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: '6px',
-          background: 'var(--bg-surface)',
+          gap: '4px',
+          background: 'var(--bg-surface-secondary)',
           padding: '4px',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: 'var(--radius-sm, 12px)',
           border: '1px solid var(--border-light)',
           marginBottom: '10px'
         }}
       >
         <button
           type="button"
+          role="tab"
+          aria-selected={activeSubTab === 'active'}
           onClick={() => setActiveSubTab('active')}
           style={{
-            padding: '8px 10px',
-            borderRadius: 'var(--radius-xs)',
-            border: 'none',
-            background: activeSubTab === 'active' ? 'var(--apple-blue)' : 'transparent',
-            color: activeSubTab === 'active' ? '#fff' : 'var(--text-secondary)',
-            fontSize: '0.78rem',
-            fontWeight: 850,
+            padding: '9px 12px',
+            borderRadius: 'var(--radius-xs, 8px)',
+            border: activeSubTab === 'active' ? '1px solid var(--border-medium)' : '1px solid transparent',
+            background: activeSubTab === 'active' ? 'var(--bg-surface)' : 'transparent',
+            color: activeSubTab === 'active' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontSize: '0.80rem',
+            fontWeight: activeSubTab === 'active' ? 900 : 650,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '5px',
-            transition: 'all 0.15s ease'
+            gap: '6px',
+            boxShadow: activeSubTab === 'active' ? 'var(--shadow-card)' : 'none',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         >
-          <span>🟢 Active Running ({myActiveTables.length})</span>
+          <span style={{ fontSize: '0.85rem' }}>🟢</span>
+          <span>Active Running ({myActiveTables.length})</span>
         </button>
 
         <button
           type="button"
+          role="tab"
+          aria-selected={activeSubTab === 'recent'}
           onClick={() => setActiveSubTab('recent')}
           style={{
-            padding: '8px 10px',
-            borderRadius: 'var(--radius-xs)',
-            border: 'none',
-            background: activeSubTab === 'recent' ? 'var(--apple-blue)' : 'transparent',
-            color: activeSubTab === 'recent' ? '#fff' : 'var(--text-secondary)',
-            fontSize: '0.78rem',
-            fontWeight: 850,
+            padding: '9px 12px',
+            borderRadius: 'var(--radius-xs, 8px)',
+            border: activeSubTab === 'recent' ? '1px solid var(--border-medium)' : '1px solid transparent',
+            background: activeSubTab === 'recent' ? 'var(--bg-surface)' : 'transparent',
+            color: activeSubTab === 'recent' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontSize: '0.80rem',
+            fontWeight: activeSubTab === 'recent' ? 900 : 650,
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '5px',
-            transition: 'all 0.15s ease'
+            gap: '6px',
+            boxShadow: activeSubTab === 'recent' ? 'var(--shadow-card)' : 'none',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         >
-          <span>📜 All Orders ({allDepartmentOrders.length})</span>
+          <span style={{ fontSize: '0.85rem' }}>📜</span>
+          <span>All Orders ({allDepartmentOrders.length})</span>
         </button>
       </div>
 
       {/* Search Input */}
-      <div style={{ marginBottom: '10px' }}>
+      <div style={{ marginBottom: '10px', position: 'relative' }}>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="🔍 Search orders by table, #, or dish..."
+          placeholder="Search orders by table, #, or dish..."
           style={{
             width: '100%',
-            height: '38px',
-            padding: '0 12px',
+            height: '40px',
+            padding: '0 12px 0 36px',
             background: 'var(--bg-surface)',
-            border: '1.5px solid var(--border-medium)',
-            borderRadius: 'var(--radius-xs)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: 'var(--radius-sm, 10px)',
             color: 'var(--text-primary)',
-            fontSize: '0.82rem',
-            fontWeight: 650,
+            fontSize: '0.84rem',
+            fontWeight: 600,
             outline: 'none',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            boxShadow: 'var(--shadow-subtle)'
           }}
         />
+        <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, fontSize: '0.90rem' }}>
+          🔍
+        </span>
       </div>
 
       {msg && (
         <div
           style={{
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-xs)',
+            padding: '9px 14px',
+            borderRadius: 'var(--radius-sm, 10px)',
             background: 'var(--apple-green-subtle)',
             border: '1px solid var(--apple-green)',
             color: 'var(--apple-green)',
-            fontSize: '0.78rem',
+            fontSize: '0.80rem',
             fontWeight: 800,
             marginBottom: '10px'
           }}
@@ -451,8 +509,8 @@ export default function MyOrdersView({
         </div>
       )}
 
-      {/* Main List */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '70px' }}>
+      {/* Main List with ample bottom padding so Netlify badge never covers cards */}
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '120px' }}>
         {activeSubTab === 'active' ? (
           /* Active Running Tables View */
           filteredActiveTables.length === 0 ? (
@@ -467,7 +525,7 @@ export default function MyOrdersView({
                 padding: '40px 16px',
                 color: 'var(--text-tertiary)',
                 background: 'var(--bg-surface)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-md, 14px)',
                 border: '1px dashed var(--border-medium)'
               }}
             >
@@ -487,30 +545,58 @@ export default function MyOrdersView({
               const grand = Math.round(t.total_amount || t.cart_total || (subtotal + gst));
               const isBilled = t.status === 'billed';
 
+              const rawDest = String(t.table_number || `Table ${t.id}`);
+              const cleanDest = rawDest.replace(/•.*$/, '').trim();
+              const guestSubtitle = t.customer_name || (rawDest.includes('•') ? rawDest.split('•')[1]?.trim() : '');
+
               return (
                 <div
                   key={t.id}
                   onClick={() => setSelectedOrder({ type: 'table', data: t })}
                   style={{
                     background: 'var(--bg-surface)',
-                    border: isBilled ? '1.5px solid var(--apple-red)' : '1.5px solid var(--border-medium)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '12px 14px',
-                    boxShadow: 'var(--shadow-subtle)',
+                    border: isBilled ? '1.5px solid var(--apple-red)' : '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-md, 14px)',
+                    padding: '13px 14px',
+                    boxShadow: 'var(--shadow-card, 0 2px 10px rgba(0,0,0,0.04))',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease'
+                    transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '9px'
                   }}
                   title="Click to view full order details & cancel options"
                 >
                   {/* Table Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.4rem' }}>{isBar ? '🍸' : '🍽️'}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div
+                        style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: 'var(--radius-sm, 10px)',
+                          background: 'var(--bg-surface-secondary)',
+                          border: '1px solid var(--border-light)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '1.25rem',
+                          flexShrink: 0
+                        }}
+                      >
+                        {isBar ? '🍸' : '🍽️'}
+                      </div>
                       <div>
-                        <div style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                          {t.table_number || `Table ${t.id}`}
+                        <div style={{ fontSize: '1.02rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+                          {cleanDest}
                         </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                        {guestSubtitle ? (
+                          <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--apple-blue)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>👤</span>
+                            <span>{guestSubtitle}</span>
+                          </div>
+                        ) : null}
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: '2px', fontWeight: 600 }}>
                           Token #{t.token_number || 1} • KOT #{t.kot_count || t.bot_count || 1}
                           {t.order_started_at && ` • 🕒 ${new Date(t.order_started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                           {t.waiter_name && ` • 👤 ${t.waiter_name}`}
@@ -518,23 +604,24 @@ export default function MyOrdersView({
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <span
                         style={{
                           display: 'inline-block',
-                          fontSize: '0.65rem',
-                          fontWeight: 850,
-                          padding: '2px 6px',
-                          borderRadius: 'var(--radius-xs)',
-                          background: isBilled ? 'var(--apple-red-subtle)' : 'var(--apple-green-subtle)',
-                          color: isBilled ? 'var(--apple-red)' : 'var(--apple-green)',
-                          border: isBilled ? '1px solid var(--apple-red)' : '1px solid var(--apple-green)',
-                          textTransform: 'uppercase'
+                          fontSize: '0.64rem',
+                          fontWeight: 900,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: isBilled ? 'var(--apple-red-subtle)' : 'rgba(22, 163, 74, 0.12)',
+                          color: isBilled ? 'var(--apple-red)' : '#16a34a',
+                          border: isBilled ? '1px solid var(--apple-red)' : '1px solid rgba(22, 163, 74, 0.3)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
                         }}
                       >
-                        {isBilled ? '🧾 Billed' : '🟢 Running'}
+                        {isBilled ? '🧾 BILLED' : '🟢 RUNNING'}
                       </span>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--apple-blue)', marginTop: '2px' }}>
+                      <div style={{ fontSize: '1.12rem', fontWeight: 900, color: 'var(--text-primary)', marginTop: '3px', letterSpacing: '-0.02em' }}>
                         ₹{grand.toLocaleString('en-IN')}
                       </div>
                     </div>
@@ -544,9 +631,9 @@ export default function MyOrdersView({
                   <div
                     style={{
                       background: 'var(--bg-surface-secondary)',
-                      borderRadius: 'var(--radius-xs)',
-                      padding: '6px 10px',
-                      marginBottom: '10px'
+                      borderRadius: 'var(--radius-sm, 10px)',
+                      padding: '7px 10px',
+                      border: '1px solid var(--border-light)'
                     }}
                   >
                     {items.length === 0 ? (
@@ -559,21 +646,33 @@ export default function MyOrdersView({
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            fontSize: '0.76rem',
+                            fontSize: '0.78rem',
                             color: 'var(--text-primary)',
-                            padding: '3px 0',
+                            padding: '4px 0',
                             borderBottom: idx < items.length - 1 ? '1px solid var(--border-light)' : 'none'
                           }}
                         >
-                          <div>
-                            <span><strong>{it.qty || it.quantity || 1}x</strong> {it.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span
+                              style={{
+                                background: 'var(--bg-surface)',
+                                border: '1px solid var(--border-medium)',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                fontSize: '0.70rem',
+                                fontWeight: 900
+                              }}
+                            >
+                              {it.qty || it.quantity || 1}×
+                            </span>
+                            <span style={{ fontWeight: 700 }}>{it.name}</span>
                             {it.added_at && (
-                              <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginLeft: '6px' }}>
+                              <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)' }}>
                                 🕒 {new Date(it.added_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             )}
                           </div>
-                          <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 800 }}>
                             ₹{((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)).toLocaleString('en-IN')}
                           </span>
                         </div>
@@ -582,7 +681,7 @@ export default function MyOrdersView({
                   </div>
 
                   {/* Actions for this table */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1fr 1.1fr', gap: '5px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '2px' }}>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -599,17 +698,23 @@ export default function MyOrdersView({
                         });
                       }}
                       style={{
-                        padding: '6px 4px',
-                        borderRadius: 'var(--radius-xs)',
-                        background: isBar ? 'var(--apple-purple-subtle)' : 'var(--apple-orange-subtle)',
-                        border: isBar ? '1px solid var(--apple-purple)' : '1px solid var(--apple-orange)',
-                        color: isBar ? 'var(--apple-purple)' : 'var(--apple-orange)',
+                        height: '36px',
+                        padding: '0 4px',
+                        borderRadius: 'var(--radius-xs, 8px)',
+                        background: 'var(--bg-surface-secondary)',
+                        border: '1px solid var(--border-medium)',
+                        color: 'var(--text-primary)',
                         fontSize: '0.72rem',
                         fontWeight: 800,
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '3px'
                       }}
                     >
-                      + Add Items
+                      <span>+</span>
+                      <span>Items</span>
                     </button>
 
                     <button
@@ -620,17 +725,23 @@ export default function MyOrdersView({
                         handlePrintPrebill(t);
                       }}
                       style={{
-                        padding: '6px 4px',
-                        borderRadius: 'var(--radius-xs)',
+                        height: '36px',
+                        padding: '0 4px',
+                        borderRadius: 'var(--radius-xs, 8px)',
                         background: 'var(--bg-surface-secondary)',
-                        border: '1px solid var(--apple-blue)',
+                        border: '1px solid var(--border-medium)',
                         color: 'var(--apple-blue)',
                         fontSize: '0.72rem',
                         fontWeight: 800,
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '3px'
                       }}
                     >
-                      {actionInProgress === `print-${t.id}` ? '...' : '🧾 Pre-Bill'}
+                      <span>🧾</span>
+                      <span>{actionInProgress === `print-${t.id}` ? '...' : 'Pre-Bill'}</span>
                     </button>
 
                     <button
@@ -640,17 +751,24 @@ export default function MyOrdersView({
                         setSettleModalTable(t);
                       }}
                       style={{
-                        padding: '6px 4px',
-                        borderRadius: 'var(--radius-xs)',
-                        background: 'var(--apple-green-subtle)',
-                        border: '1px solid var(--apple-green)',
-                        color: 'var(--apple-green)',
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        cursor: 'pointer'
+                        height: '36px',
+                        padding: '0 4px',
+                        borderRadius: 'var(--radius-xs, 8px)',
+                        background: '#16a34a',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '0.74rem',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)'
                       }}
                     >
-                      💵 Settle
+                      <span>💵</span>
+                      <span>Settle</span>
                     </button>
 
                     {/* Cancel Table Order Button */}
@@ -661,17 +779,23 @@ export default function MyOrdersView({
                         setOrderToCancel({ type: 'table', target: t });
                       }}
                       style={{
-                        padding: '6px 4px',
-                        borderRadius: 'var(--radius-xs)',
+                        height: '36px',
+                        padding: '0 4px',
+                        borderRadius: 'var(--radius-xs, 8px)',
                         background: 'var(--apple-red-subtle)',
-                        border: '1px solid var(--apple-red)',
+                        border: '1px solid rgba(220, 38, 38, 0.25)',
                         color: 'var(--apple-red)',
                         fontSize: '0.72rem',
                         fontWeight: 800,
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '3px'
                       }}
                     >
-                      ❌ Cancel
+                      <span>❌</span>
+                      <span>Cancel</span>
                     </button>
                   </div>
                 </div>
