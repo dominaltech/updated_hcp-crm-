@@ -821,7 +821,7 @@ export const api = {
       console.warn('[WaiterAPI] Cloud cancel notice:', e.message);
     }
 
-    // Clean up local cached table status immediately in localStorage
+    // Clean up local cached table status immediately in localStorage and inMemoryCloudPkg
     try {
       const cacheKey = department === 'bar' ? 'hcp_cached_tables_bar' : 'hcp_cached_tables_restaurant';
       const raw = localStorage.getItem(cacheKey);
@@ -853,6 +853,38 @@ export const api = {
         });
         localStorage.setItem(cacheKey, JSON.stringify(tables));
       }
+
+      if (inMemoryCloudPkg) {
+        const pkgKey = department === 'bar' ? 'barTables' : 'restaurantTables';
+        if (Array.isArray(inMemoryCloudPkg[pkgKey])) {
+          inMemoryCloudPkg[pkgKey] = inMemoryCloudPkg[pkgKey].map(t => {
+            if (String(t.id) === String(tableId) || t.table_number === tableObj?.table_number) {
+              return {
+                ...t,
+                status: 'available',
+                cart: [],
+                cart_total: 0,
+                token_number: 0,
+                kot_count: 0,
+                order_started_at: null,
+                waiter_name: '',
+                special_notes: ''
+              };
+            }
+            return t;
+          }).filter(t => {
+            if (String(t.id) === String(tableId) || t.table_number === tableObj?.table_number) {
+              const num = String(t.table_number || '');
+              if (t.table_type === 'room_service' || t.table_type === 'parcel' || num.startsWith('RS-') || num.startsWith('P-')) {
+                return false;
+              }
+            }
+            return true;
+          });
+        }
+        localStorage.setItem('hcp_cloud_waiter_pkg', JSON.stringify(inMemoryCloudPkg));
+      }
+      lastCloudPkgFetch = 0; // Force immediate re-fetch on next background sync
     } catch (_) {}
 
     return { success: true, message: 'Table order cancelled and voided successfully' };

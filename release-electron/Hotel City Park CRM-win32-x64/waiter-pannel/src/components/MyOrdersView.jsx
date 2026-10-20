@@ -9,7 +9,8 @@ export default function MyOrdersView({
   occupiedRooms = [],
   onSelectDestinationForMore,
   onRefresh,
-  isLoading
+  isLoading,
+  setTables
 }) {
   const [activeSubTab, setActiveSubTab] = useState('active'); // 'active' | 'recent'
   const [actionInProgress, setActionInProgress] = useState(null);
@@ -76,6 +77,35 @@ export default function MyOrdersView({
   const handleConfirmCancelTable = async (table) => {
     try {
       setActionInProgress(`cancel-table-${table.id}`);
+
+      // Optimistically remove table from view immediately for instant 0ms response
+      if (typeof setTables === 'function') {
+        setTables((prev) => prev.map((t) => {
+          if (String(t.id) === String(table.id) || t.table_number === table.table_number) {
+            return {
+              ...t,
+              status: 'available',
+              cart: [],
+              cart_total: 0,
+              token_number: 0,
+              kot_count: 0,
+              order_started_at: null,
+              waiter_name: '',
+              special_notes: ''
+            };
+          }
+          return t;
+        }).filter((t) => {
+          if (String(t.id) === String(table.id) || t.table_number === table.table_number) {
+            const num = String(t.table_number || '');
+            if (t.table_type === 'room_service' || t.table_type === 'parcel' || num.startsWith('RS-') || num.startsWith('P-')) {
+              return false;
+            }
+          }
+          return true;
+        }));
+      }
+
       await api.cancelTable(department, table.id, table);
       setMsg(`🗑️ Table ${table.table_number || table.name} order has been canceled.`);
       setSelectedOrder(null);

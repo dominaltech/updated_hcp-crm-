@@ -1118,9 +1118,8 @@ async function pullCloudWaiterOrdersToLocal(db) {
         .order('created_at', { ascending: true })
     );
 
-    if (error || !Array.isArray(data) || data.length === 0) return;
-
-    for (const row of data) {
+    if (!error && Array.isArray(data) && data.length > 0) {
+      for (const row of data) {
       try {
         let orderData = {};
         try {
@@ -1250,43 +1249,52 @@ async function pullCloudWaiterOrdersToLocal(db) {
         console.error('[Supabase] Error processing cloud waiter order:', itemErr.message);
       }
     }
+  }
 
-    // Pull and process pending waiter cancellation requests from cloud
-    try {
-      const { data: cancelData } = await withTimeout(
-        supabase
-          .from('room_charges_inbox')
-          .select('*')
-          .eq('department', 'waiter_kot_cancel')
-          .eq('status', 'pending')
-      );
+  // Pull and process pending waiter cancellation requests from cloud
+  try {
+    const { data: cancelData } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .select('*')
+        .eq('department', 'waiter_kot_cancel')
+        .eq('status', 'pending')
+    );
 
-      if (Array.isArray(cancelData) && cancelData.length > 0) {
-        for (const crow of cancelData) {
-          try {
-            let cancelInfo = {};
-            try { cancelInfo = JSON.parse(crow.items_summary || '{}'); } catch (_) {}
-            const dept = (cancelInfo.department || 'restaurant').toLowerCase();
-            const tName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
-            const tId = cancelInfo.table_id || crow.room_id;
-            const tNum = cancelInfo.table_number || crow.room_number;
+    if (Array.isArray(cancelData) && cancelData.length > 0) {
+      for (const crow of cancelData) {
+        try {
+          let cancelInfo = {};
+          try { cancelInfo = JSON.parse(crow.items_summary || '{}'); } catch (_) {}
+          const dept = (cancelInfo.department || 'restaurant').toLowerCase();
+          const tName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+          const ordTable = dept === 'bar' ? 'bar_orders' : 'restaurant_orders';
+          const tId = cancelInfo.table_id || crow.room_id;
+          const tNum = cancelInfo.table_number || crow.room_number;
 
-            if (tNum && (String(tNum).startsWith('RS-') || String(tNum).startsWith('P-'))) {
-              db.prepare(`DELETE FROM ${tName} WHERE id = ? OR table_number = ?`).run(tId, tNum);
-            } else if (tId || tNum) {
-              db.prepare(`UPDATE ${tName} SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ? OR table_number = ?`).run(tId, tNum);
-            }
-
-            await withTimeout(
-              supabase.from('room_charges_inbox').update({ status: 'cancelled' }).eq('id', crow.id)
-            );
-            console.log(`[Supabase] 🗑️ Processed waiter cancellation for ${tNum || tId}`);
-          } catch (cErr) {
-            console.warn('[Supabase] Cancel processing notice:', cErr.message);
+          if (tNum && (String(tNum).startsWith('RS-') || String(tNum).startsWith('P-'))) {
+            db.prepare(`DELETE FROM ${tName} WHERE id = ? OR table_number = ?`).run(tId, tNum);
+          } else if (tId || tNum) {
+            db.prepare(`UPDATE ${tName} SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ? OR table_number = ?`).run(tId, tNum);
           }
+
+          try {
+            db.prepare(`UPDATE ${ordTable} SET status = 'cancelled' WHERE (table_number = ? OR table_id = ?) AND status NOT IN ('completed', 'cancelled')`).run(tNum, tId);
+          } catch (_) {}
+
+          await withTimeout(
+            supabase.from('room_charges_inbox').update({ status: 'cancelled' }).eq('id', crow.id)
+          );
+          console.log(`[Supabase] 🗑️ Processed waiter cancellation for ${tNum || tId}`);
+        } catch (cErr) {
+          console.warn('[Supabase] Cancel processing notice:', cErr.message);
         }
       }
-    } catch (_) {}
+
+      // Immediately sync clean tables back to cloud package
+      await syncWaiterDataToCloud(db);
+    }
+  } catch (_) {}
 
     markNetworkSuccess();
   } catch (err) {

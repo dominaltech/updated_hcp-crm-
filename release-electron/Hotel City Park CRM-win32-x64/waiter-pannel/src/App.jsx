@@ -896,6 +896,7 @@ export default function App() {
               onSelectDestinationForMore={handleSelectDestinationForMore}
               onRefresh={() => fetchLiveData(true)}
               isLoading={isLoading}
+              setTables={setTables}
             />
           )}
         </>
