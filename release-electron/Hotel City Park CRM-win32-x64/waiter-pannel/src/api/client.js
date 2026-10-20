@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import bcrypt from 'bcryptjs';
 
-export const CLOUD_TUNNEL_URL = 'https://hudson-universal-quite-talented.trycloudflare.com';
+export const CLOUD_TUNNEL_URL = 'https://birmingham-objectives-trainers-organisation.trycloudflare.com';
 export const LOCAL_WIFI_IP = '10.160.83.195';
 
 export const isNativePlatform = () => {

@@ -243,6 +243,9 @@ export default function MyOrdersView({
       setActionInProgress(`settle-${settleModalTable.id}`);
       
       const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
+      const rawRoomNum = isRS
+        ? String(settleModalTable.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim()
+        : '';
 
       // Extract items and calculate exact financial totals
       const items = extractOrderItems(settleModalTable);
@@ -254,7 +257,6 @@ export default function MyOrdersView({
 
       if (isRS) {
         // Room Service Order: 2 distinct options
-        const rawRoomNum = String(settleModalTable.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
         const matchedRoom = occupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id));
         const resolvedRoomId = matchedRoom?.id || settleModalTable.room_id || null;
 
