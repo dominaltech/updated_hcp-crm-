@@ -28,7 +28,8 @@ ALIGNED_APK = os.path.join(WORKSPACE, "temp_Storeman_aligned.apk")
 DESTINATIONS = [
     os.path.join(WORKSPACE, "Storeman.apk"),
     os.path.join(WORKSPACE, "public", "Storeman.apk"),
-    os.path.join(WORKSPACE, "dist", "Storeman.apk")
+    os.path.join(WORKSPACE, "dist", "Storeman.apk"),
+    os.path.join(WORKSPACE, "apks", "HotelCityPark-Storeman.apk")
 ]
 
 print(f"Using build-tools: {SDK_BUILD_TOOLS}")

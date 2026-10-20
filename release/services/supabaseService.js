@@ -132,16 +132,19 @@ async function syncActiveOccupancy(data) {
           bill_no: f.voucherNumber || ('BK-' + (data.booking_id || data.room_number)),
           subtotal: Number(f.roomCharge || 0),
           gst: Number(f.tax || 0),
-          grand_total: Number(f.total || 0),
+          grand_total: Number(f.total || f.grandTotal || 0),
           items_summary: JSON.stringify({
             roomCharge: Number(f.roomCharge || 0),
-            total: Number(f.total || 0),
+            total: Number(f.total || f.grandTotal || 0),
+            grandTotal: Number(f.total || f.grandTotal || 0),
             paid: Number(f.paid || 0),
             pending: Number(f.pending || 0),
             extra: Number(f.extra || 0),
             discount: Number(f.discount || 0),
-            restaurant: Number(f.restaurant || 0),
-            bar: Number(f.bar || 0),
+            restaurant: Number(f.restaurant || f.foodTotal || 0),
+            bar: Number(f.bar || f.barTotal || 0),
+            foodTotal: Number(f.foodTotal || f.restaurant || 0),
+            barTotal: Number(f.barTotal || f.bar || 0),
             advanceReceiptNo: f.advanceReceiptNo || '',
             voucherNumber: f.voucherNumber || '',
             paymentMode: f.paymentMode || 'Cash',
@@ -151,6 +154,10 @@ async function syncActiveOccupancy(data) {
             checkedInBy: f.checkedInBy || 'Front Desk',
             guestName: data.guest_name,
             mobile: data.guest_mobile || '',
+            email: f.email || data.guest_email || '',
+            aadharNumber: f.aadharNumber || data.aadhar_number || '',
+            aadhar_number: f.aadharNumber || data.aadhar_number || '',
+            docType: f.docType || data.doc_type || 'Aadhaar Card',
             address: f.address || '',
             dob: f.dob || '',
             roomType: data.room_type || 'Standard Room'
@@ -445,6 +452,9 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         r.room_type,
         g.name as guest_name,
         g.mobile as guest_mobile,
+        g.email,
+        g.aadhar_number,
+        g.doc_type,
         g.address,
         g.dob,
         b.checkin_time,
@@ -488,16 +498,39 @@ async function syncAllActiveRoomsFromLocal(localDb) {
 
     if (!activeBookings || activeBookings.length === 0) return;
 
-    // 2. Sync all current active rooms WITH billing folios to cloud
+    // 2. Sync all current active rooms WITH billing folios & itemized F&B orders to cloud
     for (const b of activeBookings) {
       if (!canAttemptCloud()) break; // Exit immediately if offline circuit breaker tripped
+      
+      // Query active restaurant and bar orders for this booking/room
+      let restOrders = [];
+      let barOrders = [];
+      try {
+        restOrders = localDb.prepare(`
+          SELECT * FROM restaurant_orders
+          WHERE (booking_id = ? OR (room_id = ? AND datetime(created_at) >= ?))
+          ORDER BY created_at ASC
+        `).all(b.booking_id, b.room_id, b.checkin_time || '2000-01-01');
+
+        barOrders = localDb.prepare(`
+          SELECT * FROM bar_orders
+          WHERE (booking_id = ? OR (room_id = ? AND datetime(created_at) >= ?))
+          ORDER BY created_at ASC
+        `).all(b.booking_id, b.room_id, b.checkin_time || '2000-01-01');
+      } catch (orderErr) {
+        console.warn('[Supabase] Active orders fetch notice:', orderErr.message);
+      }
+
+      const foodTotal = restOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+      const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
       const roomCharge = Number(b.total_room_charge || b.room_rate || 0);
       const extra = Number(b.extra_bed_charge || 0);
       const discount = Number(b.discount_amount || 0);
-      const tax = Math.round(roomCharge * 0.05);
-      const total = Math.max(0, roomCharge + extra - discount + tax);
+      const tax = Number(b.tax_amount || Math.round(roomCharge - Math.round(roomCharge / 1.05)));
+      // b.total_room_charge in CRM SQLite schema is already net of discount
+      const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal + extra);
       const paid = Number(b.total_paid || b.advance_payment || 0);
-      const pending = Math.max(0, total - paid);
+      const pending = Math.max(0, grandTotal - paid);
 
       await syncActiveOccupancy({
         room_number: b.room_number,
@@ -505,14 +538,28 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         room_type: b.room_type,
         guest_name: b.guest_name,
         guest_mobile: b.guest_mobile,
+        guest_email: b.email,
+        aadhar_number: b.aadhar_number,
+        doc_type: b.doc_type || 'Aadhaar Card',
         booking_id: b.booking_id,
         checkin_time: b.checkin_time,
+        food_total: foodTotal,
+        bar_total: barTotal,
+        total_paid: paid,
+        grand_total: grandTotal,
+        balance_due: pending,
         folio: {
           roomCharge,
+          tariffSubtotal: Number(b.room_rate || (roomCharge + discount)),
+          restaurant: foodTotal,
+          bar: barTotal,
+          foodTotal,
+          barTotal,
           extra,
           discount,
           tax,
-          total,
+          total: grandTotal,
+          grandTotal,
           paid,
           pending,
           voucherNumber: b.voucher_number || '',
@@ -522,9 +569,50 @@ async function syncAllActiveRoomsFromLocal(localDb) {
           source: b.booking_source || 'Walk-in',
           checkedInBy: b.checked_in_by || 'Front Desk',
           address: b.address || '',
-          dob: b.dob || ''
+          dob: b.dob || '',
+          email: b.email || '',
+          aadharNumber: b.aadhar_number || '',
+          docType: b.doc_type || 'Aadhaar Card'
         }
       });
+
+      // Push individual restaurant orders to room_charges_inbox
+      for (const ro of restOrders) {
+        try {
+          await pushRoomCharge({
+            room_number: b.room_number,
+            room_id: b.room_id,
+            order_id: ro.id,
+            department: 'restaurant',
+            bill_no: ro.order_number,
+            subtotal: ro.subtotal,
+            gst: ro.tax,
+            grand_total: ro.total,
+            items_summary: ro.items_json ? (typeof ro.items_json === 'string' ? ro.items_json : JSON.stringify(ro.items_json)) : '',
+            settled_by: ro.waiter_name || ro.cashier_name || 'Front Desk',
+            status: ro.is_paid === 1 ? 'settled' : 'pending'
+          });
+        } catch (_) {}
+      }
+
+      // Push individual bar orders to room_charges_inbox
+      for (const bo of barOrders) {
+        try {
+          await pushRoomCharge({
+            room_number: b.room_number,
+            room_id: b.room_id,
+            order_id: bo.id,
+            department: 'bar',
+            bill_no: bo.order_number,
+            subtotal: bo.subtotal,
+            gst: bo.tax,
+            grand_total: bo.total,
+            items_summary: bo.items_json ? (typeof bo.items_json === 'string' ? bo.items_json : JSON.stringify(bo.items_json)) : '',
+            settled_by: bo.cashier_name || 'Front Desk',
+            status: bo.is_paid === 1 ? 'settled' : 'pending'
+          });
+        } catch (_) {}
+      }
     }
     console.log(`[Supabase] Synced ${activeBookings.length} active room(s) with full billing folios to cloud directory.`);
   } catch (err) {
@@ -953,6 +1041,259 @@ async function syncDailyAnalyticsToCloud(db) {
   }
 }
 
+/**
+ * Uploads live restaurant/bar menus, categories, tables, and waiter staff to Supabase
+ * so remote Waiter Panels (Netlify, 4G/5G, outside Wi-Fi) can operate completely independently.
+ */
+async function syncWaiterDataToCloud(db) {
+  if (!canAttemptCloud() || !db) return;
+  try {
+    const resMenu = db.prepare("SELECT id, name, category, price, is_available, is_veg FROM menu_items WHERE department = 'restaurant' AND is_available = 1").all();
+    const resCats = db.prepare("SELECT * FROM restaurant_categories").all();
+    const barMenu = db.prepare("SELECT id, name, category, price, is_available, is_veg FROM menu_items WHERE department = 'bar' AND is_available = 1").all();
+    const barCats = db.prepare("SELECT * FROM bar_categories").all();
+    const resTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, customer_name, customer_phone, waiter_name FROM restaurant_tables").all();
+    const barTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, customer_name, customer_phone, waiter_name FROM bar_tables").all();
+    const staff = db.prepare("SELECT id, username, password, full_name, role, phone FROM staff_users WHERE status = 'active'").all();
+    
+    // In-house occupied rooms for room service orders
+    let occRooms = [];
+    try {
+      occRooms = db.prepare(`
+        SELECT r.id, r.room_number, r.status, g.name as guest_name, g.mobile as guest_phone, b.id as booking_id 
+        FROM rooms r 
+        JOIN bookings b ON r.current_booking_id = b.id 
+        JOIN guests g ON b.guest_id = g.id 
+        WHERE b.status = 'active'
+      `).all();
+    } catch (_) {}
+
+    const pkg = {
+      restaurantMenu: resMenu || [],
+      restaurantCategories: resCats || [],
+      barMenu: barMenu || [],
+      barCategories: barCats || [],
+      restaurantTables: resTables || [],
+      barTables: barTables || [],
+      staff: staff || [],
+      occupiedRooms: occRooms || [],
+      syncedAt: new Date().toISOString()
+    };
+
+    const payload = {
+      id: '00000000-0000-0000-0000-000000000088',
+      room_number: '0',
+      room_id: 0,
+      department: 'waiter_cloud_sync_pkg',
+      order_id: 0,
+      bill_no: 'PKG',
+      subtotal: 0,
+      gst: 0,
+      grand_total: 0,
+      settled_by: 'local_crm',
+      items_summary: JSON.stringify(pkg),
+      status: 'active'
+    };
+
+    await withTimeout(supabase.from('room_charges_inbox').upsert(payload));
+    markNetworkSuccess();
+  } catch (err) {
+    markNetworkFailure(err);
+  }
+}
+
+/**
+ * Pulls pending orders punched by waiters from Supabase cloud (via 4G/5G, Netlify, or Wi-Fi),
+ * writes them into local SQLite tables, and automatically triggers the kitchen KOT printer.
+ */
+async function pullCloudWaiterOrdersToLocal(db) {
+  if (!canAttemptCloud() || !db) return;
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .select('*')
+        .eq('department', 'waiter_kot_order')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+    );
+
+    if (error || !Array.isArray(data) || data.length === 0) return;
+
+    for (const row of data) {
+      try {
+        let orderData = {};
+        try {
+          orderData = JSON.parse(row.items_summary || '{}');
+        } catch (_) {
+          continue;
+        }
+
+        const items = Array.isArray(orderData.items) ? orderData.items : [];
+        if (items.length === 0) {
+          // Mark invalid order processed
+          await withTimeout(supabase.from('room_charges_inbox').update({ status: 'invalid' }).eq('id', row.id));
+          continue;
+        }
+
+        const dept = (orderData.department || 'restaurant').toLowerCase();
+        const destType = orderData.destination_type || 'table';
+        const destId = orderData.destination_id;
+        const destLabel = orderData.destination_label || row.room_number || 'Table';
+        const waiterName = orderData.waiter_name || row.settled_by || 'Captain';
+        const notes = orderData.notes || '';
+        const custName = orderData.customer_name || '';
+        const custPhone = orderData.customer_phone || '';
+
+        let tableId = destId;
+        const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+
+        // Find table by ID or table_number
+        let targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ? OR table_number = ?`).get(destId, destLabel);
+        if (!targetTable && destType === 'room') {
+          // Room service virtual table
+          const rsNumber = `RS-${String(destLabel).replace(/^RS-/i, '').trim()}`;
+          targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ?`).get(rsNumber);
+          if (!targetTable) {
+            try {
+              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status) VALUES (?, 'room_service', 2, ?, 'occupied')`).run(rsNumber, `Room Service for ${destLabel}`);
+              targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
+            } catch (_) {}
+          }
+        } else if (!targetTable && destType === 'parcel') {
+          const pToken = String(destId || custName || Date.now().toString().slice(-4)).replace(/^P-/i, '');
+          const pNumber = `P-${pToken}`;
+          targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ?`).get(pNumber);
+          if (!targetTable) {
+            try {
+              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status) VALUES (?, 'parcel', 1, ?, 'occupied')`).run(pNumber, `Takeaway Parcel #${pToken}`);
+              targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
+            } catch (_) {}
+          }
+        }
+
+        let assignedToken = 1;
+        if (targetTable) {
+          tableId = targetTable.id;
+          let currentCart = [];
+          try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
+          
+          // Merge newly ordered items into table's active cart
+          for (const it of items) {
+            const existingIdx = currentCart.findIndex(c => String(c.id) === String(it.id) && Boolean(c.is_parcel) === Boolean(it.is_parcel));
+            if (existingIdx >= 0) {
+              currentCart[existingIdx].qty = (Number(currentCart[existingIdx].qty) || 1) + (Number(it.qty || it.quantity) || 1);
+            } else {
+              currentCart.push({
+                id: it.id,
+                name: it.name,
+                price: it.price,
+                qty: Number(it.qty || it.quantity) || 1,
+                is_parcel: Boolean(it.is_parcel),
+                notes: it.notes || ''
+              });
+            }
+          }
+
+          const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+          const kotCount = ((targetTable[countCol]) || 0) + 1;
+          assignedToken = targetTable.token_number || kotCount;
+
+          db.prepare(`
+            UPDATE ${tableName}
+            SET active_cart_json = ?, printed_cart_json = ?, ${countCol} = ?,
+                status = 'occupied', waiter_name = ?, special_notes = ?,
+                customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
+                customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END
+            WHERE id = ?
+          `).run(
+            JSON.stringify(currentCart),
+            JSON.stringify(currentCart),
+            kotCount,
+            waiterName,
+            notes,
+            custName, custName,
+            custPhone, custPhone,
+            tableId
+          );
+        }
+
+        // Auto-enqueue KOT / BOT print job for the kitchen thermal printer!
+        if (typeof global.enqueuePrintJob === 'function') {
+          global.enqueuePrintJob(dept === 'bar' ? 'bot' : 'kot', {
+            tableNumber: targetTable ? targetTable.table_number : destLabel,
+            tokenNumber: assignedToken,
+            waiterName: waiterName,
+            notes: notes,
+            customerName: custName,
+            kot: {
+              kotNumber: 1,
+              tokenNumber: assignedToken,
+              items: items
+            },
+            items: items,
+            department: dept,
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Mark the Supabase cloud order as printed so it is never re-processed
+        await withTimeout(
+          supabase
+            .from('room_charges_inbox')
+            .update({ status: 'printed' })
+            .eq('id', row.id)
+        );
+
+        console.log(`[Supabase] 🍳 Waiter KOT pulled & queued for print: ${destLabel} (${items.length} items) by ${waiterName}`);
+      } catch (itemErr) {
+        console.error('[Supabase] Error processing cloud waiter order:', itemErr.message);
+      }
+    }
+
+    // Pull and process pending waiter cancellation requests from cloud
+    try {
+      const { data: cancelData } = await withTimeout(
+        supabase
+          .from('room_charges_inbox')
+          .select('*')
+          .eq('department', 'waiter_kot_cancel')
+          .eq('status', 'pending')
+      );
+
+      if (Array.isArray(cancelData) && cancelData.length > 0) {
+        for (const crow of cancelData) {
+          try {
+            let cancelInfo = {};
+            try { cancelInfo = JSON.parse(crow.items_summary || '{}'); } catch (_) {}
+            const dept = (cancelInfo.department || 'restaurant').toLowerCase();
+            const tName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+            const tId = cancelInfo.table_id || crow.room_id;
+            const tNum = cancelInfo.table_number || crow.room_number;
+
+            if (tNum && (String(tNum).startsWith('RS-') || String(tNum).startsWith('P-'))) {
+              db.prepare(`DELETE FROM ${tName} WHERE id = ? OR table_number = ?`).run(tId, tNum);
+            } else if (tId || tNum) {
+              db.prepare(`UPDATE ${tName} SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ? OR table_number = ?`).run(tId, tNum);
+            }
+
+            await withTimeout(
+              supabase.from('room_charges_inbox').update({ status: 'cancelled' }).eq('id', crow.id)
+            );
+            console.log(`[Supabase] 🗑️ Processed waiter cancellation for ${tNum || tId}`);
+          } catch (cErr) {
+            console.warn('[Supabase] Cancel processing notice:', cErr.message);
+          }
+        }
+      }
+    } catch (_) {}
+
+    markNetworkSuccess();
+  } catch (err) {
+    markNetworkFailure(err);
+  }
+}
+
 module.exports = {
   pushStoreVendor,
   pullStoreVendorsFromCloud,
@@ -973,6 +1314,8 @@ module.exports = {
   pullCloudRoomChargesToLocal,
   syncLiveFBStateToCloud,
   syncAllOfflineDataToCloud,
+  syncWaiterDataToCloud,
+  pullCloudWaiterOrdersToLocal,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };

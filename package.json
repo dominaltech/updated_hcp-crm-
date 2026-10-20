@@ -14,7 +14,8 @@
     "admin": "node admin/serve.js",
     "start:all": "node scripts/start_all.js",
     "dev:all": "node scripts/start_all.js",
-    "release:update": "node scripts/update_release.js"
+    "release:update": "node scripts/update_release.js",
+    "apks:sync": "node scripts/sync_apks.js"
   },
   "keywords": [],
   "author": "",
