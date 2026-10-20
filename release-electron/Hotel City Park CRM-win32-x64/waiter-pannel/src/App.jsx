@@ -269,12 +269,56 @@ export default function App() {
         rawTables = res && res.tables ? res.tables : (Array.isArray(res) ? res : []);
       }
 
-      // Smart diffing: Only update state and re-render if tables data actually changed
-      const tablesHash = JSON.stringify(rawTables);
+      // Normalize all tables to ensure cart items, cart_total, and order_started_at are always available!
+      const normalizedTables = rawTables.map(t => {
+        let cart = [];
+        if (Array.isArray(t.cart) && t.cart.length > 0) {
+          cart = t.cart;
+        } else if (typeof t.active_cart_json === 'string' && t.active_cart_json.trim()) {
+          try {
+            const p = JSON.parse(t.active_cart_json);
+            if (Array.isArray(p)) cart = p;
+          } catch (_) {}
+        } else if (typeof t.printed_cart_json === 'string' && t.printed_cart_json.trim()) {
+          try {
+            const p = JSON.parse(t.printed_cart_json);
+            if (Array.isArray(p)) cart = p;
+          } catch (_) {}
+        }
+
+        const subtotal = cart.reduce((sum, it) => sum + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+        const gst = Math.round((subtotal * 5) / 100);
+        const grandTotal = subtotal + gst;
+
+        return {
+          ...t,
+          cart,
+          active_cart_json: typeof t.active_cart_json === 'string' ? t.active_cart_json : JSON.stringify(cart),
+          cart_total: t.cart_total || grandTotal,
+          total_amount: t.total_amount || grandTotal,
+          order_started_at: t.order_started_at || t.created_at || null
+        };
+      });
+
+      // Smart diffing & optimistic retention: Ensure newly punched orders aren't wiped while cloud syncs
+      const tablesHash = JSON.stringify(normalizedTables);
       if (tablesHash !== tablesHashRef.current) {
         tablesHashRef.current = tablesHash;
-        setTables(rawTables);
-        setCachedTables(department, rawTables);
+        setTables(prev => {
+          const pendingOptimistic = (prev || []).filter(pt => {
+            const isOccupied = pt.status === 'occupied' || (Array.isArray(pt.cart) && pt.cart.length > 0);
+            const isRecent = pt.order_started_at && (Date.now() - new Date(pt.order_started_at).getTime() < 45000);
+            const alreadyInServer = normalizedTables.some(nt => 
+              String(nt.id) === String(pt.id) || 
+              nt.table_number === pt.table_number ||
+              (pt.table_number && nt.table_number && String(nt.table_number).replace(/^RS-/i, '').trim() === String(pt.table_number).replace(/^RS-/i, '').trim())
+            );
+            return isOccupied && isRecent && !alreadyInServer;
+          });
+          const merged = [...pendingOptimistic, ...normalizedTables];
+          setCachedTables(department, merged);
+          return merged;
+        });
       }
 
       // Fetch occupied rooms for Room Service
@@ -589,14 +633,113 @@ export default function App() {
 
       showToast(`🚀 Order Punched & KOT #${kotNo}${tokenNo} dispatched!`);
 
+      // Optimistically insert/update the table in state immediately (0ms instant display in Active Running!)
+      const nowIso = new Date().toISOString();
+      const punchedItems = cart.map(it => ({
+        ...it,
+        qty: Number(it.qty || it.quantity) || 1,
+        quantity: Number(it.qty || it.quantity) || 1,
+        added_at: it.added_at || nowIso
+      }));
+
+      let targetTableNumber = destination.label || `Table ${destination.id}`;
+      let cleanRoomNum = '';
+      if (destination.type === 'room') {
+        cleanRoomNum = String(destination.room_number || destination.id || destination.label || '')
+          .replace(/^RS-/i, '')
+          .replace(/^Room\s*/i, '')
+          .replace(/•.*$/, '')
+          .trim();
+        targetTableNumber = `RS-Room ${cleanRoomNum}`;
+      } else if (destination.type === 'parcel') {
+        const pNum = String(destination.id || destination.label || '').replace(/^P-/i, '').trim();
+        targetTableNumber = `P-${pNum}`;
+      }
+
+      setTables(prev => {
+        const copy = [...prev];
+        const idx = copy.findIndex(t => {
+          if (String(t.id) === String(destination.id)) return true;
+          if (t.table_number === targetTableNumber) return true;
+          if (cleanRoomNum && String(t.table_number || '').includes(cleanRoomNum)) return true;
+          return false;
+        });
+        
+        let existingCart = [];
+        if (idx >= 0) {
+          existingCart = copy[idx].cart || [];
+          if (existingCart.length === 0 && copy[idx].active_cart_json) {
+            try { existingCart = JSON.parse(copy[idx].active_cart_json); } catch (_) {}
+          }
+        }
+        // Merge added items with existing items if this table already had an order
+        const mergedCart = [...existingCart];
+        for (const it of punchedItems) {
+          const mIdx = mergedCart.findIndex(c => String(c.id) === String(it.id));
+          if (mIdx >= 0) {
+            mergedCart[mIdx] = {
+              ...mergedCart[mIdx],
+              qty: (Number(mergedCart[mIdx].qty || mergedCart[mIdx].quantity) || 1) + it.qty,
+              quantity: (Number(mergedCart[mIdx].qty || mergedCart[mIdx].quantity) || 1) + it.quantity,
+              added_at: nowIso
+            };
+          } else {
+            mergedCart.push({ ...it, added_at: nowIso });
+          }
+        }
+
+        const mergedSub = mergedCart.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.quantity || it.qty) || 1)), 0);
+        const mergedGrand = Math.round(mergedSub + (mergedSub * 5 / 100));
+
+        const updatedTableObj = {
+          ...(idx >= 0 ? copy[idx] : {}),
+          id: destination.id,
+          table_number: targetTableNumber,
+          table_type: destination.type === 'room' ? 'room_service' : (destination.type || 'dine_in'),
+          status: 'occupied',
+          cart: mergedCart,
+          active_cart_json: JSON.stringify(mergedCart),
+          printed_cart_json: JSON.stringify(mergedCart),
+          cart_total: mergedGrand,
+          total_amount: mergedGrand,
+          token_number: res?.tokenNumber || (idx >= 0 ? copy[idx].token_number : 1) || 1,
+          kot_count: ((idx >= 0 ? copy[idx].kot_count : 0) || 0) + 1,
+          order_started_at: (idx >= 0 && copy[idx].order_started_at) ? copy[idx].order_started_at : nowIso,
+          waiter_name: currentUser.full_name || currentUser.username || 'Waiter'
+        };
+
+        if (idx >= 0) {
+          copy[idx] = updatedTableObj;
+        } else {
+          copy.unshift(updatedTableObj);
+        }
+        return copy;
+      });
+
+      // Also add to recentOrders optimistically so it shows in All Orders immediately with clean KOT number!
+      const cleanKotNumber = kotNo && kotNo !== 'OK' ? `KOT-${kotNo}` : `KOT-${Date.now().toString().slice(-4)}`;
+      const newRecentOrder = {
+        id: res?.order_id || 'kot_' + Date.now(),
+        order_number: cleanKotNumber,
+        bill_no: cleanKotNumber,
+        table_number: targetTableNumber,
+        waiter_name: currentUser.full_name || currentUser.username || 'Waiter',
+        total: punchedItems.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.quantity || it.qty) || 1)), 0),
+        created_at: nowIso,
+        status: 'KOT Dispatched',
+        items: punchedItems,
+        department
+      };
+      setRecentOrders(prev => [newRecentOrder, ...(prev || [])]);
+
       // Reset cart and return to destinations view
       setIsCartOpen(false);
       setCart([]);
       setDestination(null);
       setActiveTab('orders');
 
-      // Refresh live tables and orders silently
-      fetchLiveData(true);
+      // Refresh live tables after short delay to let CRM process and sync
+      setTimeout(() => fetchLiveData(true), 2500);
     } catch (err) {
       console.error('Order punch failed:', err);
 

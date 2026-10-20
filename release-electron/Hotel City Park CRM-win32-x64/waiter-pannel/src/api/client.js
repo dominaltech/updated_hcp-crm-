@@ -313,12 +313,13 @@ export const pushWaiterOrderToCloud = async (orderData) => {
   const gstAmount = Math.round((subtotal * 5) / 100);
   const grandTotal = Math.round(subtotal + gstAmount);
 
+  const cleanShortKot = 'KOT-' + Date.now().toString().slice(-4);
   const payload = {
     room_number: String(orderData.destination_label || orderData.room_number || 'Table'),
     room_id: orderData.destination_id || 0,
     department: 'waiter_kot_order',
     order_id: 0,
-    bill_no: 'KOT',
+    bill_no: cleanShortKot,
     subtotal: subtotal,
     gst: gstAmount,
     grand_total: grandTotal,
@@ -371,8 +372,11 @@ export const fetchCloudRecentOrders = async (dept = 'restaurant') => {
       const mapped = rows.map(r => {
         let p = {};
         try { p = JSON.parse(r.items_summary || '{}'); } catch (_) {}
+        const orderNum = (r.bill_no && r.bill_no !== 'KOT') ? r.bill_no : (r.id ? 'KOT-' + String(r.id).replace(/^cloud-/, '').slice(-6).toUpperCase() : 'KOT');
         return {
           id: r.id,
+          order_number: orderNum,
+          bill_no: orderNum,
           table_number: p.destination_label || r.room_number,
           waiter_name: p.waiter_name || r.settled_by,
           total: r.grand_total,

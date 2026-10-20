@@ -126,7 +126,11 @@ export default function TablesView({
               badgeBorder = 'var(--apple-blue)';
             }
 
-            const billTotal = t.total_amount || t.cart_total || (t.cart ? t.cart.reduce((s, it) => s + (it.price * (it.qty || 1)), 0) : 0);
+            let parsedItems = t.cart || [];
+            if ((!parsedItems || parsedItems.length === 0) && t.active_cart_json) {
+              try { parsedItems = typeof t.active_cart_json === 'string' ? JSON.parse(t.active_cart_json) : t.active_cart_json; } catch (_) {}
+            }
+            const billTotal = t.total_amount || t.cart_total || (Array.isArray(parsedItems) ? parsedItems.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0) : 0);
 
             return (
               <button

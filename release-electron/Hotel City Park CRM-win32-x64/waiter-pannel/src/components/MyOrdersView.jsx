@@ -1,6 +1,53 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 
+export const extractOrderItems = (target) => {
+  if (!target) return [];
+  // Direct array check
+  if (Array.isArray(target.cart) && target.cart.length > 0) return target.cart;
+  if (Array.isArray(target.items) && target.items.length > 0) return target.items;
+  // Parse active_cart_json
+  if (typeof target.active_cart_json === 'string' && target.active_cart_json.trim()) {
+    try {
+      const p = JSON.parse(target.active_cart_json);
+      if (Array.isArray(p) && p.length > 0) return p;
+    } catch (_) {}
+  }
+  // Parse printed_cart_json
+  if (typeof target.printed_cart_json === 'string' && target.printed_cart_json.trim()) {
+    try {
+      const p = JSON.parse(target.printed_cart_json);
+      if (Array.isArray(p) && p.length > 0) return p;
+    } catch (_) {}
+  }
+  // Parse items_json
+  if (typeof target.items_json === 'string' && target.items_json.trim()) {
+    try {
+      const p = JSON.parse(target.items_json);
+      if (Array.isArray(p) && p.length > 0) return p;
+    } catch (_) {}
+  }
+  // If target itself is an array
+  if (Array.isArray(target)) return target;
+  return [];
+};
+
+export const formatCleanOrderNumber = (order) => {
+  if (!order) return 'KOT';
+  if (order.order_number && order.order_number !== 'KOT' && !order.order_number.includes('-4') && !order.order_number.includes('undefined')) {
+    return order.order_number;
+  }
+  if (order.bill_no && order.bill_no !== 'KOT') {
+    return order.bill_no;
+  }
+  const idStr = String(order.id || '');
+  if (idStr.length > 8) {
+    const cleanId = idStr.replace(/^cloud-/, '');
+    return 'KOT-' + cleanId.slice(-6).toUpperCase();
+  }
+  return idStr || 'KOT';
+};
+
 export default function MyOrdersView({
   department,
   currentUser,
@@ -33,9 +80,8 @@ export default function MyOrdersView({
 
   // Show all active running tables and room service orders for this department
   const myActiveTables = tables.filter((t) => {
-    const isRS = t.table_type === 'room_service' || String(t.table_number || '').startsWith('RS-');
-    const isParcel = t.table_type === 'parcel' || t.is_parcel || t.is_takeaway || String(t.table_number || '').startsWith('P-');
-    const hasActiveOrder = (t.status !== 'available' && t.status !== '') || (t.cart && t.cart.length > 0);
+    const items = extractOrderItems(t);
+    const hasActiveOrder = (t.status !== 'available' && t.status !== '') || items.length > 0;
     return hasActiveOrder;
   });
 
@@ -51,7 +97,8 @@ export default function MyOrdersView({
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     const matchTable = String(t.table_number || t.name || '').toLowerCase().includes(q);
-    const matchItems = Array.isArray(t.cart) && t.cart.some((it) => it.name && it.name.toLowerCase().includes(q));
+    const items = extractOrderItems(t);
+    const matchItems = items.some((it) => it.name && it.name.toLowerCase().includes(q));
     const matchWaiter = String(t.waiter_name || '').toLowerCase().includes(q);
     return matchTable || matchItems || matchWaiter;
   });
@@ -60,14 +107,10 @@ export default function MyOrdersView({
   const filteredRecentOrders = allDepartmentOrders.filter((o) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    const matchNum = String(o.order_number || o.id || '').toLowerCase().includes(q);
+    const orderNum = formatCleanOrderNumber(o);
+    const matchNum = String(orderNum || o.id || '').toLowerCase().includes(q);
     const matchDest = String(o.table_number || o.customer_name || '').toLowerCase().includes(q);
-    let items = [];
-    try {
-      items = typeof o.items_json === 'string' ? JSON.parse(o.items_json) : (o.items || []);
-    } catch {
-      items = o.items || [];
-    }
+    const items = extractOrderItems(o);
     const matchItems = items.some((it) => it.name && it.name.toLowerCase().includes(q));
     const matchWaiter = String(o.waiter_name || '').toLowerCase().includes(q);
     return matchNum || matchDest || matchItems || matchWaiter;
@@ -406,10 +449,10 @@ export default function MyOrdersView({
             </div>
           ) : (
             filteredActiveTables.map((t) => {
-              const items = t.cart || [];
-              const subtotal = t.cart_total || items.reduce((s, it) => s + (it.price * (it.qty || it.quantity || 1)), 0);
+              const items = extractOrderItems(t);
+              const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
               const gst = Math.round((subtotal * 5) / 100);
-              const grand = Math.round(subtotal + gst);
+              const grand = Math.round(t.total_amount || t.cart_total || (subtotal + gst));
               const isBilled = t.status === 'billed';
 
               return (
@@ -483,15 +526,23 @@ export default function MyOrdersView({
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
+                            alignItems: 'center',
                             fontSize: '0.76rem',
                             color: 'var(--text-primary)',
-                            padding: '2px 0',
+                            padding: '3px 0',
                             borderBottom: idx < items.length - 1 ? '1px solid var(--border-light)' : 'none'
                           }}
                         >
-                          <span><strong>{it.qty || it.quantity || 1}x</strong> {it.name}</span>
+                          <div>
+                            <span><strong>{it.qty || it.quantity || 1}x</strong> {it.name}</span>
+                            {it.added_at && (
+                              <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginLeft: '6px' }}>
+                                🕒 {new Date(it.added_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
                           <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>
-                            ₹{((it.price || 0) * (it.qty || it.quantity || 1)).toLocaleString('en-IN')}
+                            ₹{((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)).toLocaleString('en-IN')}
                           </span>
                         </div>
                       ))
@@ -623,12 +674,8 @@ export default function MyOrdersView({
             </div>
           ) : (
             filteredRecentOrders.map((o) => {
-              let items = [];
-              try {
-                items = typeof o.items_json === 'string' ? JSON.parse(o.items_json) : (o.items || []);
-              } catch {
-                items = o.items || [];
-              }
+              const items = extractOrderItems(o);
+              const orderNum = formatCleanOrderNumber(o);
 
               return (
                 <div
@@ -649,7 +696,7 @@ export default function MyOrdersView({
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '0.90rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-                          #{o.order_number || o.id}
+                          #{orderNum}
                         </span>
                         <span
                           style={{
@@ -688,7 +735,7 @@ export default function MyOrdersView({
                           onSelectDestinationForMore({
                             type: isRS ? 'room' : (isP ? 'parcel' : 'table'),
                             id: o.room_id || o.table_id || o.id,
-                            label: o.table_number || `Order #${o.id}`,
+                            label: o.table_number || `Order #${orderNum}`,
                             rawOrder: o,
                             isExistingOrder: true
                           });
@@ -731,10 +778,19 @@ export default function MyOrdersView({
                     </div>
                   </div>
 
-                  {/* Items preview snippet */}
+                  {/* Items preview snippet with timestamps */}
                   {items.length > 0 && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {items.map((it) => `${it.qty || it.quantity || 1}x ${it.name}`).join(', ')}
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '8px', borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
+                      {items.map((it, idx) => (
+                        <span key={idx} style={{ display: 'inline-block', marginRight: '8px', color: 'var(--text-primary)', fontWeight: 650 }}>
+                          {it.qty || it.quantity || 1}x {it.name}
+                          {it.added_at && (
+                            <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
+                              (🕒 {new Date(it.added_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                            </span>
+                          )}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -793,12 +849,16 @@ export default function MyOrdersView({
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)' }}>
                   {selectedOrder.type === 'table'
                     ? `Order: ${selectedOrder.data.table_number || `Table ${selectedOrder.data.id}`}`
-                    : `Order #${selectedOrder.data.order_number || selectedOrder.data.id}`}
+                    : `Order #${formatCleanOrderNumber(selectedOrder.data)}`}
                 </h3>
-                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '1px' }}>
+                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                   {selectedOrder.type === 'table'
                     ? `Token #${selectedOrder.data.token_number || 1} • KOT #${selectedOrder.data.kot_count || 1}`
-                    : `Settled • ${selectedOrder.data.created_at || 'Recent'}`}
+                    : `Settled • ${selectedOrder.data.payment_mode || selectedOrder.data.payment_method || 'Order'}`}
+                  {(selectedOrder.data.order_started_at || selectedOrder.data.created_at) && (
+                    <span> • 🕒 {new Date(selectedOrder.data.order_started_at || selectedOrder.data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  )}
+                  {selectedOrder.data.waiter_name && <span> • 👤 {selectedOrder.data.waiter_name}</span>}
                 </div>
               </div>
 
@@ -826,18 +886,7 @@ export default function MyOrdersView({
               </div>
 
               {(() => {
-                let items = [];
-                if (selectedOrder.type === 'table') {
-                  items = selectedOrder.data.cart || [];
-                } else {
-                  try {
-                    items = typeof selectedOrder.data.items_json === 'string'
-                      ? JSON.parse(selectedOrder.data.items_json)
-                      : (selectedOrder.data.items || selectedOrder.items || []);
-                  } catch {
-                    items = selectedOrder.data.items || [];
-                  }
-                }
+                const items = extractOrderItems(selectedOrder.data);
 
                 if (items.length === 0) {
                   return <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>No items found.</div>;
@@ -850,15 +899,20 @@ export default function MyOrdersView({
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '6px 0',
+                      padding: '8px 0',
                       borderBottom: '1px solid var(--border-light)',
-                      fontSize: '0.80rem'
+                      fontSize: '0.82rem'
                     }}
                   >
                     <div>
                       <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
                         {it.qty || it.quantity || 1}x {it.name}
                       </div>
+                      {(it.added_at || it.time) && (
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
+                          🕒 Added at {new Date(it.added_at || it.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
                       {it.notes && (
                         <div style={{ fontSize: '0.68rem', color: 'var(--apple-orange)', fontStyle: 'italic' }}>
                           Note: {it.notes}
@@ -866,7 +920,7 @@ export default function MyOrdersView({
                       )}
                     </div>
                     <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                      ₹{((it.price || 0) * (it.qty || it.quantity || 1)).toLocaleString('en-IN')}
+                      ₹{((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)).toLocaleString('en-IN')}
                     </div>
                   </div>
                 ));
@@ -877,11 +931,14 @@ export default function MyOrdersView({
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.96rem', fontWeight: 900, color: 'var(--text-primary)' }}>
                   <span>Grand Total:</span>
                   <span style={{ color: 'var(--apple-blue)' }}>
-                    ₹{Number(
-                      selectedOrder.type === 'table'
-                        ? (selectedOrder.data.cart_total || selectedOrder.data.cart?.reduce((s, it) => s + (it.price * (it.qty || 1)), 0) || 0) * 1.05
-                        : (selectedOrder.data.total || selectedOrder.data.grand_total || 0)
-                    ).toFixed(0)}
+                    ₹{(() => {
+                      const items = extractOrderItems(selectedOrder.data);
+                      const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+                      if (selectedOrder.type === 'table') {
+                        return (Number(selectedOrder.data.total_amount || selectedOrder.data.cart_total) || Math.round(subtotal * 1.05)).toLocaleString('en-IN');
+                      }
+                      return (Number(selectedOrder.data.grand_total || selectedOrder.data.total) || subtotal).toLocaleString('en-IN');
+                    })()}
                   </span>
                 </div>
               </div>

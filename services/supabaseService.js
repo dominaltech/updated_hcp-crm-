@@ -1056,8 +1056,8 @@ async function syncWaiterDataToCloud(db) {
     const resCats = db.prepare("SELECT * FROM restaurant_categories").all();
     const barMenu = db.prepare("SELECT id, name, category, price, is_available, is_veg FROM menu_items WHERE department = 'bar' AND is_available = 1").all();
     const barCats = db.prepare("SELECT * FROM bar_categories").all();
-    const resTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, customer_name, customer_phone, waiter_name FROM restaurant_tables").all();
-    const barTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, customer_name, customer_phone, waiter_name FROM bar_tables").all();
+    const resTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, printed_cart_json, kot_count, token_number, waiter_name, special_notes, order_started_at, customer_name, customer_phone FROM restaurant_tables").all();
+    const barTables = db.prepare("SELECT id, table_number, table_type, capacity, status, active_cart_json, printed_cart_json, bot_count, token_number, waiter_name, special_notes, order_started_at, customer_name, customer_phone FROM bar_tables").all();
     const staff = db.prepare("SELECT id, username, password, full_name, role, phone FROM staff_users WHERE status = 'active'").all();
     
     // In-house occupied rooms for room service orders
@@ -1159,7 +1159,7 @@ async function pullCloudWaiterOrdersToLocal(db) {
           targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ?`).get(rsNumber);
           if (!targetTable) {
             try {
-              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status) VALUES (?, 'room_service', 2, ?, 'occupied')`).run(rsNumber, `Room Service for ${destLabel}`);
+              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status, order_started_at) VALUES (?, 'room_service', 2, ?, 'occupied', datetime('now', 'localtime'))`).run(rsNumber, `Room Service for ${destLabel}`);
               targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
             } catch (_) {}
           }
@@ -1169,7 +1169,7 @@ async function pullCloudWaiterOrdersToLocal(db) {
           targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ?`).get(pNumber);
           if (!targetTable) {
             try {
-              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status) VALUES (?, 'parcel', 1, ?, 'occupied')`).run(pNumber, `Takeaway Parcel #${pToken}`);
+              const info = db.prepare(`INSERT INTO ${tableName} (table_number, table_type, capacity, special_notes, status, order_started_at) VALUES (?, 'parcel', 1, ?, 'occupied', datetime('now', 'localtime'))`).run(pNumber, `Takeaway Parcel #${pToken}`);
               targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
             } catch (_) {}
           }
@@ -1181,11 +1181,14 @@ async function pullCloudWaiterOrdersToLocal(db) {
           let currentCart = [];
           try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
           
-          // Merge newly ordered items into table's active cart
+          // Merge newly ordered items into table's active cart with timestamp
+          const nowIso = new Date().toISOString();
           for (const it of items) {
             const existingIdx = currentCart.findIndex(c => String(c.id) === String(it.id) && Boolean(c.is_parcel) === Boolean(it.is_parcel));
+            const itTimestamp = it.added_at || it.time || nowIso;
             if (existingIdx >= 0) {
               currentCart[existingIdx].qty = (Number(currentCart[existingIdx].qty) || 1) + (Number(it.qty || it.quantity) || 1);
+              currentCart[existingIdx].added_at = itTimestamp;
             } else {
               currentCart.push({
                 id: it.id,
@@ -1193,7 +1196,8 @@ async function pullCloudWaiterOrdersToLocal(db) {
                 price: it.price,
                 qty: Number(it.qty || it.quantity) || 1,
                 is_parcel: Boolean(it.is_parcel),
-                notes: it.notes || ''
+                notes: it.notes || '',
+                added_at: itTimestamp
               });
             }
           }
@@ -1207,7 +1211,8 @@ async function pullCloudWaiterOrdersToLocal(db) {
             SET active_cart_json = ?, printed_cart_json = ?, ${countCol} = ?,
                 status = 'occupied', waiter_name = ?, special_notes = ?,
                 customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
-                customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END
+                customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END,
+                order_started_at = COALESCE(order_started_at, datetime('now', 'localtime'))
             WHERE id = ?
           `).run(
             JSON.stringify(currentCart),
@@ -1253,6 +1258,9 @@ async function pullCloudWaiterOrdersToLocal(db) {
         console.error('[Supabase] Error processing cloud waiter order:', itemErr.message);
       }
     }
+
+    // Immediately push updated tables to Supabase cloud package so Waiter Panel on Netlify sees Active Running in <1s!
+    await syncWaiterDataToCloud(db);
   }
 
   // Pull and process pending waiter cancellation requests from cloud
