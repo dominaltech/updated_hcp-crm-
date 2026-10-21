@@ -8,6 +8,8 @@ import SettledBillsView from '../components/restaurant/SettledBillsView';
 import RoomServiceChooserModal from '../components/restaurant/RoomServiceChooserModal';
 import PosManagerPanel from '../components/restaurant/PosManagerPanel';
 import StaffLittleBadge from '../components/common/StaffLittleBadge';
+import GuestOrderAcceptModal from '../components/restaurant/GuestOrderAcceptModal';
+import { startContinuousOrderAlert, stopContinuousOrderAlert } from '../utils/audioAlert';
 import { printKOTSlip, printPreBillSlip, printThermalBillSlip } from '../services/printService';
 
 export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
@@ -24,6 +26,9 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
   const [isRoomChooserOpen, setIsRoomChooserOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [clockStr, setClockStr] = useState('');
+  const [pendingGuestOrders, setPendingGuestOrders] = useState([]);
+  const [activeAlertOrder, setActiveAlertOrder] = useState(null);
+  const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
 
   // Automatically close active session when switching subtabs from header
   useEffect(() => {
@@ -123,18 +128,64 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
     }
   }, []);
 
+  const checkPendingGuestOrders = useCallback(async () => {
+    try {
+      const res = await api.getGuestPendingOrders();
+      const orders = Array.isArray(res) ? res : (res?.orders || []);
+      setPendingGuestOrders(orders);
+      if (orders.length > 0) {
+        setActiveAlertOrder((prev) => {
+          if (prev && orders.some((o) => o.id === prev.id)) {
+            return orders.find((o) => o.id === prev.id);
+          }
+          startContinuousOrderAlert();
+          return orders[0];
+        });
+      } else {
+        stopContinuousOrderAlert();
+        setActiveAlertOrder(null);
+      }
+    } catch (_) {}
+  }, []);
+
+  const handleAcceptGuestOrder = async (order) => {
+    if (!order || isAcceptingOrder) return;
+    setIsAcceptingOrder(true);
+    try {
+      const res = await api.acceptGuestOrder(order.id, currentUser?.full_name || 'Kitchen Staff');
+      stopContinuousOrderAlert();
+      if (res?.kotPayload) {
+        if (onPrintKOTSlip) onPrintKOTSlip(res.kotPayload);
+        else printKOTSlip(res.kotPayload, res.kotPayload.tableNumber, res.kotPayload.waiterName, res.kotPayload.notes);
+      }
+      showToast(`✓ Order for Room ${order.room_numbers} accepted & KOT printed!`, 'green');
+      await checkPendingGuestOrders();
+      loadTables(true);
+      setActiveAlertOrder(null);
+    } catch (err) {
+      showToast('Error accepting order: ' + err.message, 'red');
+    } finally {
+      setIsAcceptingOrder(false);
+    }
+  };
+
   useEffect(() => {
     loadTables();
     loadMenuAndCategories();
+    checkPendingGuestOrders();
 
     const interval = setInterval(() => {
       if (!activeSessionTable) {
         loadTables(true);
       }
+      checkPendingGuestOrders();
     }, 3000);
 
-    return () => clearInterval(interval);
-  }, [loadTables, loadMenuAndCategories, activeSessionTable]);
+    return () => {
+      clearInterval(interval);
+      stopContinuousOrderAlert();
+    };
+  }, [loadTables, loadMenuAndCategories, checkPendingGuestOrders, activeSessionTable]);
 
   // Separate Dine-In, Room Service, and Parcels
   const dineinTables = tables.filter(
@@ -253,6 +304,54 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
         overflow: 'hidden'
       }}
     >
+      {/* Real-time In-Room Guest Food Order Alert Banner */}
+      {pendingGuestOrders.length > 0 && (
+        <div
+          onClick={() => {
+            if (!activeAlertOrder) {
+              startContinuousOrderAlert();
+              setActiveAlertOrder(pendingGuestOrders[0]);
+            }
+          }}
+          style={{
+            backgroundColor: '#fef3c7',
+            borderBottom: '2px solid #f59e0b',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            boxShadow: '0 2px 4px rgba(245, 158, 11, 0.15)',
+            zIndex: 10
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.2rem', animation: 'pulse 1s infinite alternate' }}>🛎️</span>
+            <div>
+              <strong style={{ color: '#92400e', fontSize: '0.92rem' }}>
+                {pendingGuestOrders.length} In-Room Food Order{pendingGuestOrders.length > 1 ? 's' : ''} Pending Kitchen Acceptance!
+              </strong>
+              <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
+                Room {pendingGuestOrders.map(o => o.room_numbers).join(', ')} • Beep alarm active • Click to view
+              </div>
+            </div>
+          </div>
+          <button
+            style={{
+              backgroundColor: '#d97706',
+              color: '#ffffff',
+              border: 'none',
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              cursor: 'pointer'
+            }}
+          >
+            Review & Accept ({pendingGuestOrders.length})
+          </button>
+        </div>
+      )}
 
       {activeSubTab === 'tables' && (
         <div
@@ -566,6 +665,14 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
           if (onPrintBillSlip) onPrintBillSlip(res);
           else printThermalBillSlip(res, 'Restaurant Bill/Cheque');
         }}
+      />
+
+      {/* Guest In-Room Order Alert & Acceptance Modal with continuous beep */}
+      <GuestOrderAcceptModal
+        order={activeAlertOrder}
+        onAccept={handleAcceptGuestOrder}
+        onClose={() => setActiveAlertOrder(null)}
+        isAccepting={isAcceptingOrder}
       />
     </section>
   );

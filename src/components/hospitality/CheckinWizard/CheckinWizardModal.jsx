@@ -1040,6 +1040,16 @@ export default function CheckinWizardModal({
           title: isSplitPayment ? 'Print Payment Receipts (Split Payment)' : 'Print Payment Receipt'
         } : null;
 
+        // Auto-launch WhatsApp with In-Room Dining Link to guest mobile
+        const diningWhatsAppUrl = res.diningWhatsAppUrl || res.data?.diningWhatsAppUrl;
+        if (diningWhatsAppUrl && draft.mobile) {
+          try {
+            window.open(diningWhatsAppUrl, '_blank');
+          } catch (e) {
+            console.warn('Could not launch WhatsApp automatically:', e);
+          }
+        }
+
         onClose();
         if (onCheckinSuccess) onCheckinSuccess(res.booking || res, splitReceiptsData);
       } else {

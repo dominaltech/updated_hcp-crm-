@@ -34,6 +34,7 @@ const { hashPassword, hashPasswordSync, verifyPassword, migratePlaintextPassword
 const secretManager = require('./services/secretManager');
 const supabaseService = require('./services/supabaseService');
 const notificationService = require('./services/notificationService');
+const guestDiningService = require('./services/guestDiningService');
 
 // Automatically migrate any legacy plaintext staff passwords to bcrypt hashes on startup
 migratePlaintextPasswords(db);
@@ -369,12 +370,27 @@ app.get('/api/rooms', (req, res) => {
           activeVisitorsCount = activeVisitors ? activeVisitors.count : 0;
         }
         room.active_visitors_count = activeVisitorsCount;
+
+        // Pending in-room food orders for yellow badge
+        let pendingGuestOrdersCount = 0;
+        try {
+          const pOrderRow = db.prepare(`
+            SELECT COUNT(*) as count FROM guest_inroom_orders 
+            WHERE status = 'pending_kitchen' 
+              AND (',' || room_numbers || ',') LIKE '%,' || ? || ',%'
+          `).get(room.room_number);
+          pendingGuestOrdersCount = pOrderRow ? pOrderRow.count : 0;
+        } catch (e) {}
+        room.pending_guest_orders_count = pendingGuestOrdersCount;
+        room.has_pending_guest_order = pendingGuestOrdersCount > 0;
       } else {
         room.total_food_charge = 0;
         room.total_bar_charge = 0;
         room.total_running_folio = 0;
         room.balance_due = 0;
         room.active_visitors_count = 0;
+        room.pending_guest_orders_count = 0;
+        room.has_pending_guest_order = false;
       }
     }
 
@@ -1768,13 +1784,37 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       console.warn('[Notification] Checkin push error:', notifErr.message);
     }
 
+    // Generate In-Room Dining Token & WhatsApp Order Link
+    let diningInfo = null;
+    try {
+      diningInfo = guestDiningService.generateDiningToken({
+        bookingId: result.id,
+        guestId: result.guestId,
+        guestName: result.guestName,
+        mobile: result.mobile,
+        roomNumbers: result.roomNumbers || [primaryRoom.room_number],
+        checkinTime: result.checkinTime,
+        approxCheckoutTime: result.approxCheckoutTime
+      });
+      result.diningToken = diningInfo?.token;
+      result.diningUrl = diningInfo?.url;
+      result.diningWhatsAppUrl = diningInfo?.whatsappUrl;
+      result.diningWhatsAppText = diningInfo?.whatsappText;
+    } catch (diningErr) {
+      console.warn('[GuestDining] Token generation error:', diningErr.message);
+    }
+
     res.json({
       success: true,
       data: result,
       voucherNumber: result.voucherNumber,
       voucher_number: result.voucher_number,
       advanceReceiptNo: result.advanceReceiptNo,
-      booking: result
+      booking: result,
+      diningToken: diningInfo?.token,
+      diningUrl: diningInfo?.url,
+      diningWhatsAppUrl: diningInfo?.whatsappUrl,
+      diningWhatsAppText: diningInfo?.whatsappText
     });
   } catch (error) {
     console.error('Checkin error:', error);
@@ -4092,6 +4132,14 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       });
     } catch (notifErr) {
       console.warn('[Notification] Checkout push error:', notifErr.message);
+    }
+
+    // Invalidate and expire guest dining tokens immediately upon checkout
+    try {
+      const bIdsToExpire = (result && result.bookingIds && result.bookingIds.length > 0) ? result.bookingIds : [primaryBooking.id];
+      bIdsToExpire.forEach(bId => guestDiningService.expireTokensForBooking(bId));
+    } catch (expireErr) {
+      console.warn('[GuestDining] Token expiry error on checkout:', expireErr.message);
     }
 
     res.json({ success: true, data: result });
@@ -13218,6 +13266,103 @@ app.get('/api/fb/state', (req, res) => {
       barOrders: fmtOrders(recentBarOrders, 'Bar Lounge'),
       synced_at: new Date().toISOString()
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================================================
+// 22. GUEST IN-ROOM DINING & WHATSAPP FOOD ORDERING APIS
+// ==========================================================================
+
+// Validate guest token & fetch dining session (public)
+app.get('/api/guest/session/:token', (req, res) => {
+  try {
+    const session = guestDiningService.getGuestSession(req.params.token);
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit food order from guest mobile interface (public)
+app.post('/api/guest/order', async (req, res) => {
+  try {
+    const { token, items, notes, selectedRoom } = req.body;
+    const result = await guestDiningService.submitGuestOrder({ token, items, notes, selectedRoom });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Fetch pending in-room food orders for Restaurant POS acceptance modal
+app.get('/api/guest/pending-orders', (req, res) => {
+  try {
+    const orders = guestDiningService.getPendingKitchenOrders();
+    res.json({ success: true, orders });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Accept in-room food order on Restaurant POS (triggers KOT slip for new items only)
+app.post('/api/guest/accept-order', (req, res) => {
+  try {
+    const { orderId, acceptedBy } = req.body;
+    const result = guestDiningService.acceptKitchenOrder(orderId, acceptedBy || req.user?.full_name || 'Kitchen Staff');
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Front Desk & Room Card yellow badge live status
+app.get('/api/guest/room-alerts', (req, res) => {
+  try {
+    const alerts = guestDiningService.getRoomPendingOrdersStatus();
+    res.json({ success: true, alerts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Manual / Re-generation of Dining Link from Room Folio
+app.post('/api/guest/generate-link/:bookingId', requireAuth, (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const booking = db.prepare(`
+      SELECT b.*, g.name as guest_name, g.mobile, r.room_number 
+      FROM bookings b 
+      JOIN guests g ON b.guest_id = g.id 
+      JOIN rooms r ON b.room_id = r.id 
+      WHERE b.id = ?
+    `).get(bookingId);
+
+    if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+    if (booking.status !== 'active') return res.status(400).json({ success: false, error: 'Cannot generate link for non-active booking' });
+
+    // Fetch all linked rooms in case of group booking
+    const groupBookings = db.prepare(`
+      SELECT r.room_number 
+      FROM bookings b 
+      JOIN rooms r ON b.room_id = r.id 
+      WHERE b.guest_id = ? AND b.status = 'active' AND b.checkin_time = ?
+    `).all(booking.guest_id, booking.checkin_time);
+
+    const roomNumbers = groupBookings.map(gb => gb.room_number);
+
+    const diningInfo = guestDiningService.generateDiningToken({
+      bookingId: booking.id,
+      guestId: booking.guest_id,
+      guestName: booking.guest_name,
+      mobile: booking.mobile,
+      roomNumbers,
+      checkinTime: booking.checkin_time,
+      approxCheckoutTime: booking.approx_checkout_time
+    });
+
+    res.json({ success: true, ...diningInfo });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -8,6 +8,7 @@ import RestaurantPage from './pages/RestaurantPage';
 import BarPage from './pages/BarPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ManagePage from './pages/ManagePage';
+import GuestOrderPage from './pages/GuestOrderPage';
 import CheckinWizardModal from './components/hospitality/CheckinWizard/CheckinWizardModal';
 import CheckinSplitReceiptsModal from './components/hospitality/CheckinSplitReceiptsModal';
 import RoomVisitorsModal from './components/hospitality/RoomVisitorsModal';
@@ -159,6 +160,16 @@ function AppContent() {
       loadRooms();
     }
   };
+
+  const isGuestDiningPath = (typeof window !== 'undefined') && (
+    window.location.pathname.startsWith('/guest-order') ||
+    window.location.pathname.startsWith('/dine') ||
+    new URLSearchParams(window.location.search).has('token')
+  );
+
+  if (isGuestDiningPath) {
+    return <GuestOrderPage />;
+  }
 
   return (
     <MainLayout hasActiveFolio={Boolean(activeFolioRoom)}>

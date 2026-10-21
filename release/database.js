@@ -1555,12 +1555,63 @@ function ensureStoreTables(database) {
   }
 }
 
+function ensureGuestDiningTables(database) {
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS guest_dining_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token TEXT UNIQUE NOT NULL,
+        booking_id INTEGER NOT NULL,
+        guest_id INTEGER,
+        guest_name TEXT NOT NULL,
+        mobile TEXT NOT NULL,
+        room_numbers TEXT NOT NULL,
+        checkin_time DATETIME NOT NULL,
+        approx_checkout_time DATETIME,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_guest_dining_tokens_token ON guest_dining_tokens(token);
+      CREATE INDEX IF NOT EXISTS idx_guest_dining_tokens_booking ON guest_dining_tokens(booking_id);
+
+      CREATE TABLE IF NOT EXISTS guest_inroom_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT UNIQUE NOT NULL,
+        token TEXT NOT NULL,
+        booking_id INTEGER NOT NULL,
+        room_numbers TEXT NOT NULL,
+        guest_name TEXT NOT NULL,
+        guest_phone TEXT NOT NULL,
+        batch_number INTEGER DEFAULT 1,
+        items_json TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        subtotal REAL NOT NULL DEFAULT 0,
+        tax REAL NOT NULL DEFAULT 0,
+        grand_total REAL NOT NULL DEFAULT 0,
+        status TEXT DEFAULT 'pending_kitchen',
+        kot_printed INTEGER DEFAULT 0,
+        accepted_at DATETIME,
+        accepted_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_guest_inroom_orders_token ON guest_inroom_orders(token);
+      CREATE INDEX IF NOT EXISTS idx_guest_inroom_orders_status ON guest_inroom_orders(status);
+    `);
+  } catch (err) {
+    console.warn('Notice ensuring guest dining tables:', err.message);
+  }
+}
+
 ensureStoreTables(db);
+ensureGuestDiningTables(db);
 
 db.DEFAULT_ROOMS_CATALOG = DEFAULT_ROOMS_CATALOG;
 db.seedDefaultRooms = seedDefaultRooms;
 db.migrateSplitPaymentsToIndividualLedgers = migrateSplitPaymentsToIndividualLedgers;
 db.ensureStoreTables = ensureStoreTables;
+db.ensureGuestDiningTables = ensureGuestDiningTables;
 
 module.exports = db;
 

@@ -186,6 +186,14 @@ export const api = {
   deleteRestaurantSettledBill: (id) => request(`/restaurant/settled-bills/${id}`, { method: 'DELETE' }),
   deleteRestaurantOrder: (id) => request(`/restaurant/orders/${id}`, { method: 'DELETE' }),
 
+  // Guest In-Room Dining & WhatsApp Food Ordering
+  getGuestPendingOrders: () => request('/guest/pending-orders'),
+  acceptGuestOrder: (orderId, acceptedBy) => request('/guest/accept-order', { method: 'POST', body: { orderId, acceptedBy } }),
+  getRoomDiningAlerts: () => request('/guest/room-alerts'),
+  getGuestSession: (token) => request(`/guest/session/${encodeURIComponent(token)}`),
+  submitGuestOrder: (data) => request('/guest/order', { method: 'POST', body: data }),
+  generateGuestDiningLink: (bookingId) => request(`/guest/generate-link/${bookingId}`, { method: 'POST' }),
+
   // Bar Lounge POS
   getBarMenu: () => request('/bar/menu'),
   saveBarDrink: (data) => request('/bar/menu', { method: 'POST', body: data }),

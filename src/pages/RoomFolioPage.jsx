@@ -1619,6 +1619,34 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           <button
             type="button"
+            className="filter-chip btn-folio-action-chip"
+            onClick={async () => {
+              try {
+                const bId = folioData?.bookingId || folioData?.booking_id || folioData?.id || initialRoom?.current_booking_id;
+                if (!bId) {
+                  showToast('No active booking found for this room', 'amber');
+                  return;
+                }
+                const res = await api.generateGuestDiningLink(bId);
+                if (res?.whatsappUrl) {
+                  window.open(res.whatsappUrl, '_blank');
+                  showToast('📱 WhatsApp Food Order link opened!', 'green');
+                } else if (res?.url) {
+                  await navigator.clipboard.writeText(res.url);
+                  showToast('✓ Food Order link copied to clipboard!', 'green');
+                }
+              } catch (err) {
+                showToast('Error generating food link: ' + err.message, 'red');
+              }
+            }}
+            style={{ backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+            title="Share In-Room Dining Menu & Food Ordering link via WhatsApp or Copy"
+          >
+            🛎️ Food Order Link
+          </button>
+
+          <button
+            type="button"
             className="filter-chip btn-folio-action-chip btn-folio-pdf-chip"
             onClick={() => {
               const printPayload = buildFolioPrintPayload();

@@ -200,6 +200,36 @@ export default function RoomCard({
         </div>
       )}
 
+      {/* Yellow Badge: In-Room Dining Food Order Placed */}
+      {room.status === 'occupied' && (Boolean(room.has_pending_guest_order) || Boolean(room.pending_guest_orders_count)) && (
+        <div
+          className="room-guest-order-yellow-badge"
+          style={{
+            position: 'absolute',
+            top: '3px',
+            left: Boolean(room.active_visitors_count) ? '44px' : '4px',
+            backgroundColor: '#fbbf24',
+            color: '#78350f',
+            border: '1.5px solid #d97706',
+            fontSize: '0.62rem',
+            fontWeight: 950,
+            padding: '1px 6px',
+            borderRadius: '8px',
+            zIndex: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+            boxShadow: '0 0 8px rgba(251, 191, 36, 0.8), 0 2px 4px rgba(0,0,0,0.15)',
+            letterSpacing: '0.02em',
+            animation: 'pulse 1.4s infinite'
+          }}
+          title={`Room ${room.room_number}: Guest has placed ${room.pending_guest_orders_count || 1} in-room dining order!`}
+        >
+          <span>🟡</span>
+          <span>Order Placed</span>
+        </div>
+      )}
+
       {/* Transfer Mode Occupied Cue Badge */}
       {isTransferMode && room.status === 'occupied' && (
         <div

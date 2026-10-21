@@ -1292,12 +1292,69 @@
     const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
     
     let _supabase = null;
-    try {
-      if (window.supabase) {
-        _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    function getSupabaseClient() {
+      if (_supabase) return _supabase;
+      try {
+        const sp = (typeof window !== 'undefined' && window.supabase) || (typeof supabase !== 'undefined' ? supabase : null);
+        if (sp && typeof sp.createClient === 'function') {
+          _supabase = sp.createClient(SUPABASE_URL, SUPABASE_ANON);
+        }
+      } catch (e) {
+        console.warn('Supabase init warning:', e);
       }
-    } catch (e) {
-      console.warn('Supabase init warning:', e);
+      return _supabase;
+    }
+    _supabase = getSupabaseClient();
+
+    // Ensure vendor exists in Supabase to strictly prevent Foreign Key (23503) errors
+    async function getOrSyncVendorDbId(vendor) {
+      const client = getSupabaseClient();
+      if (!client || !vendor) return 1;
+
+      // 1. If vendor.id is a number, verify if it actually exists in Supabase
+      if (typeof vendor.id === 'number') {
+        try {
+          const { data: vById } = await client.from('store_vendors').select('id').eq('id', vendor.id).limit(1);
+          if (vById && vById.length > 0) {
+            return vById[0].id;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Lookup existing vendor by exact or case-insensitive name
+      const vName = (vendor.name || '').trim();
+      if (vName) {
+        try {
+          const { data: vByName } = await client.from('store_vendors').select('id').ilike('name', vName).limit(1);
+          if (vByName && vByName.length > 0) {
+            vendor.id = vByName[0].id;
+            return vByName[0].id;
+          }
+        } catch (_) {}
+      }
+
+      // 3. If neither exists, insert this vendor into Supabase store_vendors immediately
+      try {
+        const { data: newV, error: insErr } = await client.from('store_vendors').insert([{
+          name: vendor.name || 'Store Vendor',
+          mobile: vendor.phone || '',
+          address: vendor.category || ''
+        }]).select();
+        if (newV && newV[0]) {
+          vendor.id = newV[0].id;
+          return newV[0].id;
+        }
+      } catch (insErr) {
+        console.warn('Failed to insert vendor in Supabase:', insErr);
+      }
+
+      // 4. Fallback to any valid vendor in Supabase
+      try {
+        const { data: anyV } = await client.from('store_vendors').select('id').limit(1);
+        if (anyV && anyV[0]) return anyV[0].id;
+      } catch (_) {}
+
+      return 1;
     }
 
     // -------------------------------------------------------------
@@ -1342,8 +1399,9 @@
 
       // Fetch live vendors from Supabase store_vendors
       try {
-        if (_supabase) {
-          const { data, error } = await _supabase.from('store_vendors').select('*').order('name');
+        const client = getSupabaseClient();
+        if (client) {
+          const { data, error } = await client.from('store_vendors').select('*').order('name');
           if (data && data.length > 0) {
             vendors = data.map(v => ({ id: v.id, name: v.name, phone: v.mobile || '', category: v.address || '' }));
             saveVendors();
@@ -1464,9 +1522,10 @@
         vendors.push(newObj);
         selectedVendorId = newId;
 
-        if (_supabase) {
+        const client = getSupabaseClient();
+        if (client) {
           try {
-            const { data } = await _supabase.from('store_vendors').insert([{ name, mobile: phone, address: cat }]).select();
+            const { data } = await client.from('store_vendors').insert([{ name, mobile: phone, address: cat }]).select();
             if (data && data[0]) {
               newObj.id = data[0].id;
               selectedVendorId = data[0].id;
@@ -1480,9 +1539,10 @@
           v.name = name;
           v.phone = phone;
           v.category = cat;
-          if (_supabase && typeof v.id === 'number') {
+          const client = getSupabaseClient();
+          if (client && typeof v.id === 'number') {
             try {
-              await _supabase.from('store_vendors').update({ name, mobile: phone, address: cat }).eq('id', v.id);
+              await client.from('store_vendors').update({ name, mobile: phone, address: cat }).eq('id', v.id);
             } catch (_) {}
           }
           showToast('Vendor updated');
@@ -1497,9 +1557,10 @@
       const v = vendors.find(x => x.id === selectedVendorId);
       if (!v) return;
       if (confirm(`Delete vendor "${v.name}"?`)) {
-        if (_supabase && typeof v.id === 'number') {
+        const client = getSupabaseClient();
+        if (client && typeof v.id === 'number') {
           try {
-            await _supabase.from('store_vendors').delete().eq('id', v.id);
+            await client.from('store_vendors').delete().eq('id', v.id);
           } catch (_) {}
         }
         vendors = vendors.filter(x => x.id !== selectedVendorId);
@@ -1717,32 +1778,11 @@
 
       // 1. Save directly into Supabase store_bills table in real project
       try {
-        if (_supabase) {
-          let vendorDbId = null;
-          if (typeof vendor.id === 'number') {
-            vendorDbId = vendor.id;
-          } else {
-            try {
-              const { data: existing } = await _supabase.from('store_vendors').select('id').eq('name', vendor.name).limit(1);
-              if (existing && existing.length > 0) {
-                vendorDbId = existing[0].id;
-                vendor.id = vendorDbId;
-              } else {
-                const { data: newV } = await _supabase.from('store_vendors').insert([{
-                  name: vendor.name,
-                  mobile: vendor.phone || '',
-                  address: vendor.category || ''
-                }]).select();
-                if (newV && newV[0]) {
-                  vendorDbId = newV[0].id;
-                  vendor.id = vendorDbId;
-                }
-              }
-            } catch (_) {}
-          }
-          if (!vendorDbId) vendorDbId = 1;
+        const client = getSupabaseClient();
+        if (client) {
+          const vendorDbId = await getOrSyncVendorDbId(vendor);
 
-          const { data: insertedData, error: insertError } = await _supabase.from('store_bills').insert([{
+          const { data: insertedData, error: insertError } = await client.from('store_bills').insert([{
             vendor_id: vendorDbId,
             bill_number: billNumber || 'N/A',
             bill_date: dateStr,
@@ -1761,21 +1801,24 @@
 
           // Trigger push notification to Admin APK (HotelCityPark-Owner)
           const newBillId = (insertedData && insertedData[0]) ? insertedData[0].id : '';
-          _supabase.functions.invoke('send-push', {
-            body: {
-              title: '📦 Store Bill: ' + vendor.name,
-              body: '₹' + formattedAmt + ' bill entered by Storeman (' + selectedPaymentMode + ' • ' + (hasGst ? 'With GST' : 'Without GST') + ')',
-              type: 'store',
-              data: {
-                bill_id: String(newBillId),
-                vendor_name: vendor.name,
-                bill_number: billNumber || 'N/A',
-                amount: formattedAmt,
-                payment_mode: selectedPaymentMode,
-                has_gst: hasGst
-              }
+          const pushPayload = {
+            title: '📦 Store Bill: ' + vendor.name,
+            body: '₹' + formattedAmt + ' bill entered by Storeman (' + selectedPaymentMode + ' • ' + (hasGst ? 'With GST' : 'Without GST') + ')',
+            type: 'store',
+            data: {
+              bill_id: String(newBillId),
+              vendor_name: vendor.name,
+              bill_number: billNumber || 'N/A',
+              amount: formattedAmt,
+              payment_mode: selectedPaymentMode,
+              has_gst: hasGst
             }
-          }).catch(pushErr => console.warn('Admin push alert notice:', pushErr));
+          };
+
+          client.functions.invoke('send-push', { body: pushPayload }).catch(pushErr => {
+            console.warn('send-push notice:', pushErr);
+            client.functions.invoke('send-store-push', { body: pushPayload }).catch(() => {});
+          });
         }
       } catch (err) {
         console.warn('Cloud save warning (queueing offline):', err);
@@ -1783,8 +1826,10 @@
         try {
           const q = JSON.parse(localStorage.getItem('hcp_store_offline_queue') || '[]');
           q.push({
-            vendor_id: typeof vendor.id === 'number' ? vendor.id : 1,
+            vendor_id: vendor.id,
             vendor_name: vendor.name,
+            vendor_phone: vendor.phone,
+            vendor_category: vendor.category,
             bill_number: billNumber || 'N/A',
             bill_date: dateStr,
             total_amount: numAmt,
@@ -1903,10 +1948,11 @@
 
       // Fetch from Supabase store_bills and store_vendor_payments
       try {
-        if (_supabase) {
+        const client = getSupabaseClient();
+        if (client) {
           const [billsRes, paymentsRes] = await Promise.all([
-            _supabase.from('store_bills').select('*').order('created_at', { ascending: false }).limit(100),
-            _supabase.from('store_vendor_payments').select('*').order('paid_at', { ascending: false }).limit(300)
+            client.from('store_bills').select('*').order('created_at', { ascending: false }).limit(100),
+            client.from('store_vendor_payments').select('*').order('paid_at', { ascending: false }).limit(300)
           ]);
 
           const allPayments = (paymentsRes && paymentsRes.data) ? paymentsRes.data : [];
@@ -2398,22 +2444,21 @@
       try { items = JSON.parse(q); } catch (_) { items = []; }
       if (!items || items.length === 0) return;
 
-      if (!navigator.onLine || !_supabase) return;
+      const client = getSupabaseClient();
+      if (!navigator.onLine || !client) return;
 
       console.log('[Store Sync] Flushing offline bills queue (' + items.length + ' items)...');
       const unSynced = [];
       for (const item of items) {
         try {
-          let vId = item.vendor_id;
-          if (typeof vId !== 'number') {
-            try {
-              const { data: ex } = await _supabase.from('store_vendors').select('id').eq('name', item.vendor_name).limit(1);
-              if (ex && ex.length > 0) vId = ex[0].id;
-              else vId = 1;
-            } catch (_) { vId = 1; }
-          }
+          const vId = await getOrSyncVendorDbId({
+            id: item.vendor_id,
+            name: item.vendor_name,
+            phone: item.vendor_phone,
+            category: item.vendor_category
+          });
 
-          const { data: insData, error: insErr } = await _supabase.from('store_bills').insert([{
+          const { data: insData, error: insErr } = await client.from('store_bills').insert([{
             vendor_id: vId,
             bill_number: item.bill_number || 'N/A',
             bill_date: item.bill_date,
@@ -2428,15 +2473,15 @@
           if (insErr) throw insErr;
           
           const sBillId = (insData && insData[0]) ? insData[0].id : '';
-          // Trigger push to Admin APK
-          _supabase.functions.invoke('send-push', {
-            body: {
-              title: '📦 Store Bill: ' + (item.vendor_name || 'Vendor'),
-              body: '₹' + item.total_amount + ' bill synced from Storeman',
-              type: 'store',
-              data: { bill_id: String(sBillId), amount: item.total_amount, bill_number: item.bill_number }
-            }
-          }).catch(() => {});
+          const syncPush = {
+            title: '📦 Store Bill: ' + (item.vendor_name || 'Vendor'),
+            body: '₹' + item.total_amount + ' bill synced from Storeman',
+            type: 'store',
+            data: { bill_id: String(sBillId), amount: item.total_amount, bill_number: item.bill_number }
+          };
+          client.functions.invoke('send-push', { body: syncPush }).catch(() => {
+            client.functions.invoke('send-store-push', { body: syncPush }).catch(() => {});
+          });
         } catch (e) {
           unSynced.push(item);
         }
