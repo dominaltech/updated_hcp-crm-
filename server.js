@@ -3582,7 +3582,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       return res.status(400).json({ success: false, error: 'Room is not currently occupied' });
     }
 
-    const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
+    const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name, g.mobile FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
     if (!primaryBooking) return res.status(404).json({ success: false, error: 'Booking not found' });
 
     // Sync any pending cloud room charges from Supabase into SQLite before checkout transaction
@@ -3626,7 +3626,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       throw new Error('Room is not currently occupied');
     }
 
-    const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
+    const primaryBooking = db.prepare('SELECT b.*, g.name as guest_name, g.mobile FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = ?').get(room.current_booking_id);
     if (!primaryBooking) throw new Error('Booking not found');
 
     const isOtaPrepaidInitial = (primaryBooking.booking_source || '').toUpperCase() === 'OTA' && (primaryBooking.is_prepaid === 1 || primaryBooking.is_prepaid === '1' || primaryBooking.rate_type === 'prepaid');
@@ -4009,7 +4009,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
 
   const result = transaction();
 
-    // Non-blocking background sync: Remove checked-out rooms from Supabase cloud
+    // Non-blocking background sync: Remove checked-out rooms from Supabase cloud AND save persistent checkout record
     try {
       if (result && Array.isArray(result.checkedOutRooms)) {
         result.checkedOutRooms.forEach(roomNum => {
@@ -4024,6 +4024,59 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
           }).catch(() => {});
         });
       }
+
+      // Query payments and guest info for cloud checkout sync
+      const linkedBookingIds = (result && result.bookingIds && result.bookingIds.length > 0) ? result.bookingIds : [primaryBooking.id];
+      const bHolders = linkedBookingIds.map(() => '?').join(',');
+      let checkoutPayments = [];
+      let totalAdults = 1;
+      let totalChildren = 0;
+      try {
+        checkoutPayments = db.prepare(`
+          SELECT receipt_no, payment_mode, amount, cashier_name, created_at, notes, payment_type
+          FROM payments
+          WHERE booking_id IN (${bHolders})
+          ORDER BY created_at ASC
+        `).all(...linkedBookingIds);
+
+        const allBookings = db.prepare(`
+          SELECT adults_male, adults_female, adults_other, children FROM bookings WHERE id IN (${bHolders})
+        `).all(...linkedBookingIds);
+
+        totalAdults = allBookings.reduce((sum, b) => sum + (b.adults_male || 0) + (b.adults_female || 0) + (b.adults_other || 0), 0) || 1;
+        totalChildren = allBookings.reduce((sum, b) => sum + (b.children || 0), 0);
+      } catch (pmtErr) {
+        console.warn('[Supabase] Checkout payments query notice:', pmtErr.message);
+      }
+
+      const checkoutRoomsList = result.checkedOutRooms || [room.room_number];
+      supabaseService.syncCheckoutToCloud({
+        bookingId: primaryBooking.id,
+        billNo: result.finalReceiptNo || ('CO-' + primaryBooking.id),
+        guestName: primaryBooking.guest_name,
+        mobile: primaryBooking.mobile || '',
+        adults: totalAdults,
+        children: totalChildren,
+        mealPlan: primaryBooking.meal_plan || 'without_breakfast',
+        roomCount: checkoutRoomsList.length,
+        roomNumber: checkoutRoomsList.join(', '),
+        roomNumbers: checkoutRoomsList,
+        checkinTime: primaryBooking.checkin_time,
+        checkoutTime: result.checkoutTime || new Date().toISOString(),
+        checkedInBy: primaryBooking.checked_in_by || 'Front Desk',
+        checkedOutBy: result.checkedOutBy || result.checked_out_by || 'Staff',
+        netSettle: result.netSettle || 0,
+        refundAmount: result.refund_amount || 0,
+        payments: checkoutPayments.map(p => ({
+          receiptNo: p.receipt_no,
+          mode: p.payment_mode,
+          amount: p.amount,
+          cashier: p.cashier_name,
+          date: p.created_at,
+          notes: p.notes,
+          type: p.payment_type
+        }))
+      }).catch(err => console.warn('[Supabase] syncCheckoutToCloud error:', err.message));
     } catch (syncErr) {
       console.warn('[Supabase] Checkout sync dispatch skipped:', syncErr.message);
     }

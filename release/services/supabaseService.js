@@ -227,6 +227,65 @@ async function removeActiveOccupancy(roomNumber) {
 }
 
 /**
+ * Persists a completed checkout record into Supabase room_charges_inbox.
+ * Allows remote Admin APK over mobile data/cellular to view full checkout details and history.
+ */
+async function syncCheckoutToCloud(data) {
+  if (!canAttemptCloud() || !data) return null;
+  try {
+    const payload = {
+      room_number: String(data.roomNumber || data.room_number || ''),
+      room_id: data.roomId || data.room_id || null,
+      department: 'room_checkout',
+      bill_no: data.billNo || data.bill_no || ('CO-' + (data.bookingId || data.booking_id || Date.now())),
+      subtotal: parseFloat(data.subtotal || data.roomCharge || 0),
+      gst: parseFloat(data.gst || data.tax || 0),
+      grand_total: parseFloat(data.grandTotal || data.netSettle || data.total || 0),
+      items_summary: JSON.stringify({
+        isCheckout: true,
+        bookingId: data.bookingId || data.booking_id,
+        guestName: String(data.guestName || data.guest_name || 'Guest').trim(),
+        mobile: String(data.mobile || data.phone || '').trim(),
+        adults: Number(data.adults || 1),
+        children: Number(data.children || 0),
+        mealPlan: data.mealPlan || 'without_breakfast',
+        roomCount: Number(data.roomCount || 1),
+        roomNumber: String(data.roomNumber || data.room_number || ''),
+        roomNumbers: Array.isArray(data.roomNumbers) ? data.roomNumbers : [String(data.roomNumber || data.room_number || '')],
+        checkinTime: data.checkinTime || data.checkin_time,
+        checkoutTime: data.checkoutTime || data.checkout_time || new Date().toISOString(),
+        checkedInBy: data.checkedInBy || data.checked_in_by || 'Front Desk',
+        checkedOutBy: data.checkedOutBy || data.checked_out_by || 'Staff',
+        netSettle: parseFloat(data.netSettle || data.grandTotal || 0),
+        refundAmount: parseFloat(data.refundAmount || 0),
+        payments: Array.isArray(data.payments) ? data.payments : []
+      }),
+      settled_by: String(data.checkedOutBy || data.checked_out_by || 'Staff').trim(),
+      status: 'settled',
+      created_at: data.checkoutTime || data.checkout_time || new Date().toISOString()
+    };
+
+    const { data: result, error } = await withTimeout(
+      supabase
+        .from('room_charges_inbox')
+        .insert(payload)
+        .select(),
+      REQUEST_TIMEOUT_MS
+    );
+
+    if (error) {
+      console.warn(`[Supabase] syncCheckoutToCloud notice for Room ${data.roomNumber}:`, error.message);
+      return null;
+    }
+    markNetworkSuccess();
+    return result;
+  } catch (err) {
+    markNetworkFailure(err);
+    return null;
+  }
+}
+
+/**
  * Pushes an F&B bill settled to room folio into Supabase room_charges_inbox.
  */
 async function pushRoomCharge(charge) {
@@ -542,17 +601,29 @@ async function syncAllActiveRoomsFromLocal(localDb) {
 
     const activeRoomSet = new Set((activeBookings || []).map(b => String(b.room_number)));
 
-    // 1. Reconcile: Purge any checked-out / stale room numbers from Supabase active_occupancies & room_charges_inbox
+    // 1. Reconcile: Only prune rooms if the local database explicitly has a checked-out record for that room.
+    // NEVER blindly prune rooms missing from local DB (prevents deleting check-ins done on other client machines).
     try {
       const { data: cloudRooms } = await withTimeout(
-        supabase.from('active_occupancies').select('room_number'),
+        supabase.from('active_occupancies').select('room_number, checkin_time'),
         REQUEST_TIMEOUT_MS
       );
       if (Array.isArray(cloudRooms)) {
         for (const cr of cloudRooms) {
           if (!activeRoomSet.has(String(cr.room_number))) {
-            console.log(`[Supabase] Pruning checked-out room from cloud: Room ${cr.room_number}`);
-            await removeActiveOccupancy(cr.room_number);
+            try {
+              const localCo = localDb.prepare(`
+                SELECT b.id FROM bookings b
+                JOIN rooms r ON b.room_id = r.id
+                WHERE r.room_number = ? AND b.status = 'checked_out'
+                AND (b.checkin_time = ? OR datetime(b.actual_checkout_time) >= datetime('now', '-2 days'))
+                LIMIT 1
+              `).get(String(cr.room_number), cr.checkin_time || '');
+              if (localCo) {
+                console.log(`[Supabase] Pruning locally checked-out room from cloud: Room ${cr.room_number}`);
+                await removeActiveOccupancy(cr.room_number);
+              }
+            } catch (_) {}
           }
         }
       }
@@ -989,6 +1060,9 @@ async function syncApprovalRequestToCloud(req) {
       grand_total: Number(req.final_amount || 0),
       items_summary: JSON.stringify({
         approval_id: req.id,
+        room_number: req.room_number,
+        room_count: req.room_count || 1,
+        rooms_list: req.rooms_list || null,
         guest_name: req.guest_name,
         members: req.members,
         expected_checkout: req.expected_checkout,
@@ -1402,6 +1476,7 @@ module.exports = {
   pullStoreBillsFromCloud,
   syncActiveOccupancy,
   removeActiveOccupancy,
+  syncCheckoutToCloud,
   pushRoomCharge,
   fetchActiveOccupancies,
   fetchPendingRoomCharges,
