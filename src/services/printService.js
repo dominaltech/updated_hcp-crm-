@@ -2102,7 +2102,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
   let caseBannerBorder = '#1e293b';
   let caseBannerBg = '#f8fafc';
   let caseBannerTextColor = '#0f172a';
-  let caseBannerIcon = '🚶';
+  let caseBannerIcon = '';
   let caseBannerTitle = '';
   let caseBannerSubtitle = '';
   let caseBannerRefHtml = '';
@@ -2113,7 +2113,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerBorder = '#166534';
     caseBannerBg = '#f0fdf4';
     caseBannerTextColor = '#166534';
-    caseBannerIcon = '🌐';
+    caseBannerIcon = '';
     caseBannerTitle = `OTA PRE-PAID RESERVATION (${platform.toUpperCase()})${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerRefHtml = otaBookingId
       ? `<span style="background: #dcfce7; color: #166534; border: 1.5px solid #86efac; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Voucher No: ${escapeHtml(otaBookingId)}</span>`
@@ -2124,7 +2124,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerBorder = '#b45309';
     caseBannerBg = '#fffbeb';
     caseBannerTextColor = '#b45309';
-    caseBannerIcon = '🌐';
+    caseBannerIcon = '';
     caseBannerTitle = `OTA RESERVATION (${platform.toUpperCase()}) • PAY AT HOTEL${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Booked via OTA channel. Entire room stay tariff + hotel incidentals must be collected directly from guest at Front Desk.';
     caseBannerRefHtml = otaBookingId
@@ -2136,7 +2136,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerBorder = '#6b21a8';
     caseBannerBg = '#faf5ff';
     caseBannerTextColor = '#6b21a8';
-    caseBannerIcon = '🏢';
+    caseBannerIcon = '';
     caseBannerTitle = `CORPORATE BILL TO COMPANY (BTC) — ${company}${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Room stay tariff & approved taxes are debited to Company Credit Ledger. Personal incidentals & F&B are payable by guest upon checkout.';
     caseBannerRefHtml = btcApprovalRef ? `<span style="background: #f3e8ff; color: #6b21a8; border: 1.5px solid #d8b4fe; padding: 4px 10px; border-radius: 4px; font-weight: 900;">Approval: #${escapeHtml(btcApprovalRef)}</span>` : '';
@@ -2145,7 +2145,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerBorder = '#0369a1';
     caseBannerBg = '#f0f9ff';
     caseBannerTextColor = '#0369a1';
-    caseBannerIcon = '💻';
+    caseBannerIcon = '';
     caseBannerTitle = `HOTEL OFFICIAL WEBSITE DIRECT RESERVATION${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = 'Direct online reservation through hotel booking engine. Standard room tariff and hotel policies apply.';
     caseBannerRefHtml = '';
@@ -2154,7 +2154,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
     caseBannerBorder = '#1e293b';
     caseBannerBg = '#f8fafc';
     caseBannerTextColor = '#0f172a';
-    caseBannerIcon = '🚶';
+    caseBannerIcon = '';
     caseBannerTitle = `DIRECT WALK-IN GUEST${hasExtraMembers ? ' WITH EXTRA MEMBER' : ''}`;
     caseBannerSubtitle = '';
     caseBannerRefHtml = '';
@@ -2304,11 +2304,6 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
         </table>
       </div>
 
-      <!-- Watermark: centered, prominent background logo without name, darkened for crisp visibility -->
-      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0.38; filter: contrast(130%) brightness(88%); pointer-events: none; z-index: 0; text-align: center;">
-        <img src="/HCP New Logo Png_witought-name.png" alt="" style="width: 440px; height: auto;" loading="eager" decoding="sync" />
-      </div>
-
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; justify-content: space-between; height: 100%; box-sizing: border-box;">
         <div>
           <!-- HEADER -->
@@ -2340,11 +2335,11 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
             <div style="display: flex; flex-direction: column; gap: 1px;">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span style="font-size: 9pt; font-weight: 950; color: ${caseBannerTextColor}; letter-spacing: 0.3px; text-transform: uppercase;">
-                  ${caseBannerIcon} BOOKING CASE: ${escapeHtml(caseBannerTitle)}
+                  BOOKING CASE: ${escapeHtml(caseBannerTitle)}
                 </span>
                 ${roomsList.length > 1 ? `
                   <span style="background: #1e40af; color: #ffffff; font-size: 7.5pt; font-weight: 900; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    👥 GROUP (${roomsList.length} ROOMS)
+                    GROUP (${roomsList.length} ROOMS)
                   </span>
                 ` : ''}
               </div>
@@ -2367,13 +2362,13 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                 <tbody>
                   <tr style="background: #f1f5f9;">
                     <th colspan="4" style="padding: 4px 8px; font-size: 9pt; font-weight: 950; text-align: left; text-transform: uppercase; border-bottom: 1.5px solid #1e3a8a; color: #0f172a; letter-spacing: 0.4px;">
-                      🏢 CORPORATE BILL TO COMPANY (BTC) &amp; GUEST DETAILS
+                      CORPORATE BILL TO COMPANY (BTC) &amp; GUEST DETAILS
                     </th>
                   </tr>
                   <tr>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company Name:</td>
                     <td style="padding: 3px 6px; font-weight: 950; font-size: 10.5pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #4c1d95;">
-                      🏢 ${escapeHtml(effectiveBtcCompany)}
+                      ${escapeHtml(effectiveBtcCompany)}
                     </td>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(245, 243, 255, 0.9); color: #581c87;">Company GSTIN:</td>
                     <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; letter-spacing: 0.05em; color: #0369a1; font-size: 10pt;">
@@ -2403,7 +2398,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                   <tr>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Deputed Guest Name:</td>
                     <td style="padding: 3px 6px; font-weight: 950; font-size: 10.5pt; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; color: #0f172a;">
-                      👤 ${escapeHtml(guestName)}
+                      ${escapeHtml(guestName)}
                     </td>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Guest Mobile No:</td>
                     <td style="padding: 3px 6px; font-weight: 950; width: 28%; border-bottom: 1.5px solid #94a3b8; font-size: 10pt; color: #0f172a;">
@@ -2417,7 +2412,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     </td>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Billing Status:</td>
                     <td style="padding: 3px 6px; font-weight: 950; width: 28%; font-size: 9.5pt; color: #6b21a8; background: rgba(250, 245, 255, 0.85);">
-                      🏢 Bill to Company
+                      Bill to Company
                     </td>
                   </tr>
                 </tbody>
@@ -2460,7 +2455,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     <td style="padding: 3px 6px; width: 32%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; font-weight: 750; font-size: 9pt; color: #0f172a;">${escapeHtml(email)}</td>
                     <td style="padding: 3px 6px; font-weight: bold; width: 20%; border-bottom: 1.5px solid #94a3b8; border-right: 1.5px solid #94a3b8; background: rgba(239, 246, 255, 0.75); color: #1e40af;">Document Verification:</td>
                     <td style="padding: 3px 6px; width: 28%; font-size: 9.5pt; color: #15803d; font-weight: 950; border-bottom: 1.5px solid #94a3b8; background: rgba(240, 253, 244, 0.65);">
-                      ✓ ${escapeHtml(docType)}${includePhotos && scanPages.length > 0 ? ' • Copies Attached (Page 2)' : ''}
+                      ${escapeHtml(docType)}${includePhotos && scanPages.length > 0 ? ' • Copies Attached (Page 2)' : ''}
                     </td>
                   </tr>
                   ${(companyName || gstNumber) ? `
@@ -2507,11 +2502,11 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                       ${isOta ? `
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 7.5pt; margin-top: 1px; padding-top: 1px; border-top: 1px dashed #cbd5e1;">
                           <span style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 3px; font-weight: 800;">
-                            📦 OTA Booked: ${otaBookedAdults !== null ? `${otaBookedAdults} Adult${otaBookedAdults > 1 ? 's' : ''}` : '1 Adult'}${otaBookedChildren > 0 ? `, ${otaBookedChildren} Child` : ''}${voucherIncludedBeds > 0 ? `, ${voucherIncludedBeds} Mattress (₹0)` : ''}
+                            OTA Booked: ${otaBookedAdults !== null ? `${otaBookedAdults} Adult${otaBookedAdults > 1 ? 's' : ''}` : '1 Adult'}${otaBookedChildren > 0 ? `, ${otaBookedChildren} Child` : ''}${voucherIncludedBeds > 0 ? `, ${voucherIncludedBeds} Mattress (₹0)` : ''}
                           </span>
                           ${(extraAdults > 0 || extraChildren > 0 || hotelChargedBeds > 0) ? `
                             <span style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 1px 5px; border-radius: 3px; font-weight: 800;">
-                              🏨 Hotel Extra: ${extraAdults > 0 ? `+${extraAdults} Adult(s)` : ''}${extraChildren > 0 ? ` +${extraChildren} Child` : ''}${hotelChargedBeds > 0 ? ` +${hotelChargedBeds} Mattress (+₹${extraBedCharge.toLocaleString('en-IN')})` : ''}
+                              Hotel Extra: ${extraAdults > 0 ? `+${extraAdults} Adult(s)` : ''}${extraChildren > 0 ? ` +${extraChildren} Child` : ''}${hotelChargedBeds > 0 ? ` +${hotelChargedBeds} Mattress (+₹${extraBedCharge.toLocaleString('en-IN')})` : ''}
                             </span>
                           ` : `
                             <span style="color: #64748b; font-weight: 700;">(No Extra Hotel Pax)</span>
@@ -2557,13 +2552,13 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
           ${memberDocs.length > 0 && includePhotos ? `
             <div style="border: 1.5px solid #1e3a8a; margin-bottom: 5px; background: rgba(255, 255, 255, 0.85); border-radius: 4px; overflow: hidden;">
               <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding: 2.5px 8px; font-size: 8pt; font-weight: 950; text-transform: uppercase; color: #ffffff; display: flex; justify-content: space-between; align-items: center;">
-                <span>👥 REGISTERED COMPANIONS (${memberDocs.length} Members)</span>
-                <span style="font-size: 7.5pt; font-weight: 800; color: #86efac;">✓ Scanned Copies Preserved on Annexure Page 2</span>
+                <span>REGISTERED COMPANIONS (${memberDocs.length} Members)</span>
+                <span style="font-size: 7.5pt; font-weight: 800; color: #86efac;">Scanned Copies Preserved on Annexure Page 2</span>
               </div>
               <div style="padding: 3px 8px; font-size: 8pt; color: #1e293b; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                 ${memberDocs.map((m, idx) => `
                   <span style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 1.5px 6px; border-radius: 3px; font-weight: 750;">
-                    👤 <strong>${escapeHtml(m.name || `Companion #${idx + 1}`)}</strong>${m.docType ? ` (${escapeHtml(m.docType)})` : ''}${m.idNumber || m.aadharNumber ? `: ${escapeHtml(m.idNumber || m.aadharNumber)}` : ''}
+                    <strong>${escapeHtml(m.name || `Companion #${idx + 1}`)}</strong>${m.docType ? ` (${escapeHtml(m.docType)})` : ''}${m.idNumber || m.aadharNumber ? `: ${escapeHtml(m.idNumber || m.aadharNumber)}` : ''}
                   </span>
                 `).join('')}
               </div>
@@ -2640,7 +2635,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 8pt;">
                       <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
-                          🏨 HOTEL INCIDENTALS BREAKDOWN: CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL
+                          HOTEL INCIDENTALS BREAKDOWN: CALCULATION OF BOOKING &amp; RECONCILIATION @ HOTEL
                         </span>
                         <span>Pre-booked OTA (${escapeHtml(otaPlatform || 'OTA')}): <strong>₹ ${otaPrebookedAmount.toLocaleString('en-IN')}</strong> ${isOtaPrepaid ? '<span style="color:#166534; font-weight:900;">[PREPAID] (Voucher Covered)</span>' : '<span style="color:#b45309; font-weight:900;">[PAY AT HOTEL] (Incl. 5% GST)</span>'}</span>
                         <span>Extra Booking @ Hotel: <strong>₹ ${hotelExtrasTotal.toLocaleString('en-IN')}</strong>${extraBedCharge > 0 ? ` (Extra Mattress(es): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong>)` : ''}${fnbTotal > 0 ? ` (F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>)` : ''}</span>
@@ -2660,7 +2655,7 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 8pt;">
                       <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <span style="font-weight: 950; color: #1e3a8a; text-transform: uppercase;">
-                          🏨 HOTEL INCIDENTALS BREAKDOWN: SERVICES &amp; EXTRAS
+                          HOTEL INCIDENTALS BREAKDOWN: SERVICES &amp; EXTRAS
                         </span>
                         ${extraBedCharge > 0 ? `<span>Extra Mattress(es): <strong>₹ ${extraBedCharge.toLocaleString('en-IN')}</strong></span>` : ''}
                         ${fnbTotal > 0 ? `<span>F&amp;B Orders: <strong>₹ ${fnbTotal.toLocaleString('en-IN')}</strong>${fnbPendingTotal > 0 ? ` (<span style="color:#b91c1c; font-weight:800;">₹ ${fnbPendingTotal.toLocaleString('en-IN')} Pending</span>)` : ' (Paid)'}</span>` : ''}
@@ -2792,10 +2787,10 @@ export function buildGuestRegistrationHTML(data, options = { includePhotos: fals
               <div style="display: flex; flex-direction: column; justify-content: center; gap: 1px;">
                 <div style="display: flex; align-items: center; gap: 6px;">
                   <span style="font-size: 7.5pt; font-weight: 950; color: #1e3a8a; background: #dbeafe; border: 1px solid #bfdbfe; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.03em;">
-                    📸 PRIMARY GUEST / ROOM LEADER LIVE PHOTO
+                    PRIMARY GUEST / ROOM LEADER LIVE PHOTO
                   </span>
                   <span style="font-size: 6.8pt; font-weight: 850; color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 3px;">
-                    ✓ Live Webcam Verified
+                    Live Webcam Verified
                   </span>
                 </div>
                 <div style="font-size: 9.5pt; font-weight: 950; color: #0f172a; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -5061,19 +5056,19 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   return `
     <div class="full-a4-registration-card tax-invoice-a4-sheet" style="position: relative; width: 100%; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; color: #000; border: none; padding: 5px 10px; background: #fff; line-height: 1.32; ${containerHeightStyle} display: flex; flex-direction: column; justify-content: space-between; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
       
-      <!-- Elegant Centered Watermark Background Logo (Authentic Transparent Mauve/Rose Tint with Name) -->
-      <div style="position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); opacity: 0.14; pointer-events: none; z-index: 0; text-align: center; width: 100%; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
-        <img src="/hcp-logo-with-name-transparent.png" alt="Hotel City Paark Watermark" style="width: 520px; max-width: 85%; height: auto; filter: contrast(120%) saturate(120%);" loading="eager" decoding="sync" />
+      <!-- Elegant Centered Watermark Background Logo (Darkened for richer visibility with Name) -->
+      <div style="position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); opacity: 0.22; pointer-events: none; z-index: 0; text-align: center; width: 100%; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+        <img src="/hcp-logo-with-name-transparent.png" alt="Hotel City Paark Watermark" style="width: 520px; max-width: 85%; height: auto; filter: contrast(125%) saturate(120%);" loading="eager" decoding="sync" />
       </div>
 
       <div style="position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 100%; justify-content: space-between; background: transparent;">
         <div>
-          <!-- TOP HEADER: Address (Left, vertically middle-aligned with logo height) & Brand Logo with Name (Right) -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; background: transparent;">
-            <!-- Left Hotel Address & Contact (aligned in middle of logo height) -->
-            <div style="font-size: 7.8pt; color: #222; line-height: 1.38; max-width: 55%; font-weight: 400; align-self: center;">
-              <div style="font-size: 7.8pt; font-weight: 400; color: #111;">119 Murarji Peth, Char Hutatma Chowk</div>
-              <div style="font-size: 7.8pt; font-weight: 400; color: #111;">Solapur - 413001 (Maharashtra)</div>
+          <!-- TOP HEADER: Address (Left, vertically aligned down towards divider line) & Brand Logo with Name (Right) -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 4px; background: transparent;">
+            <!-- Left Hotel Address & Contact (aligned down towards divider line with increased font size) -->
+            <div style="font-size: 8.8pt; color: #111; line-height: 1.42; max-width: 58%; font-weight: 400; align-self: flex-end; padding-bottom: 3px;">
+              <div>119 Murarji Peth, Char Hutatma Chowk</div>
+              <div>Solapur - 413001 (Maharashtra)</div>
               <div>Tel.: 0217-2729791, 92, 93 Mob.: 9960013388</div>
               <div>E-mail : hcitypark@rediffmail.com</div>
               <div>website : hotelcityparksolapur.com</div>
@@ -5240,8 +5235,8 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
                   </tr>
                   `}
                   <tr style="border-top: 1.5px dashed #000;">
-                    <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">${isRefundPending ? 'Refund' : 'Net Payable'}</td>
-                    <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${isRefundPending ? refundAmount.toFixed(2) : netPayable.toFixed(2)}</td>
+                    <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">${isRefundPending ? 'Refund Amount' : 'Net Payable'}</td>
+                    <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${isRefundPending ? `-${Math.abs(refundAmount).toFixed(2)}` : netPayable.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -5250,7 +5245,7 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 
           <!-- NET PAYABLE / REFUND IN WORDS (Bold) -->
           <div style="font-size: 10pt; font-weight: 700; color: #000; margin: 4px 0 6px; text-align: left;">
-            (${isRefundPending ? 'Refund' : 'Net Payable Amount'} In words : Rs. ${escapeHtml(isRefundPending ? refundWords : netPayableWords)})
+            (${isRefundPending ? 'Refund Amount' : 'Net Payable Amount'} In words : Rs. ${escapeHtml(isRefundPending ? refundWords : netPayableWords)})
           </div>
 
           <!-- CHECK-IN / CHECK-OUT BY STAFF (Cashier names bold) -->
