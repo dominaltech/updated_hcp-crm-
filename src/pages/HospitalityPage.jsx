@@ -47,7 +47,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
     dashboardSelectedRoomIds,
     setDashboardSelectedRoomIds
   } = useHospitality();
-  const { showToast, setActivePanel, previousPanel, goBackPanel, currentUser } = useApp();
+  const { showToast, setActivePanel, previousPanel, goBackPanel, currentUser, openStaffLogin } = useApp();
 
   const [hoveredLinkedGroup, setHoveredLinkedGroup] = useState('');
   const [cleaningModalRoom, setCleaningModalRoom] = useState(null);
@@ -152,6 +152,13 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
   }, [filteredRooms]);
 
   const handleRoomClick = (room) => {
+    // User Requirement: If nobody is logged in, clicking any room must show unclosable login modal
+    if (!currentUser) {
+      showToast('Please log in with staff credentials to access rooms.', 'warning', 3000);
+      if (openStaffLogin) openStaffLogin('hospitality', true);
+      return;
+    }
+
     if (dashboardSelectedRoomIds.size > 0) {
       if (room.status !== 'ready') {
         showToast('Only available (ready) rooms can be selected for combined booking.', 'warning', 3000);
@@ -181,7 +188,22 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
     }
   };
 
+  const handleContextMenuWithAuth = (e, room) => {
+    if (!currentUser) {
+      if (e?.preventDefault) e.preventDefault();
+      showToast('Please log in with staff credentials to access rooms.', 'warning', 3000);
+      if (openStaffLogin) openStaffLogin('hospitality', true);
+      return;
+    }
+    openContextMenu(e, room);
+  };
+
   const handleLongPress = (room) => {
+    if (!currentUser) {
+      showToast('Please log in with staff credentials to access rooms.', 'warning', 3000);
+      if (openStaffLogin) openStaffLogin('hospitality', true);
+      return;
+    }
     if (room.status === 'ready') {
       setDashboardSelectedRoomIds(new Set([room.id]));
       showToast('✓ Multi-Room Selection Active: Click ready room cards to add/remove.', 'info', 4500);
@@ -615,7 +637,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                           key={room.id}
                           room={room}
                           onClick={handleRoomClick}
-                          onContextMenu={openContextMenu}
+                          onContextMenu={handleContextMenuWithAuth}
                           isMultiSelected={dashboardSelectedRoomIds.has(room.id)}
                           isGroupHovered={isGroupHovered}
                           onGroupHover={setHoveredLinkedGroup}

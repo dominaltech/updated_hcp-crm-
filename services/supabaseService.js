@@ -989,6 +989,9 @@ async function syncApprovalRequestToCloud(req) {
       grand_total: Number(req.final_amount || 0),
       items_summary: JSON.stringify({
         approval_id: req.id,
+        room_number: req.room_number,
+        room_count: req.room_count || 1,
+        rooms_list: req.rooms_list || null,
         guest_name: req.guest_name,
         members: req.members,
         expected_checkout: req.expected_checkout,

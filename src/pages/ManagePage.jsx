@@ -2765,80 +2765,8 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <span>🔍</span> Filter &amp; Audit Range
               </span>
               
-              {/* Quick Presets & Tax Mode Toggle */}
+              {/* Quick Presets */}
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {/* Tax Mode Selector (CGST+SGST vs I GST) */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f5f9', borderRadius: '10px', padding: '3px', border: '1.5px solid #cbd5e1', height: '32px', boxSizing: 'border-box' }} title="Filter by Tax Mode">
-                  <button
-                    type="button"
-                    id="btn-accounting-tax-all"
-                    onClick={() => {
-                      setAccountingTaxType('all');
-                      loadAccountingAnalysis({ taxType: 'all' });
-                    }}
-                    style={{
-                      height: '24px',
-                      padding: '0 8px',
-                      fontSize: '0.74rem',
-                      fontWeight: 750,
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: accountingTaxType === 'all' ? '#ffffff' : 'transparent',
-                      color: accountingTaxType === 'all' ? '#0f172a' : '#64748b',
-                      boxShadow: accountingTaxType === 'all' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    All Taxes
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-accounting-tax-cgst-sgst"
-                    onClick={() => {
-                      setAccountingTaxType('cgst_sgst');
-                      loadAccountingAnalysis({ taxType: 'cgst_sgst' });
-                    }}
-                    style={{
-                      height: '24px',
-                      padding: '0 8px',
-                      fontSize: '0.74rem',
-                      fontWeight: 750,
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: accountingTaxType === 'cgst_sgst' ? '#ffffff' : 'transparent',
-                      color: accountingTaxType === 'cgst_sgst' ? '#0f172a' : '#64748b',
-                      boxShadow: accountingTaxType === 'cgst_sgst' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    CGST+SGST
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-accounting-tax-igst"
-                    onClick={() => {
-                      setAccountingTaxType('igst');
-                      loadAccountingAnalysis({ taxType: 'igst' });
-                    }}
-                    style={{
-                      height: '24px',
-                      padding: '0 9px',
-                      fontSize: '0.74rem',
-                      fontWeight: 850,
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: accountingTaxType === 'igst' ? '#0284c7' : 'transparent',
-                      color: accountingTaxType === 'igst' ? '#ffffff' : '#64748b',
-                      boxShadow: accountingTaxType === 'igst' ? '0 1px 2px rgba(2,132,199,0.3)' : 'none',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    🏛️ I GST (5%)
-                  </button>
-                </div>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -3075,23 +3003,14 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
 
             <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase' }}>Discounts Applied</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
-                {formatCurrency(accountingSummary.total_discount || 0)}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Total Deductions</div>
-            </div>
-
-            <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '14px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
               <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
-                {isIgstSelected ? 'GST & I GST (5%)' : 'CGST & SGST (5%)'}
+                CGST, SGST &amp; IGST (5%)
               </div>
               <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
-                {formatCurrency(accountingSummary.total_cgst_sgst || 0)}
+                {formatCurrency((accountingSummary.total_cgst || 0) + (accountingSummary.total_sgst || 0) + (accountingSummary.total_igst || 0))}
               </div>
               <div style={{ fontSize: '0.70rem', color: '#64748b' }}>
-                C: {formatCurrency(accountingSummary.total_cgst || 0)} | S: {formatCurrency(accountingSummary.total_sgst || 0)}
-                {isIgstSelected && ` | I: ${formatCurrency(accountingSummary.total_igst || 0)}`}
+                C: {formatCurrency(accountingSummary.total_cgst || 0)} | S: {formatCurrency(accountingSummary.total_sgst || 0)} | I: {formatCurrency(accountingSummary.total_igst || 0)}
               </div>
             </div>
 
@@ -3104,7 +3023,7 @@ export default function ManagePage({ onPrintClosingReport }) {
             </div>
           </div>
 
-          {/* Audit Table with the 12 User-Specified Columns */}
+          {/* Audit Table with the 13 Columns */}
           <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
             <div style={{ overflowX: 'auto', width: '100%' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }} id="table-accounting-analysis">
@@ -3120,9 +3039,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>Discount</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>CGST</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>SGST</th>
-                    {isIgstSelected && (
-                      <th style={{ padding: '11px 12px', fontWeight: 850, textAlign: 'right', whiteSpace: 'nowrap', color: '#38bdf8' }}>I GST</th>
-                    )}
+                    <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'right', whiteSpace: 'nowrap' }}>IGST</th>
                     <th style={{ padding: '11px 14px', fontWeight: 750 }}>Name Of Company</th>
                     <th style={{ padding: '11px 12px', fontWeight: 750, textAlign: 'center', whiteSpace: 'nowrap' }}>GST No of Company</th>
                   </tr>
@@ -3130,14 +3047,14 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <tbody>
                   {isLoadingAccounting ? (
                     <tr>
-                      <td colSpan={isIgstSelected ? 13 : 12} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={13} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ display: 'inline-block', width: '26px', height: '26px', border: '3px solid #cbd5e1', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '8px' }}></div>
                         <div style={{ fontWeight: 600 }}>Loading accounting &amp; analysis records...</div>
                       </td>
                     </tr>
                   ) : accountingRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={isIgstSelected ? 13 : 12} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
+                      <td colSpan={13} style={{ padding: '44px 20px', textAlign: 'center', color: '#64748b' }}>
                         <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📑</div>
                         <div style={{ fontWeight: 750, fontSize: '0.96rem', color: '#334155' }}>No Accounting Records Found</div>
                         <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>Try widening your date range or clearing the filter inputs.</div>
@@ -3214,14 +3131,12 @@ export default function ManagePage({ onPrintClosingReport }) {
                             {formatCurrency(r.sgst || 0)}
                           </td>
 
-                          {/* 10B. I GST - Shown after SGST when IGST is selected */}
-                          {isIgstSelected && (
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 750, color: (r.igst || 0) > 0 ? '#0284c7' : '#94a3b8' }}>
-                              {formatCurrency(r.igst || 0)}
-                            </td>
-                          )}
+                          {/* 11. IGST - Always displayed in dedicated column */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: (r.igst || 0) > 0 ? '#0284c7' : '#64748b' }}>
+                            {formatCurrency(r.igst || 0)}
+                          </td>
 
-                          {/* 11. Name Of Company */}
+                          {/* 12. Name Of Company */}
                           <td style={{ padding: '10px 14px' }}>
                             <span style={{ fontWeight: 650, color: '#0f172a' }}>
                               {r.name_of_company || r.name_of_customer_gst || '-'}
@@ -3233,7 +3148,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                             )}
                           </td>
 
-                          {/* 12. GST No of Company */}
+                          {/* 13. GST No of Company */}
                           <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                             {(r.gst_no_of_company || r.gst_no_of_customer) && (r.gst_no_of_company || r.gst_no_of_customer) !== '-' ? (
                               <span style={{ fontFamily: 'monospace', background: '#f8fafc', border: '1px solid #cbd5e1', padding: '2px 7px', borderRadius: '5px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
@@ -3274,11 +3189,9 @@ export default function ManagePage({ onPrintClosingReport }) {
                       <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#059669' }}>
                         {formatCurrency(accountingSummary.total_sgst || 0)}
                       </td>
-                      {isIgstSelected && (
-                        <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#0284c7', fontWeight: 850 }}>
-                          {formatCurrency(accountingSummary.total_igst || 0)}
-                        </td>
-                      )}
+                      <td style={{ padding: '12px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem', color: '#0284c7', fontWeight: 800 }}>
+                        {formatCurrency(accountingSummary.total_igst || 0)}
+                      </td>
                       <td colSpan={2} style={{ padding: '12px 14px', textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
                         Net Payable: <strong>{formatCurrency(accountingSummary.total_grand || 0)}</strong>
                       </td>

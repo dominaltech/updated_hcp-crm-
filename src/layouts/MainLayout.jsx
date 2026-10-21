@@ -9,6 +9,8 @@ import CashierLogoutModal from '../components/common/CashierLogoutModal';
 import ManagerLockModal from '../components/common/ManagerLockModal';
 import SectionSelectModal from '../components/common/SectionSelectModal';
 
+import { useHospitality } from '../context/HospitalityContext';
+
 export default function MainLayout({ children, hasActiveFolio = false }) {
   const {
     activePanel,
@@ -29,8 +31,15 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
     unlockSection
   } = useApp();
 
+  let hospSubTab = 'rooms';
+  try {
+    const hosp = useHospitality();
+    if (hosp?.activeSubTab) hospSubTab = hosp.activeSubTab;
+  } catch (e) {}
+
   const isPosPanel = activePanel === 'restaurant' || activePanel === 'bar';
-  const isHospitalityGrid = activePanel === 'hospitality' && !hasActiveFolio;
+  const isHospitalityGrid = activePanel === 'hospitality' && !hasActiveFolio && hospSubTab === 'rooms';
+  const isHospitalityHistory = activePanel === 'hospitality' && !hasActiveFolio && hospSubTab === 'history';
   const isFolioActive = Boolean(hasActiveFolio);
 
   return (
@@ -59,6 +68,16 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
                 maxHeight: 'calc(100dvh - 68px)',
                 minHeight: 0,
                 overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                boxSizing: 'border-box'
+              }
+            : isHospitalityHistory
+            ? {
+                padding: '6px 18px 40px',
+                maxWidth: '100%',
+                minHeight: 'calc(100dvh - 68px)',
+                overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 boxSizing: 'border-box'

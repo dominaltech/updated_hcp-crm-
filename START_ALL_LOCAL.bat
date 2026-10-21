@@ -17,6 +17,6 @@ if errorlevel 1 (
 
 echo [2/2] Launching CRM (port 3000), Admin Panel (port 8081), and Storeman Panel...
 echo.
-node scripts/start_all.js
+node scripts/start_all.js --local-only %*
 
 pause

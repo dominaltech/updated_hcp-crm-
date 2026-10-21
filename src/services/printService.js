@@ -4367,8 +4367,14 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const totalAdvanceOrVoucher = isOtaPrepaid
     ? (otaVoucherCovered + deskAdvance)
     : deskAdvance;
-  const netPayable = Math.max(0, grossPayable - totalAdvanceOrVoucher);
+
+  const explicitRefund = Number(s?.refundAmount || s?.refund_amount || s?.refundAmt || c?.refundAmount || c?.refund_amount || r?.refund_amount || 0);
+  const rawDiff = grossPayable - totalAdvanceOrVoucher;
+  const isRefundPending = rawDiff < 0 || explicitRefund > 0;
+  const refundAmount = isRefundPending ? (explicitRefund > 0 ? explicitRefund : Math.abs(rawDiff)) : 0;
+  const netPayable = isRefundPending ? 0 : Math.max(0, rawDiff);
   const netPayableWords = formatWords(netPayable);
+  const refundWords = formatWords(refundAmount);
 
   // Staff & Badge Resolution (Requirement 8: Checkout by Cashier name, never 'Front Desk')
   let loggedInCashier = '';
@@ -5234,17 +5240,17 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
                   </tr>
                   `}
                   <tr style="border-top: 1.5px dashed #000;">
-                    <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">Net Payable Amount</td>
-                    <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${netPayable.toFixed(2)}</td>
+                    <td style="padding: 3px 0; font-weight: 700; font-size: 11pt; color: #000;">${isRefundPending ? 'Refund' : 'Net Payable'}</td>
+                    <td style="padding: 3px 0; text-align: right; font-weight: 700; font-size: 11.5pt; color: #000;">${isRefundPending ? refundAmount.toFixed(2) : netPayable.toFixed(2)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- NET PAYABLE IN WORDS (Bold) -->
+          <!-- NET PAYABLE / REFUND IN WORDS (Bold) -->
           <div style="font-size: 10pt; font-weight: 700; color: #000; margin: 4px 0 6px; text-align: left;">
-            (Net Payable Amount In words : Rs. ${escapeHtml(netPayableWords)})
+            (${isRefundPending ? 'Refund' : 'Net Payable Amount'} In words : Rs. ${escapeHtml(isRefundPending ? refundWords : netPayableWords)})
           </div>
 
           <!-- CHECK-IN / CHECK-OUT BY STAFF (Cashier names bold) -->
@@ -6307,7 +6313,7 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
         <td style="padding: 5px 8px; text-align: right; font-family: monospace; color: #dc2626;">₹${disc}</td>
         <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${cgst}</td>
         <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600;">₹${sgst}</td>
-        ${hasIgst ? `<td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #0284c7;">₹${igst}</td>` : ''}
+        <td style="padding: 5px 8px; text-align: right; font-family: monospace; font-weight: 600; color: #0284c7;">₹${igst}</td>
         <td style="padding: 5px 8px; text-align: left;">${escapeHtml(r.name_of_company || r.name_of_customer_gst || '-')}</td>
         <td style="padding: 5px 6px; text-align: center; font-family: monospace; font-size: 8.5pt;">${escapeHtml(gstNo)}</td>
       </tr>
@@ -6442,13 +6448,13 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
             <th style="width: 6.5%;">Discount</th>
             <th style="width: 6.5%;">CGST</th>
             <th style="width: 6.5%;">SGST</th>
-            ${hasIgst ? '<th style="width: 6.5%; color: #38bdf8;">I GST</th>' : ''}
+            <th style="width: 6.5%;">IGST</th>
             <th style="width: 12%;">Name Of Customer GST</th>
             <th style="width: 9%;">GST No of Customer</th>
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="${hasIgst ? 13 : 12}" style="padding: 24px; text-align: center; color: #64748b;">No accounting checkout records match the applied criteria.</td></tr>`}
+          ${rowsHtml || `<tr><td colspan="13" style="padding: 24px; text-align: center; color: #64748b;">No accounting checkout records match the applied criteria.</td></tr>`}
           <tr class="total-row">
             <td colspan="4" style="text-align: right; padding-right: 12px;">TOTAL (${records.length} Bills / Invoices):</td>
             <td style="text-align: right; font-family: monospace;">₹${totBase}</td>
@@ -6457,7 +6463,7 @@ export function buildAccountingAnalysisPrintHTML({ records = [], filters = {}, s
             <td style="text-align: right; font-family: monospace; color: #dc2626;">₹${totDisc}</td>
             <td style="text-align: right; font-family: monospace;">₹${totCgst}</td>
             <td style="text-align: right; font-family: monospace;">₹${totSgst}</td>
-            ${hasIgst ? `<td style="text-align: right; font-family: monospace; color: #0284c7;">₹${totIgst}</td>` : ''}
+            <td style="text-align: right; font-family: monospace; color: #0284c7;">₹${totIgst}</td>
             <td colspan="2" style="text-align: right; padding-right: 8px;">Net Payable: <strong>₹${totGrand}</strong></td>
           </tr>
         </tbody>
@@ -6598,7 +6604,7 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
    <Column ss:Width="90"/>
    <Column ss:Width="90"/>
    <Column ss:Width="90"/>
-   ${hasIgst ? '<Column ss:Width="90"/>' : ''}
+   <Column ss:Width="90"/>
    <Column ss:Width="160"/>
    <Column ss:Width="140"/>
 
@@ -6622,7 +6628,7 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="Header"><Data ss:Type="String">Discount</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">CGST</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">SGST</Data></Cell>
-    ${hasIgst ? '<Cell ss:StyleID="Header"><Data ss:Type="String">I GST</Data></Cell>' : ''}
+    <Cell ss:StyleID="Header"><Data ss:Type="String">IGST</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Name Of Customer GST</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">GST No of Customer</Data></Cell>
    </Row>
@@ -6641,7 +6647,7 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.discount || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.cgst || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.sgst || 0).toFixed(2)}</Data></Cell>
-    ${hasIgst ? `<Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.igst || 0).toFixed(2)}</Data></Cell>` : ''}
+    <Cell ss:StyleID="DataNumber"><Data ss:Type="Number">${Number(r.igst || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="DataString"><Data ss:Type="String">${escapeHtml(r.name_of_company || r.name_of_customer_gst || '-')}</Data></Cell>
     <Cell ss:StyleID="DataCenter"><Data ss:Type="String">${escapeHtml(r.gst_no_of_customer || '-')}</Data></Cell>
    </Row>`;
@@ -6660,7 +6666,7 @@ export function generateAccountingAnalysisExcelXml(records = [], summary = {}, f
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_discount || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_cgst || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_sgst || 0).toFixed(2)}</Data></Cell>
-    ${hasIgst ? `<Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_igst || 0).toFixed(2)}</Data></Cell>` : ''}
+    <Cell ss:StyleID="TotalNumber"><Data ss:Type="Number">${Number(summary.total_igst || 0).toFixed(2)}</Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
     <Cell ss:StyleID="TotalLabel"><Data ss:Type="String"></Data></Cell>
    </Row>
@@ -6698,12 +6704,14 @@ export function exportAccountingAnalysisToCsv(records = [], summary = {}) {
     'C/O',
     'Bill no',
     'Invoice number',
-    'GST No of Customer',
     'Name of customer',
     'Room rent (base)',
     'Extra mattress (PAX)',
+    'Visitors extra Breakfast (Base)',
     'Discount',
-    'CGST & SGST',
+    'CGST',
+    'SGST',
+    'IGST',
     'Name Of Customer GST',
     'GST No of Customer'
   ];
@@ -6720,25 +6728,29 @@ export function exportAccountingAnalysisToCsv(records = [], summary = {}) {
       escapeCsv(r.date_of_checkout || '-'),
       escapeCsv(r.bill_no || '-'),
       escapeCsv(r.invoice_number || '-'),
-      escapeCsv(r.gst_no_of_customer || '-'),
       escapeCsv(r.name_of_customer || '-'),
       escapeCsv(Number(r.room_rent_base || 0).toFixed(2)),
       escapeCsv(Number(r.extra_mattress_pax || 0).toFixed(2)),
+      escapeCsv(Number(r.visitor_breakfast_base || 0).toFixed(2)),
       escapeCsv(Number(r.discount || 0).toFixed(2)),
-      escapeCsv(Number(r.cgst_sgst_total || 0).toFixed(2)),
-      escapeCsv(r.name_of_customer_gst || '-'),
-      escapeCsv(r.gst_no_of_customer || '-')
+      escapeCsv(Number(r.cgst || 0).toFixed(2)),
+      escapeCsv(Number(r.sgst || 0).toFixed(2)),
+      escapeCsv(Number(r.igst || 0).toFixed(2)),
+      escapeCsv(r.name_of_company || r.name_of_customer_gst || '-'),
+      escapeCsv(r.gst_no_of_company || r.gst_no_of_customer || '-')
     ].join(',')),
     [
       escapeCsv('TOTAL'),
       escapeCsv(''),
       escapeCsv(''),
-      escapeCsv(''),
       escapeCsv(`${records.length} Bills`),
       escapeCsv(Number(summary.total_room_rent_base || 0).toFixed(2)),
       escapeCsv(Number(summary.total_extra_mattress || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_visitor_breakfast || 0).toFixed(2)),
       escapeCsv(Number(summary.total_discount || 0).toFixed(2)),
-      escapeCsv(Number(summary.total_cgst_sgst || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_cgst || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_sgst || 0).toFixed(2)),
+      escapeCsv(Number(summary.total_igst || 0).toFixed(2)),
       escapeCsv(''),
       escapeCsv('')
     ].join(',')

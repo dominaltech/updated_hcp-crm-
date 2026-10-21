@@ -43,4 +43,6 @@ firebase-service-account.json
 !release-electron/Hotel City Park CRM-win32-x64/waiter-pannel/HotelCityPark-Waiter.apk
 *.idsig
 crm.db
+city_park.db
+city_park.db*
 .agents/

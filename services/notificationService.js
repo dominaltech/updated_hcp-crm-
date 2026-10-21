@@ -270,7 +270,7 @@ function notifyExpense({ voucherNo = '', amount = 0, category = 'General', paidT
 function getNotifications(limit = 50) {
   try {
     return db.prepare(`
-      SELECT id, type, title, body, metadata, is_read, created_at
+      SELECT id, type, title, body, deep_link, metadata, is_read, created_at
       FROM owner_notifications
       ORDER BY id DESC
       LIMIT ?
@@ -279,6 +279,7 @@ function getNotifications(limit = 50) {
       type: r.type,
       title: r.title,
       body: r.body,
+      deep_link: r.deep_link || (r.metadata ? (JSON.parse(r.metadata).deepLink || JSON.parse(r.metadata).url) : null),
       read: Boolean(r.is_read === 1 || r.read === 1),
       created_at: r.created_at,
       data: r.metadata ? JSON.parse(r.metadata) : {}
@@ -443,6 +444,8 @@ function createApprovalRequest({
   bill_number = '',
   guest_name = '',
   room_number = '',
+  room_count = null,
+  rooms_list = null,
   members = '',
   expected_checkout = '',
   meal_plan = '',
@@ -455,7 +458,14 @@ function createApprovalRequest({
   metadata = null
 }) {
   try {
-    const metaObj = typeof metadata === 'object' && metadata !== null ? { ...metadata, meal_plan, requested_by } : { members, expected_checkout, meal_plan, requested_by };
+    const derivedRoomCount = Number(room_count) || (metadata && metadata.room_count) || (room_number && room_number.includes(',') ? room_number.split(',').length : 1);
+    const roomLabel = String(room_number || '').trim().startsWith('Room')
+      ? room_number
+      : (derivedRoomCount > 1 ? `Rooms ${room_number}` : `Room ${room_number}`);
+
+    const metaObj = typeof metadata === 'object' && metadata !== null
+      ? { ...metadata, room_count: derivedRoomCount, rooms_list, meal_plan, requested_by }
+      : { room_count: derivedRoomCount, rooms_list, members, expected_checkout, meal_plan, requested_by };
     const metaStr = JSON.stringify(metaObj);
 
     const info = db.prepare(`
@@ -481,6 +491,8 @@ function createApprovalRequest({
       supabaseService.syncApprovalRequestToCloud({
         id,
         room_number,
+        room_count: derivedRoomCount,
+        rooms_list,
         guest_name,
         members,
         expected_checkout,
@@ -495,8 +507,9 @@ function createApprovalRequest({
     } catch (_) {}
 
     // Send push notification immediately with high priority & complete details
-    const title = `⚠️ Discount Permission: ${discount_pct ? discount_pct + '%' : ''} (Room ${room_number || ''})`;
+    const title = `⚠️ Discount Permission: ${discount_pct ? discount_pct + '%' : ''} (${roomLabel})`;
     const details = [
+      derivedRoomCount > 1 ? `Total Rooms: ${derivedRoomCount}` : null,
       guest_name ? `Guest: ${guest_name}` : null,
       members ? `Members: ${members}` : null,
       expected_checkout ? `Checkout: ${expected_checkout}` : null,
@@ -517,6 +530,8 @@ function createApprovalRequest({
         approval_id: id,
         type: 'discount_approval',
         room_number,
+        room_count: derivedRoomCount,
+        rooms_list,
         guest_name,
         members,
         expected_checkout,
@@ -541,8 +556,19 @@ function getApprovals() {
       SELECT * FROM owner_approvals ORDER BY id DESC
     `).all();
 
-    const pending = approvals.filter(a => (a.status || 'PENDING').toUpperCase() === 'PENDING');
-    const pastApprovals = approvals.filter(a => (a.status || 'PENDING').toUpperCase() !== 'PENDING');
+    const formattedApprovals = approvals.map(a => {
+      let meta = {};
+      try { meta = JSON.parse(a.metadata || '{}'); } catch {}
+      const rCount = meta.room_count || (a.room_number && a.room_number.includes(',') ? a.room_number.split(',').length : 1);
+      return {
+        ...a,
+        room_count: rCount,
+        rooms_list: meta.rooms_list || null
+      };
+    });
+
+    const pending = formattedApprovals.filter(a => (a.status || 'PENDING').toUpperCase() === 'PENDING');
+    const pastApprovals = formattedApprovals.filter(a => (a.status || 'PENDING').toUpperCase() !== 'PENDING');
 
     // 2. Also gather recent historical discounts from settled bills to provide full audit history
     const history = [...pastApprovals];

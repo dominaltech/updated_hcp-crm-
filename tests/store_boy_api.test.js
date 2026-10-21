@@ -73,7 +73,7 @@ describe('Storeman & Store Bills API Suite', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.notifications)).toBe(true);
-    const storeNotif = res.body.notifications.find(n => n.type === 'store_bill' && n.deep_link.includes(`billId=${createdBillId}`));
+    const storeNotif = res.body.notifications.find(n => n.type === 'store_bill' && n.deep_link?.includes(`billId=${createdBillId}`));
     expect(storeNotif).toBeDefined();
     expect(storeNotif.title).toContain('Test Supermarket');
     expect(storeNotif.deep_link).toBe(`hcpowner://store?billId=${createdBillId}`);

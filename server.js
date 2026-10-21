@@ -1866,8 +1866,8 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
     const extra = Number(booking.extra_bed_charge || 0);
     const discount = Number(booking.discount_amount || 0);
     const tax = Number(booking.early_checkin_gst || Math.round(roomCharge * 0.05));
-    const foodTotal = restaurantOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const foodTotal = restaurantOrders.filter(o => o.is_paid === 0).reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const barTotal = barOrders.filter(o => o.is_paid === 0).reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal + extra - discount + tax);
     const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || Number(booking.total_paid || booking.advance_payment || 0);
     const pending = Math.max(0, grandTotal - paid);
@@ -5249,7 +5249,8 @@ app.get('/api/bar/orders', (req, res) => {
 app.get('/api/restaurant/orders/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const order = db.prepare('SELECT * FROM restaurant_orders WHERE id = ?').get(id);
+    const clean = String(id).replace(/^#/, '').trim();
+    const order = db.prepare('SELECT * FROM restaurant_orders WHERE id = ? OR order_number = ? OR order_number = ?').get(clean, clean, 'SETTLE-' + clean);
     if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
 
     try { order.items = JSON.parse(order.items_json || '[]'); } catch (e) { order.items = []; }
@@ -5257,7 +5258,7 @@ app.get('/api/restaurant/orders/:id', (req, res) => {
     try { order.split_details = JSON.parse(order.split_details_json || '{}'); } catch (e) { order.split_details = {}; }    
     order.grand_total = order.total;
     order.grandTotal = order.total;
-    const logs = db.prepare('SELECT * FROM bill_logs WHERE order_id = ? ORDER BY id ASC').all(id);
+    const logs = db.prepare('SELECT * FROM bill_logs WHERE order_id = ? ORDER BY id ASC').all(order.id);
 
     res.json({ success: true, order, logs, audit_logs: logs });
   } catch (error) {
@@ -6717,13 +6718,14 @@ app.delete('/api/bar/orders/:id', requireAuth, requireRole('manager', 'bar', 'wa
 app.get('/api/bar/orders/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const order = db.prepare('SELECT * FROM bar_orders WHERE id = ?').get(id);
+    const clean = String(id).replace(/^#/, '').trim();
+    const order = db.prepare('SELECT * FROM bar_orders WHERE id = ? OR order_number = ? OR order_number = ?').get(clean, clean, 'SETTLE-' + clean);
     if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
     try { order.items = JSON.parse(order.items_json); } catch (e) { order.items = []; }
     try { order.split_details = JSON.parse(order.split_details_json || '{}'); } catch (e) { order.split_details = {}; }
     order.grand_total = order.total;
     order.grandTotal = order.total;
-    const logs = db.prepare('SELECT * FROM bill_logs WHERE order_id = ? ORDER BY id ASC').all(id);
+    const logs = db.prepare('SELECT * FROM bill_logs WHERE order_id = ? ORDER BY id ASC').all(order.id);
     res.json({ success: true, order, logs, audit_logs: logs });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

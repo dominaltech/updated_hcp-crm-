@@ -81,10 +81,12 @@ async function main() {
     adminProcess.on('error', (err) => console.error('❌ Admin Panel failed to start:', err.message));
   }
 
-  // 3. Start Cloudflare Worldwide Tunnel for remote admin access
+  const isLocalOnly = process.argv.includes('--local-only') || process.argv.includes('--local') || process.env.LOCAL_ONLY === '1';
+
+  // 3. Start Cloudflare Worldwide Tunnel for remote admin access (only if not local-only)
   let tunnelProcess = null;
   const cloudflaredExe = path.join(rootDir, 'tools', 'cloudflared.exe');
-  if (fs.existsSync(cloudflaredExe)) {
+  if (!isLocalOnly && fs.existsSync(cloudflaredExe)) {
     console.log('🌐 [Worldwide Cloud] Starting Cloudflare Tunnel...');
     try {
       const { startTunnel } = require('./tunnel');
@@ -92,6 +94,8 @@ async function main() {
     } catch (e) {
       console.warn('Could not start tunnel automatically:', e.message);
     }
+  } else if (isLocalOnly) {
+    console.log('🔒 [Local Only Mode] Running purely on Local Server & Wi-Fi LAN (Cloud Tunnel disabled).');
   }
 
   // 4. Wait for readiness
@@ -118,11 +122,19 @@ async function main() {
   console.log('  📦 Storeman Panel:       http://localhost:3000/storeman');
   console.log('  📋 Store Admin Panel:    http://localhost:3000/store-admin');
   console.log('  ⬇️ Download Apps & EXE:  http://localhost:3000/download.html');
-  console.log('  ----------------------------------------------------------------');
-  console.log('  🌐 WORLDWIDE REMOTE ACCESS (From Anywhere in the World):');
-  console.log('  👑 Admin / Owner Cloud:  ' + remoteUrl + '/admin/');
-  console.log('  🏨 Front Desk Cloud:     ' + remoteUrl + '/hospitality');
-  console.log('  💻 Admin Software (.EXE): HotelCityPark-Admin.exe');
+  if (!isLocalOnly) {
+    console.log('  ----------------------------------------------------------------');
+    console.log('  🌐 WORLDWIDE REMOTE ACCESS (From Anywhere in the World):');
+    console.log('  👑 Admin / Owner Cloud:  ' + remoteUrl + '/admin/');
+    console.log('  🏨 Front Desk Cloud:     ' + remoteUrl + '/hospitality');
+    console.log('  💻 Admin Software (.EXE): HotelCityPark-Admin.exe');
+  } else {
+    console.log('  ----------------------------------------------------------------');
+    console.log('  🔒 LOCAL NETWORK ACCESS (Local Machine & Hotel Wi-Fi):');
+    console.log('  📱 Admin Panel:          http://localhost:8081');
+    console.log('  🏢 On Local Wi-Fi (LAN): http://10.160.83.195:3000/admin/');
+    console.log('  💻 Admin Software (.EXE): HotelCityPark-Admin.exe');
+  }
   console.log('------------------------------------------------------------------');
   console.log('  Press Ctrl+C to stop all servers when finished.\n');
 

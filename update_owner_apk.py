@@ -55,7 +55,9 @@ targets = [
     r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner.apk",
     r"c:\Aamir Delta\city_backup\release\dist\HotelCityPark-Owner-v2.apk",
     r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner-v2.apk",
-    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner.apk"
+    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner.apk",
+    r"c:\Aamir Delta\city_backup\apks\HotelCityPark-Admin.apk",
+    r"c:\Aamir Delta\city_backup\apks\HotelCityPark-Owner.apk"
 ]
 for t in targets:
     try:

@@ -725,6 +725,7 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
   };
 
   const handlePointerDown = (e, id) => {
+    if (e.pointerType === 'mouse') return; // Mouse clicks and wheel scrolling should not trigger long-press timer
     if (e.button !== undefined && e.button !== 0) return;
     startLongPress(id, e.clientX || 0, e.clientY || 0);
   };
@@ -1427,6 +1428,12 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                   onClick={() => {
                     setFocusedRowIndex(idx);
                     handleRowClick(r.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleRowClick(r.id);
+                    }
                   }}
                   onContextMenu={(e) => {
                     if (isLongPressTriggeredRef.current) e.preventDefault();

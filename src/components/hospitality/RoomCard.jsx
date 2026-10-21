@@ -427,16 +427,11 @@ export default function RoomCard({
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '3px',
-                        padding: '1px 5px',
-                        fontSize: '0.60rem',
-                        fontWeight: 800,
-                        borderRadius: '5px',
-                        background: '#ffffff',
-                        border: isOverdue ? '1.5px solid #ef4444' : '1.5px solid #f59e0b',
-                        color: isOverdue ? '#b91c1c' : '#b45309',
-                        boxShadow: isOverdue ? '0 1px 3px rgba(220, 38, 38, 0.12)' : '0 1px 3px rgba(245, 158, 11, 0.12)',
-                        animation: 'redishBlinkPulse 1.5s infinite ease-in-out',
+                        gap: '4px',
+                        padding: '2px 7px',
+                        fontSize: '0.62rem',
+                        fontWeight: 900,
+                        borderRadius: '6px',
                         margin: 0,
                         lineHeight: 1.15
                       }}

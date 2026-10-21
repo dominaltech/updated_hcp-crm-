@@ -73,7 +73,12 @@ export default function Step6Stay({
   const handleSendDiscountRequest = async () => {
     try {
       const pct = Number(discountPermissionModal.requestedPct) || 0;
-      const roomNum = room?.room_number || room?.number || '212';
+      const allSelectedRooms = [room, ...(additionalRooms || [])].filter(Boolean);
+      const roomNumbersList = allSelectedRooms.map(r => r?.room_number || r?.number).filter(Boolean);
+      const roomCount = allSelectedRooms.length > 0 ? allSelectedRooms.length : 1;
+      const roomNumStr = roomCount > 1
+        ? `${roomNumbersList.join(', ')} (${roomCount} Rooms)`
+        : `${roomNumbersList[0] || room?.room_number || '212'} (1 Room)`;
       const guestName = draft.guestName || draft.guest_name || draft.name || draft.primaryGuestName || draft.primaryGuest?.name || 'Guest';
 
       // Members info
@@ -109,7 +114,9 @@ export default function Step6Stay({
       const res = await api.post('/owner/approvals/request', {
         type: 'discount',
         dept: 'Room',
-        room_number: roomNum,
+        room_number: roomNumStr,
+        room_count: roomCount,
+        rooms_list: roomNumbersList,
         guest_name: guestName,
         members: membersStr,
         expected_checkout: checkoutStr,
@@ -119,8 +126,10 @@ export default function Step6Stay({
         current_total: baseTariff,
         final_amount: finalAmt,
         requested_by: staffName,
-        reason: `${membersStr} • Checkout: ${checkoutStr} • ${mealPlanText} • Raised by: ${staffName} • ${pct}% discount requested for Room ${roomNum}`,
+        reason: `${roomCount > 1 ? `${roomCount} Rooms: ${roomNumbersList.join(', ')}` : `Room ${roomNumStr}`} • ${membersStr} • Checkout: ${checkoutStr} • ${mealPlanText} • Raised by: ${staffName} • ${pct}% discount requested`,
         metadata: {
+          room_count: roomCount,
+          rooms_list: roomNumbersList,
           members: membersStr,
           expected_checkout: checkoutStr,
           meal_plan: mealPlanText,
@@ -1771,6 +1780,7 @@ export default function Step6Stay({
                     </div>
 
                     <span
+                      className={`checkin-capacity-badge checkin-adults-badge ${otaExtraAdults > maxExtraAdultsForRooms ? 'is-exceeded' : ''}`}
                       style={{
                         fontSize: '0.78rem',
                         fontWeight: 800,
@@ -2826,6 +2836,7 @@ export default function Step6Stay({
                     </div>
 
                     <span
+                      className={`checkin-capacity-badge checkin-adults-badge ${currentAdults > currentAllowedAdults ? 'is-exceeded' : ''}`}
                       style={{
                         fontSize: '0.78rem',
                         fontWeight: 800,

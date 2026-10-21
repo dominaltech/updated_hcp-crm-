@@ -93,9 +93,9 @@ export default function FolioSettlementModal({
   );
 
   const pendingRestaurantOrders = (folioData?.restaurantOrders || [])
-    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered' || o.is_paid === 0);
+    .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1);
   const pendingBarOrders = (folioData?.barOrders || [])
-    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered' || o.is_paid === 0);
+    .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1);
   const fnbPendingTotal = pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
                           pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
 

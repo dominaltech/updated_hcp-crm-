@@ -112,10 +112,8 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
       age = calculatedAge;
       if (age < 18) {
         isUnderAge = true;
-        ageBadge = `⚠️ Age: ${age} yrs (Under 18)`;
-      } else {
-        ageBadge = `Age: ${age} yrs`;
       }
+      ageBadge = `Age: ${age} yrs`;
     }
   }
 
@@ -175,7 +173,7 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
     }
   }
 
-  const hasAlert = isUnderAge || (isPassport && isDocExpired);
+  const hasAlert = isPassport && isDocExpired;
 
   return (
     <div className="checkin-step-content" id="checkin-step-4" style={{ width: '100%', maxWidth: '100%', margin: 0 }}>
@@ -474,11 +472,6 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                     • <strong>Passport Expired:</strong> Document validity expired on {draft.expiryDate}. Please verify credentials.
                   </div>
                 )}
-                {isUnderAge && (
-                  <div style={{ fontSize: '0.78rem', fontWeight: 750, color: '#b91c1c' }}>
-                    • <strong>Underage Guest:</strong> Guest is {age} years old (below 18 years). Minor check-in policy applies.
-                  </div>
-                )}
                 <div style={{ fontSize: '0.72rem', color: '#4b5563', marginTop: '2px' }}>
                   ℹ️ <em>Intimation only for front-desk records. You may proceed with check-in.</em>
                 </div>
@@ -587,7 +580,7 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
           <div className="checkin-form-grid-2" style={{ gap: '8px 12px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: isUnderAge ? '#b91c1c' : '#475569', textTransform: 'uppercase', margin: 0 }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
                   Date of Birth (DOB)
                 </label>
                 {ageBadge && (
@@ -595,9 +588,9 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                     style={{
                       fontSize: '0.70rem',
                       fontWeight: 800,
-                      color: isUnderAge ? '#b91c1c' : '#1d4ed8',
-                      background: isUnderAge ? '#fee2e2' : '#eff6ff',
-                      border: `1px solid ${isUnderAge ? '#f87171' : '#bfdbfe'}`,
+                      color: '#1d4ed8',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
                       padding: '1px 6px',
                       borderRadius: '8px'
                     }}
@@ -610,7 +603,7 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                 value={draft.dob || ''}
                 max={new Date().toISOString().split('T')[0]}
                 onChange={(e) => updateDraft({ dob: e.target.value })}
-                error={isUnderAge}
+                error={false}
                 style={{ height: '36px', width: '100%' }}
               />
             </div>

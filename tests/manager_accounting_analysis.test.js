@@ -349,30 +349,29 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(freshManage).toContain('mailto:');
   });
 
-  it('16. Verifies "I GST" column is rendered after "SGST" column when IGST is selected or present', () => {
+  it('16. Verifies tax filter buttons are removed and CGST, SGST & IGST columns are always rendered', () => {
     const freshManage = fs.readFileSync(managePagePath, 'utf-8');
     
-    // Tax filter buttons
-    expect(freshManage).toContain('btn-accounting-tax-all');
-    expect(freshManage).toContain('btn-accounting-tax-cgst-sgst');
-    expect(freshManage).toContain('btn-accounting-tax-igst');
-    expect(freshManage).toContain('isIgstSelected');
+    // Tax filter buttons removed as per user requirement (show all taxes always)
+    expect(freshManage).not.toContain('btn-accounting-tax-all');
+    expect(freshManage).not.toContain('btn-accounting-tax-cgst-sgst');
+    expect(freshManage).not.toContain('btn-accounting-tax-igst');
 
-    // Header order: SGST then I GST
+    // Header order: SGST then IGST
     const sgstHeaderIdx = freshManage.indexOf('>SGST</th>');
-    const igstHeaderIdx = freshManage.indexOf('>I GST</th>');
+    const igstHeaderIdx = freshManage.indexOf('>IGST</th>');
     expect(sgstHeaderIdx).toBeGreaterThan(-1);
     expect(igstHeaderIdx).toBeGreaterThan(-1);
     expect(igstHeaderIdx).toBeGreaterThan(sgstHeaderIdx);
 
-    // Body row order: SGST cell then I GST cell
+    // Body row order: SGST cell then IGST cell
     const sgstBodyIdx = freshManage.indexOf('{formatCurrency(r.sgst || 0)}');
     const igstBodyIdx = freshManage.indexOf('{formatCurrency(r.igst || 0)}');
     expect(sgstBodyIdx).toBeGreaterThan(-1);
     expect(igstBodyIdx).toBeGreaterThan(-1);
     expect(igstBodyIdx).toBeGreaterThan(sgstBodyIdx);
 
-    // Footer total order: SGST total then I GST total
+    // Footer total order: SGST total then IGST total
     const sgstFootIdx = freshManage.indexOf('{formatCurrency(accountingSummary.total_sgst || 0)}');
     const igstFootIdx = freshManage.indexOf('{formatCurrency(accountingSummary.total_igst || 0)}');
     expect(sgstFootIdx).toBeGreaterThan(-1);
@@ -380,7 +379,7 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
     expect(igstFootIdx).toBeGreaterThan(sgstFootIdx);
   });
 
-  it('17. Verifies print, Excel, and CSV builders correctly place "I GST" column after "SGST" column', () => {
+  it('17. Verifies print, Excel, and CSV builders correctly place "IGST" column after "SGST" column', () => {
     const mockIgstRecords = [
       {
         date_of_checkout: '15-10-2026',
@@ -418,12 +417,12 @@ describe('Manager Accounting & Analysis Audit Table, Filters, Print & Excel', ()
 
     const html = buildAccountingAnalysisPrintHTML({
       records: mockIgstRecords,
-      filters: { isIgst: true },
+      filters: {},
       summary: mockSummary
     });
 
     const sgstIdx = html.indexOf('>SGST</th>');
-    const igstIdx = html.indexOf('>I GST</th>');
+    const igstIdx = html.indexOf('>IGST</th>');
     expect(sgstIdx).toBeGreaterThan(-1);
     expect(igstIdx).toBeGreaterThan(-1);
     expect(igstIdx).toBeGreaterThan(sgstIdx);

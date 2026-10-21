@@ -69,11 +69,22 @@ export default function ThemedDatePicker({
     const clean = text.trim();
     let y, m, d;
     const dmyMatch = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    const dmy8Match = clean.match(/^(\d{2})(\d{2})(\d{4})$/);
+    const dmy2YearMatch = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})$/);
     const ymdMatch = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
     if (dmyMatch) {
       d = parseInt(dmyMatch[1], 10);
       m = parseInt(dmyMatch[2], 10) - 1;
       y = parseInt(dmyMatch[3], 10);
+    } else if (dmy8Match) {
+      d = parseInt(dmy8Match[1], 10);
+      m = parseInt(dmy8Match[2], 10) - 1;
+      y = parseInt(dmy8Match[3], 10);
+    } else if (dmy2YearMatch) {
+      d = parseInt(dmy2YearMatch[1], 10);
+      m = parseInt(dmy2YearMatch[2], 10) - 1;
+      const rawY = parseInt(dmy2YearMatch[3], 10);
+      y = rawY < 50 ? 2000 + rawY : 1900 + rawY;
     } else if (ymdMatch) {
       y = parseInt(ymdMatch[1], 10);
       m = parseInt(ymdMatch[2], 10) - 1;
@@ -350,7 +361,7 @@ export default function ThemedDatePicker({
             onChange={(e) => {
               const val = e.target.value;
               setTypedDateText(val);
-              if (val.length === 10) {
+              if (val.length === 10 || (val.length === 8 && /^\d{8}$/.test(val))) {
                 parseAndCommitText(val);
               }
             }}

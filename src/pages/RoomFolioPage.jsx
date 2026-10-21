@@ -1014,10 +1014,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     }
 
     const pendingRestaurant = (folioData.restaurantOrders || [])
-      .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered')
+      .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1)
       .reduce((sum, o) => sum + Number(o.total || 0), 0);
     const pendingBar = (folioData.barOrders || [])
-      .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered')
+      .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1)
       .reduce((sum, o) => sum + Number(o.total || 0), 0);
     const fnbPendingTotal = pendingRestaurant + pendingBar;
 
@@ -1076,8 +1076,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       otaIsPrepaid: isOtaPrepaid,
       rateType: isOtaPayAtHotel ? 'pay_at_hotel' : (isOtaPrepaid ? 'prepaid' : 'standard'),
       rate_type: isOtaPayAtHotel ? 'pay_at_hotel' : (isOtaPrepaid ? 'prepaid' : 'standard'),
-      foodTotal: Number(summary.foodTotal ?? folioData.foodTotal ?? 0),
-      barTotal: Number(summary.barTotal ?? folioData.barTotal ?? 0),
+      foodTotal: pendingRestaurant,
+      barTotal: pendingBar,
       extraExpenses: folioData.extraExpenses || [],
       expensesTotal: Number(folioData.expensesTotal || 0),
       foodPending: fnbPendingTotal,
@@ -1127,11 +1127,12 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   };
 
   const pendingRestaurantOrders = (folioData.restaurantOrders || [])
-    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered');
+    .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1);
   const pendingBarOrders = (folioData.barOrders || [])
-    .filter(o => o.status === 'pending' || o.payment_status === 'pending' || o.status === 'ordered');
-  const globalFnbPending = pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0) +
-                           pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    .filter(o => (Number(o.is_paid) === 0 || o.payment_status === 'pending') && Number(o.is_paid) !== 1);
+  const globalPendingFoodTotal = pendingRestaurantOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const globalPendingBarTotal = pendingBarOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const globalFnbPending = globalPendingFoodTotal + globalPendingBarTotal;
   const globalAdvancePaid = Number(folioData.advancePaid || 0);
   const otaEarlyFeeVal = (folioData.bookingSource === 'OTA' && folioData.isEarlyCheckin)
     ? Number(folioData.earlyCheckinCharge !== undefined && folioData.earlyCheckinCharge !== null ? folioData.earlyCheckinCharge : (folioData.ota_early_checkin_price || 900))
@@ -2209,6 +2210,22 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             .filter((o) => o.is_paid === 1 && (o.payment_mode === 'card' || o.split_card > 0))
             .reduce((sum, o) => sum + (Number(o.split_card) || (o.payment_mode === 'card' ? Number(o.total) : 0) || 0), 0);
 
+          // Pending F&B orders breakdown (ONLY pending orders add to room stay bill)
+          const pendingRestaurantOrders = allRestaurantOrders.filter((o) => o.is_paid === 0);
+          const pendingBarOrders = allBarOrders.filter((o) => o.is_paid === 0);
+          const pendingFnbOrders = allFnbOrders.filter((o) => o.is_paid === 0);
+
+          const pendingFoodGross = pendingRestaurantOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          const pendingFoodTaxable = pendingRestaurantOrders.reduce((sum, o) => sum + (Number(o.subtotal) || Math.round(Number(o.total || 0) / 1.05)), 0);
+          const pendingFoodGst = pendingFoodGross - pendingFoodTaxable;
+
+          const pendingBarGross = pendingBarOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          const pendingBarTaxable = pendingBarOrders.reduce((sum, o) => sum + (Number(o.subtotal) || Math.round(Number(o.total || 0) / 1.05)), 0);
+          const pendingBarGst = pendingBarGross - pendingBarTaxable;
+
+          const pendingFnbTaxable = pendingFoodTaxable + pendingBarTaxable;
+          const pendingFnbGst = pendingFoodGst + pendingBarGst;
+
           // Hospitality calculations
           const isOtaPrepaidStay = isOtaPrepaid;
           const otaEarlyFee = (folioData.bookingSource === 'OTA' && folioData.isEarlyCheckin)
@@ -2262,10 +2279,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.82rem', fontWeight: 800, padding: '5px 12px', background: '#ecfdf5', color: '#047857', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
-                      Food: {formatCurrency(folioData.foodTotal || 0)}
+                      Food: {formatCurrency(folioData.foodTotal ?? pendingFoodGross)}
                     </span>
                     <span style={{ fontSize: '0.82rem', fontWeight: 800, padding: '5px 12px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', border: '1px solid #fde68a' }}>
-                      Bar: {formatCurrency(folioData.barTotal || 0)}
+                      Bar: {formatCurrency(folioData.barTotal ?? pendingBarGross)}
                     </span>
                   </div>
                 </div>
@@ -3104,7 +3121,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', paddingTop: '4px', borderTop: '1px dashed var(--border-color, #e2e8f0)' }}>
-                        <span style={{ color: '#16a34a', fontWeight: 750 }}>Paid at POS:</span>
+                        <span style={{ color: '#16a34a', fontWeight: 750 }}>Paid at POS (Settled):</span>
                         <strong style={{ color: '#16a34a' }}>{formatCurrency(fnbPaidTotal)}</strong>
                       </div>
                       {fnbPaidTotal > 0 && (
@@ -3139,7 +3156,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             : (stayExcessAdvance > 0
                                 ? `⏳ ${formatCurrency(stayExcessAdvance)} absorbed by excess advance. Remaining Room Voucher Due: ${formatCurrency(folioDueAmount)}.`
                                 : `⏳ Added to room balance due (${formatCurrency(stayDueAmount)} Stay + ${formatCurrency(fnbPendingTotal)} F&B = ${formatCurrency(folioDueAmount)} Total Due).`))
-                        : '✓ All F&B orders settled.'}
+                        : (fnbPaidTotal > 0 ? '✓ All F&B orders paid directly at POS (₹0 added to room stay bill).' : '✓ All F&B orders settled.')}
                     </div>
                   </div>
                 </div>
@@ -3441,71 +3458,73 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           </div>
                         </div>
 
-                        {/* F&B Breakdown Block */}
-                        <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
-                          <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>🍽️ Food &amp; Beverage (F&amp;B)</span>
-                            <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
-                              ({allFnbOrders.length} Order{allFnbOrders.length === 1 ? '' : 's'})
-                            </span>
-                          </div>
+                        {/* F&B Breakdown Block (Only pending orders add to room stay bill) */}
+                        {fnbPendingTotal > 0 && (
+                          <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>🍽️ Pending Food &amp; Beverage (F&amp;B)</span>
+                              <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
+                                ({pendingFnbOrders.length} Pending Order{pendingFnbOrders.length === 1 ? '' : 's'})
+                              </span>
+                            </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {/* Food (Restaurant) Base */}
-                            {fnbFoodGross > 0 && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              {/* Food (Restaurant) Base */}
+                              {pendingFoodGross > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                  <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                    Food (Restaurant){pendingRestaurantOrders.length > 0 ? ` (${pendingRestaurantOrders.length} Order${pendingRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                  </span>
+                                  <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                    {formatCurrency(pendingFoodTaxable)}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* Bar (Lounge) Base */}
+                              {pendingBarGross > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                  <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                    Bar (Lounge){pendingBarOrders.length > 0 ? ` (${pendingBarOrders.length} Order${pendingBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                  </span>
+                                  <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                    + {formatCurrency(pendingBarTaxable)}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* F&B Taxable Subtotal */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
                                 <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                  Food (Restaurant){allRestaurantOrders.length > 0 ? ` (${allRestaurantOrders.length} Order${allRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                  Pending F&amp;B Taxable Subtotal:
                                 </span>
-                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                  {formatCurrency(fnbFoodTaxable)}
+                                <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
+                                  {formatCurrency(pendingFnbTaxable)}
                                 </strong>
                               </div>
-                            )}
 
-                            {/* Bar (Lounge) Base */}
-                            {fnbBarGross > 0 && (
+                              {/* F&B GST */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
                                 <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                  Bar (Lounge){allBarOrders.length > 0 ? ` (${allBarOrders.length} Order${allBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                  Pending F&amp;B GST (5%):
                                 </span>
                                 <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                  + {formatCurrency(fnbBarTaxable)}
+                                  + {formatCurrency(pendingFnbGst)}
                                 </strong>
                               </div>
-                            )}
 
-                            {/* F&B Taxable Subtotal */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
-                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                F&amp;B Taxable Subtotal:
-                              </span>
-                              <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
-                                {formatCurrency(fnbTaxable)}
-                              </strong>
-                            </div>
-
-                            {/* F&B GST */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
-                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                F&amp;B GST (5%):
-                              </span>
-                              <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                + {formatCurrency(fnbGst)}
-                              </strong>
-                            </div>
-
-                            {/* Total F&B Orders */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
-                              <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
-                                Total F&amp;B Orders (Incl. GST):
-                              </span>
-                              <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
-                                + {formatCurrency(fnbTotal)}
-                              </strong>
+                              {/* Total F&B Orders */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
+                                <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
+                                  Total Pending F&amp;B (Incl. GST):
+                                </span>
+                                <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
+                                  + {formatCurrency(fnbPendingTotal)}
+                                </strong>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* 3. Extra Expenses, Loss & Damages Breakdown Block */}
                         {allExtraExpenses.length > 0 && (
@@ -3591,14 +3610,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <div>
                               <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
                               <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                Stay ({formatCurrency(nowRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)}){expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
+                                Stay ({formatCurrency(nowRoomCharge)}){fnbPendingTotal > 0 ? ` + F&B (${formatCurrency(fnbPendingTotal)})` : ''}{expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
                               </div>
                             </div>
-                            <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950 }}>{formatCurrency(nowRoomCharge + fnbTotal + expensesTotal)}</strong>
+                            <strong style={{ fontSize: '1.20rem', color: '#0f172a', fontWeight: 950 }}>{formatCurrency(nowRoomCharge + fnbPendingTotal + expensesTotal)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
-                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</span>
+                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal)}</span>
                           </div>
                           <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1.5px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontWeight: 900, fontSize: '0.88rem', color: nowRefund > 0 ? '#166534' : '#b91c1c' }}>
@@ -3771,71 +3790,73 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           </div>
                         </div>
 
-                        {/* F&B Breakdown Block */}
-                        <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
-                          <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>🍽️ Food &amp; Beverage (F&amp;B)</span>
-                            <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
-                              ({allFnbOrders.length} Order{allFnbOrders.length === 1 ? '' : 's'})
-                            </span>
-                          </div>
+                        {/* F&B Breakdown Block (Only pending orders add to room stay bill) */}
+                        {fnbPendingTotal > 0 && (
+                          <div style={{ background: '#fffbeb', padding: '10px 12px', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 850, textTransform: 'uppercase', color: '#92400e', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>🍽️ Pending Food &amp; Beverage (F&amp;B)</span>
+                              <span style={{ fontSize: '0.72rem', color: '#b45309', textTransform: 'none', fontWeight: 600 }}>
+                                ({pendingFnbOrders.length} Pending Order{pendingFnbOrders.length === 1 ? '' : 's'})
+                              </span>
+                            </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {/* Food (Restaurant) Base */}
-                            {fnbFoodGross > 0 && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              {/* Food (Restaurant) Base */}
+                              {pendingFoodGross > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                  <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                    Food (Restaurant){pendingRestaurantOrders.length > 0 ? ` (${pendingRestaurantOrders.length} Order${pendingRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                  </span>
+                                  <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                    {formatCurrency(pendingFoodTaxable)}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* Bar (Lounge) Base */}
+                              {pendingBarGross > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                                  <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                    Bar (Lounge){pendingBarOrders.length > 0 ? ` (${pendingBarOrders.length} Order${pendingBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                  </span>
+                                  <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
+                                    + {formatCurrency(pendingBarTaxable)}
+                                  </strong>
+                                </div>
+                              )}
+
+                              {/* F&B Taxable Subtotal */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
                                 <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                  Food (Restaurant){allRestaurantOrders.length > 0 ? ` (${allRestaurantOrders.length} Order${allRestaurantOrders.length === 1 ? '' : 's'})` : ''}:
+                                  Pending F&amp;B Taxable Subtotal:
                                 </span>
-                                <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                  {formatCurrency(fnbFoodTaxable)}
+                                <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
+                                  {formatCurrency(pendingFnbTaxable)}
                                 </strong>
                               </div>
-                            )}
 
-                            {/* Bar (Lounge) Base */}
-                            {fnbBarGross > 0 && (
+                              {/* F&B GST */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
                                 <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                  Bar (Lounge){allBarOrders.length > 0 ? ` (${allBarOrders.length} Order${allBarOrders.length === 1 ? '' : 's'})` : ''}:
+                                  Pending F&amp;B GST (5%):
                                 </span>
                                 <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                  + {formatCurrency(fnbBarTaxable)}
+                                  + {formatCurrency(pendingFnbGst)}
                                 </strong>
                               </div>
-                            )}
 
-                            {/* F&B Taxable Subtotal */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderTop: '1px dashed #fde68a', borderBottom: '1px dashed #fde68a' }}>
-                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                F&amp;B Taxable Subtotal:
-                              </span>
-                              <strong style={{ fontSize: '1.12rem', color: '#92400e', fontWeight: 900 }}>
-                                {formatCurrency(fnbTaxable)}
-                              </strong>
-                            </div>
-
-                            {/* F&B GST */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
-                              <span style={{ color: '#78350f', fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                F&amp;B GST (5%):
-                              </span>
-                              <strong style={{ fontSize: '1.10rem', color: '#92400e', fontWeight: 900 }}>
-                                + {formatCurrency(fnbGst)}
-                              </strong>
-                            </div>
-
-                            {/* Total F&B Orders */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
-                              <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
-                                Total F&amp;B Orders (Incl. GST):
-                              </span>
-                              <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
-                                + {formatCurrency(fnbTotal)}
-                              </strong>
+                              {/* Total F&B Orders */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1.5px solid #fde68a' }}>
+                                <span style={{ fontWeight: 850, color: '#92400e', fontSize: '0.90rem' }}>
+                                  Total Pending F&amp;B (Incl. GST):
+                                </span>
+                                <strong style={{ fontSize: '1.20rem', color: '#b45309', fontWeight: 950 }}>
+                                  + {formatCurrency(fnbPendingTotal)}
+                                </strong>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
 
                         {/* 3. Extra Expenses, Loss & Damages Breakdown Block */}
                         {allExtraExpenses.length > 0 && (
@@ -3921,14 +3942,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             <div>
                               <span style={{ fontWeight: 850, color: '#334155', fontSize: '0.92rem' }}>Total Stay Bill:</span>
                               <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                Stay ({formatCurrency(decRoomCharge)}) + F&amp;B ({formatCurrency(fnbTotal)}){expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
+                                Stay ({formatCurrency(decRoomCharge)}){fnbPendingTotal > 0 ? ` + F&B (${formatCurrency(fnbPendingTotal)})` : ''}{expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}
                               </div>
                             </div>
-                            <strong style={{ fontSize: '1.20rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(decRoomCharge + fnbTotal + expensesTotal)}</strong>
+                            <strong style={{ fontSize: '1.20rem', fontWeight: 950, color: '#0f172a' }}>{formatCurrency(decRoomCharge + fnbPendingTotal + expensesTotal)}</strong>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ color: '#64748b', fontWeight: 750 }}>Advance Paid:</span>
-                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</span>
+                            <span style={{ color: '#16a34a', fontWeight: 850, fontSize: '1.05rem' }}>{formatCurrency(advancePaidVal)}</span>
                           </div>
                           <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1.5px dashed #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontWeight: 900, fontSize: '0.88rem', color: decRefund > 0 ? '#166534' : '#b91c1c' }}>
@@ -4001,18 +4022,18 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       return (
                         <>
                           <div className="financial-tile">
-                            <span className="tile-label">{fnbTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal'}</span>
+                            <span className="tile-label">{fnbPendingTotal > 0 ? 'Room Stay Bill' : (fnbPaidTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal')}</span>
                             <strong className="tile-val">
-                              {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
+                              {formatCurrency(isOtaPrepaidStay ? stayNetTotal : (fnbPendingTotal > 0 || fnbPaidTotal > 0 ? stayNetTotal : (folioData.grossTariff || stayNetTotal)))}
                             </strong>
-                            <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbTotal > 0 ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}` : 'Stay Tariff'))}</small>
+                            <small>{isOtaPrepaidStay ? 'Hotel Extras' : (isOtaPayAtHotel ? 'OTA Package + Extras' : (fnbPendingTotal > 0 || fnbPaidTotal > 0 ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}` : 'Stay Tariff'))}</small>
                           </div>
                           <div className="financial-tile">
-                            <span className="tile-label">{fnbTotal > 0 ? 'Restaurant & Bar' : 'Discount'}</span>
-                            <strong className="tile-val" style={{ color: fnbTotal > 0 ? '#d97706' : undefined }}>
-                              {fnbTotal > 0 ? `+ ${formatCurrency(fnbTotal)}` : `- ${formatCurrency(tileDiscountAmount)}`}
+                            <span className="tile-label">Restaurant &amp; Bar</span>
+                            <strong className="tile-val" style={{ color: fnbPendingTotal > 0 ? '#d97706' : (fnbPaidTotal > 0 ? '#16a34a' : undefined) }}>
+                              {fnbPendingTotal > 0 ? `+ ${formatCurrency(fnbPendingTotal)}` : '₹0'}
                             </strong>
-                            <small>{fnbTotal > 0 ? `${allFnbOrders.length} Order${allFnbOrders.length === 1 ? '' : 's'}${fnbPendingTotal > 0 ? ` (${formatCurrency(fnbPendingTotal)} Unpaid)` : ' (Paid)'}` : `${folioData.discountPct || 0}%`}</small>
+                            <small>{fnbPendingTotal > 0 ? `${pendingFnbOrders.length} Pending Order${pendingFnbOrders.length === 1 ? '' : 's'}` : (fnbPaidTotal > 0 ? 'All Paid at POS' : 'No Orders')}</small>
                           </div>
                         </>
                       );
@@ -4020,27 +4041,25 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                     <div className="financial-tile">
                       <span className="tile-label">Total Amount</span>
                       <strong className="tile-val">
-                        {formatCurrency(isOtaPrepaidStay ? (hotelExtrasCharge + fnbPendingTotal + expensesTotal) : (stayNetTotal + fnbTotal + expensesTotal))}
+                        {formatCurrency(isOtaPrepaidStay ? (hotelExtrasCharge + fnbPendingTotal + expensesTotal) : (stayNetTotal + fnbPendingTotal + expensesTotal))}
                       </strong>
                       <small>
                         {isOtaPrepaidStay
                           ? (fnbPendingTotal > 0
                               ? `Stay Covered (OTA) + F&B (${formatCurrency(fnbPendingTotal)})`
                               : `Stay Covered (OTA Voucher: ${formatCurrency(entireBookingVal)})`)
-                          : (fnbTotal > 0
-                              ? `Stay (${formatCurrency(stayNetTotal)})${fnbTotal > 0 ? ` + F&B (${formatCurrency(fnbTotal)})` : ''}${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}`
-                              : (isOtaPayAtHotel ? 'Payable at Desk' : 'Incl. 5% GST'))}
+                          : (fnbPendingTotal > 0
+                              ? `Stay (${formatCurrency(stayNetTotal)}) + F&B (${formatCurrency(fnbPendingTotal)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}`
+                              : (isOtaPayAtHotel ? 'Payable at Desk' : `Stay (${formatCurrency(stayNetTotal)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}`))}
                       </small>
                     </div>
                     <div className="financial-tile">
                       <span className="tile-label">Advance Paid</span>
-                      <strong className="tile-val paid">{formatCurrency(advancePaidVal + (fnbPaidTotal > 0 ? fnbPaidTotal : 0))}</strong>
+                      <strong className="tile-val paid">{formatCurrency(advancePaidVal)}</strong>
                       <small>
                         {isOtaPrepaidStay
                           ? `Prepaid via ${folioData.otaPlatform || 'OTA'}${advancePaidVal > 0 ? ` (+ Desk: ${formatCurrency(advancePaidVal)})` : ''}`
-                          : (fnbPaidTotal > 0
-                              ? `Check-in: ${formatCurrency(advancePaidVal)} + POS: ${formatCurrency(fnbPaidTotal)}`
-                              : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in'))}
+                          : (isOtaPayAtHotel ? 'Advance @ Desk' : 'At check-in')}
                       </small>
                     </div>
                     <div
@@ -4253,9 +4272,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           ...folioData,
           balanceDue: folioDueAmount,
           isOtaPrepaid,
-          foodTotal: Number(folioData.foodTotal || 0),
-          barTotal: Number(folioData.barTotal || 0),
-          fnbTotal: Number(folioData.fnbTotal || ((Number(folioData.foodTotal) || 0) + (Number(folioData.barTotal) || 0))),
+          foodTotal: globalPendingFoodTotal,
+          barTotal: globalPendingBarTotal,
+          fnbTotal: globalFnbPending,
           extraExpenses: folioData.extraExpenses || [],
           expensesTotal: Number(folioData.expensesTotal || 0)
         } : folioData}
