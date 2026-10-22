@@ -1210,6 +1210,15 @@ async function syncWaiterDataToCloud(db) {
       `).all();
     } catch (_) {}
 
+    let guestTokens = [];
+    try {
+      guestTokens = db.prepare(`
+        SELECT token, booking_id, guest_name, mobile, room_numbers, checkin_time, approx_checkout_time, status
+        FROM guest_dining_tokens
+        WHERE status = 'active'
+      `).all();
+    } catch (_) {}
+
     const pkg = {
       restaurantMenu: resMenu || [],
       restaurantCategories: resCats || [],
@@ -1219,6 +1228,7 @@ async function syncWaiterDataToCloud(db) {
       barTables: barTables || [],
       staff: staff || [],
       occupiedRooms: occRooms || [],
+      guestTokens: guestTokens || [],
       syncedAt: new Date().toISOString()
     };
 
@@ -1274,6 +1284,82 @@ async function pullCloudWaiterOrdersToLocal(db) {
         if (items.length === 0) {
           // Mark invalid order processed
           await withTimeout(supabase.from('room_charges_inbox').update({ status: 'invalid' }).eq('id', row.id));
+          continue;
+        }
+
+        const isGuestMobile = orderData.source === 'guest_inroom_mobile' || 
+                              orderData.waiter_name === 'Guest In-Room Mobile' || 
+                              row.department === 'guest_inroom_order';
+
+        if (isGuestMobile) {
+          const cleanRoomNum = String(orderData.room_number || row.room_number || 'Room')
+            .replace(/^RS-/i, '')
+            .replace(/^Room\s*/i, '')
+            .replace(/•.*$/, '')
+            .trim();
+
+          const existingGuestOrder = db.prepare('SELECT id FROM guest_inroom_orders WHERE cloud_inbox_id = ? OR order_number = ?').get(String(row.id), row.bill_no);
+          if (!existingGuestOrder) {
+            let batchNumber = 1;
+            try {
+              const countRow = db.prepare('SELECT COUNT(*) as count FROM guest_inroom_orders WHERE room_numbers = ? OR room_numbers LIKE ?').get(cleanRoomNum, `%${cleanRoomNum}%`);
+              batchNumber = (countRow?.count || 0) + 1;
+            } catch (_) {}
+
+            const orderNotes = orderData.notes || '';
+            const custName = orderData.customer_name || row.settled_by || `Room ${cleanRoomNum}`;
+            const custPhone = orderData.customer_phone || '';
+            const grandTotal = Number(row.grand_total || 0);
+
+            db.prepare(`
+              INSERT INTO guest_inroom_orders (
+                order_number, token, booking_id, room_numbers, guest_name, guest_phone,
+                batch_number, items_json, notes, subtotal, tax, grand_total, status, kot_printed, cloud_inbox_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_kitchen', 0, ?)
+            `).run(
+              row.bill_no || `RS-${cleanRoomNum}-B${batchNumber}-${Date.now().toString().slice(-4)}`,
+              orderData.token || '',
+              orderData.bookingId || 0,
+              cleanRoomNum,
+              custName,
+              custPhone,
+              batchNumber,
+              JSON.stringify(items),
+              orderNotes,
+              Number(row.subtotal || 0),
+              Number(row.gst || 0),
+              grandTotal,
+              String(row.id)
+            );
+            console.log(`[Supabase] 🛎️ In-Room Guest Food Order received for Room ${cleanRoomNum} (Batch #${batchNumber}) -> Waiting for Kitchen Acceptance & KOT Print!`);
+
+            // Dispatch instant push notification to Admin APK
+            try {
+              const notificationService = require('./notificationService');
+              const itemSummaryText = items.map(i => `${i.quantity || 1}x ${i.name}`).join(', ');
+              notificationService.sendPushNotification({
+                title: `🛎️ In-Room Food Order - Room ${cleanRoomNum}`,
+                body: `${custName}: ${itemSummaryText} (₹${grandTotal}). Waiting for Kitchen POS confirmation.`,
+                data: {
+                  type: 'guest_room_order',
+                  roomNumber: cleanRoomNum,
+                  orderToken: row.bill_no,
+                  grandTotal
+                },
+                type: 'food_order'
+              }).catch(e => console.warn('[Supabase] Guest order push notification warning:', e.message));
+            } catch (pErr) {
+              console.warn('[Supabase] Push dispatch notice:', pErr.message);
+            }
+          }
+
+          // Mark cloud order as 'received_at_crm' so it is not re-imported in loop
+          await withTimeout(
+            supabase
+              .from('room_charges_inbox')
+              .update({ status: 'received_at_crm' })
+              .eq('id', row.id)
+          );
           continue;
         }
 
@@ -1467,7 +1553,73 @@ async function pullCloudWaiterOrdersToLocal(db) {
   }
 }
 
+let realtimeChannel = null;
+
+function setupRealtimeListeners(db) {
+  if (!supabase) return;
+  try {
+    if (realtimeChannel) {
+      try { supabase.removeChannel(realtimeChannel); } catch (_) {}
+      realtimeChannel = null;
+    }
+
+    realtimeChannel = supabase
+      .channel('hcp-crm-cloud-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_charges_inbox' },
+        (payload) => {
+          const row = payload.new || {};
+          const dept = row.department;
+          console.log(`[Supabase Realtime] Event on room_charges_inbox (${dept || 'unknown'}): ${payload.eventType}`);
+
+          if (dept === 'waiter_kot_order') {
+            pullCloudWaiterOrdersToLocal(db).catch(() => {});
+          } else if (dept === 'discount_approval') {
+            pollCloudApprovals(db).catch(() => {});
+          } else if (dept !== 'waiter_cloud_sync_pkg' && dept !== 'fb_live_state') {
+            pullCloudRoomChargesToLocal(db).catch(() => {});
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'store_bills' },
+        (payload) => {
+          console.log('[Supabase Realtime] Event on store_bills:', payload.eventType);
+          pullStoreBillsFromCloud(db).catch(() => {});
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'store_vendors' },
+        (payload) => {
+          console.log('[Supabase Realtime] Event on store_vendors:', payload.eventType);
+          pullStoreVendorsFromCloud(db).catch(() => {});
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('⚡ [Supabase Realtime] Connected! Listening for Admin & Waiter live updates (zero polling overhead).');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          console.warn(`[Supabase Realtime] Channel status: ${status}. Fallback heartbeat active.`);
+        }
+      });
+  } catch (err) {
+    console.warn('[Supabase Realtime] Setup notice:', err.message);
+  }
+}
+
+function stopRealtimeListeners() {
+  if (realtimeChannel && supabase) {
+    try { supabase.removeChannel(realtimeChannel); } catch (_) {}
+    realtimeChannel = null;
+  }
+}
+
 module.exports = {
+  setupRealtimeListeners,
+  stopRealtimeListeners,
   pushStoreVendor,
   pullStoreVendorsFromCloud,
   pushStoreBill,

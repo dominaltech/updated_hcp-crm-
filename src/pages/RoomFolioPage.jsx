@@ -236,6 +236,20 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [expenseNotes, setExpenseNotes] = useState('');
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
 
+  // In-Room Dining & Guest Ordering Link State
+  const [diningLinkData, setDiningLinkData] = useState(() => folioData?.diningLink || null);
+  const [isDiningModalOpen, setIsDiningModalOpen] = useState(false);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [isDeletingLink, setIsDeletingLink] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [customMobile, setCustomMobile] = useState('');
+
+  useEffect(() => {
+    if (folioData?.diningLink) {
+      setDiningLinkData(folioData.diningLink);
+    }
+  }, [folioData?.diningLink]);
+
   useEffect(() => {
     if (selectedFnbOrder) {
       setFnbPayMode('cash');
@@ -255,7 +269,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     isAddPaymentOpen ||
     isExtendPaymentModalOpen ||
     isExtensionReceiptsOpen ||
-    isAddExpenseModalOpen
+    isAddExpenseModalOpen ||
+    isDiningModalOpen
   );
   useEffect(() => {
     if (isAnySubModalOpen) {
@@ -434,9 +449,20 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         extensionLogs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : [])),
         extension_logs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : [])),
         stayCalcNow: summary.stayCalcNow || null,
-        stayCalcDeclared: summary.stayCalcDeclared || null
+        stayCalcDeclared: summary.stayCalcDeclared || null,
+        diningLink: raw.diningLink || res?.diningLink || null
       };
       setFolioData(normalized);
+      if (normalized.diningLink) {
+        setDiningLinkData(normalized.diningLink);
+      } else {
+        const bId = normalized.bookingId || normalized.id;
+        if (bId) {
+          api.getGuestDiningLink(bId).then(dl => {
+            if (dl && dl.success) setDiningLinkData(dl);
+          }).catch(() => null);
+        }
+      }
       folioMemoryCache.set(roomId, normalized);
       if (normalized.approxCheckoutTime) {
         const d = new Date(normalized.approxCheckoutTime);
@@ -1351,6 +1377,101 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     });
   };
 
+  // ==========================================
+  // IN-ROOM DINING LINK & RESHARE HANDLERS
+  // ==========================================
+  const handleGenerateOrReshareLink = async (overrideMobile = null) => {
+    try {
+      const bId = folioData?.bookingId || folioData?.booking_id || folioData?.id || initialRoom?.current_booking_id;
+      if (!bId) {
+        showToast('No active booking found for this room', 'amber');
+        return;
+      }
+      setIsGeneratingLink(true);
+      const res = await api.generateGuestDiningLink(bId);
+      if (res && (res.success || res.token)) {
+        const updatedLink = {
+          hasActiveLink: true,
+          token: res.token,
+          url: res.url,
+          whatsappUrl: res.whatsappUrl,
+          whatsappText: res.whatsappText,
+          guestName: res.guestName,
+          mobile: res.mobile,
+          roomNumbers: res.roomNumbers,
+          createdAt: new Date().toISOString(),
+          status: 'active'
+        };
+        setDiningLinkData(updatedLink);
+        setFolioData(prev => prev ? { ...prev, diningLink: updatedLink } : prev);
+        if (folioMemoryCache.has(roomId)) {
+          const cached = folioMemoryCache.get(roomId);
+          if (cached) folioMemoryCache.set(roomId, { ...cached, diningLink: updatedLink });
+        }
+        showToast('✓ In-Room Dining Link generated & activated!', 'green');
+
+        let targetWa = res.whatsappUrl;
+        if (overrideMobile) {
+          const clean = String(overrideMobile).replace(/[^0-9]/g, '');
+          const phone = clean.length === 10 ? '91' + clean : clean;
+          targetWa = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(res.whatsappText)}`;
+        }
+
+        if (targetWa) {
+          window.open(targetWa, '_blank');
+        }
+      } else {
+        showToast('Error: ' + (res?.error || 'Failed to generate link'), 'red');
+      }
+    } catch (err) {
+      showToast('Error generating food link: ' + err.message, 'red');
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
+  const handleDeleteDiningLink = async () => {
+    const bId = folioData?.bookingId || folioData?.booking_id || folioData?.id || initialRoom?.current_booking_id;
+    if (!bId) return;
+
+    const performDelete = async () => {
+      try {
+        setIsDeletingLink(true);
+        const res = await api.deleteGuestDiningLink(bId);
+        if (res && res.success !== false) {
+          const empty = { hasActiveLink: false };
+          setDiningLinkData(empty);
+          setFolioData(prev => prev ? { ...prev, diningLink: empty } : prev);
+          if (folioMemoryCache.has(roomId)) {
+            const cached = folioMemoryCache.get(roomId);
+            if (cached) folioMemoryCache.set(roomId, { ...cached, diningLink: empty });
+          }
+          showToast('🗑️ Dining link deleted/revoked. You can reshare anytime!', 'info');
+        } else {
+          showToast(res?.error || 'Failed to delete dining link', 'red');
+        }
+      } catch (err) {
+        showToast('Error deleting link: ' + err.message, 'red');
+      } finally {
+        setIsDeletingLink(false);
+      }
+    };
+
+    if (showConfirm) {
+      showConfirm({
+        title: 'Delete & Revoke Food Order Link?',
+        message: 'Are you sure you want to delete and revoke this guest food ordering link? The guest will no longer be able to submit orders from this link until you reshare a fresh one.',
+        confirmLabel: 'Yes, Delete Link',
+        confirmColor: '#dc2626',
+        onConfirm: performDelete
+      });
+    } else {
+      if (window.confirm('Are you sure you want to delete and revoke this guest food ordering link?')) {
+        performDelete();
+      }
+    }
+  };
+
   // Expand split payments so each payment mode has its own individual receipt record & receipt print button
   const displayAdvancePayments = useMemo(() => {
     const list = [];
@@ -1620,29 +1741,16 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           <button
             type="button"
             className="filter-chip btn-folio-action-chip"
-            onClick={async () => {
-              try {
-                const bId = folioData?.bookingId || folioData?.booking_id || folioData?.id || initialRoom?.current_booking_id;
-                if (!bId) {
-                  showToast('No active booking found for this room', 'amber');
-                  return;
-                }
-                const res = await api.generateGuestDiningLink(bId);
-                if (res?.whatsappUrl) {
-                  window.open(res.whatsappUrl, '_blank');
-                  showToast('📱 WhatsApp Food Order link opened!', 'green');
-                } else if (res?.url) {
-                  await navigator.clipboard.writeText(res.url);
-                  showToast('✓ Food Order link copied to clipboard!', 'green');
-                }
-              } catch (err) {
-                showToast('Error generating food link: ' + err.message, 'red');
-              }
+            onClick={() => setIsDiningModalOpen(true)}
+            style={{ 
+              backgroundColor: diningLinkData?.hasActiveLink ? '#dcfce7' : '#fef3c7', 
+              color: diningLinkData?.hasActiveLink ? '#15803d' : '#92400e', 
+              border: diningLinkData?.hasActiveLink ? '1px solid #86efac' : '1px solid #fcd34d',
+              fontWeight: 700
             }}
-            style={{ backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
-            title="Share In-Room Dining Menu & Food Ordering link via WhatsApp or Copy"
+            title="View, Share, Copy or Revoke In-Room Dining Menu & Food Ordering link"
           >
-            🛎️ Food Order Link
+            🛎️ Food Order Link {diningLinkData?.hasActiveLink ? '● Live' : ''}
           </button>
 
           <button
@@ -1735,6 +1843,178 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           >
             💳 Checkout
           </button>
+        </div>
+      </div>
+
+      {/* In-Room Food Ordering Link & Reshare Bar */}
+      <div className="dining-link-bar" style={{
+        margin: '0 0 16px 0',
+        padding: '12px 18px',
+        background: diningLinkData?.hasActiveLink 
+          ? 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)' 
+          : 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+        border: diningLinkData?.hasActiveLink ? '1px solid #86efac' : '1px solid #fcd34d',
+        borderRadius: '12px',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 340px' }}>
+          <span style={{ fontSize: '1.6rem' }}>🛎️</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '0.95rem', color: diningLinkData?.hasActiveLink ? '#166534' : '#92400e' }}>
+                In-Room Dining Link:
+              </strong>
+              {diningLinkData?.hasActiveLink ? (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  padding: '2px 9px',
+                  borderRadius: '20px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700
+                }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }}></span>
+                  Active &amp; Ready for Ordering
+                </span>
+              ) : (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: '#fee2e2',
+                  color: '#b91c1c',
+                  padding: '2px 9px',
+                  borderRadius: '20px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700
+                }}>
+                  No Active Link (Deleted / Revoked)
+                </span>
+              )}
+            </div>
+            
+            {diningLinkData?.hasActiveLink ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={diningLinkData.url}
+                  onClick={(e) => {
+                    e.target.select();
+                    navigator.clipboard.writeText(diningLinkData.url);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                    showToast('✓ Food Order link copied to clipboard!', 'green');
+                  }}
+                  style={{
+                    fontSize: '0.82rem',
+                    padding: '5px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#1e293b',
+                    width: '100%',
+                    maxWidth: '480px',
+                    fontFamily: 'monospace',
+                    cursor: 'pointer'
+                  }}
+                  title="Click to copy full URL"
+                />
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.82rem', color: '#78350f', marginTop: '3px' }}>
+                No active food ordering link for this room. Click below to generate and reshare a fresh link with guest.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {diningLinkData?.hasActiveLink ? (
+            <>
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(diningLinkData.url);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                    showToast('✓ Food Order link copied to clipboard!', 'green');
+                  } catch (e) {
+                    showToast('Failed to copy: ' + e.message, 'amber');
+                  }
+                }}
+                style={{ background: '#ffffff', color: '#166534', border: '1px solid #86efac', fontWeight: 700, padding: '6px 12px' }}
+                title="Copy ordering URL to clipboard"
+              >
+                {linkCopied ? '✓ Copied!' : '📋 Copy Link'}
+              </button>
+
+              {diningLinkData.whatsappUrl && (
+                <button
+                  type="button"
+                  className="filter-chip"
+                  onClick={() => window.open(diningLinkData.whatsappUrl, '_blank')}
+                  style={{ background: '#25d366', color: '#ffffff', border: 'none', fontWeight: 700, padding: '6px 12px' }}
+                  title="Send or reshare via WhatsApp"
+                >
+                  📱 Reshare WhatsApp
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => window.open(diningLinkData.url, '_blank')}
+                style={{ background: '#ffffff', color: '#0369a1', border: '1px solid #7dd3fc', fontWeight: 600, padding: '6px 12px' }}
+                title="Preview guest ordering interface in new tab"
+              >
+                🔗 Open
+              </button>
+
+              <button
+                type="button"
+                className="filter-chip"
+                disabled={isGeneratingLink}
+                onClick={() => handleGenerateOrReshareLink()}
+                style={{ background: '#e0e7ff', color: '#3730a3', border: '1px solid #c7d2fe', fontWeight: 700, padding: '6px 12px' }}
+                title="Generate a brand new token and expire previous"
+              >
+                {isGeneratingLink ? '⏳ Generating...' : '🔄 Reshare / Regenerate'}
+              </button>
+
+              <button
+                type="button"
+                className="filter-chip"
+                disabled={isDeletingLink}
+                onClick={handleDeleteDiningLink}
+                style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', fontWeight: 700, padding: '6px 12px' }}
+                title="Delete and revoke this link"
+              >
+                {isDeletingLink ? '⏳ Deleting...' : '🗑️ Delete Link'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="filter-chip"
+              disabled={isGeneratingLink}
+              onClick={() => handleGenerateOrReshareLink()}
+              style={{ background: '#059669', color: '#ffffff', border: 'none', fontWeight: 700, padding: '8px 18px', fontSize: '0.9rem', cursor: 'pointer' }}
+              title="Generate and share in-room dining link"
+            >
+              {isGeneratingLink ? '⏳ Generating...' : '✨ Generate & Share In-Room Dining Link'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -6263,6 +6543,362 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           </div>
         );
       })()}
+
+      {/* In-Room Dining Share & Manage Modal */}
+      {isDiningModalOpen && (
+        <div 
+          className="modal-overlay" 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '16px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isGeneratingLink && !isDeletingLink) {
+              setIsDiningModalOpen(false);
+            }
+          }}
+        >
+          <div 
+            className="modal-content"
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '560px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '90vh'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '18px 24px',
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid #334155'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🛎️</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc' }}>
+                    In-Room Food Ordering Link
+                  </h3>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Room #{folioData?.roomNumber || initialRoom?.room_number} • {folioData?.guestName || 'Guest'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiningModalOpen(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '1.25rem',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {diningLinkData?.hasActiveLink ? (
+                <>
+                  {/* Status Banner */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: '#f0fdf4',
+                    border: '1px solid #86efac'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }}></span>
+                      <strong style={{ color: '#15803d', fontSize: '0.88rem' }}>Active Link Live</strong>
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#166534', fontFamily: 'monospace' }}>
+                      Token: {diningLinkData.token}
+                    </span>
+                  </div>
+
+                  {/* Shareable URL Box */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                      Shared Food Order URL:
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="text"
+                        readOnly
+                        value={diningLinkData.url}
+                        onClick={(e) => {
+                          e.target.select();
+                          navigator.clipboard.writeText(diningLinkData.url);
+                          setLinkCopied(true);
+                          setTimeout(() => setLinkCopied(false), 2000);
+                          showToast('✓ Food Order link copied to clipboard!', 'green');
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#f8fafc',
+                          color: '#0f172a',
+                          fontSize: '0.88rem',
+                          fontFamily: 'monospace'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(diningLinkData.url);
+                            setLinkCopied(true);
+                            setTimeout(() => setLinkCopied(false), 2000);
+                            showToast('✓ Food Order link copied to clipboard!', 'green');
+                          } catch (e) {
+                            showToast('Failed to copy', 'amber');
+                          }
+                        }}
+                        style={{
+                          padding: '0 16px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#1e293b',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {linkCopied ? '✓ Copied' : '📋 Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Custom Mobile Row */}
+                  <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                      Send / Reshare to WhatsApp Number:
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="tel"
+                        placeholder="10-digit mobile number"
+                        value={customMobile !== '' ? customMobile : (diningLinkData.mobile || folioData?.mobile || '')}
+                        onChange={(e) => setCustomMobile(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.9rem'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetPhone = (customMobile || diningLinkData.mobile || folioData?.mobile || '').replace(/[^0-9]/g, '');
+                          const phoneWithCountry = targetPhone.length === 10 ? '91' + targetPhone : targetPhone;
+                          if (!phoneWithCountry) {
+                            showToast('Please enter a valid mobile number', 'amber');
+                            return;
+                          }
+                          const waUrl = `https://api.whatsapp.com/send?phone=${phoneWithCountry}&text=${encodeURIComponent(diningLinkData.whatsappText)}`;
+                          window.open(waUrl, '_blank');
+                        }}
+                        style={{
+                          background: '#25d366',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0 16px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <span>📱</span> Reshare WhatsApp
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Text Preview */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                      Message Preview:
+                    </label>
+                    <div style={{
+                      padding: '12px',
+                      background: '#f8fafc',
+                      border: '1px dashed #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.82rem',
+                      color: '#334155',
+                      whiteSpace: 'pre-line',
+                      lineHeight: '1.4'
+                    }}>
+                      {diningLinkData.whatsappText}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{
+                  padding: '28px 20px',
+                  textAlign: 'center',
+                  background: '#fffbeb',
+                  borderRadius: '12px',
+                  border: '1px dashed #fcd34d'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🍽️</div>
+                  <h4 style={{ margin: '0 0 6px', color: '#92400e', fontSize: '1.05rem', fontWeight: 800 }}>
+                    No Active Food Ordering Link
+                  </h4>
+                  <p style={{ margin: '0 0 18px', color: '#78350f', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                    The link was deleted/revoked or not generated yet. Generate a new link below to share the in-room food order menu with this guest.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isGeneratingLink}
+                    onClick={() => handleGenerateOrReshareLink(customMobile || null)}
+                    style={{
+                      background: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 22px',
+                      fontWeight: 800,
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 10px rgba(5, 150, 105, 0.25)'
+                    }}
+                  >
+                    {isGeneratingLink ? '⏳ Generating Link...' : '✨ Generate & Share In-Room Dining Link'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div style={{
+              padding: '14px 24px',
+              background: '#f8fafc',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              flexWrap: 'wrap'
+            }}>
+              <div>
+                {diningLinkData?.hasActiveLink && (
+                  <button
+                    type="button"
+                    disabled={isDeletingLink}
+                    onClick={handleDeleteDiningLink}
+                    style={{
+                      background: '#fee2e2',
+                      color: '#991b1b',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '8px',
+                      padding: '8px 14px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    {isDeletingLink ? '⏳ Deleting...' : '🗑️ Delete / Revoke Link'}
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {diningLinkData?.hasActiveLink && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => window.open(diningLinkData.url, '_blank')}
+                      style={{
+                        background: '#ffffff',
+                        color: '#0369a1',
+                        border: '1px solid #7dd3fc',
+                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      🔗 Open Preview
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGeneratingLink}
+                      onClick={() => handleGenerateOrReshareLink(customMobile || null)}
+                      style={{
+                        background: '#4f46e5',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      {isGeneratingLink ? '⏳ Regenerating...' : '🔄 Reshare / Regenerate'}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsDiningModalOpen(false)}
+                  style={{
+                    background: '#e2e8f0',
+                    color: '#334155',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 14px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DocumentActionModal
         isOpen={docActionModal.isOpen}

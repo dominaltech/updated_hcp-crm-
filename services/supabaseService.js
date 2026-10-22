@@ -28,11 +28,18 @@ try {
 }
 
 // Resilient Offline Protection & Circuit Breaker
-const REQUEST_TIMEOUT_MS = 6000; // 1 second max for any cloud call
-const OFFLINE_COOLDOWN_MS = 15000; // 15 seconds cooldown before retrying cloud if network dropped
+const REQUEST_TIMEOUT_MS = 8000; // 8 seconds max for any cloud call
+const OFFLINE_COOLDOWN_MS = 30000; // 30 seconds cooldown before retrying cloud if network dropped
+const FAILURE_THRESHOLD = 2; // Require 2 consecutive failures before engaging offline mode
 
+let consecutiveFailures = 0;
 let isOffline = false;
 let lastOfflineTime = 0;
+let lastFullOfflineSyncTime = 0;
+let isSyncingOffline = false;
+let offlineSyncTimer = null;
+
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
   let timeoutId;
@@ -69,17 +76,33 @@ function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
 let activeLocalDbInstance = null;
 
 function markNetworkFailure(err) {
-  isOffline = true;
-  lastOfflineTime = Date.now();
-  console.warn(`[Supabase] Offline mode engaged: ${err?.message || err}`);
+  consecutiveFailures++;
+  if (consecutiveFailures >= FAILURE_THRESHOLD) {
+    if (!isOffline) {
+      isOffline = true;
+      lastOfflineTime = Date.now();
+      console.warn(`[Supabase] ⚠️ Offline mode engaged (${consecutiveFailures} consecutive errors): ${err?.message || err}`);
+    }
+  }
 }
 
 function markNetworkSuccess() {
   const wasOffline = isOffline;
+  consecutiveFailures = 0;
   isOffline = false;
+
+  // Debounced reconnect: do NOT blast 50 queries immediately upon first recovery!
+  // Wait 15 seconds for network to stabilize, and ensure at least 10 minutes elapsed since last heavy sync.
   if (wasOffline && activeLocalDbInstance) {
-    console.log('[Supabase] 🌐 Reconnected to internet! Syncing all offline CRM updates to cloud...');
-    syncAllOfflineDataToCloud(activeLocalDbInstance).catch(() => {});
+    if (offlineSyncTimer) clearTimeout(offlineSyncTimer);
+    offlineSyncTimer = setTimeout(() => {
+      offlineSyncTimer = null;
+      const now = Date.now();
+      if (now - lastFullOfflineSyncTime >= 10 * 60 * 1000) {
+        console.log('[Supabase] 🌐 Network stable! Initiating paced offline sync to cloud...');
+        syncAllOfflineDataToCloud(activeLocalDbInstance).catch(() => {});
+      }
+    }, 15000);
   }
 }
 
@@ -167,15 +190,32 @@ async function syncActiveOccupancy(data) {
           created_at: new Date().toISOString()
         };
 
-        // Purge old room_folio for this room if any, then insert fresh
-        await withTimeout(
-          supabase.from('room_charges_inbox').delete().eq('room_number', String(data.room_number)).eq('department', 'room_folio'),
+        // Option A (Pure Code): Update existing room_folio in-place by ID if it exists, otherwise insert.
+        // Completely eliminates DELETE and row/table lock contention (no more 500 errors).
+        const { data: existingFolios } = await withTimeout(
+          supabase
+            .from('room_charges_inbox')
+            .select('id')
+            .eq('room_number', String(data.room_number))
+            .eq('department', 'room_folio')
+            .limit(1),
           REQUEST_TIMEOUT_MS
         );
-        await withTimeout(
-          supabase.from('room_charges_inbox').insert(folioPayload),
-          REQUEST_TIMEOUT_MS
-        );
+
+        if (Array.isArray(existingFolios) && existingFolios.length > 0) {
+          await withTimeout(
+            supabase
+              .from('room_charges_inbox')
+              .update(folioPayload)
+              .eq('id', existingFolios[0].id),
+            REQUEST_TIMEOUT_MS
+          );
+        } else {
+          await withTimeout(
+            supabase.from('room_charges_inbox').insert(folioPayload),
+            REQUEST_TIMEOUT_MS
+          );
+        }
       } catch (folioErr) {
         console.warn(`[Supabase] syncActiveOccupancy folio notice for Room ${data.room_number}:`, folioErr.message);
       }
@@ -711,43 +751,8 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         }
       });
 
-      // Push individual restaurant orders to room_charges_inbox
-      for (const ro of restOrders) {
-        try {
-          await pushRoomCharge({
-            room_number: b.room_number,
-            room_id: b.room_id,
-            order_id: ro.id,
-            department: 'restaurant',
-            bill_no: ro.order_number,
-            subtotal: ro.subtotal,
-            gst: ro.tax,
-            grand_total: ro.total,
-            items_summary: ro.items_json ? (typeof ro.items_json === 'string' ? ro.items_json : JSON.stringify(ro.items_json)) : '',
-            settled_by: ro.waiter_name || ro.cashier_name || 'Front Desk',
-            status: ro.is_paid === 1 ? 'settled' : 'pending'
-          });
-        } catch (_) {}
-      }
-
-      // Push individual bar orders to room_charges_inbox
-      for (const bo of barOrders) {
-        try {
-          await pushRoomCharge({
-            room_number: b.room_number,
-            room_id: b.room_id,
-            order_id: bo.id,
-            department: 'bar',
-            bill_no: bo.order_number,
-            subtotal: bo.subtotal,
-            gst: bo.tax,
-            grand_total: bo.total,
-            items_summary: bo.items_json ? (typeof bo.items_json === 'string' ? bo.items_json : JSON.stringify(bo.items_json)) : '',
-            settled_by: bo.cashier_name || 'Front Desk',
-            status: bo.is_paid === 1 ? 'settled' : 'pending'
-          });
-        } catch (_) {}
-      }
+      // Gentle pause between rooms to ensure Supabase connection pool is never overwhelmed
+      await sleep(150);
     }
     console.log(`[Supabase] Synced ${activeBookings.length} active room(s) with full billing folios to cloud directory.`);
   } catch (err) {
@@ -825,19 +830,45 @@ async function syncLiveFBStateToCloud(localDb) {
 /**
  * Universal offline sync: whenever CRM is updated while offline,
  * pushes all active occupancies, folios, daily analytics, store data, and F&B live state when connected.
+ * Paced gently with concurrency lock and cooldown to prevent connection exhaustion.
  */
 async function syncAllOfflineDataToCloud(localDb) {
   if (localDb) activeLocalDbInstance = localDb;
-  if (!canAttemptCloud() || !localDb) return;
+  if (!canAttemptCloud() || !localDb || isSyncingOffline) return;
+
+  const now = Date.now();
+  if (now - lastFullOfflineSyncTime < 5 * 60 * 1000) {
+    // Only allow full sync once every 5 minutes max
+    return;
+  }
+
+  isSyncingOffline = true;
+  lastFullOfflineSyncTime = now;
+
   try {
+    console.log('[Supabase Sync] 🔄 Starting gentle offline sync...');
     await syncAllActiveRoomsFromLocal(localDb);
+    await sleep(350);
+    if (!canAttemptCloud()) return;
+
     await syncDailyAnalyticsToCloud(localDb);
+    await sleep(350);
+    if (!canAttemptCloud()) return;
+
     await syncLiveFBStateToCloud(localDb);
+    await sleep(350);
+    if (!canAttemptCloud()) return;
+
     await pullStoreBillsFromCloud(localDb);
-    await pullStoreVendorsFromCloud(localDb);
+    await sleep(350);
+    if (!canAttemptCloud()) return;
+
     await pullCloudRoomChargesToLocal(localDb);
+    console.log('[Supabase Sync] ✅ Gentle offline sync completed successfully.');
   } catch (err) {
     console.warn('[Offline Sync] Sync caught error:', err.message);
+  } finally {
+    isSyncingOffline = false;
   }
 }
 
@@ -975,9 +1006,6 @@ async function pullStoreVendorsFromCloud(db) {
 async function pullStoreBillsFromCloud(db) {
   if (!canAttemptCloud() || !supabase || !db) return false;
   try {
-    // Ensure vendors are synchronized first
-    await pullStoreVendorsFromCloud(db).catch(() => {});
-
     const { data: cloudBills, error: bErr } = await withTimeout(supabase.from('store_bills').select('*'));
     if (bErr || !cloudBills) return false;
 
@@ -1210,6 +1238,15 @@ async function syncWaiterDataToCloud(db) {
       `).all();
     } catch (_) {}
 
+    let guestTokens = [];
+    try {
+      guestTokens = db.prepare(`
+        SELECT token, booking_id, guest_name, mobile, room_numbers, checkin_time, approx_checkout_time, status
+        FROM guest_dining_tokens
+        WHERE status = 'active'
+      `).all();
+    } catch (_) {}
+
     const pkg = {
       restaurantMenu: resMenu || [],
       restaurantCategories: resCats || [],
@@ -1219,6 +1256,7 @@ async function syncWaiterDataToCloud(db) {
       barTables: barTables || [],
       staff: staff || [],
       occupiedRooms: occRooms || [],
+      guestTokens: guestTokens || [],
       syncedAt: new Date().toISOString()
     };
 
@@ -1274,6 +1312,82 @@ async function pullCloudWaiterOrdersToLocal(db) {
         if (items.length === 0) {
           // Mark invalid order processed
           await withTimeout(supabase.from('room_charges_inbox').update({ status: 'invalid' }).eq('id', row.id));
+          continue;
+        }
+
+        const isGuestMobile = orderData.source === 'guest_inroom_mobile' || 
+                              orderData.waiter_name === 'Guest In-Room Mobile' || 
+                              row.department === 'guest_inroom_order';
+
+        if (isGuestMobile) {
+          const cleanRoomNum = String(orderData.room_number || row.room_number || 'Room')
+            .replace(/^RS-/i, '')
+            .replace(/^Room\s*/i, '')
+            .replace(/•.*$/, '')
+            .trim();
+
+          const existingGuestOrder = db.prepare('SELECT id FROM guest_inroom_orders WHERE cloud_inbox_id = ? OR order_number = ?').get(String(row.id), row.bill_no);
+          if (!existingGuestOrder) {
+            let batchNumber = 1;
+            try {
+              const countRow = db.prepare('SELECT COUNT(*) as count FROM guest_inroom_orders WHERE room_numbers = ? OR room_numbers LIKE ?').get(cleanRoomNum, `%${cleanRoomNum}%`);
+              batchNumber = (countRow?.count || 0) + 1;
+            } catch (_) {}
+
+            const orderNotes = orderData.notes || '';
+            const custName = orderData.customer_name || row.settled_by || `Room ${cleanRoomNum}`;
+            const custPhone = orderData.customer_phone || '';
+            const grandTotal = Number(row.grand_total || 0);
+
+            db.prepare(`
+              INSERT INTO guest_inroom_orders (
+                order_number, token, booking_id, room_numbers, guest_name, guest_phone,
+                batch_number, items_json, notes, subtotal, tax, grand_total, status, kot_printed, cloud_inbox_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_kitchen', 0, ?)
+            `).run(
+              row.bill_no || `RS-${cleanRoomNum}-B${batchNumber}-${Date.now().toString().slice(-4)}`,
+              orderData.token || '',
+              orderData.bookingId || 0,
+              cleanRoomNum,
+              custName,
+              custPhone,
+              batchNumber,
+              JSON.stringify(items),
+              orderNotes,
+              Number(row.subtotal || 0),
+              Number(row.gst || 0),
+              grandTotal,
+              String(row.id)
+            );
+            console.log(`[Supabase] 🛎️ In-Room Guest Food Order received for Room ${cleanRoomNum} (Batch #${batchNumber}) -> Waiting for Kitchen Acceptance & KOT Print!`);
+
+            // Dispatch instant push notification to Admin APK
+            try {
+              const notificationService = require('./notificationService');
+              const itemSummaryText = items.map(i => `${i.quantity || 1}x ${i.name}`).join(', ');
+              notificationService.sendPushNotification({
+                title: `🛎️ In-Room Food Order - Room ${cleanRoomNum}`,
+                body: `${custName}: ${itemSummaryText} (₹${grandTotal}). Waiting for Kitchen POS confirmation.`,
+                data: {
+                  type: 'guest_room_order',
+                  roomNumber: cleanRoomNum,
+                  orderToken: row.bill_no,
+                  grandTotal
+                },
+                type: 'food_order'
+              }).catch(e => console.warn('[Supabase] Guest order push notification warning:', e.message));
+            } catch (pErr) {
+              console.warn('[Supabase] Push dispatch notice:', pErr.message);
+            }
+          }
+
+          // Mark cloud order as 'received_at_crm' so it is not re-imported in loop
+          await withTimeout(
+            supabase
+              .from('room_charges_inbox')
+              .update({ status: 'received_at_crm' })
+              .eq('id', row.id)
+          );
           continue;
         }
 
@@ -1467,7 +1581,73 @@ async function pullCloudWaiterOrdersToLocal(db) {
   }
 }
 
+let realtimeChannel = null;
+
+function setupRealtimeListeners(db) {
+  if (!supabase) return;
+  try {
+    if (realtimeChannel) {
+      try { supabase.removeChannel(realtimeChannel); } catch (_) {}
+      realtimeChannel = null;
+    }
+
+    realtimeChannel = supabase
+      .channel('hcp-crm-cloud-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_charges_inbox' },
+        (payload) => {
+          const row = payload.new || {};
+          const dept = row.department;
+          console.log(`[Supabase Realtime] Event on room_charges_inbox (${dept || 'unknown'}): ${payload.eventType}`);
+
+          if (dept === 'waiter_kot_order') {
+            pullCloudWaiterOrdersToLocal(db).catch(() => {});
+          } else if (dept === 'discount_approval') {
+            pollCloudApprovals(db).catch(() => {});
+          } else if (dept !== 'waiter_cloud_sync_pkg' && dept !== 'fb_live_state') {
+            pullCloudRoomChargesToLocal(db).catch(() => {});
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'store_bills' },
+        (payload) => {
+          console.log('[Supabase Realtime] Event on store_bills:', payload.eventType);
+          pullStoreBillsFromCloud(db).catch(() => {});
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'store_vendors' },
+        (payload) => {
+          console.log('[Supabase Realtime] Event on store_vendors:', payload.eventType);
+          pullStoreVendorsFromCloud(db).catch(() => {});
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('⚡ [Supabase Realtime] Connected! Listening for Admin & Waiter live updates (zero polling overhead).');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          console.warn(`[Supabase Realtime] Channel status: ${status}. Fallback heartbeat active.`);
+        }
+      });
+  } catch (err) {
+    console.warn('[Supabase Realtime] Setup notice:', err.message);
+  }
+}
+
+function stopRealtimeListeners() {
+  if (realtimeChannel && supabase) {
+    try { supabase.removeChannel(realtimeChannel); } catch (_) {}
+    realtimeChannel = null;
+  }
+}
+
 module.exports = {
+  setupRealtimeListeners,
+  stopRealtimeListeners,
   pushStoreVendor,
   pullStoreVendorsFromCloud,
   pushStoreBill,

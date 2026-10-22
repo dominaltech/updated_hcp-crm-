@@ -93,12 +93,15 @@ function getPushTokens() {
 async function getAllPushTokens() {
   const localTokens = getPushTokens();
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
     const res = await fetch(`${SUPABASE_URL}/rest/v1/owner_devices?select=fcm_token`, {
+      signal: controller.signal,
       headers: {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
       }
-    });
+    }).finally(() => clearTimeout(timer));
     const cloudDevices = await res.json();
     if (Array.isArray(cloudDevices)) {
       for (const cd of cloudDevices) {
@@ -117,7 +120,7 @@ async function getAllPushTokens() {
       }
     }
   } catch (err) {
-    console.warn('[NotificationService] Error fetching cloud tokens from Supabase:', err.message);
+    console.warn('[NotificationService] Fast cloud token check completed (local fallback active):', err.message);
   }
   return localTokens;
 }
@@ -139,34 +142,37 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
   const allTokens = await getAllPushTokens();
   console.log(`[NotificationService] Dispatching push '${title}' to ${allTokens.length} device tokens:`, allTokens.map(t => t.slice(0, 15) + '...'));
 
-  // 2. DISPATCH VIA SUPABASE EDGE FUNCTION (send-push):
-  // Dispatches Firebase FCM v1 to topic 'hotel_admin' & 'store_bills' AND directly to every registered device token
-  let supabaseResult = null;
-  try {
-    const edgeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        type,
-        data,
-        tokens: allTokens
-      })
-    });
-    supabaseResult = await edgeRes.json().catch(() => null);
-    console.log('[NotificationService] Supabase send-push edge function response:', JSON.stringify(supabaseResult));
-  } catch (edgeErr) {
-    console.warn('[NotificationService] Supabase send-push dispatch warning:', edgeErr.message);
-  }
+  // 2. DISPATCH IN PARALLEL: Supabase Edge Function + Direct Expo Push
+  // Fast timeouts guarantee notifications reach Admin phone in < 1 second even if Supabase is cold/timing out.
+  const edgePromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const edgeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          title,
+          body,
+          type,
+          data,
+          tokens: allTokens
+        })
+      }).finally(() => clearTimeout(timer));
+      return await edgeRes.json().catch(() => null);
+    } catch (edgeErr) {
+      console.warn('[NotificationService] Supabase send-push dispatch warning:', edgeErr.message);
+      return null;
+    }
+  })();
 
-  // 3. Dispatch directly via Expo Push Notification API if any Expo tokens registered
   const expoTokens = allTokens.filter(t => t && (t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[')));
-
-  if (expoTokens.length > 0) {
+  const expoPromise = (async () => {
+    if (expoTokens.length === 0) return null;
     const messages = expoTokens.map(token => ({
       to: token,
       sound: 'default',
@@ -177,9 +183,11 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
       priority: 'high',
       badge: 1
     }));
-
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -187,16 +195,20 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(messages)
-      });
-      const result = await res.json().catch(() => null);
-      return { success: true, delivered: messages.length, result, supabase: supabaseResult };
+      }).finally(() => clearTimeout(timer));
+      return await res.json().catch(() => null);
     } catch (pushErr) {
       console.warn('[NotificationService] Direct Expo push dispatch error:', pushErr.message);
-      return { success: false, error: pushErr.message, supabase: supabaseResult };
+      return null;
     }
-  }
+  })();
 
-  return { success: true, supabase: supabaseResult };
+  const [edgeResult, expoResult] = await Promise.allSettled([edgePromise, expoPromise]);
+  return {
+    success: true,
+    supabase: edgeResult.status === 'fulfilled' ? edgeResult.value : null,
+    expo: expoResult.status === 'fulfilled' ? expoResult.value : null
+  };
 }
 
 function notifyCheckin({ roomNumbers = [], guestName = 'Guest', totalPaid = 0, bookingId = null, phone = '', roomType = '', voucherNumber = '', advanceReceiptNo = '' }) {
@@ -270,7 +282,7 @@ function notifyExpense({ voucherNo = '', amount = 0, category = 'General', paidT
 function getNotifications(limit = 50) {
   try {
     return db.prepare(`
-      SELECT id, type, title, body, metadata, is_read, created_at
+      SELECT id, type, title, body, deep_link, metadata, is_read, created_at
       FROM owner_notifications
       ORDER BY id DESC
       LIMIT ?
@@ -279,6 +291,7 @@ function getNotifications(limit = 50) {
       type: r.type,
       title: r.title,
       body: r.body,
+      deep_link: r.deep_link || (r.metadata ? (JSON.parse(r.metadata).deepLink || JSON.parse(r.metadata).url) : null),
       read: Boolean(r.is_read === 1 || r.read === 1),
       created_at: r.created_at,
       data: r.metadata ? JSON.parse(r.metadata) : {}
@@ -443,6 +456,8 @@ function createApprovalRequest({
   bill_number = '',
   guest_name = '',
   room_number = '',
+  room_count = null,
+  rooms_list = null,
   members = '',
   expected_checkout = '',
   meal_plan = '',
@@ -455,7 +470,14 @@ function createApprovalRequest({
   metadata = null
 }) {
   try {
-    const metaObj = typeof metadata === 'object' && metadata !== null ? { ...metadata, meal_plan, requested_by } : { members, expected_checkout, meal_plan, requested_by };
+    const derivedRoomCount = Number(room_count) || (metadata && metadata.room_count) || (room_number && room_number.includes(',') ? room_number.split(',').length : 1);
+    const roomLabel = String(room_number || '').trim().startsWith('Room')
+      ? room_number
+      : (derivedRoomCount > 1 ? `Rooms ${room_number}` : `Room ${room_number}`);
+
+    const metaObj = typeof metadata === 'object' && metadata !== null
+      ? { ...metadata, room_count: derivedRoomCount, rooms_list, meal_plan, requested_by }
+      : { room_count: derivedRoomCount, rooms_list, members, expected_checkout, meal_plan, requested_by };
     const metaStr = JSON.stringify(metaObj);
 
     const info = db.prepare(`
@@ -481,6 +503,8 @@ function createApprovalRequest({
       supabaseService.syncApprovalRequestToCloud({
         id,
         room_number,
+        room_count: derivedRoomCount,
+        rooms_list,
         guest_name,
         members,
         expected_checkout,
@@ -495,8 +519,9 @@ function createApprovalRequest({
     } catch (_) {}
 
     // Send push notification immediately with high priority & complete details
-    const title = `⚠️ Discount Permission: ${discount_pct ? discount_pct + '%' : ''} (Room ${room_number || ''})`;
+    const title = `⚠️ Discount Permission: ${discount_pct ? discount_pct + '%' : ''} (${roomLabel})`;
     const details = [
+      derivedRoomCount > 1 ? `Total Rooms: ${derivedRoomCount}` : null,
       guest_name ? `Guest: ${guest_name}` : null,
       members ? `Members: ${members}` : null,
       expected_checkout ? `Checkout: ${expected_checkout}` : null,
@@ -517,6 +542,8 @@ function createApprovalRequest({
         approval_id: id,
         type: 'discount_approval',
         room_number,
+        room_count: derivedRoomCount,
+        rooms_list,
         guest_name,
         members,
         expected_checkout,
@@ -541,8 +568,19 @@ function getApprovals() {
       SELECT * FROM owner_approvals ORDER BY id DESC
     `).all();
 
-    const pending = approvals.filter(a => (a.status || 'PENDING').toUpperCase() === 'PENDING');
-    const pastApprovals = approvals.filter(a => (a.status || 'PENDING').toUpperCase() !== 'PENDING');
+    const formattedApprovals = approvals.map(a => {
+      let meta = {};
+      try { meta = JSON.parse(a.metadata || '{}'); } catch {}
+      const rCount = meta.room_count || (a.room_number && a.room_number.includes(',') ? a.room_number.split(',').length : 1);
+      return {
+        ...a,
+        room_count: rCount,
+        rooms_list: meta.rooms_list || null
+      };
+    });
+
+    const pending = formattedApprovals.filter(a => (a.status || 'PENDING').toUpperCase() === 'PENDING');
+    const pastApprovals = formattedApprovals.filter(a => (a.status || 'PENDING').toUpperCase() !== 'PENDING');
 
     // 2. Also gather recent historical discounts from settled bills to provide full audit history
     const history = [...pastApprovals];

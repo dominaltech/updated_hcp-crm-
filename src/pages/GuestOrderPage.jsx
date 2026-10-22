@@ -185,36 +185,43 @@ export default function GuestOrderPage() {
   // 2. EXPIRED STAY SCREEN (Shown if guest clicks link after checkout)
   if (isExpired) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', maxWidth: '440px', width: '100%', padding: '32px 24px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: '3.2rem', marginBottom: '12px' }}>🏨</div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0f172a', margin: '0 0 6px 0' }}>HOTEL CITY PARK</h2>
-          <div style={{ fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, marginBottom: '20px' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#fcf9fb', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', maxWidth: '440px', width: '100%', padding: '32px 24px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.08)', border: '1px solid rgba(199, 163, 184, 0.35)' }}>
+          <img
+            src="/hcp-logo-with-name-transparent.png"
+            alt="Hotel City Park"
+            style={{ height: '54px', width: 'auto', marginBottom: '16px', objectFit: 'contain' }}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = '/logo.png';
+            }}
+          />
+          <div style={{ fontSize: '0.8rem', color: '#8c5d77', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, marginBottom: '20px' }}>
             Char Hutatma Chowk, Solapur
           </div>
 
-          <div style={{ backgroundColor: '#f8fafc', borderRadius: '14px', padding: '18px 16px', border: '1px dashed #cbd5e1', marginBottom: '24px' }}>
+          <div style={{ backgroundColor: '#fef4f8', borderRadius: '14px', padding: '18px 16px', border: '1px dashed rgba(199, 163, 184, 0.5)', marginBottom: '24px' }}>
             <span style={{ fontSize: '1.8rem', display: 'block', marginBottom: '6px' }}>✨</span>
-            <h4 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 850, color: '#0f766e' }}>
+            <h4 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 850, color: '#8c5d77' }}>
               Thank You for Staying With Us!
             </h4>
-            <p style={{ margin: '0 0 10px 0', fontSize: '0.86rem', color: '#475569', lineHeight: 1.45 }}>
+            <p style={{ margin: '0 0 10px 0', fontSize: '0.86rem', color: '#6e5e68', lineHeight: 1.45 }}>
               Dear <strong>{session?.guestName || 'Valued Guest'}</strong>, your stay in Room <strong>{session?.roomNumbers || ''}</strong> has concluded.
             </p>
-            <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontStyle: 'italic' }}>
+            <div style={{ fontSize: '0.78rem', color: '#968690', fontStyle: 'italic' }}>
               This in-room dining session is now closed.
             </div>
           </div>
 
-          <div style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.6, marginBottom: '20px' }}>
+          <div style={{ fontSize: '0.82rem', color: '#6e5e68', lineHeight: 1.6, marginBottom: '20px' }}>
             We hope you had a comfortable and memorable stay. For future reservations or queries, please get in touch:
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
-            <a href="tel:02172729791" style={{ color: '#0f766e', textDecoration: 'none', padding: '10px', backgroundColor: '#f0fdfa', borderRadius: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 700, color: '#21181f' }}>
+            <a href="tel:02172729791" style={{ color: '#8c5d77', textDecoration: 'none', padding: '10px', backgroundColor: '#fef4f8', borderRadius: '10px', border: '1px solid rgba(199, 163, 184, 0.35)' }}>
               📞 0217-2729791 / 9960013388
             </a>
-            <a href="https://hotelcityparksolapur.com" target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'none', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '10px' }}>
+            <a href="https://hotelcityparksolapur.com" target="_blank" rel="noreferrer" style={{ color: '#21181f', textDecoration: 'none', padding: '10px', backgroundColor: '#fcf9fb', borderRadius: '10px', border: '1px solid rgba(199, 163, 184, 0.25)' }}>
               🌐 www.hotelcityparksolapur.com
             </a>
           </div>
@@ -227,11 +234,20 @@ export default function GuestOrderPage() {
   if (error || !session) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backgroundColor: '#fef2f2', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-        <div style={{ maxWidth: '400px', textAlign: 'center', backgroundColor: '#ffffff', padding: '24px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}>
+        <div style={{ maxWidth: '400px', textAlign: 'center', backgroundColor: '#ffffff', padding: '24px', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', border: '1px solid rgba(199, 163, 184, 0.35)' }}>
+          <img
+            src="/hcp-logo-with-name-transparent.png"
+            alt="Hotel City Park"
+            style={{ height: '48px', width: 'auto', marginBottom: '14px', objectFit: 'contain' }}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = '/logo.png';
+            }}
+          />
           <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>
-          <h3 style={{ color: '#991b1b', fontWeight: 800, margin: '0 0 8px 0' }}>Link Not Accessible</h3>
-          <p style={{ color: '#64748b', fontSize: '0.88rem', marginBottom: '16px' }}>{error || 'Unable to access dining session.'}</p>
-          <div style={{ fontSize: '0.82rem', color: '#475569' }}>Please request Front Desk reception to resend your in-room dining link.</div>
+          <h3 style={{ color: '#8c5d77', fontWeight: 800, margin: '0 0 8px 0' }}>Link Not Accessible</h3>
+          <p style={{ color: '#6e5e68', fontSize: '0.88rem', marginBottom: '16px' }}>{error || 'Unable to access dining session.'}</p>
+          <div style={{ fontSize: '0.82rem', color: '#6e5e68' }}>Please request Front Desk reception to resend your in-room dining link.</div>
         </div>
       </div>
     );
@@ -241,58 +257,76 @@ export default function GuestOrderPage() {
   const roomList = String(guest?.roomNumbers || '').split(',').map(s => s.trim()).filter(Boolean);
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', paddingBottom: totalItemsCount > 0 ? '110px' : '30px', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#fcf9fb', paddingBottom: totalItemsCount > 0 ? '110px' : '30px', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       
       {/* Top Header Card */}
       <header
         style={{
-          background: 'linear-gradient(135deg, #042f2e 0%, #0f766e 60%, #115e59 100%)',
-          color: '#ffffff',
-          padding: '18px 16px 22px 16px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          background: '#ffffff',
+          color: '#21181f',
+          padding: '12px 16px 14px 16px',
+          boxShadow: '0 2px 10px rgba(140, 93, 119, 0.08)',
+          borderBottom: '1px solid rgba(199, 163, 184, 0.35)',
           position: 'sticky',
           top: 0,
           zIndex: 40
         }}
       >
         <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.6rem' }}>🏨</span>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 950, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                  HOTEL CITY PARK
-                </h1>
-                <span style={{ fontSize: '0.68rem', opacity: 0.85, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  In-Room Dining • Solapur
-                </span>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img
+                src="/hcp-logo-with-name-transparent.png"
+                alt="Hotel City Park"
+                style={{
+                  height: '42px',
+                  width: 'auto',
+                  maxWidth: '170px',
+                  objectFit: 'contain'
+                }}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = '/logo.png';
+                }}
+              />
+              <span style={{
+                fontSize: '0.66rem',
+                backgroundColor: '#fef4f8',
+                color: '#8c5d77',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                fontWeight: 850,
+                border: '1px solid rgba(199, 163, 184, 0.35)',
+                letterSpacing: '0.03em',
+                textTransform: 'uppercase'
+              }}>
+                In-Room Dining
+              </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#34d399', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-              <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#a7f3d0' }}>Live Stay</span>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#16a34a' }}>Live Stay</span>
             </div>
           </div>
 
           {/* Guest Identity Card */}
           <div
             style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.12)',
-              backdropFilter: 'blur(8px)',
-              borderRadius: '14px',
-              padding: '12px 14px',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
+              backgroundColor: '#fcf9fb',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              border: '1px solid rgba(199, 163, 184, 0.35)',
               display: 'flex',
               flexDirection: 'column',
               gap: '6px'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-              <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#ffffff' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#21181f' }}>
                 👋 Welcome, {guest.name}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#ccfbf1', fontWeight: 600 }}>
+              <div style={{ fontSize: '0.76rem', color: '#8c5d77', fontWeight: 700 }}>
                 📱 +91 {guest.mobile}
               </div>
             </div>
@@ -300,21 +334,21 @@ export default function GuestOrderPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
               {/* Rooms Badges */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontWeight: 700 }}>ROOM:</span>
+                <span style={{ fontSize: '0.72rem', color: '#6e5e68', fontWeight: 700 }}>ROOM:</span>
                 {roomList.map((r) => (
                   <button
                     key={r}
                     onClick={() => setSelectedRoom(r)}
                     style={{
                       border: 'none',
-                      backgroundColor: selectedRoom === r ? '#f59e0b' : 'rgba(255,255,255,0.22)',
-                      color: selectedRoom === r ? '#78350f' : '#ffffff',
+                      backgroundColor: selectedRoom === r ? '#8c5d77' : '#faf3f7',
+                      color: selectedRoom === r ? '#ffffff' : '#6e5e68',
                       fontSize: '0.78rem',
-                      fontWeight: 950,
-                      padding: '2px 8px',
+                      fontWeight: 900,
+                      padding: '3px 10px',
                       borderRadius: '8px',
                       cursor: roomList.length > 1 ? 'pointer' : 'default',
-                      boxShadow: selectedRoom === r ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                      boxShadow: selectedRoom === r ? '0 2px 4px rgba(140,93,119,0.3)' : 'none'
                     }}
                     title={roomList.length > 1 ? 'Click to select this room for delivery' : ''}
                   >
@@ -322,14 +356,14 @@ export default function GuestOrderPage() {
                   </button>
                 ))}
                 {roomList.length > 1 && (
-                  <span style={{ fontSize: '0.65rem', color: '#fef08a', fontStyle: 'italic' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#8c5d77', fontStyle: 'italic', fontWeight: 700 }}>
                     (Group Booking)
                   </span>
                 )}
               </div>
 
               {/* Stay Dates */}
-              <div style={{ fontSize: '0.72rem', color: '#ccfbf1', fontWeight: 600 }}>
+              <div style={{ fontSize: '0.72rem', color: '#6e5e68', fontWeight: 600 }}>
                 📅 In: {guest.checkinTime ? new Date(guest.checkinTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Today'}
                 {guest.approxCheckoutTime ? ` • Out: ${new Date(guest.approxCheckoutTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : ''}
               </div>

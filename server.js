@@ -1666,6 +1666,11 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
         SET status = 'occupied', current_booking_id = ?
         WHERE id = ?
       `).run(bId, r.id);
+
+      // Clean / flush any lingering previous expenses for this room to guarantee a fresh folio
+      try {
+        db.prepare('DELETE FROM booking_extra_expenses WHERE room_id = ? OR booking_id = ?').run(r.id, bId);
+      } catch (_) {}
     });
 
     // 6. Record in Centralized Accounting Payments Ledger if advance payment made
@@ -2759,8 +2764,9 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       SELECT ro.*, r.room_number 
       FROM restaurant_orders ro
       LEFT JOIN rooms r ON ro.room_id = r.id
-      WHERE (ro.booking_id IN (${bookingPlaceholders}))
-         OR (ro.booking_id IS NULL AND ro.room_id IN (${roomPlaceholders}) AND datetime(ro.created_at) >= ?)
+      WHERE ((ro.booking_id IN (${bookingPlaceholders}))
+         OR (ro.booking_id IS NULL AND ro.room_id IN (${roomPlaceholders})))
+         AND datetime(ro.created_at) >= ?
       ORDER BY ro.created_at ASC
     `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
 
@@ -2769,8 +2775,9 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
       SELECT bo.*, r.room_number 
       FROM bar_orders bo
       LEFT JOIN rooms r ON bo.room_id = r.id
-      WHERE (bo.booking_id IN (${bookingPlaceholders}))
-         OR (bo.booking_id IS NULL AND bo.room_id IN (${roomPlaceholders}) AND datetime(bo.created_at) >= ?)
+      WHERE ((bo.booking_id IN (${bookingPlaceholders}))
+         OR (bo.booking_id IS NULL AND bo.room_id IN (${roomPlaceholders})))
+         AND datetime(bo.created_at) >= ?
       ORDER BY bo.created_at ASC
     `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
 
@@ -2785,16 +2792,19 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const extraExpenses = db.prepare(`
       SELECT * FROM booking_extra_expenses 
       WHERE booking_id IN (${bookingPlaceholders})
+        AND (room_id IN (${roomPlaceholders}) OR room_id IS NULL)
+        AND datetime(created_at) >= ?
       ORDER BY created_at ASC
-    `).all(...groupBookingIds);
+    `).all(...groupBookingIds, ...groupRoomIds, validCheckinLocal);
     const expensesTotal = extraExpenses.reduce((sum, e) => sum + (parseFloat(e.total_amount) || 0), 0);
 
     // Fetch all payments ledger records strictly for this active booking session
     const payments = db.prepare(`
       SELECT * FROM payments 
       WHERE booking_id IN (${bookingPlaceholders})
+        AND datetime(created_at) >= ?
       ORDER BY created_at ASC
-    `).all(...groupBookings.map(b => b.booking_id));
+    `).all(...groupBookings.map(b => b.booking_id), validCheckinLocal);
 
     // Total paid via recorded payments or booking initial paid
     const totalPaymentsPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
@@ -2988,8 +2998,11 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
           const nowGrandTotal = nowRoomCharge + fnbCombinedTotal + expensesTotal;
           const decGrandTotal = decRoomCharge + fnbCombinedTotal + expensesTotal;
 
+          const diningLink = guestDiningService.getActiveDiningToken(room.booking_id);
+
           return res.json({
             success: true,
+            diningLink,
             guest: {
               name: room.guest_name || '',
               mobile: room.mobile || ''
@@ -3001,6 +3014,7 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
             },
             folio: {
               room,
+              diningLink,
               guest: {
                 name: room.guest_name || '',
                 mobile: room.mobile || ''
@@ -3535,11 +3549,18 @@ app.delete('/api/visitors/:id', requireAuth, requireRole('manager', 'hospitality
 app.get('/api/bookings/:bookingId/extra-expenses', requireAuth, (req, res) => {
   try {
     const { bookingId } = req.params;
-    const expenses = db.prepare(`
-      SELECT * FROM booking_extra_expenses 
-      WHERE booking_id = ? 
-      ORDER BY created_at ASC
-    `).all(bookingId);
+    const booking = db.prepare('SELECT id, room_id, checkin_time FROM bookings WHERE id = ?').get(bookingId);
+    let expenses = [];
+    if (booking) {
+      const checkinLocal = formatToLocalSqliteString(booking.checkin_time);
+      expenses = db.prepare(`
+        SELECT * FROM booking_extra_expenses 
+        WHERE booking_id = ?
+          AND (room_id = ? OR room_id IS NULL)
+          AND datetime(created_at) >= ?
+        ORDER BY created_at ASC
+      `).all(bookingId, booking.room_id, checkinLocal);
+    }
     res.json({ success: true, expenses });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -3783,7 +3804,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       SELECT COALESCE(SUM(total_amount), 0) as total 
       FROM booking_extra_expenses 
       WHERE booking_id IN (${activeBookingPlaceholders})
-    `).get(...activeBookingIds);
+        AND (room_id IN (${placeholders}) OR room_id IS NULL)
+        AND datetime(created_at) >= ?
+    `).get(...activeBookingIds, ...groupRoomIds, checkinLocal);
     const groupExpensesTotal = expensesRow ? expensesRow.total : 0;
 
     const totalGroupBill = currentGroupRoomCharge + effectiveRestUnpaid + effectiveBarUnpaid + groupExpensesTotal;
@@ -3914,6 +3937,11 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
         SET status = 'DEPARTED', checkout_time = COALESCE(checkout_time, ?) 
         WHERE booking_id = ? AND status = 'IN_ROOM'
       `).run(checkoutTime, gb.booking_id);
+
+      // Flush room extra expenses for this booking & room now that checkout settlement is complete
+      try {
+        db.prepare('DELETE FROM booking_extra_expenses WHERE booking_id = ? OR room_id = ?').run(gb.booking_id, gb.room_id);
+      } catch (_) {}
 
       // Set Room Status to NEEDS_CLEANING
       db.prepare(`
@@ -4852,7 +4880,7 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
 });
 
 // Cancel Order
-app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager', 'restaurant', 'waiter'), (req, res) => {
+app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
     const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
@@ -4880,7 +4908,7 @@ app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager'
 });
 
 // Settle Bill & Final Payment (L Key)
-app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar'), (req, res) => {
+app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
     const {
@@ -6484,7 +6512,7 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
 });
 
 // Bar Cancel Order
-app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar', 'waiter'), (req, res) => {
+app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
     const table = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(id);
@@ -6511,7 +6539,7 @@ app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar'
 });
 
 // Bar Settle Bill & Final Payment
-app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant'), (req, res) => {
+app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant', 'hospitality'), (req, res) => {
   const transaction = db.transaction(() => {
     const { id } = req.params;
     const {
@@ -13176,33 +13204,60 @@ async function startServer() {
       supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
     }
 
-    // Real-time polling of cloud approvals, store bills, vendors, and analytics
-    let storeSyncCounter = 0;
+    // 1. EVENT-DRIVEN REALTIME LISTENERS:
+    // Zero-overhead WebSocket listeners: Syncs INSTANTLY (50ms) when Admin APK approves or Waiter APK orders,
+    // with 0 polling requests while idle (protects Supabase database from connection exhaustion).
+    if (typeof supabaseService.setupRealtimeListeners === 'function') {
+      supabaseService.setupRealtimeListeners(db);
+    }
+
+    // 2. STAGGERED CALM HEARTBEAT BACKUP (Every 20 seconds, rotates 1 task at a time):
+    // Realtime WebSockets already deliver instant updates (<100ms).
+    // This rotating heartbeat acts as a silent fallback without overwhelming Supabase connections.
+    let heartbeatTick = 0;
     setInterval(() => {
-      supabaseService.pollCloudApprovals(db).catch(() => {});
-      if (typeof supabaseService.syncDailyAnalyticsToCloud === 'function') {
-        supabaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
+      const step = heartbeatTick % 6;
+      heartbeatTick++;
+
+      switch (step) {
+        case 0:
+        case 3:
+          // Check discount approvals (highest priority)
+          if (typeof supabaseService.pollCloudApprovals === 'function') {
+            supabaseService.pollCloudApprovals(db).catch(() => {});
+          }
+          break;
+        case 1:
+        case 4:
+          // Check waiter orders
+          if (typeof supabaseService.pullCloudWaiterOrdersToLocal === 'function') {
+            supabaseService.pullCloudWaiterOrdersToLocal(db).catch(() => {});
+          }
+          break;
+        case 2:
+          // Check room charges
+          if (typeof supabaseService.pullCloudRoomChargesToLocal === 'function') {
+            supabaseService.pullCloudRoomChargesToLocal(db).catch(() => {});
+          }
+          break;
+        case 5:
+          // Check store bills
+          if (typeof supabaseService.pullStoreBillsFromCloud === 'function') {
+            supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
+          }
+          break;
       }
-      if (typeof supabaseService.pullStoreBillsFromCloud === 'function') {
-        supabaseService.pullStoreBillsFromCloud(db).catch(() => {});
-      }
-      if (typeof supabaseService.pullCloudRoomChargesToLocal === 'function') {
-        supabaseService.pullCloudRoomChargesToLocal(db).catch(() => {});
-      }
-      if (typeof supabaseService.pullCloudWaiterOrdersToLocal === 'function') {
-        supabaseService.pullCloudWaiterOrdersToLocal(db).catch(() => {});
-      }
-      storeSyncCounter++;
-      if (storeSyncCounter % 4 === 0 && typeof supabaseService.syncWaiterDataToCloud === 'function') {
-        supabaseService.syncWaiterDataToCloud(db).catch(() => {});
-      }
-      if (storeSyncCounter % 4 === 0 && typeof supabaseService.pullStoreVendorsFromCloud === 'function') {
+
+      // Every 30 ticks (10 minutes), sync store vendors
+      if (heartbeatTick % 30 === 0 && typeof supabaseService.pullStoreVendorsFromCloud === 'function') {
         supabaseService.pullStoreVendorsFromCloud(db).catch(() => {});
       }
-      if (storeSyncCounter % 6 === 0 && typeof supabaseService.syncAllOfflineDataToCloud === 'function') {
-        supabaseService.syncAllOfflineDataToCloud(db).catch(() => {});
+
+      // Every 45 ticks (15 minutes), sync analytics
+      if (heartbeatTick % 45 === 0 && typeof supabaseService.syncDailyAnalyticsToCloud === 'function') {
+        supabaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
       }
-    }, 1000);
+    }, 20000);
 
     // Initial sync of live waiter menu, tables, and staff to cloud
     if (typeof supabaseService.syncWaiterDataToCloud === 'function') {
@@ -13363,6 +13418,28 @@ app.post('/api/guest/generate-link/:bookingId', requireAuth, (req, res) => {
     });
 
     res.json({ success: true, ...diningInfo });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Fetch active dining link for a booking
+app.get('/api/guest/link/:bookingId', requireAuth, (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const linkInfo = guestDiningService.getActiveDiningToken(bookingId);
+    res.json({ success: true, ...linkInfo });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete / Revoke dining link for a booking
+app.delete('/api/guest/link/:bookingId', requireAuth, (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const result = guestDiningService.deleteDiningToken(bookingId);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

@@ -1599,6 +1599,10 @@ function ensureGuestDiningTables(database) {
       CREATE INDEX IF NOT EXISTS idx_guest_inroom_orders_token ON guest_inroom_orders(token);
       CREATE INDEX IF NOT EXISTS idx_guest_inroom_orders_status ON guest_inroom_orders(status);
     `);
+
+    try {
+      db.prepare('ALTER TABLE guest_inroom_orders ADD COLUMN cloud_inbox_id TEXT').run();
+    } catch (_) {}
   } catch (err) {
     console.warn('Notice ensuring guest dining tables:', err.message);
   }

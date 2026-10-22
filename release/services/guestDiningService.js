@@ -30,8 +30,8 @@ function getGuestPortalBaseUrl() {
     return process.env.GUEST_PORTAL_URL.trim().replace(/\/$/, '');
   }
 
-  // Default to official hotel web domain
-  return 'https://hotelcityparksolapur.com';
+  // Default to official Vercel deployment domain
+  return 'https://hcprso.vercel.app';
 }
 
 /**
@@ -42,6 +42,11 @@ function generateDiningToken({ bookingId, guestId, guestName, mobile, roomNumber
 
   const cleanRooms = Array.isArray(roomNumbers) ? roomNumbers.join(', ') : String(roomNumbers || '');
   const cleanMobile = String(mobile || '').replace(/[^0-9]/g, '');
+
+  // Expire any existing active token for this booking before creating a fresh one
+  try {
+    db.prepare("UPDATE guest_dining_tokens SET status = 'expired' WHERE booking_id = ? AND status = 'active'").run(bookingId);
+  } catch (e) {}
 
   // Generate 24-character cryptographically secure token
   const token = 'hcp_' + crypto.randomBytes(12).toString('hex');
@@ -63,7 +68,7 @@ function generateDiningToken({ bookingId, guestId, guestName, mobile, roomNumber
   );
 
   const baseUrl = getGuestPortalBaseUrl();
-  const guestUrl = `${baseUrl}/guest-order?token=${token}`;
+  const guestUrl = `${baseUrl}/?token=${token}`;
 
   // Formulate WhatsApp Welcome & In-Room Dining Message
   const phoneWithCountry = cleanMobile.length === 10 ? '91' + cleanMobile : cleanMobile;
@@ -448,7 +453,18 @@ function acceptKitchenOrder(orderId, acceptedBy = 'Restaurant Counter') {
         SET active_cart_json = ?, printed_cart_json = ?, kot_count = kot_count + 1, status = 'occupied'
         WHERE id = ?
       `).run(JSON.stringify(updatedCart), JSON.stringify(updatedPrinted), existingTable.id);
+    } else {
+      db.prepare(`
+        INSERT INTO restaurant_tables (table_number, table_type, status, active_cart_json, printed_cart_json, kot_count, waiter_name, special_notes, order_started_at)
+        VALUES (?, 'room_service', 'occupied', ?, ?, 1, 'Room Service (Guest Web)', ?, datetime('now', 'localtime'))
+      `).run(rsTableNumber, JSON.stringify(items), JSON.stringify(items), order.notes || `Room ${targetRoom} (${order.guest_name || 'Guest'})`);
     }
+
+    // Immediately push updated tables snapshot to Supabase so Waiter APK sees this room service order!
+    try {
+      const supabaseService = require('./supabaseService');
+      supabaseService.syncWaiterDataToCloud(db).catch(() => {});
+    } catch (_) {}
   } catch (e) {
     console.warn('[GuestDining] Notice updating restaurant table:', e.message);
   }
@@ -538,9 +554,90 @@ function getRoomPendingOrdersStatus() {
   }
 }
 
+/**
+ * Retrieve active dining token & details for a booking (e.g. for Room Folio display)
+ */
+function getActiveDiningToken(bookingId) {
+  if (!bookingId) return { hasActiveLink: false };
+  try {
+    const row = db.prepare(`
+      SELECT * FROM guest_dining_tokens 
+      WHERE booking_id = ? AND status = 'active'
+      ORDER BY id DESC LIMIT 1
+    `).get(bookingId);
+
+    if (!row) {
+      return { hasActiveLink: false };
+    }
+
+    const baseUrl = getGuestPortalBaseUrl();
+    const guestUrl = `${baseUrl}/?token=${row.token}`;
+    const cleanMobile = String(row.mobile || '').replace(/[^0-9]/g, '');
+    const phoneWithCountry = cleanMobile.length === 10 ? '91' + cleanMobile : cleanMobile;
+
+    const whatsappText = 
+      `🏨 *HOTEL CITY PARK, SOLAPUR*\n` +
+      `*Char Hutatma Chowk, Murarji Peth*\n\n` +
+      `Dear *${row.guest_name ? row.guest_name.trim() : 'Guest'}*,\n` +
+      `Welcome to Hotel City Park! We are delighted to have you stay with us.\n\n` +
+      `🚪 *Room(s):* ${row.room_numbers || ''}\n` +
+      `🛎️ *In-Room Food & Beverages:*\n` +
+      `You can browse our complete restaurant menu and order food directly to your room without calling reception:\n\n` +
+      `👉 *Order Here:* ${guestUrl}\n\n` +
+      `Just select your dishes and tap *"Give Order"*. Our kitchen will prepare and deliver fresh to your room.\n\n` +
+      `Have a wonderful stay!`;
+
+    const whatsappUrl = phoneWithCountry ? `https://api.whatsapp.com/send?phone=${phoneWithCountry}&text=${encodeURIComponent(whatsappText)}` : null;
+
+    return {
+      hasActiveLink: true,
+      token: row.token,
+      url: guestUrl,
+      whatsappUrl,
+      whatsappText,
+      guestName: row.guest_name,
+      mobile: row.mobile,
+      roomNumbers: row.room_numbers,
+      createdAt: row.created_at,
+      status: 'active'
+    };
+  } catch (err) {
+    console.warn('[GuestDining] Error getting active dining token:', err.message);
+    return { hasActiveLink: false };
+  }
+}
+
+/**
+ * Delete / revoke active dining token for a booking
+ */
+function deleteDiningToken(bookingId) {
+  if (!bookingId) return { success: false, error: 'Booking ID required' };
+  try {
+    db.prepare("UPDATE guest_dining_tokens SET status = 'expired' WHERE booking_id = ?").run(bookingId);
+    
+    // Cloud sync
+    fetch(`${SUPABASE_URL}/rest/v1/guest_dining_tokens?booking_id=eq.${bookingId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status: 'expired' })
+    }).catch(() => null);
+
+    return { success: true, message: 'Dining link deleted/revoked successfully' };
+  } catch (err) {
+    console.error('[GuestDining] Error deleting dining token:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   getGuestPortalBaseUrl,
   generateDiningToken,
+  getActiveDiningToken,
+  deleteDiningToken,
   getGuestSession,
   submitGuestOrder,
   getPendingKitchenOrders,

@@ -191,8 +191,9 @@ export const api = {
   acceptGuestOrder: (orderId, acceptedBy) => request('/guest/accept-order', { method: 'POST', body: { orderId, acceptedBy } }),
   getRoomDiningAlerts: () => request('/guest/room-alerts'),
   getGuestSession: (token) => request(`/guest/session/${encodeURIComponent(token)}`),
-  submitGuestOrder: (data) => request('/guest/order', { method: 'POST', body: data }),
   generateGuestDiningLink: (bookingId) => request(`/guest/generate-link/${bookingId}`, { method: 'POST' }),
+  getGuestDiningLink: (bookingId) => request(`/guest/link/${bookingId}`),
+  deleteGuestDiningLink: (bookingId) => request(`/guest/link/${bookingId}`, { method: 'DELETE' }),
 
   // Bar Lounge POS
   getBarMenu: () => request('/bar/menu'),

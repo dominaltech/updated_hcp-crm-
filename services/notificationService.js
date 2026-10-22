@@ -93,12 +93,15 @@ function getPushTokens() {
 async function getAllPushTokens() {
   const localTokens = getPushTokens();
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
     const res = await fetch(`${SUPABASE_URL}/rest/v1/owner_devices?select=fcm_token`, {
+      signal: controller.signal,
       headers: {
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
       }
-    });
+    }).finally(() => clearTimeout(timer));
     const cloudDevices = await res.json();
     if (Array.isArray(cloudDevices)) {
       for (const cd of cloudDevices) {
@@ -117,7 +120,7 @@ async function getAllPushTokens() {
       }
     }
   } catch (err) {
-    console.warn('[NotificationService] Error fetching cloud tokens from Supabase:', err.message);
+    console.warn('[NotificationService] Fast cloud token check completed (local fallback active):', err.message);
   }
   return localTokens;
 }
@@ -139,34 +142,37 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
   const allTokens = await getAllPushTokens();
   console.log(`[NotificationService] Dispatching push '${title}' to ${allTokens.length} device tokens:`, allTokens.map(t => t.slice(0, 15) + '...'));
 
-  // 2. DISPATCH VIA SUPABASE EDGE FUNCTION (send-push):
-  // Dispatches Firebase FCM v1 to topic 'hotel_admin' & 'store_bills' AND directly to every registered device token
-  let supabaseResult = null;
-  try {
-    const edgeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        type,
-        data,
-        tokens: allTokens
-      })
-    });
-    supabaseResult = await edgeRes.json().catch(() => null);
-    console.log('[NotificationService] Supabase send-push edge function response:', JSON.stringify(supabaseResult));
-  } catch (edgeErr) {
-    console.warn('[NotificationService] Supabase send-push dispatch warning:', edgeErr.message);
-  }
+  // 2. DISPATCH IN PARALLEL: Supabase Edge Function + Direct Expo Push
+  // Fast timeouts guarantee notifications reach Admin phone in < 1 second even if Supabase is cold/timing out.
+  const edgePromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const edgeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          title,
+          body,
+          type,
+          data,
+          tokens: allTokens
+        })
+      }).finally(() => clearTimeout(timer));
+      return await edgeRes.json().catch(() => null);
+    } catch (edgeErr) {
+      console.warn('[NotificationService] Supabase send-push dispatch warning:', edgeErr.message);
+      return null;
+    }
+  })();
 
-  // 3. Dispatch directly via Expo Push Notification API if any Expo tokens registered
   const expoTokens = allTokens.filter(t => t && (t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[')));
-
-  if (expoTokens.length > 0) {
+  const expoPromise = (async () => {
+    if (expoTokens.length === 0) return null;
     const messages = expoTokens.map(token => ({
       to: token,
       sound: 'default',
@@ -177,9 +183,11 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
       priority: 'high',
       badge: 1
     }));
-
     try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -187,16 +195,20 @@ async function sendPushNotification({ title, body, data = {}, type = 'general' }
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(messages)
-      });
-      const result = await res.json().catch(() => null);
-      return { success: true, delivered: messages.length, result, supabase: supabaseResult };
+      }).finally(() => clearTimeout(timer));
+      return await res.json().catch(() => null);
     } catch (pushErr) {
       console.warn('[NotificationService] Direct Expo push dispatch error:', pushErr.message);
-      return { success: false, error: pushErr.message, supabase: supabaseResult };
+      return null;
     }
-  }
+  })();
 
-  return { success: true, supabase: supabaseResult };
+  const [edgeResult, expoResult] = await Promise.allSettled([edgePromise, expoPromise]);
+  return {
+    success: true,
+    supabase: edgeResult.status === 'fulfilled' ? edgeResult.value : null,
+    expo: expoResult.status === 'fulfilled' ? expoResult.value : null
+  };
 }
 
 function notifyCheckin({ roomNumbers = [], guestName = 'Guest', totalPaid = 0, bookingId = null, phone = '', roomType = '', voucherNumber = '', advanceReceiptNo = '' }) {

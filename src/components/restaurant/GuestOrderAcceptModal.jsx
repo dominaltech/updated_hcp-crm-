@@ -404,54 +404,34 @@ export default function GuestOrderAcceptModal({ order, onAccept, onClose, isAcce
             backgroundColor: '#ffffff',
             borderTop: '1px solid #e2e8f0',
             display: 'flex',
-            gap: '12px',
-            justifyContent: 'flex-end',
+            justifyContent: 'center',
             alignItems: 'center'
           }}
         >
           <button
             type="button"
-            onClick={() => {
-              stopContinuousOrderAlert();
-              onClose();
-            }}
-            disabled={isAccepting}
-            style={{
-              padding: '12px 20px',
-              borderRadius: '10px',
-              border: '1.5px solid #cbd5e1',
-              backgroundColor: '#f1f5f9',
-              color: '#475569',
-              fontWeight: 750,
-              fontSize: '0.92rem',
-              cursor: 'pointer'
-            }}
-          >
-            Silence / Review Later
-          </button>
-
-          <button
-            type="button"
             onClick={() => onAccept(order)}
             disabled={isAccepting}
             style={{
-              padding: '12px 28px',
-              borderRadius: '10px',
+              width: '100%',
+              padding: '14px 28px',
+              borderRadius: '12px',
               border: 'none',
               background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
               color: '#ffffff',
               fontWeight: 900,
-              fontSize: '1rem',
+              fontSize: '1.05rem',
               cursor: isAccepting ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+              justifyContent: 'center',
+              gap: '10px',
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.35)',
               opacity: isAccepting ? 0.7 : 1
             }}
           >
-            <span>🖨️</span>
-            <span>{isAccepting ? 'Accepting & Printing...' : 'Accept & Print KOT'}</span>
+            <span style={{ fontSize: '1.25rem' }}>🖨️</span>
+            <span>{isAccepting ? 'Accepting & Printing KOT...' : 'Accept & Print KOT'}</span>
           </button>
         </div>
       </div>

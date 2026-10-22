@@ -177,10 +177,17 @@ function requireRole(...allowedRoles) {
       });
     }
     
-    const hasManagerAccess = Boolean(req.user.can_access_manager === true || req.user.role === 'manager');
+    const hasManagerAccess = Boolean(
+      req.user.can_access_manager == 1 || 
+      req.user.can_access_manager === true || 
+      req.user.role === 'manager' || 
+      req.user.role === 'admin' || 
+      (req.user.username && req.user.username.toLowerCase() === 'admin')
+    );
     const isAllowed = allowedRoles.includes(req.user.role) 
       || (allowedRoles.includes('manager') && hasManagerAccess)
-      || (req.user.role === 'waiter' && (allowedRoles.includes('restaurant') || allowedRoles.includes('bar')));
+      || (req.user.role === 'waiter' && (allowedRoles.includes('restaurant') || allowedRoles.includes('bar')))
+      || (req.user.role === 'hospitality' && (allowedRoles.includes('restaurant') || allowedRoles.includes('bar')));
 
     if (!isAllowed) {
       return res.status(403).json({ 

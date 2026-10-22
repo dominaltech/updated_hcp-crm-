@@ -22,6 +22,10 @@ function cleanDemoData(db) {
   // 4. Delete all expenses
   const delExpenses = db.prepare('DELETE FROM expenses').run();
   result.expensesDeleted = delExpenses.changes;
+  try {
+    const delExtraExp = db.prepare('DELETE FROM booking_extra_expenses').run();
+    result.extraExpensesDeleted = delExtraExp.changes;
+  } catch (e) {}
 
   // 5. Delete all restaurant & bar orders
   const delRestOrders = db.prepare('DELETE FROM restaurant_orders').run();
@@ -277,7 +281,7 @@ function cleanDemoData(db) {
 
   // 10. Clean sqlite_sequence so IDs start fresh
   try {
-    db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('bookings', 'guests', 'payments', 'expenses', 'restaurant_orders', 'bar_orders', 'room_visitors', 'room_cleaning_logs', 'bill_logs')").run();
+    db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('bookings', 'guests', 'payments', 'expenses', 'booking_extra_expenses', 'restaurant_orders', 'bar_orders', 'room_visitors', 'room_cleaning_logs', 'bill_logs')").run();
   } catch (e) {}
 
   // 11. Vacuum database
