@@ -4,7 +4,7 @@ import os
 import shutil
 
 apk_path = r"c:\Aamir Delta\city_backup\HotelCityPark-Owner.apk"
-bundle_src = r"c:\Aamir Delta\city_backup\admin\android\app\build\generated\assets\createBundleReleaseJsAndAssets\index.android.bundle"
+bundle_src = r"c:\Aamir Delta\city_backup\admin\dist-android\_expo\static\js\android\entry-f8f38f768f8ed7599bb94f4ac91bdbe7.hbc"
 temp_apk = r"c:\Aamir Delta\city_backup\temp_owner.apk"
 aligned_apk = r"c:\Aamir Delta\city_backup\aligned_owner.apk"
 

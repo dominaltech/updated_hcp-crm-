@@ -103,6 +103,60 @@ export default function ThemedDatePicker({
     }
   };
 
+  const handleDateInputChange = (e) => {
+    const rawVal = e.target.value;
+
+    if (!rawVal || !rawVal.trim()) {
+      setTypedDateText('');
+      if (onChange) onChange({ target: { value: '', name } });
+      return;
+    }
+
+    // Direct ISO paste check (e.g. 2004-08-26)
+    if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(rawVal.trim())) {
+      setTypedDateText(rawVal.trim());
+      parseAndCommitText(rawVal.trim());
+      return;
+    }
+
+    // Extract only digits, max 8 (DD MM YYYY)
+    const digits = rawVal.replace(/\D/g, '').slice(0, 8);
+    const prev = typedDateText || '';
+    const isDeleting = rawVal.length < prev.length;
+
+    let formatted = '';
+    if (isDeleting) {
+      if (digits.length <= 2) {
+        formatted = digits;
+      } else if (digits.length <= 4) {
+        formatted = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+      } else {
+        formatted = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
+      }
+    } else {
+      if (digits.length === 0) {
+        formatted = '';
+      } else if (digits.length < 2) {
+        formatted = digits;
+      } else if (digits.length === 2) {
+        formatted = `${digits}-`;
+      } else if (digits.length < 4) {
+        formatted = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+      } else if (digits.length === 4) {
+        formatted = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-`;
+      } else {
+        formatted = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 8)}`;
+      }
+    }
+
+    setTypedDateText(formatted);
+
+    // When full 8 digits (DD-MM-YYYY) are typed, auto-commit immediately
+    if (digits.length === 8) {
+      parseAndCommitText(formatted);
+    }
+  };
+
   // Close calendar popover on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -351,23 +405,26 @@ export default function ThemedDatePicker({
           </span>
           <input
             type="text"
+            inputMode="numeric"
             placeholder={placeholder || 'DD-MM-YYYY'}
             disabled={disabled}
             value={typedDateText !== null ? typedDateText : (displayFormattedDate || '')}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
             onFocus={(e) => {
               setTypedDateText(displayFormattedDate || '');
               e.target.select();
             }}
-            onChange={(e) => {
-              const val = e.target.value;
-              setTypedDateText(val);
-              if (val.length === 10 || (val.length === 8 && /^\d{8}$/.test(val))) {
-                parseAndCommitText(val);
-              }
-            }}
+            onChange={handleDateInputChange}
             onBlur={() => {
               if (typedDateText !== null) {
-                parseAndCommitText(typedDateText);
+                const cleanDigits = typedDateText.replace(/\D/g, '');
+                if (cleanDigits.length === 8) {
+                  parseAndCommitText(typedDateText);
+                } else if (!typedDateText.trim()) {
+                  parseAndCommitText('');
+                }
                 setTypedDateText(null);
               }
             }}

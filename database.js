@@ -50,7 +50,12 @@ const isServerless = !!(
 const isWindowsDesktop = !!(
   process.platform === 'win32' &&
   process.env.APPDATA &&
-  (process.env.USE_APPDATA === '1' || fs.existsSync(path.join(__dirname, 'HotelCityPark.exe')))
+  (
+    process.env.USE_APPDATA === '1' ||
+    fs.existsSync(path.join(__dirname, 'HotelCityPark.exe')) ||
+    fs.existsSync(path.join(__dirname, 'Hotel City Park CRM.exe')) ||
+    fs.existsSync(path.join(__dirname, '..', '..', 'Hotel City Park CRM.exe'))
+  )
 );
 
 if (isServerless) {
@@ -318,6 +323,17 @@ db.exec(`
 `);
 
 // Migrations
+try { db.exec("ALTER TABLE advance_bookings ADD COLUMN room_type TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE advance_bookings ADD COLUMN receipt_no TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE advance_bookings ADD COLUMN receipt_date TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE advance_bookings ADD COLUMN linked_booking_id INTEGER;"); } catch (e) {}
+
+try { db.exec("ALTER TABLE bookings ADD COLUMN advance_booking_id INTEGER;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_amount REAL DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_receipt_no TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_mode TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_date TEXT;"); } catch (e) {}
+
 try { db.exec("ALTER TABLE guests ADD COLUMN email TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN shortcode TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN is_veg INTEGER DEFAULT 1;"); } catch (e) {}

@@ -7,6 +7,10 @@ export function AppProvider({ children }) {
   // Current logged in staff
   const [currentUser, setCurrentUser] = useState(() => {
     try {
+      const search = (typeof window !== 'undefined' && window.location.search) || '';
+      if (search.includes('admin=1') || search.includes('role=owner')) {
+        return { id: 1, full_name: 'Admin (Owner)', role: 'manager', username: 'admin' };
+      }
       const token = localStorage.getItem('hotel_auth_token');
       if (!token) return null;
       return JSON.parse(localStorage.getItem('hotel_staff_user') || 'null');
@@ -67,6 +71,8 @@ export function AppProvider({ children }) {
   // Section Startup Access & Locked/Unlocked State
   const [unlockedSection, setUnlockedSection] = useState(() => {
     try {
+      const search = (typeof window !== 'undefined' && window.location.search) || '';
+      if (search.includes('admin=1') || search.includes('role=owner')) return 'all';
       return sessionStorage.getItem('hcp_unlocked_section') || null;
     } catch {
       return null;
@@ -75,6 +81,8 @@ export function AppProvider({ children }) {
 
   const [isSectionSelectOpen, setIsSectionSelectOpen] = useState(() => {
     try {
+      const search = (typeof window !== 'undefined' && window.location.search) || '';
+      if (search.includes('admin=1') || search.includes('role=owner')) return false;
       return !sessionStorage.getItem('hcp_unlocked_section');
     } catch {
       return true;
@@ -562,8 +570,15 @@ export function AppProvider({ children }) {
     setLogoutTargetDepartment(null);
   }, []);
 
-  // Manager Panel Lock State (Locks immediately upon leaving the panel)
-  const [isManagerUnlocked, setIsManagerUnlocked] = useState(false);
+  // Manager Panel Lock State (Locks immediately upon leaving the panel, unless in admin=1 mode)
+  const [isManagerUnlocked, setIsManagerUnlocked] = useState(() => {
+    try {
+      const search = (typeof window !== 'undefined' && window.location.search) || '';
+      return search.includes('admin=1') || search.includes('role=owner');
+    } catch {
+      return false;
+    }
+  });
   const [isManagerLockModalOpen, setIsManagerLockModalOpen] = useState(false);
   const [managerLockTargetDept, setManagerLockTargetDept] = useState('hospitality');
   const [managerLockTargetTab, setManagerLockTargetTab] = useState(null);
@@ -631,8 +646,11 @@ export function AppProvider({ children }) {
     }
   }, [showToast]);
 
-  // Immediately lock as soon as user navigates out of the manager tab/panel
+  // Immediately lock as soon as user navigates out of the manager tab/panel (skipped in admin mode)
   useEffect(() => {
+    const search = (typeof window !== 'undefined' && window.location.search) || '';
+    if (search.includes('admin=1') || search.includes('role=owner')) return;
+
     const isCurrentlyOnManager =
       activePanel === 'manage' ||
       (activePanel === 'restaurant' && restaurantSubTab === 'manager') ||

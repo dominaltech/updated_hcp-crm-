@@ -68,7 +68,13 @@ syncApk('Waiter', 'HotelCityPark-Waiter.apk', [
 ]);
 
 // 2. Admin / Owner APK
-syncApk('Admin / Owner', 'HotelCityPark-Admin.apk', [
+syncApk('Admin', 'HotelCityPark-Admin.apk', [
+  'admin/android/app/build/outputs/apk/release/app-release.apk',
+  'admin/android/app/build/outputs/apk/debug/app-debug.apk',
+  'admin/HotelCityPark-Owner.apk',
+  'HotelCityPark-Owner.apk'
+]);
+syncApk('Owner', 'HotelCityPark-Owner.apk', [
   'admin/android/app/build/outputs/apk/release/app-release.apk',
   'admin/android/app/build/outputs/apk/debug/app-debug.apk',
   'admin/HotelCityPark-Owner.apk',

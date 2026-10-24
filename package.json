@@ -12,6 +12,7 @@
     "electron:start": "electron .",
     "package:win": "electron-packager . \"Hotel City Park CRM\" --platform=win32 --arch=x64 --out=release-electron --icon=build/icon.ico --asar=false --overwrite --ignore=\"^/(scratch|tests|QA|qa-selenium|qa-selenium\\.zip|nnnnew|nnnnew\\.zip|backup-file|release|release-electron|\\.git|.*\\.db|.*\\.sqlite|.*\\.zip)\"",
     "admin": "node admin/serve.js",
+    "waiter": "npm --prefix \"release-electron/Hotel City Park CRM-win32-x64/waiter-pannel\" run dev",
     "start:all": "node scripts/start_all.js",
     "dev:all": "node scripts/start_all.js",
     "release:update": "node scripts/update_release.js",

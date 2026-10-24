@@ -40,7 +40,7 @@ export default function CheckinSplitReceiptsModal({
     return {
       receipt_no: r.receipt_no || (modeKey === 'upi' ? 'UPI01' : modeKey === 'card' ? 'POS01' : modeKey === 'cheque' ? 'CHQ01' : 'CR01'),
       voucher_number: voucherNumber,
-      receipt_date: checkinTime,
+      receipt_date: r.receipt_date || checkinTime,
       guest_name: guestName,
       amount: r.amount,
       base_amount: r.base_amount || r.amount,
@@ -53,7 +53,7 @@ export default function CheckinSplitReceiptsModal({
       cheque_no: r.cheque_no || null,
       bank_name: r.bank_name || null,
       room_numbers: roomNumber,
-      particulars: `Room #${roomNumber} - Check-In Advance Payment (${label})`,
+      particulars: r.particulars || `Room #${roomNumber} - Check-In Advance Payment (${label})`,
       cashier_name: cashierName,
       is_split: true
     };
@@ -68,6 +68,14 @@ export default function CheckinSplitReceiptsModal({
   const handleDownloadReceipt = async (r) => {
     const receiptObj = buildReceiptObj(r);
     await downloadReceiptPDF(receiptObj);
+  };
+
+  const handlePrintAll = () => {
+    receipts.forEach((r, idx) => {
+      setTimeout(() => {
+        handlePrintReceipt(r);
+      }, idx * 600);
+    });
   };
 
   const getModeInfo = (r) => {
@@ -118,24 +126,25 @@ export default function CheckinSplitReceiptsModal({
       className="modal-overlay active"
       id="checkin-split-receipts-overlay"
       style={{
-        zIndex: 9999,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(15, 23, 42, 0.65)',
-        backdropFilter: 'blur(3px)'
+        backdropFilter: 'blur(4px)',
+        padding: '16px'
       }}
     >
       <div
         className="modal-container"
         id="checkin-split-receipts-modal"
         style={{
-          width: '560px',
-          maxWidth: '94vw',
+          width: '780px',
+          maxWidth: '96vw',
           maxHeight: '90vh',
-          borderRadius: '16px',
+          borderRadius: '18px',
           background: '#ffffff',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden'
@@ -145,17 +154,18 @@ export default function CheckinSplitReceiptsModal({
         <div
           className="modal-header"
           style={{
-            padding: '14px 20px',
+            padding: '16px 24px',
             background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
             color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            flexShrink: 0
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '1.4rem' }}>🧾</span>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#ffffff' }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.01em' }}>
               {data.title || 'Print Payment Receipts (Split Payment)'}
             </h3>
           </div>
@@ -189,11 +199,11 @@ export default function CheckinSplitReceiptsModal({
         <div
           className="modal-body"
           style={{
-            padding: '16px 20px',
+            padding: '20px 24px',
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: '14px',
             flex: 1
           }}
         >
@@ -204,47 +214,69 @@ export default function CheckinSplitReceiptsModal({
             return (
               <div
                 key={r.receipt_no || idx}
+                className="split-receipt-card"
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '14px 16px',
-                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  borderRadius: '14px',
                   background: info.bg,
                   border: `1.5px solid ${info.border}`,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  gap: '16px'
                 }}
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '1.1rem' }}>{info.icon}</span>
+                {/* Left meta information */}
+                <div className="split-receipt-card-left" style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{info.icon}</span>
                     <span
                       style={{
-                        fontSize: '0.74rem',
+                        fontSize: '0.76rem',
                         fontWeight: 800,
-                        padding: '2px 8px',
+                        padding: '3px 9px',
                         borderRadius: '6px',
                         background: '#ffffff',
                         color: info.color,
                         border: `1px solid ${info.border}`,
-                        letterSpacing: '0.04em'
+                        letterSpacing: '0.04em',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       {info.label}
                     </span>
                     <span
                       style={{
-                        fontSize: '0.90rem',
+                        fontSize: '0.95rem',
                         fontWeight: 900,
-                        color: '#0f172a'
+                        color: '#0f172a',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       Receipt #{r.receipt_no}
                     </span>
+                    {(r.badge || r.is_prebooked) && (
+                      <span
+                        style={{
+                          fontSize: '0.70rem',
+                          fontWeight: 900,
+                          padding: '3px 9px',
+                          borderRadius: '8px',
+                          background: r.is_prebooked ? '#FEF3C7' : '#DCFCE7',
+                          color: r.is_prebooked ? '#B45309' : '#15803D',
+                          border: `1px solid ${r.is_prebooked ? '#F59E0B' : '#86EFAC'}`,
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.02em'
+                        }}
+                      >
+                        {r.badge || (r.is_prebooked ? 'PRE-BOOKING ADVANCE' : "TODAY'S CHECK-IN PAYMENT")}
+                      </span>
+                    )}
                   </div>
 
-                  <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <span>{formatDateTime(checkinTime)}</span>
+                  <div style={{ fontSize: '0.80rem', color: '#64748b', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>📅 {formatDateTime(r.receipt_date || checkinTime)}</span>
                     {info.extra && (
                       <span style={{ color: info.color, fontWeight: 700 }}>
                         • {info.extra}
@@ -253,20 +285,23 @@ export default function CheckinSplitReceiptsModal({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
+                {/* Right amounts & action buttons */}
+                <div className="split-receipt-card-right" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+                  <div style={{ textAlign: 'right', minWidth: '95px' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
                       {formatCurrency(r.amount)}
                     </div>
                     {isPrinted ? (
                       <span
                         style={{
-                          fontSize: '0.70rem',
+                          fontSize: '0.72rem',
                           fontWeight: 800,
                           color: '#15803d',
                           background: '#dcfce7',
-                          padding: '2px 6px',
-                          borderRadius: '4px'
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          marginTop: '3px'
                         }}
                       >
                         ✓ Printed
@@ -274,9 +309,14 @@ export default function CheckinSplitReceiptsModal({
                     ) : (
                       <span
                         style={{
-                          fontSize: '0.70rem',
+                          fontSize: '0.72rem',
                           fontWeight: 700,
-                          color: '#0369a1'
+                          color: '#0369a1',
+                          background: '#e0f2fe',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          marginTop: '3px'
                         }}
                       >
                         Ready to print
@@ -284,93 +324,135 @@ export default function CheckinSplitReceiptsModal({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    id={`btn-print-split-${r.receipt_no}`}
-                    onClick={() => handlePrintReceipt(r)}
-                    style={{
-                      padding: '7px 14px',
-                      fontSize: '0.84rem',
-                      fontWeight: 750,
-                      borderRadius: '8px',
-                      background: isPrinted ? '#047857' : '#0284c7',
-                      borderColor: isPrinted ? '#059669' : '#0284c7',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }}
-                    title={`Print official ${info.label} receipt (${r.receipt_no})`}
-                  >
-                    <span>🖨️</span>
-                    <span>{isPrinted ? 'Print Again' : 'Print Receipt'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-download-split-receipt"
-                    id={`btn-download-split-${r.receipt_no}`}
-                    onClick={() => handleDownloadReceipt(r)}
-                    style={{
-                      padding: '7px 12px',
-                      fontSize: '0.84rem',
-                      fontWeight: 750,
-                      borderRadius: '8px',
-                      background: '#ecfdf5',
-                      borderColor: '#a7f3d0',
-                      color: '#047857',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      cursor: 'pointer',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                    }}
-                    title={`Download official ${info.label} receipt PDF (${r.receipt_no})`}
-                  >
-                    <span>📥</span>
-                    <span>Download</span>
-                  </button>
+                  <div className="split-receipt-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      id={`btn-print-split-${r.receipt_no}`}
+                      onClick={() => handlePrintReceipt(r)}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '0.86rem',
+                        fontWeight: 750,
+                        borderRadius: '9px',
+                        background: isPrinted ? 'linear-gradient(135deg, #059669 0%, #047857 100%)' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                        border: 'none',
+                        color: '#ffffff',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        boxShadow: isPrinted ? '0 2px 6px rgba(5, 150, 105, 0.35)' : '0 2px 6px rgba(2, 132, 199, 0.35)'
+                      }}
+                      title={`Print official ${info.label} receipt (${r.receipt_no})`}
+                    >
+                      <span>🖨️</span>
+                      <span>{isPrinted ? 'Print Again' : 'Print Receipt'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-download-split-receipt"
+                      id={`btn-download-split-${r.receipt_no}`}
+                      onClick={() => handleDownloadReceipt(r)}
+                      style={{
+                        padding: '8px 14px',
+                        fontSize: '0.86rem',
+                        fontWeight: 750,
+                        borderRadius: '9px',
+                        background: '#ecfdf5',
+                        border: '1.5px solid #a7f3d0',
+                        color: '#047857',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}
+                      title={`Download official ${info.label} receipt PDF (${r.receipt_no})`}
+                    >
+                      <span>📥</span>
+                      <span>Download</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Footer with Close Button */}
+        {/* Footer with Total Paid, Print All, and Close Button */}
         <div
           className="modal-footer"
           style={{
-            padding: '12px 20px',
+            padding: '14px 24px',
             borderTop: '1px solid #e2e8f0',
             background: '#f8fafc',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            gap: '12px',
+            flexShrink: 0
           }}
         >
-          <div style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 600 }}>
-            Total Paid: <strong style={{ color: '#0f172a', fontSize: '1rem' }}>{formatCurrency(totalPaid)}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '0.90rem', color: '#64748b', fontWeight: 600 }}>Total Paid:</span>
+            <span style={{ color: '#0f172a', fontSize: '1.15rem', fontWeight: 900 }}>{formatCurrency(totalPaid)}</span>
+            <span style={{ fontSize: '0.75rem', color: '#475569', background: '#e2e8f0', padding: '3px 9px', borderRadius: '12px', fontWeight: 700 }}>
+              {receipts.length} {receipts.length === 1 ? 'Receipt' : 'Receipts'}
+            </span>
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            id="btn-close-split-receipts-bottom"
-            onClick={onClose}
-            style={{
-              padding: '8px 22px',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              borderRadius: '8px',
-              cursor: 'pointer',
-              background: '#e2e8f0',
-              border: '1px solid #cbd5e1',
-              color: '#334155'
-            }}
-          >
-            Close
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {receipts.length > 1 && (
+              <button
+                type="button"
+                id="btn-print-all-split-receipts"
+                onClick={handlePrintAll}
+                style={{
+                  padding: '9px 18px',
+                  fontSize: '0.88rem',
+                  fontWeight: 800,
+                  borderRadius: '9px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  border: 'none',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(16, 185, 129, 0.35)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <span>🖨️</span>
+                <span>Print All Receipts ({receipts.length})</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              id="btn-close-split-receipts-bottom"
+              onClick={onClose}
+              style={{
+                padding: '9px 24px',
+                fontSize: '0.88rem',
+                fontWeight: 750,
+                borderRadius: '9px',
+                cursor: 'pointer',
+                background: '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                color: '#334155',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

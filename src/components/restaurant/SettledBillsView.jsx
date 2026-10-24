@@ -105,9 +105,9 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
     try {
       for (const id of selectedIds) {
         if (department === 'bar') {
-          await api.delete(`/bar/orders/${id}`);
+          await api.deleteBarOrder(id);
         } else {
-          await api.deleteRestaurantSettledBill(id);
+          await api.deleteRestaurantOrder(id);
         }
       }
       showToast(`${count} bills deleted.`, 'green');
@@ -115,6 +115,33 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
       loadSettledBills();
     } catch (err) {
       showToast('Error deleting bills: ' + err.message, 'red');
+    }
+  };
+
+  const handleDeleteSingleBill = async (b) => {
+    const billNo = b.order_number || b.id;
+    const table = b.table_name || (b.table_number ? `Table ${b.table_number}` : 'Walk-in');
+    const amount = formatCurrency(b.grand_total || b.total || 0);
+
+    const confirmed = await showConfirm({
+      title: `Delete Settled Bill #${billNo}?`,
+      message: `Are you sure you want to permanently delete settled bill #${billNo} for ${table} (${amount})? If this was settled by mistake or charged to a room folio, it will be completely removed and reversed.`,
+      icon: '🗑️',
+      confirmText: 'Yes, Delete Bill',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      if (department === 'bar') {
+        await api.deleteBarOrder(b.id);
+      } else {
+        await api.deleteRestaurantOrder(b.id);
+      }
+      showToast(`Settled bill #${billNo} deleted successfully.`, 'green');
+      loadSettledBills();
+    } catch (err) {
+      showToast('Error deleting bill: ' + err.message, 'red');
     }
   };
 
@@ -337,6 +364,30 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                       style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                     >
                       🖨️ Reprint
+                    </button>
+                    <button
+                      type="button"
+                      className="settled-delete-single-btn"
+                      onClick={() => handleDeleteSingleBill(b)}
+                      title="Void / Delete this bill (mistakenly settled by staff)"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        padding: '4px 9px',
+                        borderRadius: '6px',
+                        fontSize: '0.74rem',
+                        fontWeight: 750,
+                        cursor: 'pointer',
+                        marginLeft: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>🗑️</span>
+                      <span>Delete</span>
                     </button>
                   </td>
                 </tr>

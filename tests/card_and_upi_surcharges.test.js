@@ -87,11 +87,13 @@ describe('Card Surcharge (2.5%) & UPI Convenience Tax (0.4% > ₹2,000) Test Sui
     // 0.4% on 5000 = 20
     expect(booking.advance_upi_tax).toBe(20);
 
-    // Verify payments ledger
-    const pmt = db.prepare("SELECT * FROM payments WHERE booking_id = ? AND payment_type = 'advance'").get(bookingId);
-    expect(pmt).toBeDefined();
-    expect(pmt.card_surcharge).toBe(100);
-    expect(pmt.upi_tax).toBe(20);
+    // Verify payments ledger records split receipts
+    const pmtRows = db.prepare("SELECT * FROM payments WHERE booking_id = ? AND payment_type = 'advance'").all(bookingId);
+    expect(pmtRows.length).toBeGreaterThanOrEqual(1);
+    const sumCardSurcharge = pmtRows.reduce((sum, p) => sum + (p.card_surcharge || 0), 0);
+    const sumUpiTax = pmtRows.reduce((sum, p) => sum + (p.upi_tax || 0), 0);
+    expect(sumCardSurcharge).toBe(100);
+    expect(sumUpiTax).toBe(20);
   });
 
   it('2. should incur 0% UPI tax when UPI amount is <= ₹2,000', async () => {
@@ -312,6 +314,78 @@ describe('Card Surcharge (2.5%) & UPI Convenience Tax (0.4% > ₹2,000) Test Sui
         upi_tax_pct: 0.4,
         upi_tax_threshold: 2000
       });
+  });
+
+  it('8. should NOT show refund (e.g. ₹8, ₹10) on room folio or checkout when UPI MDR fee is paid at checkin', async () => {
+    // Set room ready
+    db.prepare("UPDATE rooms SET status = 'ready', current_booking_id = NULL WHERE id = ?").run(testRoomId);
+
+    // Guest pays ₹3,150 room charge via UPI (0.4% MDR = ₹13, total payment = ₹3,163)
+    const checkinRes = await request(app)
+      .post('/api/checkin')
+      .set('Authorization', `Bearer ${hospitalityToken}`)
+      .send({
+        roomId: testRoomId,
+        guestName: 'Sanjay Dutt',
+        mobile: '9876541299',
+        stayNights: 1,
+        baseRate: 3000,
+        totalDue: 3150,
+        totalPaid: 3150,
+        splitCash: 0,
+        splitCard: 0,
+        splitOnline: 3150,
+        onlineUtr: 'UTR250010101010',
+        bookingSource: 'Walk-in'
+      });
+
+    expect(checkinRes.status).toBe(200);
+    const bookingId = checkinRes.body.booking?.id || checkinRes.body.data?.id || checkinRes.body.bookingId;
+
+    // Verify booking has advance_upi_tax = 13
+    const booking = db.prepare("SELECT * FROM bookings WHERE id = ?").get(bookingId);
+    expect(booking.advance_upi_tax).toBe(13);
+    expect(booking.total_paid).toBe(3150);
+
+    // Verify payments table has amount = 3163 and upi_tax = 13
+    const pmt = db.prepare("SELECT * FROM payments WHERE booking_id = ?").get(bookingId);
+    expect(pmt.amount).toBe(3163);
+    expect(pmt.upi_tax).toBe(13);
+
+    // Fetch Folio
+    const folioRes = await request(app)
+      .get(`/api/rooms/${testRoomId}/folio`)
+      .set('Authorization', `Bearer ${hospitalityToken}`);
+
+    expect(folioRes.status).toBe(200);
+    const summary = folioRes.body.folio?.summary;
+    expect(summary).toBeDefined();
+
+    // The room advance paid must be the base amount ₹3,150 (NOT ₹3,163)
+    expect(summary.advancePaid).toBe(3150);
+    expect(summary.roomCharge).toBe(3150);
+
+    // Critical check: balanceDue MUST be 0 and refundAmount MUST be 0 (NOT ₹13!)
+    expect(summary.balanceDue).toBe(0);
+    expect(summary.refundAmount).toBe(0);
+    expect(summary.stayCalcNow?.refundDue).toBe(0);
+
+    // Checkout room with 0 settle and 0 refund
+    const checkoutRes = await request(app)
+      .post(`/api/checkout/${testRoomId}`)
+      .set('Authorization', `Bearer ${hospitalityToken}`)
+      .send({
+        settle_amount: 0,
+        refund_amount: 0,
+        final_payment_mode: 'cash'
+      });
+
+    expect(checkoutRes.status).toBe(200);
+    expect(checkoutRes.body.success).toBe(true);
+
+    // Ensure NO refund expense was created
+    const refundExp = db.prepare("SELECT * FROM expenses WHERE booking_id = ? AND category = 'refund'").get(bookingId);
+    expect(refundExp).toBeUndefined();
   });
 
   afterAll(async () => {

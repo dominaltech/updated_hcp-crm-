@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import ThemedSelect from '../common/ThemedSelect';
+import { printCashReceipt } from '../../services/printService';
 
 export default function AdvanceBookingModal({
   isOpen,
@@ -19,6 +20,93 @@ export default function AdvanceBookingModal({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Extract all distinct room categories
+  const availableRoomTypes = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(rooms)) {
+      rooms.forEach((r) => {
+        if (r.room_type && typeof r.room_type === 'string' && r.room_type.trim()) {
+          set.add(r.room_type.trim());
+        }
+      });
+    }
+    const defaultTypes = ['Executive Room', 'Executive Plus', 'Deluxe Room', 'Suit Room', 'Pent House'];
+    defaultTypes.forEach((t) => set.add(t));
+    return Array.from(set);
+  }, [rooms]);
+
+  // Parse room type string into counts map: e.g. "Executive Room (2 Rooms), Deluxe Room (1 Room)"
+  const parseRoomTypeCounts = (roomTypeStr) => {
+    const counts = {};
+    if (!roomTypeStr || typeof roomTypeStr !== 'string') {
+      counts[availableRoomTypes[0] || 'Executive Room'] = 1;
+      return counts;
+    }
+    const parts = roomTypeStr.split(',');
+    parts.forEach((p) => {
+      const match = p.match(/(.+?)\s*\((\d+)\s*Rooms?\)/i);
+      if (match) {
+        const name = match[1].trim();
+        const qty = parseInt(match[2], 10) || 1;
+        counts[name] = qty;
+      } else {
+        const name = p.trim();
+        if (name) counts[name] = 1;
+      }
+    });
+    if (Object.keys(counts).length === 0) {
+      counts[availableRoomTypes[0] || 'Executive Room'] = 1;
+    }
+    return counts;
+  };
+
+  const formatRoomTypeSummary = (counts) => {
+    const entries = Object.entries(counts).filter(([_, qty]) => qty > 0);
+    if (entries.length === 0) return '';
+    if (entries.length === 1 && entries[0][1] === 1) return entries[0][0];
+    return entries.map(([name, qty]) => `${name} (${qty} ${qty === 1 ? 'Room' : 'Rooms'})`).join(', ');
+  };
+
+  // Multiple room counts state
+  const [selectedRoomCounts, setSelectedRoomCounts] = useState({ 'Executive Room': 1 });
+
+  const totalSelectedRooms = Object.values(selectedRoomCounts).reduce((sum, qty) => sum + (parseInt(qty) || 0), 0);
+  const selectedEntries = Object.entries(selectedRoomCounts).filter(([_, qty]) => qty > 0);
+
+  const handleToggleCategory = (cat) => {
+    setSelectedRoomCounts((prev) => {
+      const next = { ...prev };
+      if (next[cat] && next[cat] > 0) {
+        delete next[cat];
+      } else {
+        next[cat] = 1;
+      }
+      return next;
+    });
+  };
+
+  const handleIncrementCategory = (cat, e) => {
+    if (e) e.stopPropagation();
+    setSelectedRoomCounts((prev) => ({
+      ...prev,
+      [cat]: (prev[cat] || 0) + 1
+    }));
+  };
+
+  const handleDecrementCategory = (cat, e) => {
+    if (e) e.stopPropagation();
+    setSelectedRoomCounts((prev) => {
+      const next = { ...prev };
+      const current = next[cat] || 0;
+      if (current <= 1) {
+        delete next[cat];
+      } else {
+        next[cat] = current - 1;
+      }
+      return next;
+    });
+  };
+
   // Form State for New / Edit Booking
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
@@ -26,8 +114,9 @@ export default function AdvanceBookingModal({
     age: '',
     address: '',
     phone: '',
+    room_type: 'Executive Room',
     room_number: '',
-    adults: 1,
+    adults: 2,
     children: 0,
     checkin_date: '',
     checkin_time: '12:00',
@@ -39,6 +128,12 @@ export default function AdvanceBookingModal({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Keep formData.room_type synchronized with selected room counts
+  useEffect(() => {
+    const summary = formatRoomTypeSummary(selectedRoomCounts);
+    setFormData((prev) => ({ ...prev, room_type: summary }));
+  }, [selectedRoomCounts]);
+
   // Set default dates for new booking
   const resetForm = () => {
     const today = new Date();
@@ -49,16 +144,17 @@ export default function AdvanceBookingModal({
     const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
     const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
 
-    const defaultRoom = rooms.find((r) => r.status === 'ready') || rooms[0] || {};
-
+    const defaultCat = availableRoomTypes[0] || 'Executive Room';
     setEditingId(null);
+    setSelectedRoomCounts({ [defaultCat]: 1 });
     setFormData({
       customer_name: '',
       age: '',
       address: '',
       phone: '',
-      room_number: defaultRoom.room_number || '',
-      adults: defaultRoom.max_adults || 2,
+      room_type: defaultCat,
+      room_number: '',
+      adults: 2,
       children: 0,
       checkin_date: todayStr,
       checkin_time: '12:00',
@@ -111,6 +207,50 @@ export default function AdvanceBookingModal({
     }
   }, [isOpen, initialBooking, initialTab]);
 
+  // Helper to trigger official receipt print / reprint for advance booking
+  const handlePrintAdvanceReceipt = (b) => {
+    if (!b) return;
+    const amount = parseFloat(b.advance_amount) || 0;
+    if (amount <= 0) {
+      showToast('No advance payment recorded for this reservation', 'info', 3000);
+      return;
+    }
+
+    const rawMode = String(b.payment_mode || 'cash').toLowerCase();
+    let modeKey = 'cash';
+    let modeLabel = 'Cash';
+    if (rawMode.includes('upi') || rawMode.includes('online')) {
+      modeKey = 'upi';
+      modeLabel = 'Online UPI';
+    } else if (rawMode.includes('card') || rawMode.includes('pos')) {
+      modeKey = 'card';
+      modeLabel = 'Card POS';
+    } else if (rawMode.includes('cheque') || rawMode.includes('check')) {
+      modeKey = 'cheque';
+      modeLabel = 'Cheque';
+    }
+
+    const receiptObj = {
+      receipt_no: b.receipt_no || (modeKey === 'upi' ? 'UPI01' : modeKey === 'card' ? 'POS01' : modeKey === 'cheque' ? 'CHQ01' : 'CR01'),
+      voucher_number: b.booking_number || 'ADV-PREBOOK',
+      receipt_date: b.receipt_date || b.created_at || new Date(),
+      guest_name: b.customer_name || 'Valued Guest',
+      amount: amount,
+      base_amount: amount,
+      card_surcharge: 0,
+      upi_tax: 0,
+      payment_mode: modeLabel,
+      mode: modeKey,
+      room_numbers: b.room_number ? `Room #${b.room_number}` : (b.room_type || 'Executive Room'),
+      particulars: `Advance Pre-Booking (#${b.booking_number || 'NEW'}) - Category: ${b.room_type || 'Executive Room'}`,
+      cashier_name: 'Front Desk',
+      is_split: false
+    };
+
+    printCashReceipt(receiptObj);
+    showToast(`Printing Advance Receipt ${receiptObj.receipt_no} (${modeLabel})`, 'success', 3000);
+  };
+
   // Submit Handler for New / Edit Booking
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -118,12 +258,12 @@ export default function AdvanceBookingModal({
       showToast('Please enter customer name', 'error', 3000);
       return;
     }
-    if (!formData.room_number) {
-      showToast('Please select a booking room number', 'error', 3000);
-      return;
-    }
     if (!formData.checkin_date || !formData.checkout_date) {
       showToast('Please specify check-in and check-out dates', 'error', 3000);
+      return;
+    }
+    if (totalSelectedRooms === 0) {
+      showToast('Please select at least one room category', 'error', 3000);
       return;
     }
 
@@ -131,6 +271,7 @@ export default function AdvanceBookingModal({
     try {
       const payload = {
         ...formData,
+        room_type: formData.room_type || 'Executive Room',
         age: formData.age ? parseInt(formData.age) : null,
         adults: parseInt(formData.adults) || 1,
         children: parseInt(formData.children) || 0,
@@ -140,7 +281,7 @@ export default function AdvanceBookingModal({
       if (editingId) {
         const res = await api.updateAdvanceBooking(editingId, payload);
         if (res && res.success) {
-          showToast('Advance booking updated successfully! ✓', 'success', 3500);
+          showToast('Advance booking updated successfully!', 'success', 3500);
           resetForm();
           setActiveTab('pending');
           await loadBookings();
@@ -150,7 +291,17 @@ export default function AdvanceBookingModal({
       } else {
         const res = await api.createAdvanceBooking(payload);
         if (res && res.success) {
-          showToast(`Advance booking created for ${formData.customer_name}! ✓`, 'success', 3500);
+          showToast(`Advance booking created for ${formData.customer_name}!`, 'success', 3500);
+          const createdBooking = res.booking || {
+            ...payload,
+            receipt_no: res.receipt_no,
+            booking_number: res.booking?.booking_number
+          };
+          if (payload.advance_amount > 0) {
+            setTimeout(() => {
+              handlePrintAdvanceReceipt(createdBooking);
+            }, 500);
+          }
           resetForm();
           setActiveTab('pending');
           await loadBookings();
@@ -171,7 +322,7 @@ export default function AdvanceBookingModal({
     try {
       const res = await api.updateAdvanceBookingStatus(id, status);
       if (res && res.success) {
-        showToast(status === 'completed' ? 'Booking marked as Completed ✓' : 'Booking moved back to Pending ✓', 'success', 3000);
+        showToast(status === 'completed' ? 'Booking marked as Completed' : 'Booking moved back to Pending', 'success', 3000);
         await loadBookings();
       } else {
         showToast(res?.error || 'Failed to update status', 'error', 3000);
@@ -189,7 +340,7 @@ export default function AdvanceBookingModal({
       confirmText: 'Yes, Delete',
       cancelText: 'Cancel',
       isDestructive: true,
-      icon: '🗑️'
+      icon: ''
     });
     if (!confirmed) {
       return;
@@ -197,7 +348,7 @@ export default function AdvanceBookingModal({
     try {
       const res = await api.deleteAdvanceBooking(id);
       if (res && res.success) {
-        showToast('Advance booking deleted ✓', 'info', 3000);
+        showToast('Advance booking deleted', 'info', 3000);
         await loadBookings();
       } else {
         showToast(res?.error || 'Failed to delete booking', 'error', 3000);
@@ -210,11 +361,14 @@ export default function AdvanceBookingModal({
   // Edit Booking Trigger
   const handleEdit = (b) => {
     setEditingId(b.id);
+    const parsed = parseRoomTypeCounts(b.room_type);
+    setSelectedRoomCounts(parsed);
     setFormData({
       customer_name: b.customer_name || '',
       age: b.age || '',
       address: b.address || '',
       phone: b.phone || '',
+      room_type: b.room_type || (b.room_number ? (rooms.find(r => r.room_number === b.room_number)?.room_type || 'Executive Room') : 'Executive Room'),
       room_number: b.room_number || '',
       adults: b.adults || 1,
       children: b.children || 0,
@@ -234,7 +388,7 @@ export default function AdvanceBookingModal({
     if (onStartCheckinFromBooking) {
       onStartCheckinFromBooking(b);
     } else {
-      showToast(`Pre-filling Check-In Wizard for ${b.customer_name} (Room #${b.room_number})`, 'info', 3500);
+      showToast(`Pre-filling Check-In Wizard for ${b.customer_name} (${b.room_type || 'Executive Room'})`, 'info', 3500);
     }
   };
 
@@ -351,12 +505,16 @@ export default function AdvanceBookingModal({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '22px',
                 boxShadow: '0 4px 12px rgba(226, 178, 94, 0.35)',
                 color: '#0A191C'
               }}
             >
-              📅
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -409,7 +567,7 @@ export default function AdvanceBookingModal({
                   transition: 'transform 0.15s ease'
                 }}
               >
-                <span style={{ fontSize: '1rem' }}>➕</span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 900 }}>+</span>
                 <span>New Advance Booking</span>
               </button>
             )}
@@ -480,7 +638,7 @@ export default function AdvanceBookingModal({
                 boxShadow: activeTab === 'pending' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none'
               }}
             >
-              <span>⏳ Pendings</span>
+              <span>Pendings</span>
               <span
                 style={{
                   background: activeTab === 'pending' ? (isDark ? '#0A191C' : '#38BDF8') : (isDark ? '#24464D' : '#CBD5E1'),
@@ -516,7 +674,7 @@ export default function AdvanceBookingModal({
                 boxShadow: activeTab === 'completed' ? '0 2px 8px rgba(16,185,129,0.3)' : 'none'
               }}
             >
-              <span>✅ Completed</span>
+              <span>Completed</span>
               <span
                 style={{
                   background: activeTab === 'completed' ? '#064E3B' : (isDark ? '#24464D' : '#CBD5E1'),
@@ -547,7 +705,7 @@ export default function AdvanceBookingModal({
                   boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)'
                 }}
               >
-                <span>{editingId ? '✏️ Editing Reservation' : '➕ Insert Customer Information'}</span>
+                <span>{editingId ? 'Editing Reservation' : '+ Insert Customer Information'}</span>
                 <button
                   type="button"
                   onClick={() => setActiveTab('pending')}
@@ -602,7 +760,10 @@ export default function AdvanceBookingModal({
                   color: t.textSecondary
                 }}
               >
-                🔍
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
               </span>
               {searchQuery && (
                 <button
@@ -680,17 +841,17 @@ export default function AdvanceBookingModal({
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                  {/* Grid Layout taking advantage of wide screen */}
+                  {/* Row 1: Guest Identity & Contact */}
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                      gap: '18px',
-                      marginBottom: '20px'
+                      gridTemplateColumns: '2fr 1.2fr 1fr 2fr 1.3fr',
+                      gap: '14px',
+                      marginBottom: '18px'
                     }}
                   >
                     {/* 1. Customer Name */}
-                    <div style={{ gridColumn: 'span 2' }}>
+                    <div>
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelPrimary, textTransform: 'uppercase', marginBottom: '6px' }}>
                         Customer Name *
                       </label>
@@ -715,7 +876,32 @@ export default function AdvanceBookingModal({
                       />
                     </div>
 
-                    {/* 2. Age */}
+                    {/* 2. Mobile / Phone */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
+                        Mobile Number
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="e.g. 9829012345"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          padding: '11px 14px',
+                          background: t.inputBg,
+                          border: `1.5px solid ${t.inputBorder}`,
+                          borderRadius: '10px',
+                          color: t.inputText,
+                          fontSize: '0.94rem',
+                          outline: 'none',
+                          fontWeight: 600
+                        }}
+                      />
+                    </div>
+
+                    {/* 3. Age */}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
                         Age
@@ -742,39 +928,14 @@ export default function AdvanceBookingModal({
                       />
                     </div>
 
-                    {/* 3. Phone / Mobile */}
+                    {/* 4. Address / City */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
-                        Mobile / Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="e.g. 9829012345"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        style={{
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          padding: '11px 14px',
-                          background: t.inputBg,
-                          border: `1.5px solid ${t.inputBorder}`,
-                          borderRadius: '10px',
-                          color: t.inputText,
-                          fontSize: '0.94rem',
-                          outline: 'none',
-                          fontWeight: 600
-                        }}
-                      />
-                    </div>
-
-                    {/* 4. Address */}
-                    <div style={{ gridColumn: 'span 2' }}>
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
                         Address / City
                       </label>
                       <input
                         type="text"
-                        placeholder="Residential address, City, or State"
+                        placeholder="City, State or Address"
                         value={formData.address}
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                         style={{
@@ -792,99 +953,309 @@ export default function AdvanceBookingModal({
                       />
                     </div>
 
-                    {/* 5. Booking Room Number */}
+                    {/* 5. Guests (Adults & Children) */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelPrimary, textTransform: 'uppercase', marginBottom: '6px' }}>
-                        Booking Room Number *
+                      <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
+                        Guests (Ad / Ch)
                       </label>
-                      <ThemedSelect
-                        id="adv-booking-room-select"
-                        value={formData.room_number}
-                        onChange={(val) => setFormData({ ...formData, room_number: val })}
-                        placeholder="Select Room Number"
-                        colorTheme="amber"
-                        isDark={isDark}
-                        required
-                        leadingIcon="🏨"
-                        isSearchable
-                        searchPlaceholder="Search room # or type..."
-                        options={rooms.map((r) => ({
-                          value: r.room_number,
-                          label: `Room #${r.room_number}`,
-                          subtitle: r.room_type,
-                          tag: r.status === 'occupied' ? 'Occupied' : 'Ready',
-                          tagColor: r.status === 'occupied' ? '#B45309' : '#15803D',
-                          tagBg: r.status === 'occupied'
-                            ? (isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7')
-                            : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7')
-                        }))}
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-
-                    {/* 6. Adults & Children (Combined Box) */}
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Adults
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={formData.adults}
-                          onChange={(e) => setFormData({ ...formData, adults: parseInt(e.target.value) || 1 })}
-                          style={{
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            padding: '11px 14px',
-                            background: t.inputBg,
-                            border: `1.5px solid ${t.inputBorder}`,
-                            borderRadius: '10px',
-                            color: t.inputText,
-                            fontSize: '0.94rem',
-                            outline: 'none',
-                            fontWeight: 700
-                          }}
-                        />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.labelSecondary, textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Children
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="10"
-                          value={formData.children}
-                          onChange={(e) => setFormData({ ...formData, children: parseInt(e.target.value) || 0 })}
-                          style={{
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            padding: '11px 14px',
-                            background: t.inputBg,
-                            border: `1.5px solid ${t.inputBorder}`,
-                            borderRadius: '10px',
-                            color: t.inputText,
-                            fontSize: '0.94rem',
-                            outline: 'none',
-                            fontWeight: 700
-                          }}
-                        />
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            title="Adults"
+                            placeholder="Adults"
+                            value={formData.adults}
+                            onChange={(e) => setFormData({ ...formData, adults: parseInt(e.target.value) || 1 })}
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              padding: '11px 12px',
+                              background: t.inputBg,
+                              border: `1.5px solid ${t.inputBorder}`,
+                              borderRadius: '10px',
+                              color: t.inputText,
+                              fontSize: '0.92rem',
+                              outline: 'none',
+                              fontWeight: 700,
+                              textAlign: 'center'
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            title="Children"
+                            placeholder="Children"
+                            value={formData.children}
+                            onChange={(e) => setFormData({ ...formData, children: parseInt(e.target.value) || 0 })}
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              padding: '11px 12px',
+                              background: t.inputBg,
+                              border: `1.5px solid ${t.inputBorder}`,
+                              borderRadius: '10px',
+                              color: t.inputText,
+                              fontSize: '0.92rem',
+                              outline: 'none',
+                              fontWeight: 700,
+                              textAlign: 'center'
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Date, Time & Payment Highlighted Strip */}
+                  {/* Row 2: DIVS TO CHOOSE CATEGORIES OF ROOM (Multi-Room Selection Cards & Informative Summary Below) */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '0.82rem', fontWeight: 800, color: t.labelPrimary, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Choose Category of Room *
+                      </label>
+                      <span style={{ fontSize: '0.78rem', color: t.textSecondary, fontWeight: 600 }}>
+                        Select one or multiple room categories and set number of rooms
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: `repeat(${availableRoomTypes.length}, minmax(0, 1fr))`,
+                        gap: '12px'
+                      }}
+                    >
+                      {availableRoomTypes.map((type) => {
+                        const count = selectedRoomCounts[type] || 0;
+                        const isSelected = count > 0;
+
+                        return (
+                          <div
+                            key={type}
+                            onClick={() => handleToggleCategory(type)}
+                            id={`room-type-card-${type.replace(/\s+/g, '-').toLowerCase()}`}
+                            style={{
+                              background: isSelected
+                                ? (isDark ? 'linear-gradient(135deg, rgba(226, 178, 94, 0.22) 0%, rgba(19, 45, 51, 0.95) 100%)' : '#FEF3C7')
+                                : (isDark ? '#0F282D' : '#FFFFFF'),
+                              border: isSelected
+                                ? '2px solid #E2B25E'
+                                : `1.5px solid ${t.inputBorder}`,
+                              borderRadius: '12px',
+                              padding: '12px 14px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                              boxShadow: isSelected
+                                ? (isDark ? '0 0 14px rgba(226, 178, 94, 0.35)' : '0 4px 14px rgba(217, 119, 6, 0.2)')
+                                : 'none',
+                              transform: isSelected ? 'translateY(-2px)' : 'none',
+                              transition: 'all 0.15s ease',
+                              userSelect: 'none'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.94rem',
+                                  fontWeight: 850,
+                                  color: isSelected ? (isDark ? '#E2B25E' : '#B45309') : t.inputText,
+                                  lineHeight: 1.2
+                                }}
+                              >
+                                {type}
+                              </span>
+                              {isSelected ? (
+                                <span
+                                  style={{
+                                    background: '#E2B25E',
+                                    color: '#0A191C',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 900,
+                                    letterSpacing: '0.02em'
+                                  }}
+                                >
+                                  SELECTED
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    border: `1px solid ${t.inputBorder}`,
+                                    color: t.textSecondary,
+                                    padding: '2px 6px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700
+                                  }}
+                                >
+                                  SELECT
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ fontSize: '0.74rem', color: t.textSecondary }}>
+                              Standard Rate Plan
+                            </div>
+
+                            {/* Quantity controller when selected or click hint */}
+                            {isSelected ? (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  marginTop: '4px',
+                                  padding: '4px 6px',
+                                  background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.9)',
+                                  borderRadius: '8px',
+                                  border: isDark ? '1px solid #33616b' : '1px solid #cbd5e1'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDecrementCategory(type, e)}
+                                  style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#0f172a',
+                                    fontWeight: 900,
+                                    fontSize: '1rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    lineHeight: 1
+                                  }}
+                                  title="Decrease room count"
+                                >
+                                  -
+                                </button>
+                                <span style={{ fontSize: '0.86rem', fontWeight: 850, color: isDark ? '#E2B25E' : '#B45309' }}>
+                                  {count} {count === 1 ? 'Room' : 'Rooms'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleIncrementCategory(type, e)}
+                                  style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#0f172a',
+                                    fontWeight: 900,
+                                    fontSize: '1rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    lineHeight: 1
+                                  }}
+                                  title="Increase room count"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.70rem', color: t.textSecondary, textAlign: 'center', padding: '6px 0' }}>
+                                Click to select
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Informative summary bar below category cards */}
+                    <div
+                      id="adv-selected-rooms-summary-bar"
+                      style={{
+                        marginTop: '12px',
+                        padding: '12px 18px',
+                        borderRadius: '10px',
+                        background: isDark ? '#162e33' : '#f8fafc',
+                        border: isDark ? '1.5px solid #234850' : '1.5px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: t.textSecondary, textTransform: 'uppercase' }}>
+                          Selected Rooms:
+                        </span>
+                        {selectedEntries.length === 0 ? (
+                          <span style={{ fontSize: '0.82rem', color: '#ef4444', fontWeight: 700 }}>
+                            No rooms selected. Please click at least one room category above.
+                          </span>
+                        ) : (
+                          selectedEntries.map(([cat, qty]) => (
+                            <span
+                              key={cat}
+                              style={{
+                                fontSize: '0.82rem',
+                                fontWeight: 800,
+                                padding: '3px 10px',
+                                borderRadius: '6px',
+                                background: isDark ? '#1f3d44' : '#ffffff',
+                                color: isDark ? '#E2B25E' : '#0369a1',
+                                border: isDark ? '1px solid #33616b' : '1px solid #cbd5e1'
+                              }}
+                            >
+                              {cat}: <strong>{qty} {qty === 1 ? 'Room' : 'Rooms'}</strong>
+                            </span>
+                          ))
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            background: isDark ? '#E2B25E' : '#0f172a',
+                            color: isDark ? '#0A191C' : '#ffffff',
+                            fontSize: '0.88rem',
+                            fontWeight: 900,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          <span>Total Selected Rooms:</span>
+                          <span style={{ fontSize: '1.05rem', fontWeight: 900 }}>{totalSelectedRooms}</span>
+                        </div>
+                        <span style={{ fontSize: '0.74rem', color: t.textSecondary }}>
+                          (Informational summary for reservation)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: 3 EXACTLY PARALLEL DIVS (Check-in, Check-out, Advance Paid & Mode) */}
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                       gap: '16px',
                       marginBottom: '20px'
                     }}
                   >
-                    {/* 7. Check-in Date & Time (c/n) */}
+                    {/* Div 1. Check-in Date & Time (c/n) */}
                     <div
                       style={{
                         background: t.dateBoxCnBg,
@@ -932,7 +1303,7 @@ export default function AdvanceBookingModal({
                       </div>
                     </div>
 
-                    {/* 8. Check-out Date & Time (c/o) */}
+                    {/* Div 2. Check-out Date & Time (c/o) */}
                     <div
                       style={{
                         background: t.dateBoxCoBg,
@@ -980,7 +1351,7 @@ export default function AdvanceBookingModal({
                       </div>
                     </div>
 
-                    {/* 9. Advance Payment & Mode */}
+                    {/* Div 3. Advance Payment & Mode */}
                     <div
                       style={{
                         background: t.dateBoxPayBg,
@@ -1018,12 +1389,12 @@ export default function AdvanceBookingModal({
                           colorTheme="emerald"
                           isDark={isDark}
                           options={[
-                            { value: 'cash', label: 'Cash', icon: '💵' },
-                            { value: 'online', label: 'UPI / Online', icon: '📱' },
-                            { value: 'card', label: 'Card', icon: '💳' },
-                            { value: 'cheque', label: 'Cheque', icon: '📝' }
+                            { value: 'cash', label: 'Cash' },
+                            { value: 'online', label: 'UPI / Online' },
+                            { value: 'card', label: 'Card' },
+                            { value: 'cheque', label: 'Cheque' }
                           ]}
-                          style={{ flex: 1, minWidth: '140px' }}
+                          style={{ flex: 1, minWidth: '135px' }}
                         />
                       </div>
                     </div>
@@ -1100,7 +1471,7 @@ export default function AdvanceBookingModal({
                         transition: 'transform 0.15s ease'
                       }}
                     >
-                      {isSubmitting ? 'Saving...' : editingId ? '💾 Update Advance Reservation' : '💾 Save Advance Reservation'}
+                      {isSubmitting ? 'Saving...' : editingId ? 'Update Advance Reservation' : 'Save Advance Reservation'}
                     </button>
                   </div>
                 </form>
@@ -1128,7 +1499,7 @@ export default function AdvanceBookingModal({
                   }}
                 >
                   <div style={{ fontSize: '52px', marginBottom: '16px' }}>
-                    {activeTab === 'pending' ? '📅' : '🎉'}
+                    <div style={{ width: '48px', height: '48px', margin: '0 auto', border: '2px solid #cbd5e1', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 900, color: t.textSecondary }}>BOX</div>
                   </div>
                   <h3 style={{ margin: '0 0 8px', color: t.textPrimary, fontSize: '1.25rem', fontWeight: 800 }}>
                     {activeTab === 'pending' ? 'No Pending Advance Bookings Found' : 'No Completed Pre-Bookings Yet'}
@@ -1157,7 +1528,7 @@ export default function AdvanceBookingModal({
                         boxShadow: '0 4px 14px rgba(226, 178, 94, 0.35)'
                       }}
                     >
-                      ➕ Create First Advance Booking
+                      + Create First Advance Booking
                     </button>
                   )}
                 </div>
@@ -1224,29 +1595,29 @@ export default function AdvanceBookingModal({
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.80rem', color: t.textSecondary, marginTop: '5px', flexWrap: 'wrap' }}>
-                            {b.phone ? <span>📞 <strong>{b.phone}</strong></span> : null}
-                            {b.address ? <span>📍 {b.address}</span> : null}
+                            {b.phone ? <span>Phone: <strong>{b.phone}</strong></span> : null}
+                            {b.address ? <span>Address: {b.address}</span> : null}
                           </div>
                         </div>
 
-                        {/* Room Allocation Chip */}
+                        {/* Room Category Chip */}
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <span
                             style={{
                               display: 'inline-block',
                               background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                               color: '#FFFFFF',
-                              fontSize: '0.95rem',
+                              fontSize: '0.88rem',
                               fontWeight: 900,
                               padding: '5px 14px',
                               borderRadius: '10px',
                               boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)'
                             }}
                           >
-                            Room #{b.room_number}
+                            {b.room_type || (b.room_number ? `Room #${b.room_number}` : 'Executive Room')}
                           </span>
                           <div style={{ fontSize: '0.74rem', color: t.textSecondary, marginTop: '3px', fontWeight: 600 }}>
-                            {b.room_type || 'Standard Room'}
+                            {b.room_number ? `Assigned Room: #${b.room_number}` : 'Room: Unassigned (At Check-In)'}
                           </div>
                         </div>
                       </div>
@@ -1296,7 +1667,7 @@ export default function AdvanceBookingModal({
                             Guests
                           </span>
                           <span style={{ color: t.textPrimary, fontWeight: 700 }}>
-                            👥 {b.adults} Adult{b.adults > 1 ? 's' : ''}
+                            {b.adults} Adult{b.adults > 1 ? 's' : ''}
                           </span>
                           {b.children > 0 && (
                             <span style={{ color: t.textSecondary, fontSize: '0.75rem', display: 'block' }}>
@@ -1317,7 +1688,7 @@ export default function AdvanceBookingModal({
                           </span>
                           {b.advance_amount > 0 && (
                             <span style={{ color: t.textSecondary, fontSize: '0.74rem', textTransform: 'capitalize', display: 'block' }}>
-                              via {b.payment_mode || 'Cash'}
+                              via {b.payment_mode || 'Cash'} {b.receipt_no ? `• ${b.receipt_no}` : ''}
                             </span>
                           )}
                         </div>
@@ -1368,7 +1739,7 @@ export default function AdvanceBookingModal({
                                 animation: 'redBlinkPulse 1.25s infinite ease-in-out'
                               }}
                             >
-                              🔴 48h ALERT: {b.urgency_text || 'Check-in due soon'}
+                              48h ALERT: {b.urgency_text || 'Check-in due soon'}
                             </span>
                           ) : b.status === 'completed' ? (
                             <span
@@ -1384,7 +1755,7 @@ export default function AdvanceBookingModal({
                                 fontWeight: 800
                               }}
                             >
-                              ✓ Checked-in / Fulfilled
+                              Checked-in / Fulfilled
                             </span>
                           ) : (
                             <span style={{ fontSize: '0.74rem', color: t.textSecondary, fontWeight: 600 }}>
@@ -1393,7 +1764,32 @@ export default function AdvanceBookingModal({
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {b.advance_amount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handlePrintAdvanceReceipt(b)}
+                              title={`Print Official Advance Receipt (${b.receipt_no || 'CR01'})`}
+                              style={{
+                                background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                padding: '7px 12px',
+                                borderRadius: '8px',
+                                fontSize: '0.80rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)'
+                              }}
+                            >
+                              
+                              <span>Receipt {b.receipt_no ? `(${b.receipt_no})` : ''}</span>
+                            </button>
+                          )}
+
                           {b.status === 'pending' && (
                             <>
                               <button
@@ -1411,7 +1807,7 @@ export default function AdvanceBookingModal({
                                   boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)'
                                 }}
                               >
-                                🏨 Check-In Now
+                                Check-In Now
                               </button>
 
                               <button
@@ -1428,7 +1824,7 @@ export default function AdvanceBookingModal({
                                   cursor: 'pointer'
                                 }}
                               >
-                                ✏️ Edit
+                                Edit
                               </button>
 
                               <button
@@ -1446,7 +1842,7 @@ export default function AdvanceBookingModal({
                                 }}
                                 title="Mark as Completed without opening check-in wizard"
                               >
-                                ✓ Complete
+                                Complete
                               </button>
                             </>
                           )}
@@ -1485,7 +1881,7 @@ export default function AdvanceBookingModal({
                             }}
                             title="Delete advance booking"
                           >
-                            🗑
+                            Delete
                           </button>
                         </div>
                       </div>

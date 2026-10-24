@@ -428,11 +428,61 @@ export const api = {
           return res;
         }
       } catch (locErr) {
+        if (locErr.status === 401 || locErr.status === 403) {
+          return { success: false, error: locErr.message || 'Invalid ID or password. Please verify your credentials.' };
+        }
         console.log('[WaiterAPI] Local login unavailable, validating via Supabase Cloud package...');
       }
     }
 
-    // 2. Validate via Supabase Cloud Package (Independent 4G/5G, Netlify link, Vercel, or outside Wi-Fi)
+    // 2. Check dedicated Supabase staff_users table directly
+    try {
+      const staffRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/staff_users?username=ilike.${encodeURIComponent(uClean)}&status=eq.active&select=*&limit=1`,
+        {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        }
+      );
+      if (staffRes.ok) {
+        const matched = await staffRes.json();
+        if (Array.isArray(matched) && matched.length > 0) {
+          const s = matched[0];
+          const storedPass = String(s.password || '');
+          let isValid = false;
+          if (storedPass.startsWith('$2')) {
+            try {
+              isValid = bcrypt.compareSync(pClean, storedPass);
+            } catch (_) {
+              isValid = false;
+            }
+          } else {
+            isValid = (storedPass === pClean);
+          }
+          if (isValid) {
+            const userObj = {
+              id: s.id,
+              username: s.username,
+              full_name: s.full_name || s.username,
+              role: s.role || 'waiter',
+              phone: s.phone || ''
+            };
+            const pseudoToken = 'cloud_' + Date.now();
+            setAuthToken(pseudoToken);
+            localStorage.setItem('hcp_waiter_user', JSON.stringify(userObj));
+            return { success: true, token: pseudoToken, user: userObj };
+          } else {
+            return { success: false, error: 'Invalid ID or password. Please verify your credentials.' };
+          }
+        }
+      }
+    } catch (supErr) {
+      console.log('[WaiterAPI] staff_users query notice:', supErr.message);
+    }
+
+    // 3. Fallback: Validate via Supabase Cloud Package
     console.log('[WaiterAPI] Validating credentials via Supabase Cloud package...');
     let pkg = null;
     try {

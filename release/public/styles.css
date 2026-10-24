@@ -1435,7 +1435,7 @@ body.modal-open {
 
 #checkin-modal-overlay .modal-body {
   flex: 1;
-  padding: 10px 64px 14px !important;
+  padding: 10px 92px 14px !important;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -1591,67 +1591,108 @@ body.modal-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.92) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1.5px solid rgba(0, 0, 0, 0.1) !important;
   border-radius: 50% !important;
-  width: 42px !important;
-  height: 42px !important;
+  width: 76px !important;
+  height: 76px !important;
   padding: 0 !important;
   margin: 0 !important;
   outline: none !important;
   cursor: pointer;
   user-select: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  color: #334155;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .wizard-side-custom-arrow.nav-prev {
-  left: 12px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(0, 0, 0, 0.14) !important;
+  color: #1e293b !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16) !important;
+}
+
+.wizard-side-custom-arrow.nav-prev:hover {
+  transform: translateY(-50%) scale(1.08) !important;
+  background: #f8fafc !important;
+  border-color: #64748b !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.24) !important;
 }
 
 .wizard-side-custom-arrow.nav-next {
-  right: 12px;
+  right: 10px;
+  background: linear-gradient(135deg, #802868 0%, #571345 100%) !important;
+  border: 2.5px solid #a33886 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 28px rgba(128, 40, 104, 0.42) !important;
 }
 
-.wizard-side-custom-arrow:hover {
-  transform: translateY(-50%) scale(1.1) !important;
-  background: var(--apple-blue, #0284c7) !important;
-  border-color: var(--apple-blue, #0284c7) !important;
+.wizard-side-custom-arrow.nav-next:hover {
+  transform: translateY(-50%) scale(1.08) !important;
+  background: linear-gradient(135deg, #96307a 0%, #681752 100%) !important;
+  border-color: #c74fa6 !important;
   color: #ffffff !important;
-  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.45) !important;
+  box-shadow: 0 12px 36px rgba(128, 40, 104, 0.6) !important;
 }
 
 .wizard-side-custom-arrow:active {
-  transform: translateY(-50%) scale(0.95) !important;
+  transform: translateY(-50%) scale(0.96) !important;
 }
 
 .custom-arrow-icon {
-  width: 20px;
-  height: 20px;
+  width: 40px !important;
+  height: 40px !important;
   display: block;
   pointer-events: none;
   stroke: currentColor;
-  stroke-width: 2.5;
+  stroke-width: 3.2;
   transition: all 0.2s ease;
 }
 
-[data-theme="dark"] .wizard-side-custom-arrow,
-body.dark-theme .wizard-side-custom-arrow {
-  background: rgba(30, 41, 59, 0.9) !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-  color: #f1f5f9 !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6) !important;
+[data-theme="dark"] .wizard-side-custom-arrow.nav-prev,
+body.dark-theme .wizard-side-custom-arrow.nav-prev {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 2px solid rgba(255, 255, 255, 0.22) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65) !important;
 }
 
-[data-theme="dark"] .wizard-side-custom-arrow:hover,
-body.dark-theme .wizard-side-custom-arrow:hover {
-  background: var(--apple-blue, #0284c7) !important;
-  border-color: var(--apple-blue, #0284c7) !important;
+[data-theme="dark"] .wizard-side-custom-arrow.nav-prev:hover,
+body.dark-theme .wizard-side-custom-arrow.nav-prev:hover {
+  background: #334155 !important;
+  border-color: rgba(255, 255, 255, 0.45) !important;
   color: #ffffff !important;
-  box-shadow: 0 6px 24px rgba(56, 189, 248, 0.5) !important;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.8) !important;
+}
+
+[data-theme="dark"] .wizard-side-custom-arrow.nav-next,
+body.dark-theme .wizard-side-custom-arrow.nav-next {
+  background: linear-gradient(135deg, #9d3180 0%, #691753 100%) !important;
+  border: 2.5px solid #c94ea8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 30px rgba(157, 49, 128, 0.55) !important;
+}
+
+[data-theme="dark"] .wizard-side-custom-arrow.nav-next:hover,
+body.dark-theme .wizard-side-custom-arrow.nav-next:hover {
+  background: linear-gradient(135deg, #b23b92 0%, #7d1c63 100%) !important;
+  border-color: #e06ec2 !important;
+  box-shadow: 0 12px 38px rgba(178, 59, 146, 0.7) !important;
+}
+
+@media (max-width: 1024px) {
+  .wizard-side-custom-arrow {
+    width: 58px !important;
+    height: 58px !important;
+  }
+  .custom-arrow-icon {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  #checkin-modal-overlay .modal-body {
+    padding: 10px 72px 14px !important;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -14732,6 +14773,43 @@ body.dark-theme .room-service-card:hover,
   filter: brightness(1.15);
 }
 
+.btn-occupancy-chart {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3.5px 12px;
+  border-radius: 14px;
+  border: 1.5px solid #cbd5e1;
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-primary, #334155);
+  font-weight: 750;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  line-height: 1.25;
+}
+
+.btn-occupancy-chart:hover {
+  border-color: #0284c7;
+  color: #0369a1;
+  background: #f0f9ff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.22);
+}
+
+[data-theme="dark"] .btn-occupancy-chart {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .btn-occupancy-chart:hover {
+  background: #1e3a5f;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
+}
+
 .btn-advance-booking {
   display: inline-flex;
   align-items: center;
@@ -14826,4 +14904,222 @@ body.dark-theme .adv-fullscreen-overlay {
   color: #f8fafc !important;
 }
 
+/* ==========================================================================
+   CHECK-IN SPLIT PAYMENT RECEIPTS MODAL
+   ========================================================================== */
+#checkin-split-receipts-overlay {
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(4px) !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+}
 
+#checkin-split-receipts-modal {
+  width: 780px !important;
+  max-width: 95vw !important;
+  max-height: 90vh !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.split-receipt-card {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 16px 20px !important;
+  border-radius: 14px !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+  gap: 16px !important;
+  box-sizing: border-box !important;
+}
+
+.split-receipt-card:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+.split-receipt-card-left {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.split-receipt-card-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.split-receipt-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.split-receipt-actions button {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+/* Dark theme support for split receipts modal */
+body.dark-theme #checkin-split-receipts-modal,
+[data-theme="dark"] #checkin-split-receipts-modal {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6) !important;
+}
+
+body.dark-theme #checkin-split-receipts-modal .modal-footer,
+[data-theme="dark"] #checkin-split-receipts-modal .modal-footer {
+  background: #1e293b !important;
+  border-top-color: #334155 !important;
+}
+
+/* ==========================================================================
+   CRM DASHBOARD OCCUPANCY LIVE COUNT PILLS
+   ========================================================================== */
+.dash-occ-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.80rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.dash-occ-pill.occupied {
+  background: rgba(22, 101, 52, 0.10);
+  border: 1.5px solid rgba(22, 101, 52, 0.30);
+  color: #166534;
+}
+.dash-occ-pill.occupied:hover {
+  background: rgba(22, 101, 52, 0.18);
+  border-color: #16a34a;
+}
+.dash-occ-pill.occupied.active-filter {
+  background: #166534;
+  color: #ffffff;
+  border-color: #14532d;
+  box-shadow: 0 2px 6px rgba(22, 101, 52, 0.35);
+}
+.dash-occ-pill.occupied.active-filter .dash-occ-dot {
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+.dash-occ-pill.occupied.active-filter .dash-occ-num {
+  color: #ffffff;
+}
+
+.dash-occ-pill.empty {
+  background: rgba(71, 85, 105, 0.10);
+  border: 1.5px solid rgba(71, 85, 105, 0.25);
+  color: #334155;
+}
+.dash-occ-pill.empty:hover {
+  background: rgba(71, 85, 105, 0.16);
+  border-color: #475569;
+}
+.dash-occ-pill.empty.active-filter {
+  background: #334155;
+  color: #ffffff;
+  border-color: #1e293b;
+  box-shadow: 0 2px 6px rgba(51, 65, 85, 0.35);
+}
+.dash-occ-pill.empty.active-filter .dash-occ-dot {
+  background: #ffffff;
+}
+.dash-occ-pill.empty.active-filter .dash-occ-num {
+  color: #ffffff;
+}
+
+.dash-occ-pill.total {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  color: var(--text-secondary, #64748b);
+  font-weight: 700;
+}
+.dash-occ-pill.total:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.dash-occ-pill.total.active-filter {
+  background: var(--bg-surface-secondary, #f1f5f9);
+  border-color: var(--border-color, #94a3b8);
+  color: var(--text-primary, #0f172a);
+}
+
+.dash-occ-pill .dash-occ-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dash-occ-pill.occupied .dash-occ-dot {
+  background: #16a34a;
+}
+.dash-occ-pill.empty .dash-occ-dot {
+  background: #64748b;
+}
+
+.dash-occ-pill .dash-occ-num {
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+.dash-occ-pill.occupied .dash-occ-num {
+  color: #15803d;
+}
+.dash-occ-pill.empty .dash-occ-num {
+  color: #1e293b;
+}
+.dash-occ-pill.total .dash-occ-num {
+  color: var(--text-primary, #0f172a);
+}
+
+/* Dark theme */
+[data-theme="dark"] .dash-occ-pill.occupied {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+[data-theme="dark"] .dash-occ-pill.occupied .dash-occ-num {
+  color: #4ade80;
+}
+[data-theme="dark"] .dash-occ-pill.occupied.active-filter {
+  background: #15803d;
+  color: #ffffff;
+}
+[data-theme="dark"] .dash-occ-pill.empty {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+}
+[data-theme="dark"] .dash-occ-pill.empty .dash-occ-num {
+  color: #f1f5f9;
+}
+[data-theme="dark"] .dash-occ-pill.empty.active-filter {
+  background: #475569;
+  color: #ffffff;
+}
+[data-theme="dark"] .dash-occ-pill.total {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+}
+[data-theme="dark"] .dash-occ-pill.total .dash-occ-num {
+  color: #f8fafc;
+}

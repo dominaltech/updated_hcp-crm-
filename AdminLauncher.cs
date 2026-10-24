@@ -3,10 +3,8 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace HotelCityParkAdmin
 {
@@ -15,280 +13,62 @@ namespace HotelCityParkAdmin
         [STAThread]
         static void Main(string[] args)
         {
-            // Enable IE11 emulation for embedded WebBrowser control
-            SetWebBrowserFeatures();
-
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainWindow(args));
-        }
 
-        static void SetWebBrowserFeatures()
-        {
-            try
+            string targetPath = "hospitality";
+            if (args != null && args.Length > 0)
             {
-                string appName = Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName);
-                using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Main\FeatureControl\FEATURE_BROWSER_EMULATION"))
-                {
-                    if (key != null)
-                    {
-                        key.SetValue(appName, 11001, RegistryValueKind.DWord);
-                    }
-                }
+                string a = args[0].ToLower().TrimStart('-', '/');
+                if (a == "crm" || a == "hospitality" || a == "frontdesk") targetPath = "hospitality";
+                else if (a == "restaurant" || a == "pos") targetPath = "restaurant";
+                else if (a == "bar") targetPath = "bar";
+                else if (a == "store" || a == "storeman") targetPath = "storeman";
+                else if (a == "store-admin") targetPath = "store-admin";
+                else if (a == "manage" || a == "rooms") targetPath = "manage";
+                else if (a == "apk" || a == "mobile" || a == "mobile-admin" || a == "expo") targetPath = "admin";
+                else if (args[0].StartsWith("http://") || args[0].StartsWith("https://")) targetPath = args[0];
             }
-            catch { }
-        }
-    }
 
-    public class MainWindow : Form
-    {
-        private Panel topBar;
-        private Label lblLogo;
-        private Label lblStatus;
-        private Button btnAdmin;
-        private Button btnCrm;
-        private Button btnRestaurant;
-        private Button btnBar;
-        private Button btnStore;
-        private Button btnRefresh;
-        private Button btnSettings;
-        private Button btnEdgeApp;
-        private WebBrowser browser;
+            // Fast Path: Check if CRM on localhost:3000 is active right now
+            bool crmHealthy = CheckHealth("http://localhost:3000/api/health", 500);
 
-        private string currentBaseUrl = "";
-        private string currentPath = "admin/";
-        private string remoteCloudUrl = "https://delayed-eligible-gazette-related.trycloudflare.com";
-        private string localHotelIp = "10.160.83.195:3000";
-        private bool isCloudMode = true;
-
-        public MainWindow(string[] args)
-        {
-            LoadConfig();
-
-            this.Text = "👑 Hotel City Park - Admin & Owner Portal";
-            this.Size = new Size(1360, 860);
-            this.MinimumSize = new Size(1024, 700);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = ColorTranslator.FromHtml("#0A191C");
-            this.ForeColor = Color.White;
-
-            // Try to set application icon if available
-            try
+            if (crmHealthy)
             {
-                string[] possibleIcons = { "icon.ico", "app_icon.ico", "electron_icon.ico", @"build\icon.ico" };
-                foreach (var ic in possibleIcons)
+                string finalUrl;
+                if (targetPath.StartsWith("http"))
                 {
-                    if (File.Exists(ic))
-                    {
-                        this.Icon = new Icon(ic);
-                        break;
-                    }
+                    finalUrl = targetPath;
                 }
-            }
-            catch { }
-
-            InitUI();
-            DetectBestConnectionAndNavigate();
-        }
-
-        private void InitUI()
-        {
-            // Top Navigation Bar
-            topBar = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 56,
-                BackColor = ColorTranslator.FromHtml("#0F2A2E"),
-                Padding = new Padding(12, 8, 12, 8)
-            };
-
-            lblLogo = new Label
-            {
-                Text = "👑 HOTEL CITY PARK",
-                Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
-                ForeColor = ColorTranslator.FromHtml("#E2B25E"),
-                AutoSize = true,
-                Location = new Point(14, 16)
-            };
-
-            // Navigation Buttons
-            int leftOffset = 210;
-
-            btnAdmin = CreateNavButton("👑 Admin Portal", leftOffset, (s, e) => NavigateTo("admin/"));
-            leftOffset += btnAdmin.Width + 6;
-
-            btnCrm = CreateNavButton("🏨 Front Desk", leftOffset, (s, e) => NavigateTo("hospitality"));
-            leftOffset += btnCrm.Width + 6;
-
-            btnRestaurant = CreateNavButton("🍽️ Restaurant", leftOffset, (s, e) => NavigateTo("restaurant"));
-            leftOffset += btnRestaurant.Width + 6;
-
-            btnBar = CreateNavButton("🍸 Bar", leftOffset, (s, e) => NavigateTo("bar"));
-            leftOffset += btnBar.Width + 6;
-
-            btnStore = CreateNavButton("📦 Store", leftOffset, (s, e) => NavigateTo("storeman"));
-            leftOffset += btnStore.Width + 14;
-
-            // Right utility buttons
-            btnRefresh = new Button
-            {
-                Text = "🔄",
-                Size = new Size(38, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(this.ClientSize.Width - 360, 10),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = ColorTranslator.FromHtml("#1E3A3F"),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 10f)
-            };
-            btnRefresh.FlatAppearance.BorderSize = 0;
-            btnRefresh.Click += (s, e) => { if (browser != null) browser.Refresh(); };
-
-            btnEdgeApp = new Button
-            {
-                Text = "🚀 Open Full Window",
-                Size = new Size(150, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(this.ClientSize.Width - 314, 10),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = ColorTranslator.FromHtml("#D97706"),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
-            };
-            btnEdgeApp.FlatAppearance.BorderSize = 0;
-            btnEdgeApp.Click += (s, e) => LaunchExternalAppWindow();
-
-            btnSettings = new Button
-            {
-                Text = "⚙️ Cloud Settings",
-                Size = new Size(130, 36),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(this.ClientSize.Width - 156, 10),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = ColorTranslator.FromHtml("#1E3A3F"),
-                ForeColor = ColorTranslator.FromHtml("#38BDF8"),
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
-            };
-            btnSettings.FlatAppearance.BorderSize = 0;
-            btnSettings.Click += (s, e) => ShowSettingsDialog();
-
-            lblStatus = new Label
-            {
-                Text = "Detecting server...",
-                Font = new Font("Segoe UI", 8.5f),
-                ForeColor = ColorTranslator.FromHtml("#94A3B8"),
-                AutoSize = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(this.ClientSize.Width - 520, 18)
-            };
-
-            topBar.Controls.Add(lblLogo);
-            topBar.Controls.Add(btnAdmin);
-            topBar.Controls.Add(btnCrm);
-            topBar.Controls.Add(btnRestaurant);
-            topBar.Controls.Add(btnBar);
-            topBar.Controls.Add(btnStore);
-            topBar.Controls.Add(lblStatus);
-            topBar.Controls.Add(btnRefresh);
-            topBar.Controls.Add(btnEdgeApp);
-            topBar.Controls.Add(btnSettings);
-
-            // Embedded Browser Control
-            browser = new WebBrowser
-            {
-                Dock = DockStyle.Fill,
-                ScriptErrorsSuppressed = true,
-                IsWebBrowserContextMenuEnabled = true
-            };
-
-            this.Controls.Add(browser);
-            this.Controls.Add(topBar);
-
-            this.Resize += (s, e) =>
-            {
-                btnRefresh.Location = new Point(this.ClientSize.Width - 360, 10);
-                btnEdgeApp.Location = new Point(this.ClientSize.Width - 314, 10);
-                btnSettings.Location = new Point(this.ClientSize.Width - 156, 10);
-                lblStatus.Location = new Point(this.ClientSize.Width - 540, 18);
-            };
-        }
-
-        private Button CreateNavButton(string text, int left, EventHandler onClick)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                AutoSize = true,
-                Height = 36,
-                Location = new Point(left, 10),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = ColorTranslator.FromHtml("#1E3A3F"),
-                ForeColor = Color.White,
-                Cursor = Cursors.Hand,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Padding = new Padding(10, 0, 10, 0)
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.Click += onClick;
-            return btn;
-        }
-
-        private void HighlightActiveButton(string path)
-        {
-            Color activeColor = ColorTranslator.FromHtml("#0284C7");
-            Color inactiveColor = ColorTranslator.FromHtml("#1E3A3F");
-
-            btnAdmin.BackColor = path.StartsWith("admin") ? activeColor : inactiveColor;
-            btnCrm.BackColor = path.StartsWith("hospitality") ? activeColor : inactiveColor;
-            btnRestaurant.BackColor = path.StartsWith("restaurant") ? activeColor : inactiveColor;
-            btnBar.BackColor = path.StartsWith("bar") ? activeColor : inactiveColor;
-            btnStore.BackColor = path.StartsWith("store") ? activeColor : inactiveColor;
-        }
-
-        private void DetectBestConnectionAndNavigate()
-        {
-            lblStatus.Text = "Testing hotel connection...";
-            lblStatus.ForeColor = ColorTranslator.FromHtml("#F59E0B");
-
-            ThreadPool.QueueUserWorkItem((_) =>
-            {
-                bool localAvailable = CheckUrl("http://" + localHotelIp + "/api/health", 400);
-
-                this.Invoke((MethodInvoker)delegate
+                else if (targetPath == "admin")
                 {
-                    if (localAvailable)
-                    {
-                        currentBaseUrl = "http://" + localHotelIp;
-                        isCloudMode = false;
-                        lblStatus.Text = "🏢 Hotel Wi-Fi Connected";
-                        lblStatus.ForeColor = ColorTranslator.FromHtml("#10B981");
-                    }
-                    else
-                    {
-                        currentBaseUrl = remoteCloudUrl.TrimEnd('/');
-                        isCloudMode = true;
-                        lblStatus.Text = "🌐 Worldwide Cloud Active";
-                        lblStatus.ForeColor = ColorTranslator.FromHtml("#38BDF8");
-                    }
+                    finalUrl = "http://localhost:8081/";
+                }
+                else
+                {
+                    finalUrl = "http://localhost:3000/" + targetPath.TrimStart('/') + "?admin=1";
+                }
 
-                    NavigateTo(currentPath);
-                });
-            });
+                LaunchBrowserApp(finalUrl);
+                return;
+            }
+
+            // Localhost not immediately reachable - run launcher splash with auto-start
+            Application.Run(new LauncherSplash(targetPath));
         }
 
-        private bool CheckUrl(string url, int timeoutMs)
+        public static bool CheckHealth(string url, int timeoutMs)
         {
             try
             {
-                var req = (HttpWebRequest)WebRequest.Create(url);
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
                 req.Timeout = timeoutMs;
-                req.Method = "HEAD";
-                using (var res = (HttpWebResponse)req.GetResponse())
+                req.ReadWriteTimeout = timeoutMs;
+                req.Method = "GET";
+                using (HttpWebResponse res = (HttpWebResponse)req.GetResponse())
                 {
-                    return res.StatusCode == HttpStatusCode.OK || (int)res.StatusCode < 400;
+                    int code = (int)res.StatusCode;
+                    return code >= 200 && code < 400;
                 }
             }
             catch
@@ -297,136 +77,399 @@ namespace HotelCityParkAdmin
             }
         }
 
-        private void NavigateTo(string path)
+        public static void LaunchBrowserApp(string targetUrl)
         {
-            currentPath = path;
-            HighlightActiveButton(path);
-
-            if (string.IsNullOrEmpty(currentBaseUrl)) return;
-
-            string fullUrl = currentBaseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
-            browser.Navigate(fullUrl);
-        }
-
-        private void LaunchExternalAppWindow()
-        {
-            string fullUrl = (currentBaseUrl.TrimEnd('/') + "/" + currentPath.TrimStart('/'));
-
-            // Look for Edge executable
-            string edgePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
-            if (!File.Exists(edgePath))
+            string[] preferredBrowsers = new string[]
             {
-                edgePath = @"C:\Program Files\Microsoft\Edge\Application\msedge.exe";
-            }
+                @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                @"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                @"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Edge\Application\msedge.exe")
+            };
 
-            if (File.Exists(edgePath))
-            {
-                Process.Start(edgePath, string.Format("--app=\"{0}\" --window-size=1440,900", fullUrl));
-            }
-            else
-            {
-                Process.Start(fullUrl);
-            }
-        }
-
-        private void ShowSettingsDialog()
-        {
-            using (var dlg = new Form())
-            {
-                dlg.Text = "Hotel City Park - Connection Settings";
-                dlg.Size = new Size(500, 360);
-                dlg.StartPosition = FormStartPosition.CenterParent;
-                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
-                dlg.MaximizeBox = false;
-                dlg.MinimizeBox = false;
-                dlg.BackColor = ColorTranslator.FromHtml("#0F2A2E");
-                dlg.ForeColor = Color.White;
-
-                var lbl1 = new Label { Text = "Worldwide Cloud URL (Accessible from Anywhere):", Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-                var txtCloud = new TextBox { Text = remoteCloudUrl, Location = new Point(20, 44), Width = 440, Font = new Font("Segoe UI", 9.5f), BackColor = ColorTranslator.FromHtml("#1E293B"), ForeColor = Color.White };
-
-                var lbl2 = new Label { Text = "Local Hotel Wi-Fi IP / Host:", Location = new Point(20, 86), AutoSize = true, Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
-                var txtLocal = new TextBox { Text = localHotelIp, Location = new Point(20, 110), Width = 440, Font = new Font("Segoe UI", 9.5f), BackColor = ColorTranslator.FromHtml("#1E293B"), ForeColor = Color.White };
-
-                var btnQuickLocal = new Button { Text = "🏢 Set 10.160.83.195", Location = new Point(20, 150), Size = new Size(140, 30), FlatStyle = FlatStyle.Flat, BackColor = ColorTranslator.FromHtml("#1E3A3F"), ForeColor = Color.White };
-                btnQuickLocal.Click += (s, e) => txtLocal.Text = "10.160.83.195:3000";
-
-                var btnQuickCloud = new Button { Text = "🌐 Reset Cloud URL", Location = new Point(170, 150), Size = new Size(140, 30), FlatStyle = FlatStyle.Flat, BackColor = ColorTranslator.FromHtml("#1E3A3F"), ForeColor = Color.White };
-                btnQuickCloud.Click += (s, e) => {
-                    try {
-                        if (File.Exists("remote_url.txt")) txtCloud.Text = File.ReadAllText("remote_url.txt").Trim();
-                    } catch { }
-                };
-
-                var btnSave = new Button { Text = "Save & Connect", Location = new Point(320, 260), Size = new Size(140, 38), FlatStyle = FlatStyle.Flat, BackColor = ColorTranslator.FromHtml("#0284C7"), ForeColor = Color.White, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold) };
-                btnSave.Click += (s, e) =>
-                {
-                    remoteCloudUrl = txtCloud.Text.Trim();
-                    localHotelIp = txtLocal.Text.Trim();
-                    SaveConfig();
-                    dlg.Close();
-                    DetectBestConnectionAndNavigate();
-                };
-
-                dlg.Controls.Add(lbl1);
-                dlg.Controls.Add(txtCloud);
-                dlg.Controls.Add(lbl2);
-                dlg.Controls.Add(txtLocal);
-                dlg.Controls.Add(btnQuickLocal);
-                dlg.Controls.Add(btnQuickCloud);
-                dlg.Controls.Add(btnSave);
-
-                dlg.ShowDialog(this);
-            }
-        }
-
-        private void LoadConfig()
-        {
+            string foundBrowser = null;
             try
             {
-                if (File.Exists("remote_url.txt"))
+                if (Process.GetProcessesByName("chrome").Length > 0 && File.Exists(preferredBrowsers[0]))
                 {
-                    string txt = File.ReadAllText("remote_url.txt").Trim();
-                    if (!string.IsNullOrEmpty(txt) && txt.StartsWith("http"))
-                    {
-                        remoteCloudUrl = txt;
-                    }
+                    foundBrowser = preferredBrowsers[0];
+                }
+                else if (Process.GetProcessesByName("msedge").Length > 0 && File.Exists(preferredBrowsers[2]))
+                {
+                    foundBrowser = preferredBrowsers[2];
                 }
             }
             catch { }
 
+            if (string.IsNullOrEmpty(foundBrowser))
+            {
+                foreach (string p in preferredBrowsers)
+                {
+                    if (File.Exists(p))
+                    {
+                        foundBrowser = p;
+                        break;
+                    }
+                }
+            }
+
+            try
+            {
+                if (!string.IsNullOrEmpty(foundBrowser))
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo();
+                    psi.FileName = foundBrowser;
+                    psi.Arguments = string.Format("--app=\"{0}\" --window-size=1440,900", targetUrl);
+                    psi.UseShellExecute = true;
+                    Process.Start(psi);
+                    return;
+                }
+            }
+            catch { }
+
+            try
+            {
+                ProcessStartInfo fallback = new ProcessStartInfo(targetUrl);
+                fallback.UseShellExecute = true;
+                Process.Start(fallback);
+            }
+            catch { }
+        }
+    }
+
+    public class LauncherSplash : Form
+    {
+        private string targetPath;
+        private Label lblTitle;
+        private Label lblStatus;
+        private ProgressBar progressBar;
+        private Button btnRetry;
+        private Button btnConfigure;
+        private System.Windows.Forms.Timer pollTimer;
+        private int checkCount = 0;
+        private const int MaxAttempts = 24; // ~12 seconds
+        private string resolvedBaseUrl = "";
+
+        public LauncherSplash(string targetPath)
+        {
+            this.targetPath = targetPath;
+
+            this.Text = "Hotel City Park - Admin Portal";
+            this.Size = new Size(500, 220);
+            this.StartPosition = FormStartPosition.CenterScreen;
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.BackColor = ColorTranslator.FromHtml("#0F172A");
+            this.ForeColor = Color.White;
+            this.ShowInTaskbar = true;
+
+            try
+            {
+                string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"public\electron_icon.ico");
+                if (File.Exists(iconPath)) this.Icon = new Icon(iconPath);
+            }
+            catch { }
+
+            lblTitle = new Label
+            {
+                Text = "👑 Hotel City Park - Admin Portal",
+                Font = new Font("Segoe UI", 12f, FontStyle.Bold),
+                ForeColor = ColorTranslator.FromHtml("#F59E0B"),
+                Location = new Point(24, 20),
+                AutoSize = true
+            };
+
+            lblStatus = new Label
+            {
+                Text = "Connecting to Hotel City Park CRM services...",
+                Font = new Font("Segoe UI", 9.5f),
+                ForeColor = ColorTranslator.FromHtml("#94A3B8"),
+                Location = new Point(24, 58),
+                Size = new Size(440, 36)
+            };
+
+            progressBar = new ProgressBar
+            {
+                Location = new Point(24, 102),
+                Size = new Size(436, 20),
+                Style = ProgressBarStyle.Marquee,
+                MarqueeAnimationSpeed = 30
+            };
+
+            btnRetry = new Button
+            {
+                Text = "🔄 Retry Now",
+                Location = new Point(240, 136),
+                Size = new Size(110, 32),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ColorTranslator.FromHtml("#1E293B"),
+                ForeColor = Color.White,
+                Visible = false
+            };
+            btnRetry.Click += (s, e) => {
+                checkCount = 0;
+                btnRetry.Visible = false;
+                btnConfigure.Visible = false;
+                progressBar.Style = ProgressBarStyle.Marquee;
+                lblStatus.Text = "Checking connection...";
+                lblStatus.ForeColor = ColorTranslator.FromHtml("#94A3B8");
+                pollTimer.Start();
+                TryStartLocalServer();
+            };
+
+            btnConfigure = new Button
+            {
+                Text = "🌐 Change IP / Cloud",
+                Location = new Point(356, 136),
+                Size = new Size(130, 32),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ColorTranslator.FromHtml("#0284C7"),
+                ForeColor = Color.White,
+                Visible = false
+            };
+            btnConfigure.Click += (s, e) => ShowConfigDialog();
+
+            this.Controls.Add(lblTitle);
+            this.Controls.Add(lblStatus);
+            this.Controls.Add(progressBar);
+            this.Controls.Add(btnRetry);
+            this.Controls.Add(btnConfigure);
+
+            this.Load += LauncherSplash_Load;
+        }
+
+        private void LauncherSplash_Load(object sender, EventArgs e)
+        {
+            TryStartLocalServer();
+
+            pollTimer = new System.Windows.Forms.Timer();
+            pollTimer.Interval = 500;
+            pollTimer.Tick += PollTimer_Tick;
+            pollTimer.Start();
+        }
+
+        private void TryStartLocalServer()
+        {
+            ThreadPool.QueueUserWorkItem((_) =>
+            {
+                try
+                {
+                    string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                    string startScript = Path.Combine(baseDir, @"scripts\start_all.js");
+                    string serverScript = Path.Combine(baseDir, "server.js");
+                    string resStartScript = Path.Combine(baseDir, @"resources\app\scripts\start_all.js");
+                    string resServerScript = Path.Combine(baseDir, @"resources\app\server.js");
+
+                    string targetScript = null;
+                    string workingDir = baseDir;
+
+                    if (File.Exists(startScript)) { targetScript = startScript; workingDir = baseDir; }
+                    else if (File.Exists(serverScript)) { targetScript = serverScript; workingDir = baseDir; }
+                    else if (File.Exists(resStartScript)) { targetScript = resStartScript; workingDir = Path.Combine(baseDir, @"resources\app"); }
+                    else if (File.Exists(resServerScript)) { targetScript = resServerScript; workingDir = Path.Combine(baseDir, @"resources\app"); }
+
+                    if (!string.IsNullOrEmpty(targetScript))
+                    {
+                        string nodePath = FindNodeExe();
+                        if (!string.IsNullOrEmpty(nodePath))
+                        {
+                            ProcessStartInfo psi = new ProcessStartInfo();
+                            psi.FileName = nodePath;
+                            if (targetScript.Contains("start_all.js"))
+                            {
+                                psi.Arguments = string.Format("\"{0}\" --local-only --no-open", targetScript);
+                            }
+                            else
+                            {
+                                psi.Arguments = string.Format("\"{0}\"", targetScript);
+                            }
+                            psi.WorkingDirectory = workingDir;
+                            psi.CreateNoWindow = true;
+                            psi.UseShellExecute = false;
+                            psi.WindowStyle = ProcessWindowStyle.Hidden;
+                            Process.Start(psi);
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+
+        private string FindNodeExe()
+        {
+            string[] candidates = new string[]
+            {
+                "node.exe",
+                @"C:\Program Files\nodejs\node.exe",
+                @"C:\Program Files (x86)\nodejs\node.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\node\node.exe")
+            };
+
+            foreach (var c in candidates)
+            {
+                if (c == "node.exe") return c; // Let system resolve PATH
+                if (File.Exists(c)) return c;
+            }
+            return "node";
+        }
+
+        private void PollTimer_Tick(object sender, EventArgs e)
+        {
+            checkCount++;
+
+            // 1. Check localhost:3000
+            bool crmUp = Program.CheckHealth("http://localhost:3000/api/health", 400);
+            if (crmUp)
+            {
+                OnServerReady("http://localhost:3000");
+                return;
+            }
+
+            // 3. If reached half timeout, also check LAN or remote_url.txt
+            if (checkCount > 8)
+            {
+                string cloudUrl = ReadRemoteUrl();
+                if (!string.IsNullOrEmpty(cloudUrl) && Program.CheckHealth(cloudUrl.TrimEnd('/') + "/api/health", 500))
+                {
+                    OnServerReady(cloudUrl);
+                    return;
+                }
+
+                string lanIp = ReadLanIp();
+                if (!string.IsNullOrEmpty(lanIp) && Program.CheckHealth("http://" + lanIp + "/api/health", 400))
+                {
+                    OnServerReady("http://" + lanIp);
+                    return;
+                }
+            }
+
+            if (checkCount >= MaxAttempts)
+            {
+                pollTimer.Stop();
+                progressBar.Style = ProgressBarStyle.Blocks;
+                progressBar.Value = 100;
+                lblStatus.Text = "Could not connect to CRM server at http://localhost:3000.\nPlease ensure Node.js is running or configure remote IP.";
+                lblStatus.ForeColor = ColorTranslator.FromHtml("#EF4444");
+                btnRetry.Visible = true;
+                btnConfigure.Visible = true;
+            }
+        }
+
+        private void OnServerReady(string baseUrl)
+        {
+            pollTimer.Stop();
+            resolvedBaseUrl = baseUrl;
+            lblStatus.Text = "CRM Services Online! Opening Admin Panel...";
+            lblStatus.ForeColor = ColorTranslator.FromHtml("#10B981");
+
+            System.Windows.Forms.Timer delay = new System.Windows.Forms.Timer();
+            delay.Interval = 250;
+            delay.Tick += (s, ev) =>
+            {
+                delay.Stop();
+                string finalUrl;
+                if (targetPath.StartsWith("http"))
+                {
+                    finalUrl = targetPath;
+                }
+                else if (targetPath == "admin" || targetPath == "admin/")
+                {
+                    if (baseUrl.Contains("localhost") || baseUrl.Contains("127.0.0.1"))
+                    {
+                        finalUrl = "http://localhost:8081/";
+                    }
+                    else
+                    {
+                        finalUrl = baseUrl.TrimEnd('/') + "/admin/";
+                    }
+                }
+                else
+                {
+                    finalUrl = baseUrl.TrimEnd('/') + "/" + targetPath.TrimStart('/') + "?admin=1";
+                }
+                Program.LaunchBrowserApp(finalUrl);
+                this.Close();
+            };
+            delay.Start();
+        }
+
+        private string ReadRemoteUrl()
+        {
+            try
+            {
+                string rFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "remote_url.txt");
+                if (File.Exists(rFile))
+                {
+                    string txt = File.ReadAllText(rFile).Trim();
+                    if (!string.IsNullOrEmpty(txt) && txt.StartsWith("http") && !txt.Contains("localhost")) return txt;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private string ReadLanIp()
+        {
             try
             {
                 string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HotelCityParkAdmin");
                 string cfgFile = Path.Combine(appData, "config.ini");
                 if (File.Exists(cfgFile))
                 {
-                    string[] lines = File.ReadAllLines(cfgFile);
-                    foreach (var line in lines)
+                    foreach (var l in File.ReadAllLines(cfgFile))
                     {
-                        if (line.StartsWith("RemoteCloudUrl=")) remoteCloudUrl = line.Substring("RemoteCloudUrl=".Length).Trim();
-                        if (line.StartsWith("LocalHotelIp=")) localHotelIp = line.Substring("LocalHotelIp=".Length).Trim();
+                        if (l.StartsWith("LocalHotelIp=")) return l.Substring("LocalHotelIp=".Length).Trim();
                     }
                 }
             }
             catch { }
+            return "10.160.83.195:3000";
         }
 
-        private void SaveConfig()
+        private void ShowConfigDialog()
         {
-            try
+            using (Form dlg = new Form())
             {
-                string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HotelCityParkAdmin");
-                if (!Directory.Exists(appData)) Directory.CreateDirectory(appData);
+                dlg.Text = "Configure Connection";
+                dlg.Size = new Size(420, 240);
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.MaximizeBox = false;
+                dlg.MinimizeBox = false;
+                dlg.BackColor = ColorTranslator.FromHtml("#0F172A");
+                dlg.ForeColor = Color.White;
 
-                string cfgFile = Path.Combine(appData, "config.ini");
-                File.WriteAllLines(cfgFile, new string[]
+                Label lbl1 = new Label { Text = "Server IP / Host (e.g. localhost:3000 or 10.160.83.195:3000):", Location = new Point(20, 20), AutoSize = true };
+                TextBox txtIp = new TextBox { Text = ReadLanIp(), Location = new Point(20, 45), Width = 360, BackColor = ColorTranslator.FromHtml("#1E293B"), ForeColor = Color.White };
+
+                Button btnSave = new Button { Text = "Connect", Location = new Point(270, 140), Size = new Size(110, 34), FlatStyle = FlatStyle.Flat, BackColor = ColorTranslator.FromHtml("#0284C7"), ForeColor = Color.White };
+                btnSave.Click += (s, e) =>
                 {
-                    "RemoteCloudUrl=" + remoteCloudUrl,
-                    "LocalHotelIp=" + localHotelIp
-                });
+                    string ip = txtIp.Text.Trim();
+                    if (!string.IsNullOrEmpty(ip))
+                    {
+                        try
+                        {
+                            string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HotelCityParkAdmin");
+                            if (!Directory.Exists(appData)) Directory.CreateDirectory(appData);
+                            File.WriteAllText(Path.Combine(appData, "config.ini"), "LocalHotelIp=" + ip);
+                        }
+                        catch { }
+                        dlg.Close();
+                        lblStatus.Text = "Testing connection to " + ip + "...";
+                        pollTimer.Start();
+                    }
+                };
+
+                dlg.Controls.Add(lbl1);
+                dlg.Controls.Add(txtIp);
+                dlg.Controls.Add(btnSave);
+                dlg.ShowDialog(this);
             }
-            catch { }
         }
     }
 }

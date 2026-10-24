@@ -96,6 +96,7 @@ export const api = {
   toggleRoomMaintenance: (id, enabled) => request(`/rooms/${id}/maintenance`, { method: 'POST', body: { enabled } }),
   updateRoomStatus: (id, status) => request(`/rooms/${id}/status`, { method: 'POST', body: { status } }),
   getRoomFolio: (id) => request(`/rooms/${id}/folio`),
+  updateRoomCorporateDetails: (id, data) => request(`/rooms/${id}/corporate-details`, { method: 'POST', body: data }),
   createRoom: (data) => request('/rooms', { method: 'POST', body: data }),
   updateRoom: (id, data) => request(`/rooms/${id}`, { method: 'PUT', body: data }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
@@ -365,6 +366,9 @@ export const api = {
   verifySectionPassword: (section, password) => request('/sections/verify-password', { method: 'POST', body: { section, password } }),
   getSectionPasswords: () => request('/settings/section-passwords'),
   saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
+
+  // Room Occupancy Chart
+  getOccupancyChart: () => request('/hospitality/occupancy-chart'),
 
   // Print Queue for Auto-Printing
   getPendingPrintJobs: (params) => {

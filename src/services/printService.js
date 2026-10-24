@@ -4036,12 +4036,12 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
   const mobile = r.mobile || r.guest_phone || r.phone || c.mobile || c.phone || '';
   const guestGstin = r.gstin || r.guest_gstin || c.gstin || c.guestGstin || '';
 
-  // Company details (either chosen from BTC or entered from Stage 4 form)
-  const rawCompanyName = (r.company_name || r.companyName || r.btc_company_name || r.btcCompanyName || c.company_name || c.companyName || c.btc_company_name || c.btcCompanyName || (r.booking && (r.booking.company_name || r.booking.btc_company_name)) || '').trim();
+  // Company details (either chosen from BTC or entered from Stage 4 form or Checkout / Folio edit)
+  const rawCompanyName = (r.company_name || r.companyName || r.btc_company_name || r.btcCompanyName || c.company_name || c.companyName || c.btc_company_name || c.btcCompanyName || s.company_name || s.companyName || (r.booking && (r.booking.company_name || r.booking.btc_company_name)) || '').trim();
   const companyName = rawCompanyName ? rawCompanyName.toUpperCase() : '';
-  const explicitCompanyGstin = (r.gst_number || r.gstNumber || r.company_gst || r.companyGst || r.btc_company_gst || r.btcCompanyGst || r.btc_gst_number || c.gst_number || c.gstNumber || c.companyGst || c.btcCompanyGst || c.btc_gst_number || '').trim();
+  const explicitCompanyGstin = (r.gst_number || r.gstNumber || r.company_gst || r.companyGst || r.btc_company_gst || r.btcCompanyGst || r.btc_gst_number || c.gst_number || c.gstNumber || c.companyGst || c.btcCompanyGst || c.btc_gst_number || s.gst_number || s.gstNumber || s.company_gst || '').trim();
   const companyGstin = (explicitCompanyGstin || (companyName ? guestGstin : '')).trim();
-  const rawCompanyAddress = (r.company_address || r.companyAddress || r.btc_company_address || r.btcCompanyAddress || r.btc_address || r.btcAddress || c.company_address || c.companyAddress || c.btcCompanyAddress || c.btc_address || c.btcAddress || (r.booking && (r.booking.company_address || r.booking.btc_address)) || '').trim();
+  const rawCompanyAddress = (r.company_address || r.companyAddress || r.btc_company_address || r.btcCompanyAddress || r.btc_address || r.btcAddress || c.company_address || c.companyAddress || c.btcCompanyAddress || c.btc_address || c.btcAddress || s.company_address || s.companyAddress || (r.booking && (r.booking.company_address || r.booking.btc_address)) || '').trim();
   const companyAddress = rawCompanyAddress ? rawCompanyAddress.toUpperCase() : '';
   const hasCompanyDetails = Boolean(companyName || companyAddress || explicitCompanyGstin);
 

@@ -61,6 +61,64 @@ export default function Step6Stay({
   });
   const [approvedDiscountPct, setApprovedDiscountPct] = useState(null);
 
+  // Pre-booked Advance Reservations State & Handlers
+  const [isPrebookedModalOpen, setIsPrebookedModalOpen] = useState(false);
+  const [pendingPrebookings, setPendingPrebookings] = useState([]);
+  const [loadingPrebookings, setLoadingPrebookings] = useState(false);
+  const [prebookingSearch, setPrebookingSearch] = useState('');
+
+  const openPrebookedSelector = async () => {
+    setIsPrebookedModalOpen(true);
+    setLoadingPrebookings(true);
+    try {
+      const res = await api.getAdvanceBookings();
+      if (res && res.success && Array.isArray(res.bookings)) {
+        setPendingPrebookings(res.bookings.filter(b => b.status === 'pending'));
+      } else if (Array.isArray(res)) {
+        setPendingPrebookings(res.filter(b => b.status === 'pending'));
+      }
+    } catch (err) {
+      console.error('Failed to load pending prebookings:', err);
+      showToast('Could not load advance bookings', 'error', 3000);
+    } finally {
+      setLoadingPrebookings(false);
+    }
+  };
+
+  const handleAdoptPrebooking = (b) => {
+    const preAmt = parseFloat(b.advance_amount) || 0;
+    updateDraft({
+      advanceBookingId: b.id,
+      prebookedAdvanceAmount: preAmt,
+      prebookedReceiptNo: b.receipt_no || (b.payment_mode === 'upi' ? 'UPI01' : b.payment_mode === 'card' ? 'POS01' : b.payment_mode === 'cheque' ? 'CHQ01' : 'CR01'),
+      prebookedPaymentMode: b.payment_mode || 'cash',
+      prebookedDate: b.receipt_date || b.created_at || new Date().toISOString(),
+      prebookedBookingNumber: b.booking_number || `ADV-${b.id}`,
+      // Adopt guest details into wizard draft
+      guestName: b.customer_name || draft.guestName || '',
+      mobile: b.phone || draft.mobile || '',
+      phone: b.phone || draft.phone || '',
+      age: b.age || draft.age || '',
+      address: b.address || draft.address || '',
+      adults: b.adults || draft.adults || 1,
+      children: b.children !== undefined ? b.children : (draft.children || 0)
+    });
+    setIsPrebookedModalOpen(false);
+    showToast(`Adopted Pre-booking #${b.booking_number || b.id} for ${b.customer_name}! Advance ₹${preAmt} linked ✓`, 'success', 3500);
+  };
+
+  const handleUnlinkPrebooking = () => {
+    updateDraft({
+      advanceBookingId: null,
+      prebookedAdvanceAmount: 0,
+      prebookedReceiptNo: null,
+      prebookedPaymentMode: null,
+      prebookedDate: null,
+      prebookedBookingNumber: null
+    });
+    showToast('Pre-booking unlinked from this check-in', 'info', 2500);
+  };
+
   const handleCappedDiscountClick = (pct) => {
     setDiscountPermissionModal({
       isOpen: true,
@@ -2765,7 +2823,126 @@ export default function Step6Stay({
                   </span>
                 </button>
               )}
+
+              {/* Prebooked Button right side of Add Room */}
+              <button
+                type="button"
+                id="btn-stage6-prebooked"
+                onClick={openPrebookedSelector}
+                style={{
+                  background: draft.advanceBookingId ? 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)' : 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                  border: draft.advanceBookingId ? '2px solid #D97706' : '2px dashed #94a3b8',
+                  color: draft.advanceBookingId ? '#92400e' : '#475569',
+                  borderRadius: '14px',
+                  padding: '12px 20px',
+                  fontSize: '0.86rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: draft.advanceBookingId ? '0 2px 10px rgba(217, 119, 6, 0.25)' : '0 2px 8px rgba(0, 0, 0, 0.04)',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+                title="View & link pending advance pre-reservations"
+              >
+                <span style={{ fontSize: '1.05rem' }}>📅</span>
+                <span style={{ fontWeight: 800, letterSpacing: '-0.01em' }}>Prebooked</span>
+                {draft.advanceBookingId ? (
+                  <span
+                    style={{
+                      background: '#D97706',
+                      color: '#ffffff',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 900
+                    }}
+                  >
+                    ₹{draft.prebookedAdvanceAmount} Linked
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      background: '#ffffff',
+                      color: '#475569',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      border: '1px solid #cbd5e1'
+                    }}
+                  >
+                    Browse
+                  </span>
+                )}
+              </button>
             </div>
+
+            {/* Banner when Pre-booking is actively linked */}
+            {draft.advanceBookingId && (
+              <div
+                style={{
+                  margin: '10px 0 16px 0',
+                  padding: '12px 18px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
+                  border: '1.5px solid #F59E0B',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  boxShadow: '0 2px 8px rgba(245, 158, 11, 0.15)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>🎉</span>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#92400e', fontSize: '0.92rem' }}>
+                      Pre-booking #{draft.prebookedBookingNumber || draft.advanceBookingId} Adopted &amp; Linked!
+                    </div>
+                    <div style={{ fontSize: '0.80rem', color: '#B45309', marginTop: '2px' }}>
+                      Advance Amount: <strong>₹{draft.prebookedAdvanceAmount}</strong> ({draft.prebookedPaymentMode?.toUpperCase() || 'CASH'}) • Receipt #{draft.prebookedReceiptNo || 'CR01'} • Guest: <strong>{draft.guestName}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={openPrebookedSelector}
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #D97706',
+                      color: '#92400e',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.80rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Change Pre-booking
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUnlinkPrebooking}
+                    style={{
+                      background: '#FEE2E2',
+                      border: '1px solid #FCA5A5',
+                      color: '#DC2626',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '0.80rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✕ Unlink
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Walk-in Capacity Steppers */}
             <div
@@ -5639,6 +5816,232 @@ export default function Step6Stay({
                     Close
                   </button>
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Pre-booked Advance Bookings Selection Modal */}
+      {isPrebookedModalOpen && (
+        <div
+          className="modal-overlay active"
+          id="prebooked-selector-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsPrebookedModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '18px',
+              maxWidth: '850px',
+              width: '100%',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 45px rgba(0, 0, 0, 0.35)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid #E2E8F0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                color: '#FFFFFF'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.4rem' }}>📅</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#F8FAFC' }}>
+                    Select Pending Advance Pre-booking
+                  </h3>
+                  <div style={{ fontSize: '0.76rem', color: '#94A3B8', marginTop: '2px' }}>
+                    Adopting a pre-booking links its advance payment &amp; auto-fills guest details
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPrebookedModalOpen(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div style={{ padding: '12px 24px', borderBottom: '1px solid #F1F5F9', background: '#F8FAFC' }}>
+              <input
+                type="text"
+                placeholder="Search by customer name, phone, booking number..."
+                value={prebookingSearch}
+                onChange={(e) => setPrebookingSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '9px 14px',
+                  border: '1.5px solid #CBD5E1',
+                  borderRadius: '10px',
+                  fontSize: '0.88rem',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Prebookings List */}
+            <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {loadingPrebookings ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748B' }}>
+                  <div style={{ fontSize: '1.8rem', marginBottom: '8px' }}>⏳</div>
+                  <div>Loading pending pre-bookings...</div>
+                </div>
+              ) : pendingPrebookings.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748B' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📭</div>
+                  <strong style={{ fontSize: '0.95rem', color: '#334155' }}>No Pending Pre-bookings Found</strong>
+                  <div style={{ fontSize: '0.80rem', marginTop: '4px' }}>
+                    Create an Advance Booking in the Hospitality panel first to adopt it here.
+                  </div>
+                </div>
+              ) : (
+                pendingPrebookings
+                  .filter((b) => {
+                    if (!prebookingSearch.trim()) return true;
+                    const q = prebookingSearch.toLowerCase();
+                    return (
+                      (b.customer_name && b.customer_name.toLowerCase().includes(q)) ||
+                      (b.phone && b.phone.includes(q)) ||
+                      (b.booking_number && b.booking_number.toLowerCase().includes(q)) ||
+                      (b.room_type && b.room_type.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((b) => {
+                    const isCurrentLinked = draft.advanceBookingId === b.id;
+                    const advanceAmt = parseFloat(b.advance_amount) || 0;
+
+                    return (
+                      <div
+                        key={b.id}
+                        style={{
+                          border: isCurrentLinked ? '2px solid #D97706' : '1px solid #E2E8F0',
+                          background: isCurrentLinked ? '#FEF3C7' : '#FFFFFF',
+                          borderRadius: '14px',
+                          padding: '14px 18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '14px',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <strong style={{ fontSize: '1rem', color: '#0F172A' }}>
+                              {b.customer_name}
+                            </strong>
+                            <span
+                              style={{
+                                background: '#E0F2FE',
+                                color: '#0369A1',
+                                padding: '2px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800
+                              }}
+                            >
+                              #{b.booking_number || b.id}
+                            </span>
+                            <span
+                              style={{
+                                background: '#FEF3C7',
+                                color: '#B45309',
+                                padding: '2px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800
+                              }}
+                            >
+                              🏨 {b.room_type || 'Executive Room'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.80rem', color: '#64748B', flexWrap: 'wrap' }}>
+                            {b.phone && <span>📞 {b.phone}</span>}
+                            <span>📅 C/N: {b.checkin_date} {b.checkin_time || ''}</span>
+                            <span>➔ C/O: {b.checkout_date} {b.checkout_time || ''}</span>
+                            <span>👥 {b.adults || 1} Adult{b.adults > 1 ? 's' : ''} {b.children > 0 ? `, ${b.children} Child` : ''}</span>
+                          </div>
+                        </div>
+
+                        {/* Advance Amount & Action Button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                              Advance Paid
+                            </div>
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: advanceAmt > 0 ? '#16A34A' : '#64748B' }}>
+                              ₹{advanceAmt.toLocaleString('en-IN')}
+                            </div>
+                            {advanceAmt > 0 && (
+                              <div style={{ fontSize: '0.70rem', color: '#475569', fontWeight: 600 }}>
+                                via {b.payment_mode || 'Cash'} {b.receipt_no ? `• ${b.receipt_no}` : ''}
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleAdoptPrebooking(b)}
+                            style={{
+                              padding: '9px 18px',
+                              borderRadius: '10px',
+                              border: 'none',
+                              background: isCurrentLinked ? '#16A34A' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                              color: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: '0.84rem',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+                            }}
+                          >
+                            <span>{isCurrentLinked ? '✓ Linked' : 'Adopt →'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
               )}
             </div>
           </div>

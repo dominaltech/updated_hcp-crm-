@@ -101,12 +101,15 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
   let isUnderAge = false;
   let ageBadge = null;
   if (draft.dob) {
-    const birth = new Date(draft.dob);
-    if (!isNaN(birth.getTime())) {
+    const parts = String(draft.dob).split('T')[0].split('-');
+    if (parts.length === 3) {
+      const bYear = parseInt(parts[0], 10);
+      const bMonth = parseInt(parts[1], 10) - 1;
+      const bDay = parseInt(parts[2], 10);
       const today = new Date();
-      let calculatedAge = today.getFullYear() - birth.getFullYear();
-      const monthDiff = today.getMonth() - birth.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      let calculatedAge = today.getFullYear() - bYear;
+      const monthDiff = today.getMonth() - bMonth;
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < bDay)) {
         calculatedAge--;
       }
       age = calculatedAge;
@@ -580,22 +583,25 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
           <div className="checkin-form-grid-2" style={{ gap: '8px 12px' }}>
             <div className="form-group" style={{ margin: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
-                  Date of Birth (DOB)
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: isUnderAge ? '#dc2626' : '#475569', textTransform: 'uppercase', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>Date of Birth (DOB)</span>
+                  {isUnderAge && <span style={{ color: '#ef4444' }}>* (Below 18)</span>}
                 </label>
                 {ageBadge && (
                   <span
                     style={{
                       fontSize: '0.70rem',
-                      fontWeight: 800,
-                      color: '#1d4ed8',
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      padding: '1px 6px',
-                      borderRadius: '8px'
+                      fontWeight: 850,
+                      color: isUnderAge ? '#ffffff' : '#1d4ed8',
+                      background: isUnderAge ? '#dc2626' : '#eff6ff',
+                      border: `1.5px solid ${isUnderAge ? '#b91c1c' : '#bfdbfe'}`,
+                      padding: '1px 8px',
+                      borderRadius: '8px',
+                      letterSpacing: '0.02em',
+                      boxShadow: isUnderAge ? '0 2px 8px rgba(220, 38, 38, 0.35)' : 'none'
                     }}
                   >
-                    {ageBadge}
+                    {isUnderAge ? `🚨 ${ageBadge} (UNDER 18 / MINOR)` : `✓ ${ageBadge}`}
                   </span>
                 )}
               </div>
@@ -603,9 +609,35 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
                 value={draft.dob || ''}
                 max={new Date().toISOString().split('T')[0]}
                 onChange={(e) => updateDraft({ dob: e.target.value })}
-                error={false}
+                error={isUnderAge}
                 style={{ height: '36px', width: '100%' }}
               />
+              {isUnderAge && (
+                <div
+                  id="dob-underage-alert"
+                  style={{
+                    marginTop: '5px',
+                    padding: '6px 10px',
+                    background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+                    border: '1.5px solid #ef4444',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
+                  }}
+                >
+                  <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>🚨</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: '#b91c1c', letterSpacing: '0.02em' }}>
+                      RED ALERT: GUEST IS BELOW 18 YEARS (AGE: {age} YRS)
+                    </div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 650, color: '#991b1b', marginTop: '1px' }}>
+                      Minor guest detected. Ensure parent or legal guardian details are verified.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {isPassport ? (

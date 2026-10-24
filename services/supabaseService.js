@@ -114,20 +114,40 @@ function canAttemptCloud() {
   return true;
 }
 
+function cleanRoomNumber(val) {
+  return String(val || '')
+    .replace(/^Room\s*#?/i, '')
+    .replace(/\b(Bed\s*room|Bedroom|Room)\b/gi, '')
+    .trim();
+}
+
+function toIstIso(val) {
+  if (!val) return new Date().toISOString();
+  const s = String(val).trim().replace(' ', 'T');
+  if (s.includes('+') || s.endsWith('Z') || /-\d{2}:\d{2}$/.test(s)) {
+    return s;
+  }
+  const full = s.length === 16 ? s + ':00' : s;
+  return full + '+05:30';
+}
+
 /**
  * Upserts a live occupied room into Supabase active_occupancies AND syncs its billing folio to room_charges_inbox.
  */
 async function syncActiveOccupancy(data) {
   if (!canAttemptCloud() || !data || !data.room_number) return null;
   try {
+    const cleanNum = cleanRoomNumber(data.room_number);
+    const checkinTimeIso = toIstIso(data.checkin_time);
+
     const payload = {
-      room_number: String(data.room_number),
+      room_number: cleanNum,
       room_id: data.room_id || null,
       room_type: data.room_type || 'Standard',
       guest_name: String(data.guest_name || 'In-House Guest').trim(),
       guest_mobile: data.guest_mobile ? String(data.guest_mobile).trim() : null,
       booking_id: data.booking_id || null,
-      checkin_time: data.checkin_time || new Date().toISOString(),
+      checkin_time: checkinTimeIso,
       updated_at: new Date().toISOString()
     };
 
@@ -148,20 +168,34 @@ async function syncActiveOccupancy(data) {
     if (data.folio) {
       try {
         const f = data.folio;
+        const fPaid = Number(f.paid || 0);
+        const fTotal = Number(f.total || f.grandTotal || 0);
+        const fRefundDue = Number(f.refundDue ?? Math.max(0, fPaid - fTotal));
+        const fPending = Number(f.pending ?? Math.max(0, fTotal - fPaid));
+
         const folioPayload = {
-          room_number: String(data.room_number),
+          room_number: cleanNum,
           room_id: data.room_id || null,
           department: 'room_folio',
-          bill_no: f.voucherNumber || ('BK-' + (data.booking_id || data.room_number)),
+          bill_no: f.voucherNumber || ('BK-' + (data.booking_id || cleanNum)),
           subtotal: Number(f.roomCharge || 0),
           gst: Number(f.tax || 0),
-          grand_total: Number(f.total || f.grandTotal || 0),
+          grand_total: fTotal,
           items_summary: JSON.stringify({
             roomCharge: Number(f.roomCharge || 0),
-            total: Number(f.total || f.grandTotal || 0),
-            grandTotal: Number(f.total || f.grandTotal || 0),
-            paid: Number(f.paid || 0),
-            pending: Number(f.pending || 0),
+            total: fTotal,
+            grandTotal: fTotal,
+            paid: fPaid,
+            pending: fPending,
+            refundDue: fRefundDue,
+            balanceDue: fPending,
+            stayCalcNow: f.stayCalcNow || {
+              roomCharge: Number(f.roomCharge || 0),
+              grandTotal: fTotal,
+              paid: fPaid,
+              refundDue: fRefundDue,
+              balanceDue: fPending
+            },
             extra: Number(f.extra || 0),
             discount: Number(f.discount || 0),
             restaurant: Number(f.restaurant || f.foodTotal || 0),
@@ -171,7 +205,7 @@ async function syncActiveOccupancy(data) {
             advanceReceiptNo: f.advanceReceiptNo || '',
             voucherNumber: f.voucherNumber || '',
             paymentMode: f.paymentMode || 'Cash',
-            checkinTime: data.checkin_time || new Date().toISOString(),
+            checkinTime: checkinTimeIso,
             approxCheckout: f.approxCheckout || '',
             source: f.source || 'Walk-in',
             checkedInBy: f.checkedInBy || 'Front Desk',
@@ -186,19 +220,19 @@ async function syncActiveOccupancy(data) {
             roomType: data.room_type || 'Standard Room'
           }),
           settled_by: f.checkedInBy || 'Front Desk',
-          status: (Number(f.pending || 0) > 0) ? 'due' : 'settled',
+          status: (fRefundDue > 0 || fPending === 0) ? 'settled' : 'due',
           created_at: new Date().toISOString()
         };
 
-        // Option A (Pure Code): Update existing room_folio in-place by ID if it exists, otherwise insert.
-        // Completely eliminates DELETE and row/table lock contention (no more 500 errors).
+        // Update existing room_folio in-place by ID if it exists, otherwise insert.
+        // Also prune duplicate room_folio rows for this room so exactly one authoritative row exists.
         const { data: existingFolios } = await withTimeout(
           supabase
             .from('room_charges_inbox')
             .select('id')
             .eq('room_number', String(data.room_number))
             .eq('department', 'room_folio')
-            .limit(1),
+            .order('created_at', { ascending: false }),
           REQUEST_TIMEOUT_MS
         );
 
@@ -210,6 +244,13 @@ async function syncActiveOccupancy(data) {
               .eq('id', existingFolios[0].id),
             REQUEST_TIMEOUT_MS
           );
+          if (existingFolios.length > 1) {
+            const staleIds = existingFolios.slice(1).map(x => x.id);
+            await withTimeout(
+              supabase.from('room_charges_inbox').delete().in('id', staleIds),
+              REQUEST_TIMEOUT_MS
+            ).catch(() => {});
+          }
         } else {
           await withTimeout(
             supabase.from('room_charges_inbox').insert(folioPayload),
@@ -235,33 +276,32 @@ async function syncActiveOccupancy(data) {
 async function removeActiveOccupancy(roomNumber) {
   if (!canAttemptCloud() || !roomNumber) return false;
   try {
-    const { error } = await withTimeout(
-      supabase
-        .from('active_occupancies')
-        .delete()
-        .eq('room_number', String(roomNumber)),
-      REQUEST_TIMEOUT_MS
-    );
+    const rawNum = String(roomNumber).trim();
+    const cleanNum = cleanRoomNumber(roomNumber);
 
-    // Also delete room_folio from room_charges_inbox
-    await withTimeout(
-      supabase
-        .from('room_charges_inbox')
-        .delete()
-        .eq('room_number', String(roomNumber))
-        .eq('department', 'room_folio'),
-      REQUEST_TIMEOUT_MS
-    ).catch(() => {});
+    await Promise.allSettled([
+      withTimeout(
+        supabase.from('active_occupancies').delete().eq('room_number', rawNum),
+        REQUEST_TIMEOUT_MS
+      ),
+      cleanNum !== rawNum ? withTimeout(
+        supabase.from('active_occupancies').delete().eq('room_number', cleanNum),
+        REQUEST_TIMEOUT_MS
+      ) : Promise.resolve(),
+      withTimeout(
+        supabase.from('room_charges_inbox').delete().eq('room_number', rawNum).eq('department', 'room_folio'),
+        REQUEST_TIMEOUT_MS
+      ),
+      cleanNum !== rawNum ? withTimeout(
+        supabase.from('room_charges_inbox').delete().eq('room_number', cleanNum).eq('department', 'room_folio'),
+        REQUEST_TIMEOUT_MS
+      ) : Promise.resolve()
+    ]);
 
-    if (error) {
-      console.warn(`[Supabase] removeActiveOccupancy notice for Room ${roomNumber}:`, error.message);
-      return false;
-    }
     markNetworkSuccess();
     return true;
   } catch (err) {
     markNetworkFailure(err);
-
     return false;
   }
 }
@@ -600,6 +640,312 @@ async function pullCloudRoomChargesToLocal(localDb) {
   }
 }
 
+function formatToLocalSqliteString(isoDateStr) {
+  if (!isoDateStr) return new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const raw = String(isoDateStr).trim();
+  // If already in YYYY-MM-DD HH:mm:ss format, return directly without timezone alteration
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(raw)) {
+    return raw.replace('T', ' ').substring(0, 19);
+  }
+  try {
+    // If tagged with +00:00 or Z, check if treating as UTC pushes it past current local time
+    if (raw.endsWith('+00:00') || raw.endsWith('Z')) {
+      const stripped = raw.replace(/\+00:00$/, '').replace(/Z$/, '').replace('T', ' ');
+      const parsedUtc = new Date(raw).getTime();
+      if (parsedUtc > Date.now()) {
+        return stripped.substring(0, 19);
+      }
+    }
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw.replace('T', ' ').substring(0, 19);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const secs = String(d.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
+  } catch (_) {
+    return raw.replace('T', ' ').substring(0, 19);
+  }
+}
+
+function syncPaymentsForBooking(localDb, bookingId, roomId, paidAmount, fMeta, checkinTime) {
+  if (!localDb || !bookingId) return;
+  const paymentsList = Array.isArray(fMeta?.payments) && fMeta.payments.length > 0
+    ? fMeta.payments
+    : (paidAmount > 0 ? [{
+        receiptNo: fMeta?.advanceReceiptNo || 'CR01',
+        mode: fMeta?.paymentMode || 'cash',
+        amount: paidAmount,
+        cashier: fMeta?.checkedInBy || 'Staff',
+        date: checkinTime,
+        type: 'advance',
+        notes: 'paid while checkin : ' + (fMeta?.paymentMode || 'Cash')
+      }] : []);
+
+  for (const p of paymentsList) {
+    let recNo = String(p.receiptNo || p.receipt_no || '').trim();
+    const pAmount = Number(p.amount || 0);
+    if (pAmount <= 0) continue;
+    if (!recNo) recNo = 'RCP-' + bookingId;
+
+    const existingForBooking = localDb.prepare('SELECT id FROM payments WHERE booking_id = ? AND (receipt_no = ? OR (payment_type = ? AND amount = ?))').get(bookingId, recNo, p.type || 'advance', pAmount);
+    if (existingForBooking) continue;
+
+    const existingOther = localDb.prepare('SELECT id, booking_id FROM payments WHERE receipt_no = ?').get(recNo);
+    if (existingOther && existingOther.booking_id !== bookingId) {
+      recNo = recNo + '-' + bookingId;
+    }
+
+    try {
+      localDb.prepare(`
+        INSERT INTO payments (
+          receipt_no, booking_id, room_id, department, payment_type, payment_mode,
+          amount, split_cash, cashier_name, notes, realized_at, created_at
+        ) VALUES (?, ?, ?, 'hospitality', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        recNo, bookingId, roomId,
+        p.type || 'advance',
+        (p.mode || 'cash').toLowerCase(),
+        pAmount,
+        (p.mode || 'cash').toLowerCase() === 'cash' ? pAmount : 0,
+        p.cashier || fMeta?.checkedInBy || 'Staff',
+        p.notes || `Advance payment: ${p.mode || 'Cash'}`,
+        p.date || checkinTime || new Date().toISOString(),
+        p.date || checkinTime || new Date().toISOString()
+      );
+    } catch (_) {}
+  }
+}
+
+/**
+ * Pulls all active room occupancies and check-in folios from Supabase into the local SQLite database.
+ * Ensures multi-terminal consistency: rooms checked in on any client PC or terminal
+ * immediately show up as occupied in the Front Desk Room Grid, Folios, and Accounting.
+ */
+async function pullCloudOccupanciesToLocal(localDb) {
+  if (!canAttemptCloud() || !localDb) return { success: false, pulled: 0 };
+  try {
+    const [occRes, folioRes, coRes] = await Promise.all([
+      withTimeout(supabase.from('active_occupancies').select('*'), REQUEST_TIMEOUT_MS),
+      withTimeout(supabase.from('room_charges_inbox').select('*').eq('department', 'room_folio'), REQUEST_TIMEOUT_MS),
+      withTimeout(supabase.from('room_charges_inbox').select('*').eq('department', 'room_checkout').order('created_at', { ascending: false }).limit(50), REQUEST_TIMEOUT_MS)
+    ]);
+
+    const cloudRooms = occRes?.data || [];
+    const folios = folioRes?.data || [];
+    const checkouts = coRes?.data || [];
+
+    if (!Array.isArray(cloudRooms)) return { success: false, pulled: 0 };
+
+    const folioMap = new Map();
+    for (const f of folios) {
+      const rn = cleanRoomNumber(f.room_number);
+      let meta = {};
+      try { meta = JSON.parse(f.items_summary || '{}'); } catch (_) {}
+      folioMap.set(rn, { ...f, meta });
+    }
+
+    const cloudActiveSet = new Set(cloudRooms.map(c => cleanRoomNumber(c.room_number)));
+    let pulledCount = 0;
+    let updatedCount = 0;
+
+    for (const cr of cloudRooms) {
+      const rNum = cleanRoomNumber(cr.room_number);
+      let room = localDb.prepare('SELECT * FROM rooms WHERE room_number = ?').get(rNum);
+      if (!room) continue;
+
+      const folioInfo = folioMap.get(rNum) || {};
+      const fMeta = folioInfo.meta || {};
+
+      const guestName = String(cr.guest_name || fMeta.guestName || 'In-House Guest').trim();
+      const guestMobile = String(cr.guest_mobile || fMeta.mobile || '').trim();
+      const guestEmail = String(fMeta.email || '').trim();
+      const aadharNumber = String(fMeta.aadharNumber || fMeta.aadhar_number || '').trim();
+      const docType = String(fMeta.docType || fMeta.doc_type || 'Aadhaar Card').trim();
+      const address = String(fMeta.address || '').trim();
+      const dob = String(fMeta.dob || '').trim();
+
+      let activeBooking = null;
+      if (room.current_booking_id) {
+        activeBooking = localDb.prepare('SELECT * FROM bookings WHERE id = ? AND status = ?').get(room.current_booking_id, 'active');
+      }
+      if (!activeBooking) {
+        activeBooking = localDb.prepare('SELECT * FROM bookings WHERE room_id = ? AND status = ?').get(room.id, 'active');
+      }
+
+      if (!activeBooking) {
+        // Find or create guest
+        let guest = null;
+        if (guestMobile) {
+          guest = localDb.prepare('SELECT * FROM guests WHERE mobile = ?').get(guestMobile);
+        }
+        if (!guest && guestName && guestName !== 'In-House Guest') {
+          guest = localDb.prepare('SELECT * FROM guests WHERE name = ?').get(guestName);
+        }
+        if (!guest) {
+          const insG = localDb.prepare(`
+            INSERT INTO guests (name, mobile, email, aadhar_number, doc_type, address, dob, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          `).run(guestName, guestMobile, guestEmail, aadharNumber, docType, address, dob);
+          guest = { id: insG.lastInsertRowid };
+        } else {
+          localDb.prepare(`
+            UPDATE guests
+            SET email = COALESCE(NULLIF(?, ''), email),
+                aadhar_number = COALESCE(NULLIF(?, ''), aadhar_number),
+                doc_type = COALESCE(NULLIF(?, ''), doc_type),
+                address = COALESCE(NULLIF(?, ''), address),
+                dob = COALESCE(NULLIF(?, ''), dob)
+            WHERE id = ?
+          `).run(guestEmail, aadharNumber, docType, address, dob, guest.id);
+        }
+
+        const checkinTime = formatToLocalSqliteString(fMeta.checkinTime || fMeta.checkin_time || cr.checkin_time);
+        let approxCheckout = formatToLocalSqliteString(fMeta.approxCheckout || fMeta.expectedCheckout || fMeta.approx_checkout_time || cr.approx_checkout_time || cr.expected_checkout_time || null);
+        if (!approxCheckout && checkinTime) {
+          try {
+            const dIn = new Date(String(checkinTime).includes('T') ? checkinTime : String(checkinTime).replace(' ', 'T') + '+05:30').getTime();
+            if (!isNaN(dIn)) {
+              approxCheckout = formatToLocalSqliteString(new Date(dIn + 24 * 60 * 60 * 1000));
+            }
+          } catch (_) {}
+        }
+        const roomRate = Number(fMeta.roomCharge || fMeta.tariffSubtotal || folioInfo.subtotal || room.price || 2400);
+        const totalRoomCharge = Number(fMeta.total || fMeta.grandTotal || fMeta.roomCharge || folioInfo.grand_total || room.price || 2400);
+        const paid = Number(fMeta.paid || cr.total_paid || 0);
+        const discount = Number(fMeta.discount || 0);
+        const voucherNumber = fMeta.voucherNumber || folioInfo.bill_no || ('BK-' + (cr.booking_id || rNum));
+        const source = fMeta.source || 'Walk-in';
+        const checkedInBy = fMeta.checkedInBy || folioInfo.settled_by || 'Front Desk';
+        const paymentMode = fMeta.paymentMode || 'Cash';
+        const adultsMale = fMeta.adultsMale ?? fMeta.adults_male ?? 1;
+        const adultsFemale = fMeta.adultsFemale ?? fMeta.adults_female ?? 0;
+
+        const insB = localDb.prepare(`
+          INSERT INTO bookings (
+            room_id, guest_id, checkin_time, approx_checkout_time,
+            room_rate, total_room_charge, advance_payment, total_paid,
+            discount_amount, voucher_number, booking_source, checked_in_by,
+            advance_payment_mode, adults_male, adults_female, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))
+        `).run(
+          room.id, guest.id, checkinTime, approxCheckout,
+          roomRate, totalRoomCharge, paid, paid,
+          discount, voucherNumber, source, checkedInBy,
+          paymentMode, adultsMale, adultsFemale
+        );
+        const newBookingId = insB.lastInsertRowid;
+
+        localDb.prepare(`
+          UPDATE rooms 
+          SET status = 'occupied', current_booking_id = ?
+          WHERE id = ?
+        `).run(newBookingId, room.id);
+
+        syncPaymentsForBooking(localDb, newBookingId, room.id, paid, fMeta, checkinTime);
+
+        pulledCount++;
+      } else {
+        // Room is already active locally - check if room.status is set correctly
+        if (room.status !== 'occupied' || room.current_booking_id !== activeBooking.id) {
+          localDb.prepare(`UPDATE rooms SET status = 'occupied', current_booking_id = ? WHERE id = ?`).run(activeBooking.id, room.id);
+        }
+
+        // Update guest details
+        if (activeBooking.guest_id) {
+          localDb.prepare(`
+            UPDATE guests
+            SET email = COALESCE(NULLIF(?, ''), email),
+                aadhar_number = COALESCE(NULLIF(?, ''), aadhar_number),
+                doc_type = COALESCE(NULLIF(?, ''), doc_type),
+                address = COALESCE(NULLIF(?, ''), address),
+                dob = COALESCE(NULLIF(?, ''), dob)
+            WHERE id = ?
+          `).run(guestEmail, aadharNumber, docType, address, dob, activeBooking.guest_id);
+        }
+
+        const cloudCheckin = formatToLocalSqliteString(fMeta.checkinTime || fMeta.checkin_time || cr.checkin_time);
+        const cloudApproxOut = formatToLocalSqliteString(fMeta.approxCheckout || fMeta.expectedCheckout || fMeta.approx_checkout_time || cr.approx_checkout_time || cr.expected_checkout_time || null);
+        const cloudPaid = Number(fMeta.paid || cr.total_paid || 0);
+        const cloudTotal = Number(fMeta.total || fMeta.grandTotal || fMeta.roomCharge || folioInfo.grand_total || 0);
+        const cloudRate = Number(fMeta.tariffSubtotal || fMeta.roomCharge || folioInfo.subtotal || 0);
+        const adultsMale = fMeta.adultsMale ?? fMeta.adults_male ?? null;
+        const adultsFemale = fMeta.adultsFemale ?? fMeta.adults_female ?? null;
+        const checkedInBy = fMeta.checkedInBy || folioInfo.settled_by || null;
+        const advReceiptNo = fMeta.advanceReceiptNo || null;
+
+        localDb.prepare(`
+          UPDATE bookings 
+          SET checkin_time = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE checkin_time END,
+              approx_checkout_time = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE approx_checkout_time END,
+              room_rate = CASE WHEN ? > 0 THEN ? ELSE room_rate END,
+              total_room_charge = CASE WHEN ? > 0 THEN ? ELSE total_room_charge END,
+              total_paid = MAX(COALESCE(total_paid, 0), ?),
+              advance_payment = MAX(COALESCE(advance_payment, 0), ?),
+              advance_receipt_no = COALESCE(?, advance_receipt_no),
+              checked_in_by = COALESCE(?, checked_in_by),
+              adults_male = CASE WHEN ? IS NOT NULL THEN ? ELSE adults_male END,
+              adults_female = CASE WHEN ? IS NOT NULL THEN ? ELSE adults_female END
+          WHERE id = ?
+        `).run(
+          cloudCheckin, cloudCheckin, cloudCheckin,
+          cloudApproxOut, cloudApproxOut, cloudApproxOut,
+          cloudRate, cloudRate,
+          cloudTotal, cloudTotal,
+          cloudPaid, cloudPaid,
+          advReceiptNo, checkedInBy,
+          adultsMale, adultsMale,
+          adultsFemale, adultsFemale,
+          activeBooking.id
+        );
+
+        syncPaymentsForBooking(localDb, activeBooking.id, room.id, cloudPaid, fMeta, cloudCheckin || activeBooking.checkin_time);
+
+        updatedCount++;
+      }
+    }
+
+    // Handle remote checkouts: if a room was checked out in cloud, free it locally
+    const localOccupied = localDb.prepare(`SELECT r.id, r.room_number, r.current_booking_id FROM rooms r WHERE r.status = 'occupied'`).all();
+    let checkoutCount = 0;
+    for (const lr of localOccupied) {
+      const rn = cleanRoomNumber(lr.room_number);
+      if (!cloudActiveSet.has(rn)) {
+        const co = checkouts.find(c => cleanRoomNumber(c.room_number) === rn);
+        if (co) {
+          let coMeta = {};
+          try { coMeta = JSON.parse(co.items_summary || '{}'); } catch (_) {}
+          const coTime = formatToLocalSqliteString(co.created_at || coMeta.checkoutTime);
+          const settledBy = co.settled_by || coMeta.checkedOutBy || 'Staff';
+
+          if (lr.current_booking_id) {
+            localDb.prepare(`
+              UPDATE bookings 
+              SET status = 'checked_out', actual_checkout_time = ?, checked_out_by = ?
+              WHERE id = ? AND status = 'active'
+            `).run(coTime, settledBy, lr.current_booking_id);
+          }
+
+          localDb.prepare(`UPDATE rooms SET status = 'ready', current_booking_id = NULL WHERE id = ?`).run(lr.id);
+          checkoutCount++;
+        }
+      }
+    }
+
+    markNetworkSuccess();
+    if (pulledCount > 0 || checkoutCount > 0) {
+      console.log(`[Supabase Cloud Sync] Pulled ${pulledCount} room(s) into local DB, reconciled ${checkoutCount} checkout(s).`);
+    }
+    return { success: true, pulled: pulledCount, updated: updatedCount, checkouts: checkoutCount };
+  } catch (err) {
+    markNetworkFailure(err);
+    console.warn('[Supabase Sync] pullCloudOccupanciesToLocal notice:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 /**
  * Synchronizes all currently occupied rooms from local SQLite database to Supabase.
  * Runs non-blocking on server startup or on demand.
@@ -607,6 +953,13 @@ async function pullCloudRoomChargesToLocal(localDb) {
 async function syncAllActiveRoomsFromLocal(localDb) {
   if (!canAttemptCloud() || !localDb) return;
   try {
+    // 1. Pull any occupancies created on other terminals/client PCs into local database first
+    try {
+      await pullCloudOccupanciesToLocal(localDb);
+    } catch (pullErr) {
+      console.warn('[Supabase] Inbound occupancy sync notice:', pullErr.message);
+    }
+
     const activeBookings = localDb.prepare(`
       SELECT 
         b.id as booking_id,
@@ -627,12 +980,24 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         b.advance_payment,
         b.total_paid,
         b.discount_amount,
+        b.discount_pct,
         b.extra_bed_charge,
         b.voucher_number,
         b.advance_receipt_no,
         b.advance_payment_mode,
         b.booking_source,
-        b.checked_in_by
+        b.checked_in_by,
+        b.meal_plan,
+        b.adults_male,
+        b.adults_female,
+        b.adults_other,
+        b.children,
+        r.price as room_price,
+        r.breakfast_price,
+        r.ext_grace_mins,
+        r.ext_3h_rate,
+        r.ext_6h_rate,
+        r.ext_9h_rate
       FROM bookings b
       JOIN rooms r ON b.room_id = r.id
       JOIN guests g ON b.guest_id = g.id
@@ -640,36 +1005,6 @@ async function syncAllActiveRoomsFromLocal(localDb) {
     `).all();
 
     const activeRoomSet = new Set((activeBookings || []).map(b => String(b.room_number)));
-
-    // 1. Reconcile: Only prune rooms if the local database explicitly has a checked-out record for that room.
-    // NEVER blindly prune rooms missing from local DB (prevents deleting check-ins done on other client machines).
-    try {
-      const { data: cloudRooms } = await withTimeout(
-        supabase.from('active_occupancies').select('room_number, checkin_time'),
-        REQUEST_TIMEOUT_MS
-      );
-      if (Array.isArray(cloudRooms)) {
-        for (const cr of cloudRooms) {
-          if (!activeRoomSet.has(String(cr.room_number))) {
-            try {
-              const localCo = localDb.prepare(`
-                SELECT b.id FROM bookings b
-                JOIN rooms r ON b.room_id = r.id
-                WHERE r.room_number = ? AND b.status = 'checked_out'
-                AND (b.checkin_time = ? OR datetime(b.actual_checkout_time) >= datetime('now', '-2 days'))
-                LIMIT 1
-              `).get(String(cr.room_number), cr.checkin_time || '');
-              if (localCo) {
-                console.log(`[Supabase] Pruning locally checked-out room from cloud: Room ${cr.room_number}`);
-                await removeActiveOccupancy(cr.room_number);
-              }
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (pruneErr) {
-      console.warn('[Supabase] Prune stale occupancies notice:', pruneErr.message);
-    }
 
     if (!activeBookings || activeBookings.length === 0) return;
 
@@ -696,19 +1031,93 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         console.warn('[Supabase] Active orders fetch notice:', orderErr.message);
       }
 
+      // Elapsed Stay Calculation matching CRM Folio calculateActualStayAndExtension
+      let liveStayDays = 1;
+      let extensionCharge = 0;
+      let extraHours = 0;
+      try {
+        if (b.checkin_time) {
+          const dIn = new Date(toIstIso(b.checkin_time)).getTime();
+          const dNow = Date.now();
+          const elapsedHours = Math.max(0, (dNow - dIn) / (1000 * 60 * 60));
+          if (elapsedHours < 24) {
+            liveStayDays = 1;
+            extraHours = Math.floor(elapsedHours);
+            extensionCharge = 0;
+          } else {
+            const completedDays = Math.floor(elapsedHours / 24);
+            extraHours = Math.floor(elapsedHours % 24);
+            const extraTotalMins = extraHours * 60;
+            const graceMins = b.ext_grace_mins !== undefined && b.ext_grace_mins !== null ? Number(b.ext_grace_mins) : 60;
+            const r3h = b.ext_3h_rate !== undefined && b.ext_3h_rate !== null ? Number(b.ext_3h_rate) : 500;
+            const r6h = b.ext_6h_rate !== undefined && b.ext_6h_rate !== null ? Number(b.ext_6h_rate) : 1000;
+            const r9h = b.ext_9h_rate !== undefined && b.ext_9h_rate !== null ? Number(b.ext_9h_rate) : 1500;
+
+            if (extraTotalMins <= graceMins) {
+              extensionCharge = 0;
+              liveStayDays = completedDays;
+            } else if (extraTotalMins <= 180) {
+              extensionCharge = r3h;
+              liveStayDays = completedDays;
+            } else if (extraTotalMins <= 360) {
+              extensionCharge = r6h;
+              liveStayDays = completedDays;
+            } else if (extraTotalMins <= 540) {
+              extensionCharge = r9h;
+              liveStayDays = completedDays;
+            } else {
+              liveStayDays = completedDays + 1;
+              extensionCharge = 0;
+              extraHours = 0;
+            }
+          }
+        }
+      } catch (_) {}
+      liveStayDays = Math.max(1, liveStayDays);
+
+      const dailyBase = Number(b.room_rate || b.room_price || 0);
+      const mp = String(b.meal_plan || '').toLowerCase();
+      const hasBf = (mp === 'with_breakfast' || mp === 'breakfast' || (mp.includes('breakfast') && !mp.includes('without')));
+      const bfPax = hasBf ? Math.max(1, (b.adults_male || 0) + (b.adults_female || 0)) : 0;
+      const bfDaily = hasBf ? (bfPax * (Number(b.breakfast_price) || 250)) : 0;
+      const extraMattressDaily = Number(b.extra_bed_charge || 0);
+
+      const nowBaseTariff = liveStayDays * dailyBase;
+      const nowExtraMattressCost = liveStayDays * extraMattressDaily;
+      const nowBreakfastCost = liveStayDays * bfDaily;
+      const nowPreTaxGross = nowBaseTariff + nowExtraMattressCost + nowBreakfastCost + extensionCharge;
+
+      const discountPct = Number(b.discount_pct || 0);
+      let nowDiscountAmount = discountPct > 0
+        ? Math.round((nowPreTaxGross * discountPct) / 100)
+        : Number(b.discount_amount || 0);
+
+      if (liveStayDays > 1 && discountPct === 0 && Number(b.discount_amount || 0) > 0) {
+        nowDiscountAmount = Math.round(Number(b.discount_amount || 0) * liveStayDays);
+      }
+
+      const nowPreTaxRoom = nowPreTaxGross - nowDiscountAmount;
+      const roomGst = Math.round(nowPreTaxRoom * 0.05);
+      const liveRoomCharge = nowPreTaxRoom + roomGst;
+
       const foodTotal = restOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
       const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-      const roomCharge = Number(b.total_room_charge || b.room_rate || 0);
+      const roomCharge = (liveStayDays > 1 || extensionCharge > 0) ? liveRoomCharge : (Number(b.total_room_charge || liveRoomCharge));
       const extra = Number(b.extra_bed_charge || 0);
-      const discount = Number(b.discount_amount || 0);
-      const tax = Number(b.tax_amount || Math.round(roomCharge - Math.round(roomCharge / 1.05)));
-      // b.total_room_charge in CRM SQLite schema is already net of discount
-      const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal + extra);
+      const discount = nowDiscountAmount;
+      const tax = roomGst;
+      const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal);
       const paid = Number(b.total_paid || b.advance_payment || 0);
+      const refundDue = Math.max(0, paid - grandTotal);
       const pending = Math.max(0, grandTotal - paid);
 
+      let bookingPayments = [];
+      try {
+        bookingPayments = localDb.prepare('SELECT receipt_no as receiptNo, receipt_no, payment_mode as mode, amount, cashier_name as cashier, realized_at as date, notes, payment_type as type FROM payments WHERE booking_id = ? ORDER BY id ASC').all(b.booking_id);
+      } catch (_) {}
+
       await syncActiveOccupancy({
-        room_number: b.room_number,
+        room_number: cleanRoomNumber(b.room_number),
         room_id: b.room_id,
         room_type: b.room_type,
         guest_name: b.guest_name,
@@ -717,7 +1126,7 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         aadhar_number: b.aadhar_number,
         doc_type: b.doc_type || 'Aadhaar Card',
         booking_id: b.booking_id,
-        checkin_time: b.checkin_time,
+        checkin_time: toIstIso(b.checkin_time),
         food_total: foodTotal,
         bar_total: barTotal,
         total_paid: paid,
@@ -725,7 +1134,7 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         balance_due: pending,
         folio: {
           roomCharge,
-          tariffSubtotal: Number(b.room_rate || (roomCharge + discount)),
+          tariffSubtotal: Number(b.room_rate || nowBaseTariff + nowExtraMattressCost + nowBreakfastCost),
           restaurant: foodTotal,
           bar: barTotal,
           foodTotal,
@@ -737,9 +1146,21 @@ async function syncAllActiveRoomsFromLocal(localDb) {
           grandTotal,
           paid,
           pending,
+          refundDue,
+          stayCalcNow: {
+            roomCharge,
+            grandTotal,
+            paid,
+            refundDue,
+            balanceDue: pending,
+            stayDurationStr: `${liveStayDays} day${liveStayDays > 1 ? 's' : ''}`,
+            chargedDays: liveStayDays,
+            extraHours
+          },
           voucherNumber: b.voucher_number || '',
           advanceReceiptNo: b.advance_receipt_no || '',
           paymentMode: b.advance_payment_mode || 'Cash',
+          payments: bookingPayments,
           approxCheckout: b.approx_checkout_time || '',
           source: b.booking_source || 'Walk-in',
           checkedInBy: b.checked_in_by || 'Front Desk',
@@ -747,13 +1168,84 @@ async function syncAllActiveRoomsFromLocal(localDb) {
           dob: b.dob || '',
           email: b.email || '',
           aadharNumber: b.aadhar_number || '',
-          docType: b.doc_type || 'Aadhaar Card'
+          docType: b.doc_type || 'Aadhaar Card',
+          adultsMale: b.adults_male,
+          adultsFemale: b.adults_female
         }
       });
 
       // Gentle pause between rooms to ensure Supabase connection pool is never overwhelmed
       await sleep(150);
     }
+
+    // 3. Ensure any cloud active rooms (e.g. checked in from other terminals like 104, 211) have a valid room_folio
+    try {
+      const { data: cloudAllOccs } = await withTimeout(
+        supabase.from('active_occupancies').select('*'),
+        REQUEST_TIMEOUT_MS
+      );
+      if (Array.isArray(cloudAllOccs)) {
+        for (const co of cloudAllOccs) {
+          const rNum = cleanRoomNumber(co.room_number);
+          if (!activeRoomSet.has(rNum)) {
+            const { data: hasFolio } = await withTimeout(
+              supabase.from('room_charges_inbox').select('id').eq('room_number', rNum).eq('department', 'room_folio').limit(1),
+              REQUEST_TIMEOUT_MS
+            );
+            if (!hasFolio || hasFolio.length === 0) {
+              const rType = String(co.room_type || '').toLowerCase();
+              const baseRate = rType.includes('pent') ? 4500 : (rType.includes('suit') ? 3500 : (rType.includes('plus') ? 2800 : (rType.includes('deluxe') ? 2200 : 2350)));
+              let sNights = 1;
+              try {
+                if (co.checkin_time) {
+                  const dIn = new Date(co.checkin_time).getTime();
+                  sNights = Math.max(1, Math.ceil((Date.now() - dIn) / (24 * 3600 * 1000)));
+                }
+              } catch (_) {}
+              const rmCharge = baseRate * sNights;
+              const gst = Math.round(rmCharge * 0.05);
+              const gTotal = rmCharge + gst;
+              const pd = Number(co.total_paid || co.advance_payment || 0);
+              const pnd = Math.max(0, gTotal - pd);
+              const ref = Math.max(0, pd - gTotal);
+
+              await syncActiveOccupancy({
+                room_number: rNum,
+                room_id: co.room_id,
+                room_type: co.room_type,
+                guest_name: co.guest_name,
+                guest_mobile: co.guest_mobile,
+                booking_id: co.booking_id,
+                checkin_time: co.checkin_time,
+                folio: {
+                  roomCharge: gTotal,
+                  grandTotal: gTotal,
+                  total: gTotal,
+                  paid: pd,
+                  pending: pnd,
+                  refundDue: ref,
+                  stayCalcNow: {
+                    roomCharge: gTotal,
+                    grandTotal: gTotal,
+                    paid: pd,
+                    balanceDue: pnd,
+                    refundDue: ref,
+                    chargedDays: sNights
+                  },
+                  guestName: co.guest_name,
+                  mobile: co.guest_mobile,
+                  roomType: co.room_type
+                }
+              });
+              await sleep(150);
+            }
+          }
+        }
+      }
+    } catch (extraRoomErr) {
+      console.warn('[Supabase] Extra room folio init notice:', extraRoomErr.message);
+    }
+
     console.log(`[Supabase] Synced ${activeBookings.length} active room(s) with full billing folios to cloud directory.`);
   } catch (err) {
     console.warn('[Supabase] Room sync notice:', err.message);
@@ -1276,6 +1768,26 @@ async function syncWaiterDataToCloud(db) {
     };
 
     await withTimeout(supabase.from('room_charges_inbox').upsert(payload));
+
+    // Also sync cleanly to dedicated staff_users table in Supabase
+    try {
+      for (const s of (staff || [])) {
+        await withTimeout(
+          supabase.from('staff_users').upsert({
+            id: s.id,
+            username: s.username,
+            password: s.password,
+            full_name: s.full_name,
+            role: s.role,
+            phone: s.phone || '',
+            status: 'active',
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'username' }),
+          3000
+        ).catch(() => {});
+      }
+    } catch (_) {}
+
     markNetworkSuccess();
   } catch (err) {
     markNetworkFailure(err);
@@ -1605,9 +2117,19 @@ function setupRealtimeListeners(db) {
             pullCloudWaiterOrdersToLocal(db).catch(() => {});
           } else if (dept === 'discount_approval') {
             pollCloudApprovals(db).catch(() => {});
+          } else if (dept === 'room_folio' || dept === 'room_checkout') {
+            pullCloudOccupanciesToLocal(db).catch(() => {});
           } else if (dept !== 'waiter_cloud_sync_pkg' && dept !== 'fb_live_state') {
             pullCloudRoomChargesToLocal(db).catch(() => {});
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'active_occupancies' },
+        (payload) => {
+          console.log('[Supabase Realtime] Event on active_occupancies:', payload.eventType);
+          pullCloudOccupanciesToLocal(db).catch(() => {});
         }
       )
       .on(
@@ -1645,6 +2167,49 @@ function stopRealtimeListeners() {
   }
 }
 
+async function syncStaffUserToCloud(user) {
+  if (!canAttemptCloud() || !user) return;
+  try {
+    await withTimeout(
+      supabase.from('staff_users').upsert({
+        id: user.id,
+        username: user.username,
+        password: user.password,
+        full_name: user.full_name,
+        role: user.role,
+        phone: user.phone || '',
+        status: user.status || 'active',
+        can_access_manager: user.can_access_manager || 0,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'username' }),
+      4000
+    );
+  } catch (_) {}
+}
+
+async function syncAllStaffUsersToCloud(db) {
+  if (!canAttemptCloud() || !db) return;
+  try {
+    const staff = db.prepare(`SELECT id, username, password, full_name, role, phone, status, can_access_manager FROM staff_users`).all();
+    for (const s of staff) {
+      await withTimeout(
+        supabase.from('staff_users').upsert({
+          id: s.id,
+          username: s.username,
+          password: s.password,
+          full_name: s.full_name,
+          role: s.role,
+          phone: s.phone || '',
+          status: s.status || 'active',
+          can_access_manager: s.can_access_manager || 0,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'username' }),
+        3000
+      ).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 module.exports = {
   setupRealtimeListeners,
   stopRealtimeListeners,
@@ -1666,10 +2231,13 @@ module.exports = {
   pollCloudApprovals,
   syncDailyAnalyticsToCloud,
   pullCloudRoomChargesToLocal,
+  pullCloudOccupanciesToLocal,
   syncLiveFBStateToCloud,
   syncAllOfflineDataToCloud,
   syncWaiterDataToCloud,
   pullCloudWaiterOrdersToLocal,
+  syncStaffUserToCloud,
+  syncAllStaffUsersToCloud,
   isConfigured: () => Boolean(supabase),
   isOfflineMode: () => isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)
 };

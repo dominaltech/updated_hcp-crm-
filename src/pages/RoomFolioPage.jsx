@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime, formatTime12, formatTaxInvoiceNumber } from '../utils/formatters';
@@ -183,6 +183,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     return !(folioMemoryCache.has(roomId) || (initialRoom && (initialRoom.id === roomId || String(initialRoom.id) === String(roomId))));
   });
   const [isExtendOpen, setIsExtendOpen] = useState(false);
+  const isExtendOpenRef = useRef(false);
+  useEffect(() => {
+    isExtendOpenRef.current = isExtendOpen;
+  }, [isExtendOpen]);
   const [extendDate, setExtendDate] = useState('');
   const [extendTime, setExtendTime] = useState('');
   const [lightboxImage, setLightboxImage] = useState(null);
@@ -244,6 +248,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [linkCopied, setLinkCopied] = useState(false);
   const [customMobile, setCustomMobile] = useState('');
 
+  // In-Stay Corporate GST Details State
+  const [isCorporateModalOpen, setIsCorporateModalOpen] = useState(false);
+  const [corpCompanyName, setCorpCompanyName] = useState('');
+  const [corpGstNumber, setCorpGstNumber] = useState('');
+  const [corpCompanyAddress, setCorpCompanyAddress] = useState('');
+  const [corpTaxMode, setCorpTaxMode] = useState('CGST_SGST');
+  const [isSubmittingCorp, setIsSubmittingCorp] = useState(false);
+
   useEffect(() => {
     if (folioData?.diningLink) {
       setDiningLinkData(folioData.diningLink);
@@ -270,7 +282,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     isExtendPaymentModalOpen ||
     isExtensionReceiptsOpen ||
     isAddExpenseModalOpen ||
-    isDiningModalOpen
+    isDiningModalOpen ||
+    isCorporateModalOpen
   );
   useEffect(() => {
     if (isAnySubModalOpen) {
@@ -464,17 +477,29 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         }
       }
       folioMemoryCache.set(roomId, normalized);
-      if (normalized.approxCheckoutTime) {
-        const d = new Date(normalized.approxCheckoutTime);
-        if (!isNaN(d.getTime())) {
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          const hh = String(d.getHours()).padStart(2, '0');
-          const mm = String(d.getMinutes()).padStart(2, '0');
-          setExtendDate(`${y}-${m}-${day}`);
-          setExtendTime(`${hh}:${mm}`);
-        }
+      // NEVER overwrite extendDate or extendTime while extend panel is open or actively edited
+      if (!isExtendOpenRef.current && normalized.approxCheckoutTime) {
+        setExtendDate((prev) => {
+          if (prev) return prev;
+          const d = new Date(normalized.approxCheckoutTime);
+          if (!isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+          }
+          return prev;
+        });
+        setExtendTime((prev) => {
+          if (prev) return prev;
+          const d = new Date(normalized.approxCheckoutTime);
+          if (!isNaN(d.getTime())) {
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            return `${hh}:${mm}`;
+          }
+          return prev;
+        });
       }
     } catch (err) {
       showToast('Error loading folio: ' + err.message, 'red');
@@ -615,7 +640,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
       showToast(`Stay successfully extended! Total paid: ₹${totalPaid.toLocaleString('en-IN')}`, 'green');
       setIsExtendPaymentModalOpen(false);
+      isExtendOpenRef.current = false;
       setIsExtendOpen(false);
+      setExtendDate('');
+      setExtendTime('');
 
       if (res?.receipts && res.receipts.length > 0) {
         setExtensionSplitReceiptsData({
@@ -1173,8 +1201,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const allExtraExpenses = folioData?.extraExpenses || [];
   const globalExpensesTotal = Number(folioData?.expensesTotal || allExtraExpenses.reduce((sum, e) => sum + Number(e.total || e.amount || 0), 0));
   const globalNetFolioBalance = globalRawStayBalance + globalFnbPending + globalExpensesTotal;
-  const folioDueAmount = Math.max(0, globalNetFolioBalance);
-  const folioRefundAmount = globalNetFolioBalance < 0 ? Math.abs(globalNetFolioBalance) : 0;
+  const folioDueAmount = globalNetFolioBalance > 0.5 ? Math.round(globalNetFolioBalance) : 0;
+  const folioRefundAmount = globalNetFolioBalance < -0.5 ? Math.round(Math.abs(globalNetFolioBalance)) : 0;
 
   const openAddPaymentModal = (presetMode = null) => {
     const due = folioDueAmount > 0 ? folioDueAmount : 0;
@@ -1469,6 +1497,44 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       if (window.confirm('Are you sure you want to delete and revoke this guest food ordering link?')) {
         performDelete();
       }
+    }
+  };
+
+  // Corporate GST Details Handlers (In-Stay Update)
+  const handleOpenCorporateModal = () => {
+    setCorpCompanyName(folioData?.companyName || '');
+    setCorpGstNumber(folioData?.gstNumber || '');
+    setCorpCompanyAddress(folioData?.companyAddress || '');
+    const isIgst = folioData?.isIgst || folioData?.taxType === 'IGST';
+    setCorpTaxMode(isIgst ? 'IGST' : 'CGST_SGST');
+    setIsCorporateModalOpen(true);
+  };
+
+  const handleSaveCorporateDetails = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      setIsSubmittingCorp(true);
+      const payload = {
+        company_name: corpCompanyName.trim(),
+        gst_number: corpGstNumber.trim().toUpperCase(),
+        company_address: corpCompanyAddress.trim(),
+        tax_type: corpTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+        is_igst: corpTaxMode === 'IGST' ? 1 : 0
+      };
+      const res = await api.updateRoomCorporateDetails(roomId, payload);
+      if (res && res.success) {
+        showToast('Corporate / GST details updated successfully!', 'green', 4000);
+        setIsCorporateModalOpen(false);
+        folioMemoryCache.delete(roomId);
+        await loadFolio(true);
+      } else {
+        showToast(res?.error || 'Failed to update corporate details', 'error');
+      }
+    } catch (err) {
+      console.error('Error saving corporate details:', err);
+      showToast(err.message || 'Error saving corporate details', 'error');
+    } finally {
+      setIsSubmittingCorp(false);
     }
   };
 
@@ -2154,17 +2220,41 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             </div>
           )}
 
-          {/* Corporate Company Details Card (Point 23) */}
-          {(folioData.companyName || folioData.gstNumber || folioData.companyAddress) && (
-            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>🏢</span> Corporate Company Details
-                </span>
-                <span style={{ fontSize: '0.72rem', background: '#eff6ff', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', fontWeight: 750, border: '1px solid #bfdbfe' }}>
-                  {folioData.isIgst || folioData.taxType === 'IGST' ? 'IGST (Inter-State 12%)' : 'CGST + SGST (5%)'}
-                </span>
+          {/* Corporate Company Details Card (In-Stay Add / Edit) */}
+          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🏢</span> Corporate Company Details
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {(folioData.companyName || folioData.gstNumber) && (
+                  <span style={{ fontSize: '0.72rem', background: '#eff6ff', color: '#1e40af', padding: '2px 8px', borderRadius: '4px', fontWeight: 750, border: '1px solid #bfdbfe' }}>
+                    {folioData.isIgst || folioData.taxType === 'IGST' ? 'IGST (Inter-State)' : 'CGST + SGST'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleOpenCorporateModal}
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--apple-blue)',
+                    color: 'var(--apple-blue)',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    fontWeight: 750,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  ✏️ {folioData.companyName || folioData.gstNumber ? 'Edit GST' : 'Add Corporate GST'}
+                </button>
               </div>
+            </div>
+
+            {(folioData.companyName || folioData.gstNumber || folioData.companyAddress) ? (
               <div className="folio-info-grid" style={{ fontSize: '0.84rem' }}>
                 <div className="folio-info-row">
                   <span className="label">Company:</span>
@@ -2181,8 +2271,30 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            ) : (
+              <div
+                onClick={handleOpenCorporateModal}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1.5px dashed var(--border-color)',
+                  background: 'var(--bg-surface)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  No corporate / GST details attached to this stay.
+                </span>
+                <span style={{ fontSize: '0.76rem', color: 'var(--apple-blue)', fontWeight: 800 }}>
+                  + Add Company GST &rarr;
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Column 2: Stay Details Card */}
@@ -2261,7 +2373,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       type="button"
                       className="btn-change-checkout"
                       onClick={() => {
-                        if (!isExtendOpen && folioData?.approxCheckoutTime) {
+                        const willOpen = !isExtendOpen;
+                        isExtendOpenRef.current = willOpen;
+                        if (willOpen && folioData?.approxCheckoutTime) {
                           const d = new Date(folioData.approxCheckoutTime);
                           if (!isNaN(d.getTime())) {
                             const y = d.getFullYear();
@@ -2273,7 +2387,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                             setExtendTime(`${hh}:${mm}`);
                           }
                         }
-                        setIsExtendOpen(!isExtendOpen);
+                        setIsExtendOpen(willOpen);
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', fontWeight: 700, cursor: 'pointer' }}
                       title="Extend guest checkout date & time"
@@ -2311,7 +2425,15 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                       <span>⏳</span>
                       <span>Save &amp; Extend</span>
                     </button>
-                    <button type="button" className="btn-custom-cancel" onClick={() => setIsExtendOpen(false)} style={{ padding: '7px 12px', fontSize: '0.82rem', borderRadius: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn-custom-cancel"
+                      onClick={() => {
+                        isExtendOpenRef.current = false;
+                        setIsExtendOpen(false);
+                      }}
+                      style={{ padding: '7px 12px', fontSize: '0.82rem', borderRadius: '8px' }}
+                    >
                       Cancel
                     </button>
                   </div>
@@ -2568,8 +2690,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
           // Combined Folio Balance: excess advance absorbs pending F&B and Extra Expenses/Damages
           const netFolioBalance = rawStayBalance + fnbPendingTotal + expensesTotal;
-          const folioDueAmount = Math.max(0, netFolioBalance);
-          const folioRefundAmount = netFolioBalance < 0 ? Math.abs(netFolioBalance) : 0;
+          const folioDueAmount = netFolioBalance > 0.5 ? Math.round(netFolioBalance) : 0;
+          const folioRefundAmount = netFolioBalance < -0.5 ? Math.round(Math.abs(netFolioBalance)) : 0;
 
           return (
             <React.Fragment>
@@ -6896,6 +7018,219 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-Stay Corporate / Company GST Details Modal */}
+      {isCorporateModalOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => !isSubmittingCorp && setIsCorporateModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '520px',
+              background: 'var(--bg-surface)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+              border: '1px solid var(--border-color)',
+              overflow: 'hidden',
+              animation: 'slideUp 0.25s ease'
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 22px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-card)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.4rem' }}>🏢</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Corporate / GST Details
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    Room #{folioData?.roomNumber} &bull; {folioData?.guestName || 'Guest'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCorporateModalOpen(false)}
+                disabled={isSubmittingCorp}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.25rem',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 8px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleSaveCorporateDetails}>
+              <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Company / Organization Name *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Tata Consultancy Services Ltd."
+                    value={corpCompanyName}
+                    onChange={(e) => setCorpCompanyName(e.target.value)}
+                    style={{ width: '100%', height: '40px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Company GSTIN (15 Digits)
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. 07AAAAA0000A1Z5"
+                    maxLength={15}
+                    value={corpGstNumber}
+                    onChange={(e) => setCorpGstNumber(e.target.value.toUpperCase())}
+                    style={{ width: '100%', height: '40px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    Company Registered Address
+                  </label>
+                  <textarea
+                    rows={2}
+                    className="form-input"
+                    placeholder="e.g. Plot No 12, Cyber City, Gurugram, Haryana - 122002"
+                    value={corpCompanyAddress}
+                    onChange={(e) => setCorpCompanyAddress(e.target.value)}
+                    style={{ width: '100%', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.88rem', padding: '8px 10px', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    GST Tax Mode (On Tax Invoice)
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCorpTaxMode('CGST_SGST')}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: '8px',
+                        border: corpTaxMode === 'CGST_SGST' ? '2px solid var(--apple-blue)' : '1px solid var(--border-color)',
+                        background: corpTaxMode === 'CGST_SGST' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-card)',
+                        color: corpTaxMode === 'CGST_SGST' ? 'var(--apple-blue)' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      CGST + SGST (Intra-State)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCorpTaxMode('IGST')}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: '8px',
+                        border: corpTaxMode === 'IGST' ? '2px solid #8b5cf6' : '1px solid var(--border-color)',
+                        background: corpTaxMode === 'IGST' ? 'rgba(139, 92, 246, 0.12)' : 'var(--bg-card)',
+                        color: corpTaxMode === 'IGST' ? '#8b5cf6' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      IGST (Inter-State)
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  💡 These details will automatically print under <strong>Company Name / GSTIN</strong> on the final <strong>A4 Tax Invoice</strong> upon checkout.
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div
+                style={{
+                  padding: '14px 22px',
+                  borderTop: '1px solid var(--border-color)',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  background: 'var(--bg-card)'
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={isSubmittingCorp}
+                  onClick={() => setIsCorporateModalOpen(false)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingCorp}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)'
+                  }}
+                >
+                  {isSubmittingCorp ? 'Saving...' : '💾 Save Details'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

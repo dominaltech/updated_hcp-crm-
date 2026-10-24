@@ -7,6 +7,7 @@ import RoomContextMenu from '../components/hospitality/RoomContextMenu';
 import RoomCleaningModal from '../components/hospitality/RoomCleaningModal';
 import HospitalityHistory from '../components/hospitality/HospitalityHistory';
 import AdvanceBookingModal from '../components/hospitality/AdvanceBookingModal';
+import OccupancyChartModal from '../components/hospitality/OccupancyChartModal';
 import { formatCurrency } from '../utils/formatters';
 
 const FLOOR_ORDER = [
@@ -51,6 +52,9 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
 
   const [hoveredLinkedGroup, setHoveredLinkedGroup] = useState('');
   const [cleaningModalRoom, setCleaningModalRoom] = useState(null);
+
+  // Occupancy Chart State
+  const [isOccupancyChartOpen, setIsOccupancyChartOpen] = useState(false);
 
   // Advance Booking & 48-Hour Alert State
   const [isAdvBookingOpen, setIsAdvBookingOpen] = useState(false);
@@ -124,7 +128,20 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
   const [transferConfirmData, setTransferConfirmData] = useState(null);
   const [isTransferring, setIsTransferring] = useState(false);
 
-  const filteredRooms = rooms;
+  const [dashboardFilter, setDashboardFilter] = useState('all'); // 'all' | 'occupied' | 'empty'
+
+  const occupiedCount = useMemo(() => rooms.filter((r) => r.status === 'occupied').length, [rooms]);
+  const emptyCount = useMemo(() => rooms.filter((r) => r.status !== 'occupied').length, [rooms]);
+
+  const filteredRooms = useMemo(() => {
+    if (dashboardFilter === 'occupied') {
+      return rooms.filter((r) => r.status === 'occupied');
+    }
+    if (dashboardFilter === 'empty') {
+      return rooms.filter((r) => r.status !== 'occupied');
+    }
+    return rooms;
+  }, [rooms, dashboardFilter]);
 
   const floorGroups = useMemo(() => {
     const groups = {};
@@ -235,7 +252,6 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
 
   const totalCount = rooms.length;
   const readyCount = rooms.filter((r) => r.status === 'ready').length;
-  const occupiedCount = rooms.filter((r) => r.status === 'occupied').length;
   const cleaningCount = rooms.filter((r) => r.status === 'needs_cleaning').length;
   const maintenanceCount = rooms.filter((r) => r.status === 'maintenance').length;
   const occupancyPct = totalCount > 0 ? Math.round((occupiedCount / totalCount) * 100) : 0;
@@ -423,7 +439,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
             className={`room-transfer-toolbar ${isTransferMode ? 'active-mode' : ''}`}
             id="room-transfer-toolbar"
           >
-            {isTransferMode && (
+            {isTransferMode ? (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.80rem', color: '#6d28d9', fontWeight: 650 }}>
                 {!transferSourceRoom ? (
                   <span>👉 <strong>Step 1:</strong> Drag or click an <strong>Occupied Room</strong> to shift.</span>
@@ -432,6 +448,55 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                     🎯 Shifting <strong>Room #{transferSourceRoom.room_number}</strong> ({transferSourceRoom.room_type}): Drop or click into any highlighted ready room of same type!
                   </span>
                 )}
+              </div>
+            ) : (
+              <div
+                className="dashboard-occupancy-summary"
+                id="dashboard-occupancy-summary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  userSelect: 'none'
+                }}
+              >
+                {/* Occupied Badge */}
+                <button
+                  type="button"
+                  id="dash-badge-occupied"
+                  className={`dash-occ-pill occupied ${dashboardFilter === 'occupied' ? 'active-filter' : ''}`}
+                  onClick={() => setDashboardFilter((prev) => (prev === 'occupied' ? 'all' : 'occupied'))}
+                  title={dashboardFilter === 'occupied' ? 'Showing occupied rooms. Click to show all rooms.' : 'Click to filter occupied rooms only'}
+                >
+                  <span className="dash-occ-dot" />
+                  <span>Occupied:</span>
+                  <span className="dash-occ-num">{occupiedCount}</span>
+                </button>
+
+                {/* Empty / Ready Badge */}
+                <button
+                  type="button"
+                  id="dash-badge-empty"
+                  className={`dash-occ-pill empty ${dashboardFilter === 'empty' ? 'active-filter' : ''}`}
+                  onClick={() => setDashboardFilter((prev) => (prev === 'empty' ? 'all' : 'empty'))}
+                  title={dashboardFilter === 'empty' ? 'Showing empty rooms. Click to show all rooms.' : 'Click to filter empty rooms only'}
+                >
+                  <span className="dash-occ-dot" />
+                  <span>Empty:</span>
+                  <span className="dash-occ-num">{emptyCount}</span>
+                </button>
+
+                {/* All Rooms Badge */}
+                <button
+                  type="button"
+                  id="dash-badge-total"
+                  className={`dash-occ-pill total ${dashboardFilter === 'all' ? 'active-filter' : ''}`}
+                  onClick={() => setDashboardFilter('all')}
+                  title="Show all hotel rooms"
+                >
+                  <span>All:</span>
+                  <span className="dash-occ-num">{rooms.length}</span>
+                </button>
               </div>
             )}
 
@@ -467,6 +532,18 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                   )}
                 </div>
               )}
+
+              {/* Occupancy Chart Button (Left side of Advance Booking) */}
+              <button
+                type="button"
+                className="btn-occupancy-chart"
+                id="btn-occupancy-chart"
+                onClick={() => setIsOccupancyChartOpen(true)}
+                title="View & Print Room Occupancy Chart (Live in-house guests, meal plans, pax allotment)"
+              >
+                <span style={{ fontSize: '0.88rem' }}>📋</span>
+                <span>Occupancy Chart</span>
+              </button>
 
               {/* Advance Booking Button (Left side of Room Transfer) */}
               <button
@@ -818,6 +895,12 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
           loadRooms(true);
           loadStats();
         }}
+      />
+
+      {/* Room Occupancy Chart Modal & Print */}
+      <OccupancyChartModal
+        isOpen={isOccupancyChartOpen}
+        onClose={() => setIsOccupancyChartOpen(false)}
       />
 
       {/* Advance Booking & Pre-Reservations Modal */}

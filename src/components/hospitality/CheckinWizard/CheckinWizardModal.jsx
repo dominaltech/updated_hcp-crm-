@@ -593,6 +593,8 @@ export default function CheckinWizardModal({
   };
 
   const handleSubmitCheckin = async () => {
+    if (isSubmitting) return;
+
     if (isOta && isOtaPrepaid && totalDue === 0) {
       draft.splitCash = 0;
       draft.splitOnline = 0;
@@ -602,11 +604,15 @@ export default function CheckinWizardModal({
       draft.utrNumber = '';
     }
 
-    const totalPaid =
+    const prebookedAmount = Number(draft.prebookedAdvanceAmount) || 0;
+    const netDueToday = Math.max(0, totalDue - prebookedAmount);
+    const todayPaid =
       (Number(draft.splitCash) || 0) +
       (Number(draft.splitOnline) || 0) +
       (Number(draft.splitCard) || 0) +
       (Number(draft.splitCheque) || 0);
+
+    const totalPaid = todayPaid + prebookedAmount;
 
     const allowedTotalCharge = (isOta && isOtaPrepaid) ? Math.max(totalDue, totalPaid) : totalDue;
 
@@ -636,10 +642,13 @@ export default function CheckinWizardModal({
 
     const minPct = Number(minCheckinAdvancePct !== undefined ? minCheckinAdvancePct : 50);
     if (!isBtc && minPct > 0 && totalDue > 0) {
-      const minRequired = Math.ceil((totalDue * minPct) / 100);
-      if (totalPaid < minRequired) {
+      const minRequiredTotal = Math.ceil((totalDue * minPct) / 100);
+      const minRequiredToday = Math.ceil((netDueToday * minPct) / 100);
+      const isPolicySatisfied = totalPaid >= minRequiredTotal || todayPaid >= minRequiredToday;
+
+      if (!isPolicySatisfied) {
         showToast(
-          `Minimum ${minPct}% advance payment (₹${minRequired.toLocaleString('en-IN')}) is required at check-in. Current advance: ₹${totalPaid.toLocaleString('en-IN')}.`,
+          `Minimum ${minPct}% advance payment (₹${minRequiredToday.toLocaleString('en-IN')}) is required at check-in. Current advance: ₹${todayPaid.toLocaleString('en-IN')}.`,
           'red',
           5000
         );
@@ -813,6 +822,16 @@ export default function CheckinWizardModal({
         member_documents: draft.memberDocuments || [],
         aadharNumber: (draft.aadharNumber || draft.idNumber || '').trim(),
         aadhar_number: (draft.aadharNumber || draft.idNumber || '').trim(),
+        advance_booking_id: draft.advanceBookingId || null,
+        advanceBookingId: draft.advanceBookingId || null,
+        prebooked_amount: Number(draft.prebookedAdvanceAmount) || 0,
+        prebookedAmount: Number(draft.prebookedAdvanceAmount) || 0,
+        prebooked_receipt_no: draft.prebookedReceiptNo || null,
+        prebookedReceiptNo: draft.prebookedReceiptNo || null,
+        prebooked_mode: draft.prebookedPaymentMode || null,
+        prebookedMode: draft.prebookedPaymentMode || null,
+        prebooked_date: draft.prebookedDate || null,
+        prebookedDate: draft.prebookedDate || null,
         checkedInBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk',
         checked_in_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
       };
@@ -829,11 +848,14 @@ export default function CheckinWizardModal({
       const res = await api.checkin(payload);
       if (res && res.success) {
         showToast(`Guest ${draft.guestName} checked into Room No: ${room.room_number}!`, 'green', 4000);
+        const prebookedAmount = Number(draft.prebookedAdvanceAmount) || 0;
         const splitCash = Number(draft.splitCash) || 0;
         const splitOnline = Number(draft.splitOnline) || 0;
         const splitCard = Number(draft.splitCard) || 0;
         const splitCheque = Number(draft.splitCheque) || 0;
-        const totalPaid = splitCash + splitOnline + splitCard + splitCheque;
+        const todayPaid = splitCash + splitOnline + splitCard + splitCheque;
+        // User Requirement: Entire amount will show as paid on check-in form (prebooked amount + pay for check in)
+        const totalPaid = todayPaid + prebookedAmount;
         const standardVoucher = cleanVoucherNumber(res.data?.voucherNumber || res.voucherNumber || res.data?.voucher_number || '260916-001');
         const advReceiptNo = res.data?.advanceReceiptNo || res.advanceReceiptNo || null;
 
@@ -1024,6 +1046,20 @@ export default function CheckinWizardModal({
             card_digits: (draft.cardDigits || draft.card_digits || '').trim(),
             cheque_no: draft.chequeNo || '',
             bank_name: draft.chequeBank || ''
+          });
+        }
+
+        if (prebookedAmount > 0 && !activeReceipts.some(r => r.is_prebooked || r.isPrebooked)) {
+          activeReceipts.unshift({
+            receipt_no: draft.prebookedReceiptNo || 'CR01',
+            mode: draft.prebookedPaymentMode || 'cash',
+            label: `Advance Pre-Booking (${draft.prebookedPaymentMode?.toUpperCase() || 'CASH'})`,
+            amount: prebookedAmount,
+            base_amount: prebookedAmount,
+            receipt_date: draft.prebookedDate || draft.checkinTime,
+            is_prebooked: true,
+            badge: 'PRE-BOOKING ADVANCE',
+            particulars: `Advance Pre-Booking (#${draft.prebookedBookingNumber || draft.advanceBookingId || ''})`
           });
         }
 
@@ -1255,7 +1291,7 @@ export default function CheckinWizardModal({
             </div>
           </div>
 
-          {/* Prominent Middle-Vertical Side Navigation Custom Arrows */}
+          {/* Prominent Middle-Vertical Side Navigation Custom Arrows (3x enlarged) */}
           {currentStep > 1 && currentStep !== 3.5 && (
             <button
               type="button"
@@ -1264,7 +1300,7 @@ export default function CheckinWizardModal({
               title="Previous Step"
               onClick={handlePrev}
             >
-              <svg viewBox="0 0 24 24" className="custom-arrow-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 24 24" className="custom-arrow-icon" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
@@ -1279,7 +1315,7 @@ export default function CheckinWizardModal({
               onClick={handleNext}
               disabled={isSubmitting}
             >
-              <svg viewBox="0 0 24 24" className="custom-arrow-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 24 24" className="custom-arrow-icon" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>

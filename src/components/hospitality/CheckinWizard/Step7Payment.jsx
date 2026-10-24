@@ -18,13 +18,16 @@ export default function Step7Payment({
   const chequeInputRef = useRef(null);
   const chequeFileInputRef = useRef(null);
 
+  const prebookedAmount = Number(draft.prebookedAdvanceAmount) || 0;
+  const netDueToday = Math.max(0, totalDue - prebookedAmount);
+
   const splitCash = Number(draft.splitCash) || 0;
   const splitOnline = Number(draft.splitOnline) || 0;
   const splitCard = Number(draft.splitCard) || 0;
   const splitCheque = Number(draft.splitCheque) || 0;
 
   const totalPaid = splitCash + splitOnline + splitCard + splitCheque;
-  const balanceDue = Math.max(0, totalDue - totalPaid);
+  const balanceDue = Math.max(0, netDueToday - totalPaid);
 
   const bookingSource = String(draft?.bookingSource || draft?.booking_source || '').toUpperCase();
   const isBtc = bookingSource === 'BTC';
@@ -59,8 +62,9 @@ export default function Step7Payment({
       (field === 'splitCard' ? 0 : splitCard) +
       (field === 'splitCheque' ? 0 : splitCheque);
 
-    if (totalDue > 0 && (otherPayments + val) > totalDue) {
-      val = Math.max(0, totalDue - otherPayments);
+    const targetDue = netDueToday;
+    if (targetDue > 0 && (otherPayments + val) > targetDue) {
+      val = Math.max(0, targetDue - otherPayments);
     }
 
     updateDraft({
@@ -86,7 +90,7 @@ export default function Step7Payment({
       (field === 'splitOnline' ? 0 : splitOnline) +
       (field === 'splitCard' ? 0 : splitCard) +
       (field === 'splitCheque' ? 0 : splitCheque);
-    const rem = Math.max(0, totalDue - otherPayments);
+    const rem = Math.max(0, netDueToday - otherPayments);
     updateDraft({
       [field]: rem
     });
@@ -129,8 +133,8 @@ export default function Step7Payment({
   const upiThresh = surchargeSettings?.upi_tax_threshold !== undefined ? Number(surchargeSettings.upi_tax_threshold) : 2000;
 
   const minAdvancePct = Number(minCheckinAdvancePct !== undefined ? minCheckinAdvancePct : 50);
-  const isMinAdvanceEnforced = !isBtc && !isOtaPrepaid && minAdvancePct > 0 && totalDue > 0;
-  const minRequiredAdvance = isMinAdvanceEnforced ? Math.ceil((totalDue * minAdvancePct) / 100) : 0;
+  const isMinAdvanceEnforced = !isBtc && !isOtaPrepaid && minAdvancePct > 0 && netDueToday > 0;
+  const minRequiredAdvance = isMinAdvanceEnforced ? Math.ceil((netDueToday * minAdvancePct) / 100) : 0;
   const isAdvanceSufficient = !isMinAdvanceEnforced || totalPaid >= minRequiredAdvance;
 
   // Dynamic card surcharge preview
@@ -151,6 +155,72 @@ export default function Step7Payment({
       <h2 className="checkin-step-heading">Payment &amp; Advance Collection</h2>
 
       <div className="payment-step-container">
+        {/* Pre-booked Advance Booking Status Card */}
+        {prebookedAmount > 0 && (
+          <div
+            id="checkin-prebooked-advance-card"
+            style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.14) 100%)',
+              border: '2px solid #F59E0B',
+              borderRadius: '16px',
+              padding: '18px 24px',
+              marginBottom: '18px',
+              boxShadow: '0 4px 16px rgba(245, 158, 11, 0.15)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem', color: '#ffffff', boxShadow: '0 2px 8px rgba(217, 119, 6, 0.35)' }}>
+                  📅
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#92400e', letterSpacing: '-0.01em' }}>
+                      PRE-BOOKING ADVANCE ADOPTED
+                    </span>
+                    <span style={{ background: '#FEF3C7', color: '#B45309', border: '1.5px solid #FCD34D', padding: '2px 10px', borderRadius: '12px', fontSize: '0.80rem', fontWeight: 800 }}>
+                      Booking #{draft.prebookedBookingNumber || draft.advanceBookingId}
+                    </span>
+                    <span style={{ background: '#D97706', color: '#FFFFFF', padding: '2px 8px', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 800 }}>
+                      Receipt #{draft.prebookedReceiptNo || 'CR01'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.86rem', color: '#B45309', fontWeight: 650, marginTop: '3px' }}>
+                    Advance payment of <strong>₹{prebookedAmount.toLocaleString('en-IN')}</strong> ({draft.prebookedPaymentMode?.toUpperCase() || 'CASH'}) was collected on advance booking.
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Remaining Due Today
+                </div>
+                <div style={{ fontSize: '1.75rem', fontWeight: 900, color: netDueToday > 0 ? '#0284C7' : '#16A34A' }}>
+                  ₹{netDueToday.toLocaleString('en-IN')}
+                </div>
+              </div>
+            </div>
+
+            {/* Breakdown Snapshot */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '10px 14px', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Total Stay Tariff</div>
+                <strong style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>{formatCurrency(totalDue)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '10px 14px', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Pre-booked Advance Paid</div>
+                <strong style={{ fontSize: '1.05rem', color: '#16a34a' }}>− {formatCurrency(prebookedAmount)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '10px 14px', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Balance To Collect Today</div>
+                <strong style={{ fontSize: '1.05rem', color: netDueToday > 0 ? '#0284c7' : '#16a34a' }}>{formatCurrency(netDueToday)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-surface, #ffffff)', padding: '10px 14px', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 750, textTransform: 'uppercase' }}>Pre-booked Payment Mode</div>
+                <strong style={{ fontSize: '0.95rem', color: '#b45309' }}>{draft.prebookedPaymentMode?.toUpperCase() || 'CASH'} ({draft.prebookedReceiptNo || 'CR01'})</strong>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Dedicated Prepaid Booking Status Card when no extra person/mattress added */}
         {isPrepaidZeroExtras && (
           <div
@@ -333,7 +403,7 @@ export default function Step7Payment({
                 type="button"
                 className="btn-quick-fill"
                 onClick={() => {
-                  updateDraft({ splitCash: totalDue, splitOnline: 0, splitCard: 0, splitCheque: 0 });
+                  updateDraft({ splitCash: netDueToday, splitOnline: 0, splitCard: 0, splitCheque: 0 });
                   setSelectedMethod('splitCash');
                 }}
               >
@@ -343,7 +413,7 @@ export default function Step7Payment({
                 type="button"
                 className="btn-quick-fill"
                 onClick={() => {
-                  updateDraft({ splitCash: 0, splitOnline: totalDue, splitCard: 0, splitCheque: 0 });
+                  updateDraft({ splitCash: 0, splitOnline: netDueToday, splitCard: 0, splitCheque: 0 });
                   setSelectedMethod('splitOnline');
                 }}
               >
@@ -353,7 +423,7 @@ export default function Step7Payment({
                 type="button"
                 className="btn-quick-fill"
                 onClick={() => {
-                  updateDraft({ splitCash: 0, splitOnline: 0, splitCard: totalDue, splitCheque: 0 });
+                  updateDraft({ splitCash: 0, splitOnline: 0, splitCard: netDueToday, splitCheque: 0 });
                   setSelectedMethod('splitCard');
                 }}
               >
@@ -400,7 +470,7 @@ export default function Step7Payment({
                   <div className="paybox-name">Cash</div>
                   <div className="paybox-desc">Direct Cash Collection</div>
                 </div>
-                {balanceDue > 0 && splitCash < totalDue && (
+                {balanceDue > 0 && splitCash < netDueToday && (
                   <button
                     type="button"
                     onClick={(e) => fillRemaining('splitCash', e)}
@@ -419,7 +489,7 @@ export default function Step7Payment({
                 type="number"
                 className="paybox-input"
                 min={0}
-                max={totalDue}
+                max={netDueToday}
                 value={splitCash || ''}
                 placeholder="0"
                 onFocus={() => selectPaymentMethod('splitCash', cashInputRef)}
@@ -442,7 +512,7 @@ export default function Step7Payment({
                   <div className="paybox-name">UPI / Online</div>
                   <div className="paybox-desc">GPay, PhonePe, QR</div>
                 </div>
-                {balanceDue > 0 && splitOnline < totalDue && (
+                {balanceDue > 0 && splitOnline < netDueToday && (
                   <button
                     type="button"
                     onClick={(e) => fillRemaining('splitOnline', e)}
@@ -461,7 +531,7 @@ export default function Step7Payment({
                 type="number"
                 className="paybox-input"
                 min={0}
-                max={totalDue}
+                max={netDueToday}
                 value={splitOnline || ''}
                 placeholder="0"
                 onFocus={() => selectPaymentMethod('splitOnline', onlineInputRef)}
@@ -494,7 +564,7 @@ export default function Step7Payment({
                   <div className="paybox-name">Card</div>
                   <div className="paybox-desc">Debit / Credit POS</div>
                 </div>
-                {balanceDue > 0 && splitCard < totalDue && (
+                {balanceDue > 0 && splitCard < netDueToday && (
                   <button
                     type="button"
                     onClick={(e) => fillRemaining('splitCard', e)}
@@ -513,7 +583,7 @@ export default function Step7Payment({
                 type="number"
                 className="paybox-input"
                 min={0}
-                max={totalDue}
+                max={netDueToday}
                 value={splitCard || ''}
                 placeholder="0"
                 onFocus={() => selectPaymentMethod('splitCard', cardInputRef)}
@@ -737,14 +807,32 @@ export default function Step7Payment({
                 {isPrepaidZeroExtras ? formatCurrency(otaVoucherTotal) : formatCurrency(totalDue)}
               </strong>
             </div>
+            {prebookedAmount > 0 && (
+              <>
+                <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
+                <div>
+                  <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Pre-booked:
+                  </span>
+                  <strong style={{ fontSize: '1.25rem', color: '#16a34a' }}>
+                    − {formatCurrency(prebookedAmount)}
+                  </strong>
+                </div>
+              </>
+            )}
             <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
             <div>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                {isPrepaidZeroExtras ? 'Desk Advance Due: ' : 'Advance Paid: '}
+                {prebookedAmount > 0 ? 'Today Paid: ' : (isPrepaidZeroExtras ? 'Desk Advance Due: ' : 'Advance Paid: ')}
               </span>
               <strong style={{ fontSize: '1.25rem', color: isPrepaidZeroExtras ? '#15803d' : 'var(--text-primary)' }}>
                 {isPrepaidZeroExtras ? '₹0.00' : formatCurrency(totalPaid)}
               </strong>
+              {prebookedAmount > 0 && (
+                <span style={{ marginLeft: '8px', background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', padding: '2px 8px', borderRadius: '10px', fontSize: '0.74rem', fontWeight: 800 }}>
+                  Total Paid: {formatCurrency(totalPaid + prebookedAmount)}
+                </span>
+              )}
               {!isPrepaidZeroExtras && activeMethodsCount > 1 && (
                 <span style={{ marginLeft: '8px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', padding: '2px 8px', borderRadius: '10px', fontSize: '0.74rem', fontWeight: 800 }}>
                   ✂️ Split ({activeMethodsCount} methods)

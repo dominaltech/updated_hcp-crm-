@@ -131,6 +131,21 @@ if (cscExe && fs.existsSync(launcherSource)) {
   }
 }
 
+// Compile latest HotelCityPark-Admin.exe launcher if csc is available
+const adminLauncherSource = path.join(rootDir, 'AdminLauncher.cs');
+const adminIconFile = path.join(publicDir, 'electron_icon.ico');
+if (cscExe && fs.existsSync(adminLauncherSource)) {
+  try {
+    const adminIconArg = fs.existsSync(adminIconFile) ? ` /win32icon:"${adminIconFile}"` : '';
+    const adminTarget = path.join(publicDir, 'HotelCityPark-Admin.exe');
+    execSync(`"${cscExe}" /nologo /target:winexe /out:"${adminTarget}"${adminIconArg} "${adminLauncherSource}"`, { stdio: 'pipe' });
+    fs.copyFileSync(adminTarget, path.join(rootDir, 'HotelCityPark-Admin.exe'));
+    console.log('  ✓ HotelCityPark-Admin.exe launcher re-compiled successfully.');
+  } catch (err) {
+    console.warn('  ⚠️ Note: Could not recompile AdminLauncher.cs with csc:', err.message);
+  }
+}
+
 // Sync Admin web bundle (admin/dist) if available
 const adminDistSrc = path.join(rootDir, 'admin', 'dist');
 if (fs.existsSync(adminDistSrc)) {

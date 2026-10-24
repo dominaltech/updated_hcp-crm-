@@ -64,6 +64,16 @@ export default function FolioSettlementModal({
   const [returnUtr, setReturnUtr] = useState('');
   const [refundReason, setRefundReason] = useState('');
 
+  // Corporate / GST Details for Tax Invoice (Can be inserted/edited at checkout)
+  const [checkoutCompanyName, setCheckoutCompanyName] = useState(() => folioData?.companyName || room?.company_name || folioData?.room?.company_name || '');
+  const [checkoutGstNumber, setCheckoutGstNumber] = useState(() => folioData?.gstNumber || room?.gst_number || folioData?.room?.gst_number || '');
+  const [checkoutCompanyAddress, setCheckoutCompanyAddress] = useState(() => folioData?.companyAddress || room?.company_address || folioData?.room?.company_address || '');
+  const [checkoutTaxMode, setCheckoutTaxMode] = useState(() => {
+    const isIgst = folioData?.isIgst || folioData?.taxType === 'IGST' || room?.is_igst || room?.tax_type === 'IGST';
+    return isIgst ? 'IGST' : 'CGST_SGST';
+  });
+  const [isCorporateSectionOpen, setIsCorporateSectionOpen] = useState(() => Boolean(folioData?.companyName || folioData?.gstNumber || room?.company_name || room?.gst_number));
+
   const isEarlyCheckout = Boolean(folioData?.isEarlyCheckout || folioData?.summary?.isEarlyCheckout);
   const earlyStayDays = folioData?.earlyStayDays ?? folioData?.summary?.earlyStayDays ?? 1;
   const earlyStayHours = folioData?.earlyStayHours ?? folioData?.summary?.earlyStayHours ?? 0;
@@ -124,9 +134,11 @@ export default function FolioSettlementModal({
     ? otaPrepaidBalanceDue
     : (folioData ? Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (folioData.stayCalcNow?.balanceDue ?? 0)) : 0);
 
-  const summaryRefund = folioData?.summary?.refundAmount || folioData?.refundAmount || 0;
-  const isRefund = !isOtaPrepaid && ((folioData && (folioData.stayCalcNow?.refundDue > 0 || folioData.balanceDue < 0 || summaryRefund > 0)) || false);
-  const refundAmount = isRefund ? (folioData.stayCalcNow?.refundDue > 0 ? folioData.stayCalcNow.refundDue : (summaryRefund > 0 ? summaryRefund : Math.abs(folioData.balanceDue))) : 0;
+  const summaryRefund = Number(folioData?.summary?.refundAmount || folioData?.refundAmount || 0);
+  const stayCalcRefundDue = Number(folioData?.stayCalcNow?.refundDue || 0);
+  const rawBalDue = Number(folioData?.balanceDue !== undefined ? folioData.balanceDue : (folioData?.stayCalcNow?.balanceDue ?? 0));
+  const isRefund = !isOtaPrepaid && (stayCalcRefundDue > 0.5 || rawBalDue < -0.5 || summaryRefund > 0.5);
+  const refundAmount = isRefund ? Math.round(stayCalcRefundDue > 0.5 ? stayCalcRefundDue : (summaryRefund > 0.5 ? summaryRefund : Math.abs(rawBalDue))) : 0;
 
   const effectiveRoomTariff = isOtaPrepaid
     ? 0
@@ -366,7 +378,17 @@ export default function FolioSettlementModal({
         cheque_photo: chequePhoto || null,
         chequePhoto: chequePhoto || null,
         checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
-        checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
+        checkedOutBy: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
+        company_name: checkoutCompanyName.trim() || null,
+        companyName: checkoutCompanyName.trim() || null,
+        gst_number: checkoutGstNumber.trim().toUpperCase() || null,
+        gstNumber: checkoutGstNumber.trim().toUpperCase() || null,
+        company_address: checkoutCompanyAddress.trim() || null,
+        companyAddress: checkoutCompanyAddress.trim() || null,
+        tax_type: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+        taxType: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+        is_igst: checkoutTaxMode === 'IGST' ? 1 : 0,
+        isIgst: checkoutTaxMode === 'IGST'
       };
 
       const res = await api.checkout(room.id, payload);
@@ -539,7 +561,17 @@ export default function FolioSettlementModal({
                 chequeBank,
                 receiptNumbers: res.receipt_numbers || res.receiptNumbers,
                 receipt_no: res.finalReceiptNo || res.final_receipt_no,
-                checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1'
+                checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
+                company_name: checkoutCompanyName.trim() || undefined,
+                companyName: checkoutCompanyName.trim() || undefined,
+                gst_number: checkoutGstNumber.trim().toUpperCase() || undefined,
+                gstNumber: checkoutGstNumber.trim().toUpperCase() || undefined,
+                company_address: checkoutCompanyAddress.trim() || undefined,
+                companyAddress: checkoutCompanyAddress.trim() || undefined,
+                tax_type: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+                taxType: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+                is_igst: checkoutTaxMode === 'IGST' ? 1 : 0,
+                isIgst: checkoutTaxMode === 'IGST'
               };
               printFinalBillA4(room, folioData, settlementData);
             } catch (invErr) {
@@ -1458,6 +1490,152 @@ export default function FolioSettlementModal({
               </div>
             </div>
           )}
+
+          {/* Corporate / Company GST Details Section */}
+          <div
+            style={{
+              marginTop: '20px',
+              border: (checkoutCompanyName && checkoutCompanyName.trim()) || (checkoutGstNumber && checkoutGstNumber.trim()) ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-color)',
+              borderRadius: '14px',
+              background: 'var(--bg-surface-secondary)',
+              overflow: 'hidden',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+            }}
+          >
+            <div
+              onClick={() => setIsCorporateSectionOpen(prev => !prev)}
+              style={{
+                padding: '12px 18px',
+                background: (checkoutCompanyName && checkoutCompanyName.trim()) || (checkoutGstNumber && checkoutGstNumber.trim()) ? 'rgba(56, 189, 248, 0.08)' : 'var(--bg-card)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.25rem' }}>🏢</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Corporate / Company GST Details (For Tax Invoice)
+                    {((checkoutCompanyName && checkoutCompanyName.trim()) || (checkoutGstNumber && checkoutGstNumber.trim())) && (
+                      <span style={{ fontSize: '0.72rem', background: '#38bdf8', color: '#000', fontWeight: 900, padding: '2px 8px', borderRadius: '10px' }}>
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                    {checkoutCompanyName && checkoutCompanyName.trim()
+                      ? `Billing to: ${checkoutCompanyName}${checkoutGstNumber && checkoutGstNumber.trim() ? ` (GSTIN: ${checkoutGstNumber})` : ''}`
+                      : 'Add company name and GSTIN now if forgotten during check-in'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="filter-chip"
+                style={{
+                  fontSize: '0.78rem',
+                  padding: '4px 10px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: isCorporateSectionOpen ? 'var(--apple-blue)' : 'var(--bg-surface)',
+                  color: isCorporateSectionOpen ? '#fff' : 'var(--text-primary)'
+                }}
+              >
+                {isCorporateSectionOpen ? '▲ Hide Details' : '▼ Add / Edit GST'}
+              </button>
+            </div>
+
+            {isCorporateSectionOpen && (
+              <div style={{ padding: '16px 18px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+                      Company / Organization Name
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Reliance Industries Ltd."
+                      value={checkoutCompanyName}
+                      onChange={(e) => setCheckoutCompanyName(e.target.value)}
+                      style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+                      Company GSTIN (15 Digits)
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. 07AAAAA0000A1Z5"
+                      maxLength={15}
+                      value={checkoutGstNumber}
+                      onChange={(e) => setCheckoutGstNumber(e.target.value.toUpperCase())}
+                      style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.88rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '12px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '5px' }}>
+                    Company Registered Address
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Plot No 12, Cyber City, Gurugram, Haryana - 122002"
+                    value={checkoutCompanyAddress}
+                    onChange={(e) => setCheckoutCompanyAddress(e.target.value)}
+                    style={{ height: '38px', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
+                  />
+                </div>
+
+                <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    GST Tax Mode on Invoice:
+                  </div>
+                  <div style={{ display: 'inline-flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCheckoutTaxMode('CGST_SGST')}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: checkoutTaxMode === 'CGST_SGST' ? 'var(--apple-blue)' : 'var(--bg-card)',
+                        color: checkoutTaxMode === 'CGST_SGST' ? '#fff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      CGST (2.5%) + SGST (2.5%) [Intra-State]
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCheckoutTaxMode('IGST')}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        borderLeft: '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        background: checkoutTaxMode === 'IGST' ? '#8b5cf6' : 'var(--bg-card)',
+                        color: checkoutTaxMode === 'IGST' ? '#fff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      IGST (5.0%) [Inter-State]
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

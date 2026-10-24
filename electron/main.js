@@ -119,19 +119,9 @@ function getAppConfig() {
     }
   } catch (_) {}
 
-  // If in admin mode and serverHost is localhost, check if remote cloud URL or LAN IP is available
-  if (config.screen === 'admin' && (config.serverHost === 'localhost' || !config.serverHost)) {
-    try {
-      const rFile = path.join(__dirname, '..', 'remote_url.txt');
-      if (fs.existsSync(rFile)) {
-        const rUrl = fs.readFileSync(rFile, 'utf8').trim();
-        if (rUrl) config.serverHost = rUrl;
-      } else {
-        config.serverHost = '10.160.83.195';
-      }
-    } catch (_) {
-      config.serverHost = '10.160.83.195';
-    }
+  // If serverHost is not configured at all, default to localhost
+  if (!config.serverHost) {
+    config.serverHost = 'localhost';
   }
 
   return config;
