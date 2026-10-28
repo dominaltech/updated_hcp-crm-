@@ -138,11 +138,15 @@ export default function BarPage({ onPrintBOTSlip, onPrintBillSlip }) {
     const unsubBar = socketClient.on('BAR_UPDATED', (payload) => {
       loadTables(true);
       if (payload && payload.tableNumber) {
-        const orderNotice = payload.orderType === 'room'
-          ? `🛎️ Bar Room Service order: ${payload.tableNumber}`
-          : (payload.orderType === 'parcel'
-            ? `📦 Bar Takeaway Parcel: ${payload.tableNumber}`
-            : `🛎️ Bar Table ${payload.tableNumber} updated`);
+        const orderNotice = payload.action === 'cancel'
+          ? `🗑️ Bar Table ${payload.tableNumber} cancelled`
+          : (payload.status === 'billed'
+            ? `🧾 Bar Pre-bill requested: ${payload.tableNumber}`
+            : (payload.orderType === 'room'
+              ? `🛎️ Bar Room Service order: ${payload.tableNumber}`
+              : (payload.orderType === 'parcel'
+                ? `📦 Bar Takeaway Parcel: ${payload.tableNumber}`
+                : `🛎️ Bar Table ${payload.tableNumber} updated`)));
         showToast(payload.waiterName ? `${orderNotice} (${payload.waiterName})` : orderNotice, 'info', 3000);
       }
     });

@@ -93,7 +93,8 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
       setActiveSessionTable(curr => {
         if (!curr) return null;
         const fresh = list.find(t => t.id === curr.id || t.table_number === curr.table_number);
-        return fresh || curr;
+        if (!fresh) return null;
+        return fresh;
       });
     } catch (err) {
       if (!isSilent) showToast('Error loading restaurant tables: ' + err.message, 'red');
@@ -203,11 +204,15 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
     const unsubTables = socketClient.on('TABLES_UPDATED', (payload) => {
       loadTables(true);
       if (payload && payload.tableNumber) {
-        const orderNotice = payload.orderType === 'room'
-          ? `🛎️ Room Service order: ${payload.tableNumber}`
-          : (payload.orderType === 'parcel'
-            ? `📦 Takeaway Parcel: ${payload.tableNumber}`
-            : `🛎️ Table ${payload.tableNumber} updated`);
+        const orderNotice = payload.action === 'cancel'
+          ? `🗑️ Table ${payload.tableNumber} cancelled`
+          : (payload.status === 'billed'
+            ? `🧾 Pre-bill requested: ${payload.tableNumber}`
+            : (payload.orderType === 'room'
+              ? `🛎️ Room Service order: ${payload.tableNumber}`
+              : (payload.orderType === 'parcel'
+                ? `📦 Takeaway Parcel: ${payload.tableNumber}`
+                : `🛎️ Table ${payload.tableNumber} updated`)));
         showToast(payload.waiterName ? `${orderNotice} (${payload.waiterName})` : orderNotice, 'info', 3000);
       }
     });

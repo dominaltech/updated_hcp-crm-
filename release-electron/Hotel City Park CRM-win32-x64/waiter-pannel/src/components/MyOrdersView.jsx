@@ -253,7 +253,7 @@ export default function MyOrdersView({
   const handlePrintPrebill = async (table) => {
     try {
       setActionInProgress(`print-${table.id}`);
-      await api.requestBillPrint(department, table.id);
+      await api.requestBillPrint(department, table.id, table);
       setMsg(`🧾 Pre-Bill sent to CRM Printer for ${table.table_number || table.name}!`);
       setTimeout(() => setMsg(''), 4000);
       onRefresh();

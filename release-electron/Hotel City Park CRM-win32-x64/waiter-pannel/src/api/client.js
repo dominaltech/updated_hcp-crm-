@@ -774,17 +774,32 @@ export const api = {
   },
 
   // Settle or Request Bill
-  requestBillPrint: (department, destinationId) => {
+  requestBillPrint: (department, destinationId, tableObj = null) => {
+    const isRemoteHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
+
+    if (isRemoteHosted) {
+      return pushWaiterOrderToCloud({
+        department: department || 'restaurant',
+        destination_type: 'table',
+        destination_id: destinationId,
+        destination_label: tableObj?.table_number || `Table ${destinationId}`,
+        waiter_name: 'Captain',
+        notes: 'PREBILL_REQUEST',
+        items: []
+      });
+    }
+
     const endpoint = department === 'bar'
       ? `/bar/tables/${destinationId}/prebill`
       : `/restaurant/tables/${destinationId}/prebill`;
-    return request(endpoint, { method: 'POST', timeout: 4000 }).catch(async () => {
+    return request(endpoint, { method: 'POST', timeout: 2500 }).catch(async () => {
       // Fallback: enqueue prebill in cloud
       return pushWaiterOrderToCloud({
         department: department || 'restaurant',
         destination_type: 'table',
         destination_id: destinationId,
-        destination_label: `Table ${destinationId}`,
+        destination_label: tableObj?.table_number || `Table ${destinationId}`,
         waiter_name: 'Captain',
         notes: 'PREBILL_REQUEST',
         items: []

@@ -6405,6 +6405,17 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
       timestamp: new Date().toISOString()
     });
 
+    try {
+      socketServer.broadcast('TABLES_UPDATED', {
+        tableId: id,
+        tableNumber: table.table_number,
+        status: 'billed'
+      });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       tableNumber: table.table_number,
@@ -6421,7 +6432,7 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
   }
 });
 
-// Cancel Order
+// Cancel Table / Order Session
 app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
@@ -6443,7 +6454,42 @@ app.post('/api/restaurant/tables/:id/cancel', requireAuth, requireRole('manager'
       db.prepare("UPDATE restaurant_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', kot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
     }
 
+    try {
+      socketServer.broadcast('TABLES_UPDATED', {
+        tableId: id,
+        tableNumber: table.table_number,
+        status: 'available',
+        action: 'cancel'
+      });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Cancel Placed Order
+app.delete('/api/restaurant/orders/:id', requireAuth, requireRole('manager', 'restaurant', 'waiter', 'bar', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = db.prepare('SELECT * FROM restaurant_orders WHERE id = ? OR order_number = ?').get(id, id);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+
+    db.prepare("UPDATE restaurant_orders SET status = 'cancelled' WHERE id = ?").run(order.id);
+
+    try {
+      socketServer.broadcast('ORDERS_UPDATED', { orderId: order.id, status: 'cancelled' });
+      socketServer.broadcast('TABLES_UPDATED', { path: '/orders/cancel', tableNumber: order.table_number, action: 'cancel' });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
+    res.json({ success: true, message: 'Order cancelled successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -8259,6 +8305,17 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
       timestamp: new Date().toISOString()
     });
 
+    try {
+      socketServer.broadcast('BAR_UPDATED', {
+        tableId: id,
+        tableNumber: table.table_number,
+        status: 'billed'
+      });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       tableNumber: table.table_number,
@@ -8275,7 +8332,7 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
   }
 });
 
-// Bar Cancel Order
+// Bar Cancel Table / Order Session
 app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;
@@ -8296,7 +8353,42 @@ app.post('/api/bar/tables/:id/cancel', requireAuth, requireRole('manager', 'bar'
       db.prepare("UPDATE bar_tables SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]', bot_count = 0, token_number = 0, order_started_at = NULL, waiter_name = '', special_notes = '' WHERE id = ?").run(id);
     }
 
+    try {
+      socketServer.broadcast('BAR_UPDATED', {
+        tableId: id,
+        tableNumber: table.table_number,
+        status: 'available',
+        action: 'cancel'
+      });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Cancel Placed Bar Order
+app.delete('/api/bar/orders/:id', requireAuth, requireRole('manager', 'bar', 'waiter', 'restaurant', 'hospitality'), (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = db.prepare('SELECT * FROM bar_orders WHERE id = ? OR order_number = ?').get(id, id);
+    if (!order) return res.status(404).json({ success: false, error: 'Bar order not found' });
+
+    db.prepare("UPDATE bar_orders SET status = 'cancelled' WHERE id = ?").run(order.id);
+
+    try {
+      socketServer.broadcast('ORDERS_UPDATED', { orderId: order.id, status: 'cancelled' });
+      socketServer.broadcast('BAR_UPDATED', { path: '/orders/cancel', tableNumber: order.table_number, action: 'cancel' });
+      if (typeof firebaseService !== 'undefined' && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
+
+    res.json({ success: true, message: 'Bar order cancelled successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
