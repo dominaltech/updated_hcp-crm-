@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { api } from '../api/client';
 
 export const extractOrderItems = (target) => {
@@ -73,6 +73,32 @@ export default function MyOrdersView({
   const [selectedOwner, setSelectedOwner] = useState('Jaijeet sir');
   const [ownerNote, setOwnerNote] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [localOccupiedRooms, setLocalOccupiedRooms] = useState(occupiedRooms || []);
+  const [confirmSettleData, setConfirmSettleData] = useState(null); // Confirmation dialog before settle & print
+
+  // Sync occupied rooms from prop
+  useEffect(() => {
+    if (Array.isArray(occupiedRooms) && occupiedRooms.length > 0) {
+      setLocalOccupiedRooms(occupiedRooms);
+    }
+  }, [occupiedRooms]);
+
+  // Fallback direct live fetch if occupiedRooms prop is empty
+  useEffect(() => {
+    let isMounted = true;
+    if (!localOccupiedRooms || localOccupiedRooms.length === 0) {
+      api.getOccupiedRooms().then(rooms => {
+        if (isMounted && Array.isArray(rooms) && rooms.length > 0) {
+          setLocalOccupiedRooms(rooms);
+        }
+      }).catch(() => {});
+    }
+    return () => { isMounted = false; };
+  }, []);
+
+  const activeOccupiedRooms = (localOccupiedRooms && localOccupiedRooms.length > 0)
+    ? localOccupiedRooms
+    : (Array.isArray(occupiedRooms) ? occupiedRooms : []);
 
   const isBar = department === 'bar';
   const myName = currentUser?.full_name || currentUser?.username || 'Waiter';
@@ -285,7 +311,7 @@ export default function MyOrdersView({
 
       if (isRS) {
         // Room Service Order: 2 distinct options
-        const matchedRoom = occupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id));
+        const matchedRoom = activeOccupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id));
         const resolvedRoomId = matchedRoom?.id || settleModalTable.room_id || null;
 
         if (rsSettleMode === 'pay') {
@@ -346,7 +372,7 @@ export default function MyOrdersView({
             setActionInProgress(null);
             return;
           }
-          const roomObj = occupiedRooms.find(r => 
+          const roomObj = activeOccupiedRooms.find(r => 
             String(r.room_number) === String(selectedRoomId) || 
             String(r.id) === String(selectedRoomId)
           );
@@ -394,16 +420,68 @@ export default function MyOrdersView({
         ? `Order settled to Room ${settlePayload.room_number} successfully!`
         : `Order for ${settleModalTable.table_number || settleModalTable.name} settled successfully!`;
       setMsg(`✅ ${targetDisplay}`);
+      setConfirmSettleData(null);
       setSettleModalTable(null);
       setSelectedOrder(null);
       setTimeout(() => setMsg(''), 4000);
       onRefresh();
     } catch (err) {
+      setConfirmSettleData(null);
       setMsg(`❌ Settlement failed: ${err.message}`);
       setTimeout(() => setMsg(''), 5000);
     } finally {
       setActionInProgress(null);
     }
+  };
+
+  // Request Confirmation before executing settlement
+  const requestSettleConfirmation = () => {
+    if (!settleModalTable) return;
+    const isRS = settleModalTable.table_type === 'room_service' || String(settleModalTable.table_number || '').startsWith('RS-');
+    const rawRoomNum = isRS
+      ? String(settleModalTable.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim()
+      : '';
+
+    const items = extractOrderItems(settleModalTable);
+    const subtotal = items.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0);
+    const gst = Math.round((subtotal * 5) / 100);
+    const grand = Math.round(Number(settleModalTable.total_amount || settleModalTable.cart_total || (subtotal + gst)) || (subtotal + gst));
+
+    if (!isRS && paymentMode === 'room_folio') {
+      if (!selectedRoomId) {
+        setMsg('⚠️ Please select an occupied room for Room Folio settlement.');
+        setTimeout(() => setMsg(''), 4000);
+        return;
+      }
+    }
+
+    const selectedRoomObj = (!isRS && paymentMode === 'room_folio')
+      ? activeOccupiedRooms.find(r => String(r.room_number) === String(selectedRoomId) || String(r.id) === String(selectedRoomId))
+      : (isRS ? activeOccupiedRooms.find(r => String(r.room_number) === rawRoomNum || String(r.id) === String(settleModalTable.room_id)) : null);
+
+    let modeSummary = '';
+    if (isRS) {
+      modeSummary = rsSettleMode === 'pay'
+        ? `Pay Now (${rsPayMethod.toUpperCase()}) - Paid ✓`
+        : `Add to Room Folio (Room ${rawRoomNum}) - Pending ⏳`;
+    } else {
+      if (paymentMode === 'room_folio') {
+        modeSummary = `Room Folio (Room ${selectedRoomId}${selectedRoomObj?.guest_name ? ` • ${selectedRoomObj.guest_name}` : ''}) - ${isPaidAtRoom ? 'Paid ✓' : 'Pending ⏳'}`;
+      } else if (paymentMode === 'owner') {
+        modeSummary = `Owner Account (${selectedOwner})`;
+      } else {
+        modeSummary = `${paymentMode.toUpperCase()}`;
+      }
+    }
+
+    setConfirmSettleData({
+      targetName: settleModalTable.table_number || settleModalTable.name || 'Table',
+      grandTotal: grand,
+      modeSummary,
+      isRS,
+      paymentMode,
+      selectedRoom: selectedRoomObj
+    });
   };
 
   return (
@@ -1664,37 +1742,128 @@ export default function MyOrdersView({
 
                   {/* Room Folio Sub-options for Dine-in Table */}
                   {paymentMode === 'room_folio' && (() => {
-                    const selectedRoomObj = occupiedRooms.find(r => 
+                    const selectedRoomObj = activeOccupiedRooms.find(r => 
                       String(r.room_number) === String(selectedRoomId) || 
                       String(r.id) === String(selectedRoomId)
                     );
                     return (
                       <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
-                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                          Select In-House Room:
-                        </label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                            Select In-House Room:
+                          </label>
+                          <span style={{ fontSize: '0.70rem', color: 'var(--apple-blue)', fontWeight: 800 }}>
+                            {activeOccupiedRooms.length} Occupied Room{activeOccupiedRooms.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+
+                        {/* High-Contrast Dropdown - Never White on White */}
                         <select
                           value={selectedRoomId}
                           onChange={(e) => setSelectedRoomId(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: 'var(--radius-xs)',
-                            border: '1.5px solid var(--border-medium)',
-                            background: 'var(--bg-surface)',
-                            color: 'var(--text-primary)',
-                            fontSize: '0.84rem',
-                            fontWeight: 700,
-                            marginBottom: '10px'
+                            padding: '10px 12px',
+                            borderRadius: 'var(--radius-xs, 8px)',
+                            border: '2px solid var(--apple-blue)',
+                            backgroundColor: '#ffffff',
+                            color: '#0f172a',
+                            fontSize: '0.88rem',
+                            fontWeight: 800,
+                            marginBottom: '8px',
+                            outline: 'none',
+                            WebkitAppearance: 'menulist',
+                            appearance: 'menulist'
                           }}
                         >
-                          <option value="">-- Choose Occupied Room ({occupiedRooms.length} available) --</option>
-                          {occupiedRooms.map((r) => (
-                            <option key={r.room_number || r.id} value={r.room_number}>
+                          <option value="" style={{ backgroundColor: '#ffffff', color: '#64748b' }}>
+                            -- Choose Occupied Room ({activeOccupiedRooms.length} available) --
+                          </option>
+                          {activeOccupiedRooms.map((r) => (
+                            <option
+                              key={r.room_number || r.id}
+                              value={String(r.room_number)}
+                              style={{ backgroundColor: '#ffffff', color: '#0f172a', fontWeight: 700 }}
+                            >
                               Room {r.room_number} {r.guest_name ? `• ${r.guest_name}` : ''}
                             </option>
                           ))}
                         </select>
+
+                        {/* Quick-Select Tap Chips for instant room selection */}
+                        {activeOccupiedRooms.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                            {activeOccupiedRooms.map((r) => {
+                              const isSel = String(selectedRoomId) === String(r.room_number);
+                              return (
+                                <button
+                                  key={r.room_number || r.id}
+                                  type="button"
+                                  onClick={() => setSelectedRoomId(String(r.room_number))}
+                                  style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    border: isSel ? '2px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+                                    background: isSel ? 'var(--apple-blue)' : 'var(--bg-surface)',
+                                    color: isSel ? '#ffffff' : 'var(--text-primary)',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <span>🏨 Room {r.room_number}</span>
+                                  {r.guest_name && (
+                                    <span style={{ fontSize: '0.68rem', opacity: isSel ? 0.95 : 0.75 }}>
+                                      ({r.guest_name.split(' ')[0]})
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Notice if no occupied rooms loaded with direct fetch button */}
+                        {activeOccupiedRooms.length === 0 && (
+                          <div style={{
+                            padding: '10px 12px',
+                            background: '#fef3c7',
+                            borderRadius: '8px',
+                            border: '1px solid #f59e0b',
+                            color: '#92400e',
+                            fontSize: '0.76rem',
+                            marginBottom: '10px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span>⚠️ No occupied rooms currently loaded</span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const r = await api.getOccupiedRooms();
+                                  if (r && r.length > 0) setLocalOccupiedRooms(r);
+                                } catch (_) {}
+                              }}
+                              style={{
+                                padding: '5px 10px',
+                                background: '#8c5d77',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '5px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              🔄 Fetch Rooms
+                            </button>
+                          </div>
+                        )}
 
                         {/* Prominent Selected Room Confirmation Card */}
                         {selectedRoomObj && (
@@ -1846,7 +2015,7 @@ export default function MyOrdersView({
               <button
                 type="button"
                 disabled={actionInProgress?.startsWith('settle-')}
-                onClick={handleSettle}
+                onClick={requestSettleConfirmation}
                 style={{
                   flex: 2,
                   height: '40px',
@@ -1858,6 +2027,129 @@ export default function MyOrdersView({
                 }}
               >
                 {actionInProgress?.startsWith('settle-') ? 'Settling...' : 'Confirm Settle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Confirmation Modal before Settle & Release Bill on CRM */}
+      {confirmSettleData && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 10050,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={() => !actionInProgress && setConfirmSettleData(null)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '350px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              padding: '22px 20px',
+              border: '2px solid #8c5d77',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: '2.4rem', marginBottom: '8px' }}>🧾</div>
+            <h3 style={{ fontSize: '1.20rem', fontWeight: 900, color: '#1e293b', margin: '0 0 6px' }}>
+              Confirm Bill Settlement
+            </h3>
+            <p style={{ fontSize: '0.80rem', color: '#64748b', margin: '0 0 16px' }}>
+              Are you sure you want to settle this bill and release print on CRM?
+            </p>
+
+            <div style={{
+              background: '#f8fafc',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>Destination:</span>
+                <span style={{ fontSize: '0.86rem', color: '#0f172a', fontWeight: 900 }}>{confirmSettleData.targetName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>Total Amount:</span>
+                <span style={{ fontSize: '1.15rem', color: '#16a34a', fontWeight: 900 }}>₹{confirmSettleData.grandTotal.toLocaleString('en-IN')}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>Settlement Mode:</span>
+                <span style={{ fontSize: '0.80rem', color: '#8c5d77', fontWeight: 800 }}>{confirmSettleData.modeSummary}</span>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(22, 163, 74, 0.08)',
+              border: '1px solid rgba(22, 163, 74, 0.25)',
+              padding: '8px 10px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              fontSize: '0.72rem',
+              color: '#15803d',
+              fontWeight: 700,
+              textAlign: 'left'
+            }}>
+              <span>🖨️</span>
+              <span>Thermal bill receipt will automatically print on the restaurant CRM computer!</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                disabled={Boolean(actionInProgress)}
+                onClick={() => setConfirmSettleData(null)}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(actionInProgress)}
+                onClick={handleSettle}
+                style={{
+                  flex: 2,
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: '#16a34a',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontWeight: 900,
+                  fontSize: '0.86rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 10px rgba(22, 163, 74, 0.3)'
+                }}
+              >
+                {actionInProgress?.startsWith('settle-') ? '⏳ Settling & Printing...' : '✅ Settle & Print'}
               </button>
             </div>
           </div>

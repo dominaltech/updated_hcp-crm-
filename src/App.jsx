@@ -86,7 +86,12 @@ function AppContent() {
       if (!job || job.printed) return;
       try {
         const jobDept = String(job.data?.department || (job.type === 'kot' ? 'restaurant' : job.type === 'bot' ? 'bar' : '')).toLowerCase();
-        if (jobDept && jobDept !== activePanel) return;
+        
+        // Prevent cross-department printing between dedicated restaurant and bar counters
+        if (jobDept) {
+          if (activePanel === 'restaurant' && jobDept !== 'restaurant') return;
+          if (activePanel === 'bar' && jobDept !== 'bar') return;
+        }
 
         if (activePanel === 'restaurant' && job.type === 'kot') {
           printKOTSlip(job.data?.kot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
@@ -94,6 +99,10 @@ function AppContent() {
           printBOTSlip(job.data?.bot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
         } else if (job.type === 'prebill') {
           printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
+        } else if (job.type === 'bill' || job.type === 'settle' || job.type === 'receipt') {
+          const ord = job.data?.order || job.data;
+          const isBar = String(job.data?.department || ord?.department || activePanel).toLowerCase() === 'bar';
+          printThermalBillSlip(ord, isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'Restaurant Bill/Cheque');
         }
       } catch (err) {
         console.error('[AutoPrint] Error processing print job:', job.id, err);

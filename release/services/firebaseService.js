@@ -806,9 +806,9 @@ async function syncWaiterDataToCloud(db) {
       occRooms = db.prepare(`
         SELECT r.id, r.room_number, r.status, g.name as guest_name, g.mobile as guest_phone, b.id as booking_id 
         FROM rooms r 
-        JOIN bookings b ON r.current_booking_id = b.id 
+        JOIN bookings b ON (r.current_booking_id = b.id OR b.room_id = r.id) 
         JOIN guests g ON b.guest_id = g.id 
-        WHERE b.status = 'active'
+        WHERE b.status = 'active' OR r.status = 'occupied'
       `).all();
     } catch (_) {}
 
@@ -1105,7 +1105,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                 const orderNumber = (dept === 'bar' ? 'BAR-' : 'RES-') + Date.now().toString().slice(-6);
                 const isPaid = (paymentMode === 'room_folio' || paymentMode === 'room') ? 0 : 1;
 
-                db.prepare(`
+                const insertRes = db.prepare(`
                   INSERT INTO ${ordTable} (
                     order_number, customer_name, order_type, table_number, table_id,
                     waiter_name, items_json, subtotal, tax, total, payment_mode, is_paid, status, created_at
@@ -1124,6 +1124,34 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                   paymentMode,
                   isPaid
                 );
+
+                // Instantly enqueue bill thermal receipt on CRM PC printer
+                if (typeof global.enqueuePrintJob === 'function') {
+                  global.enqueuePrintJob('bill', {
+                    department: dept,
+                    tableNumber: tNum || (targetTable ? targetTable.table_number : 'Table'),
+                    order: {
+                      id: insertRes ? insertRes.lastInsertRowid : null,
+                      orderNumber,
+                      order_number: orderNumber,
+                      token_number: targetTable?.token_number || 1,
+                      table_number: tNum || (targetTable ? targetTable.table_number : 'Table'),
+                      customer_name: custName,
+                      customerName: custName,
+                      waiter_name: waiterName,
+                      items,
+                      subtotal,
+                      tax: gst,
+                      total: grandTotal,
+                      grand_total: grandTotal,
+                      payment_mode: paymentMode,
+                      paymentMode: paymentMode,
+                      is_paid: isPaid,
+                      settled_at: new Date().toISOString()
+                    }
+                  });
+                  console.log(`🖨️ [Firebase Realtime] Enqueued bill print job on CRM for ${tNum}: ${orderNumber}`);
+                }
 
                 if (targetTable) {
                   const isTemp = targetTable.table_type === 'parcel' ||

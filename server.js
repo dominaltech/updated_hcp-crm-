@@ -6231,6 +6231,7 @@ app.post('/api/print-queue/:id/ack', (req, res) => {
     const job = kotPrintQueue.find(j => j.id === id);
     if (job) {
       job.printed = true;
+      console.log(`🖨️ [PrintQueue] Job #${job.id} (${job.type}) acknowledged as printed by CRM client`);
     }
     res.json({ success: true, message: 'Job acknowledged' });
   } catch (err) {
@@ -6824,6 +6825,20 @@ app.post('/api/restaurant/tables/:id/settle', requireAuth, requireRole('manager'
       }
     } catch (_) {}
 
+    // Automatically enqueue thermal receipt print job on CRM PC if settled from waiter panel or requested
+    if (req.body.source === 'waiter_panel' || req.body.enqueue_print || req.body.is_waiter || req.user?.role === 'waiter') {
+      try {
+        enqueuePrintJob('bill', {
+          department: 'restaurant',
+          tableNumber: data.table_number,
+          order: data
+        });
+        console.log(`🖨️ [PrintQueue] Enqueued restaurant bill print job for table ${data.table_number} (#${data.orderNumber})`);
+      } catch (printErr) {
+        console.warn('[PrintQueue] Error enqueuing bill print:', printErr.message);
+      }
+    }
+
     res.json({ success: true, order: data });
   } catch (error) {
     console.error('Settlement error:', error);
@@ -6849,7 +6864,7 @@ app.get('/api/restaurant/occupied-rooms', async (req, res) => {
         g.address as guest_address,
         g.doc_type as guest_doc_type
       FROM rooms r
-      JOIN bookings b ON r.current_booking_id = b.id AND b.status = 'active'
+      JOIN bookings b ON (r.current_booking_id = b.id OR b.room_id = r.id) AND b.status = 'active'
       JOIN guests g ON b.guest_id = g.id
       WHERE r.status = 'occupied'
       ORDER BY CAST(r.room_number AS INTEGER) ASC, r.room_number ASC
@@ -8718,6 +8733,20 @@ app.post('/api/bar/tables/:id/settle', requireAuth, requireRole('manager', 'bar'
         socketServer.broadcast('ROOMS_UPDATED', { path: req.path, room_number: data.room_number });
       }
     } catch (_) {}
+
+    // Automatically enqueue thermal receipt print job on CRM PC if settled from waiter panel or requested
+    if (req.body.source === 'waiter_panel' || req.body.enqueue_print || req.body.is_waiter || req.user?.role === 'waiter') {
+      try {
+        enqueuePrintJob('bill', {
+          department: 'bar',
+          tableNumber: data.table_number,
+          order: data
+        });
+        console.log(`🖨️ [PrintQueue] Enqueued bar bill print job for table ${data.table_number} (#${data.orderNumber})`);
+      } catch (printErr) {
+        console.warn('[PrintQueue] Error enqueuing bill print:', printErr.message);
+      }
+    }
 
     res.json({ success: true, order: data });
   } catch (error) {

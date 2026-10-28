@@ -565,12 +565,30 @@ export const api = {
   // Room Service - Occupied Rooms with Guest Info
   getOccupiedRooms: async () => {
     try {
+      // First try /restaurant/occupied-rooms which returns active occupied rooms with linked guests
+      const occRes = await request('/restaurant/occupied-rooms', { timeout: 3000 });
+      const occList = Array.isArray(occRes) ? occRes : (occRes?.rooms || []);
+      if (occList.length > 0) {
+        return occList.map(r => ({
+          ...r,
+          id: r.id || r.room_id || r.room_number,
+          room_number: String(r.room_number),
+          guest_name: r.guest_name || 'In-House Guest',
+          guest_phone: r.guest_mobile || r.mobile || r.guest_phone || '—',
+          guest_mobile: r.guest_mobile || r.mobile || r.guest_phone || '—',
+          booking_id: r.booking_id || r.current_booking_id,
+          stay_nights: 1
+        }));
+      }
+
       const res = await request('/rooms', { timeout: 3000 });
       const rooms = res && res.rooms ? res.rooms : (Array.isArray(res) ? res : []);
       const occupied = rooms.filter(r => r.status === 'occupied' || r.current_booking_id);
       if (occupied.length > 0) {
         return occupied.map(r => ({
           ...r,
+          id: r.id || r.room_id || r.room_number,
+          room_number: String(r.room_number),
           guest_name: r.guest_name || 'In-House Guest',
           guest_phone: r.guest_mobile || r.mobile || r.guest_phone || '—',
           guest_mobile: r.guest_mobile || r.mobile || r.guest_phone || '—',
@@ -811,12 +829,18 @@ export const api = {
     const isRemoteHosted = typeof window !== 'undefined' && 
       (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
 
+    const fullPayload = {
+      ...paymentData,
+      source: 'waiter_panel',
+      enqueue_print: true
+    };
+
     if (!isRemoteHosted) {
       try {
         const endpoint = department === 'bar'
           ? `/bar/tables/${destinationId}/settle`
           : `/restaurant/tables/${destinationId}/settle`;
-        const res = await request(endpoint, { method: 'POST', body: paymentData, timeout: 3000 });
+        const res = await request(endpoint, { method: 'POST', body: fullPayload, timeout: 3000 });
         if (res && res.success) return res;
       } catch (locErr) {
         console.warn('[WaiterAPI] Local settleTable failed, falling back to Supabase Cloud:', locErr.message);
