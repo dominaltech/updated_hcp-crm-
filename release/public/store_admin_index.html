@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="supabase.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root {
       --bg: #F4F5F2;
@@ -1132,8 +1133,9 @@
 
   <script>
     // SUPABASE CLIENT SETUP
-    const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+    // Supabase decommissioned: consolidated on Firebase
+    const SUPABASE_URL = '';
+    const SUPABASE_ANON = ''; const SUPABASE_ANON_KEY = '';
 
     let _supabase = null;
     try {
@@ -1142,6 +1144,33 @@
       }
     } catch (e) {
       console.warn('Supabase init warning:', e);
+    }
+
+    // FIREBASE FIRESTORE SETUP
+    const firebaseConfig = {
+      apiKey: "AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI",
+      authDomain: "hotelcitypark-crm.firebaseapp.com",
+      projectId: "hotelcitypark-crm",
+      storageBucket: "hotelcitypark-crm.firebasestorage.app",
+      messagingSenderId: "398347367462",
+      appId: "1:398347367462:web:937b4e2e2b5989e89a62e7",
+      measurementId: "G-ZESR98SKK4"
+    };
+
+    let _firestore = null;
+    function getFirestoreClient() {
+      if (_firestore) return _firestore;
+      try {
+        if (typeof firebase !== 'undefined') {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          _firestore = firebase.firestore();
+        }
+      } catch (e) {
+        console.warn('Firebase init warning:', e);
+      }
+      return _firestore;
     }
 
     // STATE
@@ -1170,31 +1199,78 @@
     }
 
     // DATA SYNC
+    let hasSetupFirestoreListeners = false;
     async function fetchData() {
-      if (!_supabase) return;
+      const db = getFirestoreClient();
+      let fbLoaded = false;
 
-      try {
-        const [vRes, bRes] = await Promise.all([
-          _supabase.from('store_vendors').select('*').order('name', { ascending: true }),
-          _supabase.from('store_bills').select('*').order('created_at', { ascending: false })
-        ]);
+      // 1. Primary Sync: Firebase Firestore
+      if (db) {
+        try {
+          const [vSnap, bSnap] = await Promise.all([
+            db.collection('store_vendors').get(),
+            db.collection('store_bills').get()
+          ]);
 
-        if (vRes.data) {
-          allVendors = vRes.data;
-          document.getElementById('badgeVendorsCount').textContent = allVendors.length;
-          renderVendorsFeed();
+          if (!bSnap.empty || !vSnap.empty) {
+            allVendors = vSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+            allBills = bSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => new Date(b.created_at||0) - new Date(a.created_at||0));
+            document.getElementById('badgeVendorsCount').textContent = allVendors.length;
+            renderVendorsFeed();
+            updateCountersAndKPIs();
+            renderCurrentSubTab();
+            fbLoaded = true;
+            showToast('Live synced via Firebase');
+          }
+
+          if (!hasSetupFirestoreListeners) {
+            hasSetupFirestoreListeners = true;
+            db.collection('store_bills').onSnapshot(snapshot => {
+              if (!snapshot.empty) {
+                allBills = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => new Date(b.created_at||0) - new Date(a.created_at||0));
+                updateCountersAndKPIs();
+                renderCurrentSubTab();
+              }
+            }, err => console.warn('Firestore bills snapshot error:', err));
+
+            db.collection('store_vendors').onSnapshot(snapshot => {
+              if (!snapshot.empty) {
+                allVendors = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+                document.getElementById('badgeVendorsCount').textContent = allVendors.length;
+                renderVendorsFeed();
+              }
+            }, err => console.warn('Firestore vendors snapshot error:', err));
+          }
+        } catch (fbErr) {
+          console.warn('[StoreAdmin] Firebase fetch notice:', fbErr);
         }
+      }
 
-        if (bRes.data) {
-          allBills = bRes.data;
-          updateCountersAndKPIs();
-          renderCurrentSubTab();
+      // 2. Parallel / Fallback: Supabase Cloud
+      if (!fbLoaded && _supabase) {
+        try {
+          const [vRes, bRes] = await Promise.all([
+            _supabase.from('store_vendors').select('*').order('name', { ascending: true }),
+            _supabase.from('store_bills').select('*').order('created_at', { ascending: false })
+          ]);
+
+          if (vRes.data) {
+            allVendors = vRes.data;
+            document.getElementById('badgeVendorsCount').textContent = allVendors.length;
+            renderVendorsFeed();
+          }
+
+          if (bRes.data) {
+            allBills = bRes.data;
+            updateCountersAndKPIs();
+            renderCurrentSubTab();
+          }
+
+          showToast('Data synced live via Supabase');
+        } catch (err) {
+          console.error('Fetch error:', err);
+          showToast('Error syncing data', false);
         }
-
-        showToast('Data synced live');
-      } catch (err) {
-        console.error('Fetch error:', err);
-        showToast('Error syncing data', false);
       }
     }
 
@@ -1584,7 +1660,7 @@
     }
 
     async function submitBillPayment() {
-      if (!activeBill || !_supabase) return;
+      if (!activeBill) return;
       const amt = parseFloat(document.getElementById('mdlPayAmountInput').value) || 0;
       if (amt <= 0) {
         alert('Please enter a valid payment amount');
@@ -1601,22 +1677,52 @@
       const newStatus = (newPending === 0) ? 'FULL' : 'PARTLY';
 
       try {
-        // 1. Insert into store_vendor_payments
-        await _supabase.from('store_vendor_payments').insert([{
-          bill_id: activeBill.id,
-          vendor_id: activeBill.vendor_id,
-          payment_amount: amt,
-          payment_mode: activeBillPayMode,
-          reference_no: refNo,
-          paid_by: paidBy
-        }]);
+        // 1. Firebase Firestore update
+        const db = getFirestoreClient();
+        if (db) {
+          try {
+            await db.collection('store_vendor_payments').add({
+              bill_id: String(activeBill.id),
+              vendor_id: String(activeBill.vendor_id),
+              payment_amount: amt,
+              payment_mode: activeBillPayMode,
+              reference_no: refNo,
+              paid_by: paidBy,
+              paid_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            });
+            await db.collection('store_bills').doc(String(activeBill.id)).set({
+              paid_amount: newPaid,
+              pending_amount: newPending,
+              status: newStatus,
+              updated_at: new Date().toISOString()
+            }, { merge: true });
+          } catch (fbErr) {
+            console.warn('[StoreAdmin] Firebase bill payment warning:', fbErr);
+          }
+        }
 
-        // 2. Update store_bills
-        await _supabase.from('store_bills').update({
-          paid_amount: newPaid,
-          pending_amount: newPending,
-          status: newStatus
-        }).eq('id', activeBill.id);
+        // 2. Parallel Supabase update
+        if (_supabase) {
+          try {
+            await _supabase.from('store_vendor_payments').insert([{
+              bill_id: activeBill.id,
+              vendor_id: activeBill.vendor_id,
+              payment_amount: amt,
+              payment_mode: activeBillPayMode,
+              reference_no: refNo,
+              paid_by: paidBy
+            }]);
+
+            await _supabase.from('store_bills').update({
+              paid_amount: newPaid,
+              pending_amount: newPending,
+              status: newStatus
+            }).eq('id', activeBill.id);
+          } catch (sbErr) {
+            console.warn('[StoreAdmin] Supabase bill payment warning:', sbErr);
+          }
+        }
 
         closeModal('billModal');
         showToast(newStatus === 'FULL' ? '✓ Bill cleared & moved to History' : `✓ Partial payment of ₹${amt} recorded`);
@@ -1690,7 +1796,7 @@
     }
 
     async function submitPartyPayment() {
-      if (!activeParty || !_supabase) return;
+      if (!activeParty) return;
       const amt = parseFloat(document.getElementById('partyPayAmountInput').value) || 0;
       if (amt <= 0) {
         alert('Please enter a valid payment amount');
@@ -1705,34 +1811,81 @@
         // Allocate oldest first
         const sorted = [...activeParty.bills].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-        for (const b of sorted) {
-          if (rem <= 0) break;
-          const curPend = parseFloat(b.pending_amount) || 0;
-          const curPaid = parseFloat(b.paid_amount) || 0;
-          const curTot = parseFloat(b.total_amount) || 0;
-          const payThis = Math.min(curPend, rem);
+        // 1. Firebase Firestore update
+        const db = getFirestoreClient();
+        if (db) {
+          try {
+            let fbRem = amt;
+            for (const b of sorted) {
+              if (fbRem <= 0) break;
+              const curPend = parseFloat(b.pending_amount) || 0;
+              const curPaid = parseFloat(b.paid_amount) || 0;
+              const curTot = parseFloat(b.total_amount) || 0;
+              const payThis = Math.min(curPend, fbRem);
 
-          const newPaid = Math.round((curPaid + payThis) * 100) / 100;
-          const newPend = Math.max(0, Math.round((curTot - newPaid) * 100) / 100);
-          const newSt = (newPend === 0) ? 'FULL' : 'PARTLY';
+              const newPaid = Math.round((curPaid + payThis) * 100) / 100;
+              const newPend = Math.max(0, Math.round((curTot - newPaid) * 100) / 100);
+              const newSt = (newPend === 0) ? 'FULL' : 'PARTLY';
 
-          await _supabase.from('store_bills').update({
-            paid_amount: newPaid,
-            pending_amount: newPend,
-            status: newSt
-          }).eq('id', b.id);
+              await db.collection('store_bills').doc(String(b.id)).set({
+                paid_amount: newPaid,
+                pending_amount: newPend,
+                status: newSt,
+                updated_at: new Date().toISOString()
+              }, { merge: true });
 
-          rem = Math.round((rem - payThis) * 100) / 100;
+              fbRem = Math.round((fbRem - payThis) * 100) / 100;
+            }
+
+            await db.collection('store_vendor_payments').add({
+              vendor_id: String(activeParty.vendor_id),
+              payment_amount: amt,
+              payment_mode: activePartyPayMode,
+              reference_no: refNo,
+              paid_by: paidBy,
+              paid_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            });
+          } catch (fbErr) {
+            console.warn('[StoreAdmin] Firebase party payment warning:', fbErr);
+          }
         }
 
-        // Insert payment log
-        await _supabase.from('store_vendor_payments').insert([{
-          vendor_id: activeParty.vendor_id,
-          payment_amount: amt,
-          payment_mode: activePartyPayMode,
-          reference_no: refNo,
-          paid_by: paidBy
-        }]);
+        // 2. Parallel Supabase update
+        if (_supabase) {
+          try {
+            for (const b of sorted) {
+              if (rem <= 0) break;
+              const curPend = parseFloat(b.pending_amount) || 0;
+              const curPaid = parseFloat(b.paid_amount) || 0;
+              const curTot = parseFloat(b.total_amount) || 0;
+              const payThis = Math.min(curPend, rem);
+
+              const newPaid = Math.round((curPaid + payThis) * 100) / 100;
+              const newPend = Math.max(0, Math.round((curTot - newPaid) * 100) / 100);
+              const newSt = (newPend === 0) ? 'FULL' : 'PARTLY';
+
+              await _supabase.from('store_bills').update({
+                paid_amount: newPaid,
+                pending_amount: newPend,
+                status: newSt
+              }).eq('id', b.id);
+
+              rem = Math.round((rem - payThis) * 100) / 100;
+            }
+
+            // Insert payment log
+            await _supabase.from('store_vendor_payments').insert([{
+              vendor_id: activeParty.vendor_id,
+              payment_amount: amt,
+              payment_mode: activePartyPayMode,
+              reference_no: refNo,
+              paid_by: paidBy
+            }]);
+          } catch (sbErr) {
+            console.warn('[StoreAdmin] Supabase party payment warning:', sbErr);
+          }
+        }
 
         closeModal('partyModal');
         showToast('Party payment recorded successfully');
@@ -1765,7 +1918,6 @@
     }
 
     async function saveVendor() {
-      if (!_supabase) return;
       const vId = document.getElementById('editVendorId').value;
       const name = document.getElementById('vendorNameInput').value.trim();
       const mobile = document.getElementById('vendorMobileInput').value.trim();
@@ -1782,13 +1934,34 @@
       }
 
       try {
-        if (vId) {
-          await _supabase.from('store_vendors').update({ name, mobile, address }).eq('id', vId);
-          showToast('Vendor updated');
-        } else {
-          await _supabase.from('store_vendors').insert([{ name, mobile, address }]);
-          showToast('Vendor added');
+        // Firebase Firestore
+        const db = getFirestoreClient();
+        if (db) {
+          try {
+            if (vId) {
+              await db.collection('store_vendors').doc(String(vId)).set({ name, mobile, address, updated_at: new Date().toISOString() }, { merge: true });
+            } else {
+              await db.collection('store_vendors').add({ name, mobile, address, created_at: new Date().toISOString() });
+            }
+          } catch (fbErr) {
+            console.warn('[StoreAdmin] Firebase vendor save warning:', fbErr);
+          }
         }
+
+        // Supabase parallel
+        if (_supabase) {
+          try {
+            if (vId) {
+              await _supabase.from('store_vendors').update({ name, mobile, address }).eq('id', vId);
+            } else {
+              await _supabase.from('store_vendors').insert([{ name, mobile, address }]);
+            }
+          } catch (sbErr) {
+            console.warn('[StoreAdmin] Supabase vendor save warning:', sbErr);
+          }
+        }
+
+        showToast(vId ? 'Vendor updated' : 'Vendor added');
         closeModal('vendorModal');
         await fetchData();
       } catch (err) {
@@ -1798,7 +1971,6 @@
     }
 
     async function deleteVendor(vId) {
-      if (!_supabase) return;
       const count = allBills.filter(b => b.vendor_id === vId).length;
       if (count > 0) {
         alert(`Cannot delete vendor because ${count} store bills are linked.`);
@@ -1807,7 +1979,23 @@
       if (!confirm('Are you sure you want to delete this vendor?')) return;
 
       try {
-        await _supabase.from('store_vendors').delete().eq('id', vId);
+        const db = getFirestoreClient();
+        if (db) {
+          try {
+            await db.collection('store_vendors').doc(String(vId)).delete();
+          } catch (fbErr) {
+            console.warn('[StoreAdmin] Firebase vendor delete warning:', fbErr);
+          }
+        }
+
+        if (_supabase) {
+          try {
+            await _supabase.from('store_vendors').delete().eq('id', vId);
+          } catch (sbErr) {
+            console.warn('[StoreAdmin] Supabase vendor delete warning:', sbErr);
+          }
+        }
+
         showToast('Vendor deleted');
         await fetchData();
       } catch (err) {
@@ -1827,9 +2015,37 @@
       setTimeout(() => box.classList.remove('show'), 2300);
     }
 
+    // Real-time WebSocket listener for immediate live updates (<10ms)
+    function setupWebSocketRealtime() {
+      let ws = null;
+      let reconnectTimer = null;
+      function connect() {
+        try {
+          const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host || '127.0.0.1:3000';
+          const wsUrl = proto + '//' + host + '/ws';
+          ws = new WebSocket(wsUrl);
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              const type = data.type || data.event;
+              if (type === 'STORE_UPDATED' || type === 'BILLS_UPDATED') {
+                console.log('⚡ [WebSocket] Store bills or vendor payments updated');
+                if (typeof fetchData === 'function') fetchData();
+              }
+            } catch (_) {}
+          };
+          ws.onclose = () => { reconnectTimer = setTimeout(connect, 3000); };
+          ws.onerror = () => { try { ws.close(); } catch (_) {} };
+        } catch (e) { reconnectTimer = setTimeout(connect, 5000); }
+      }
+      connect();
+    }
+
     // Auto-fetch on boot
     window.addEventListener('DOMContentLoaded', () => {
       fetchData();
+      setupWebSocketRealtime();
       setInterval(fetchData, 20000);
     });
   </script>

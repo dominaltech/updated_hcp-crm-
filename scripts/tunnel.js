@@ -50,28 +50,36 @@ function saveRemoteUrl(url) {
     console.warn('Could not save remote_url.txt or update waiter client:', err.message);
   }
 
-  // Sync active tunnel URL to Supabase cloud directory so remote clients (Netlify, Mobile APK) stay connected
+  // Sync active tunnel URL to Firebase Firestore so remote clients (Netlify, Mobile APK, Waiter) stay connected
   try {
-    const sbBody = JSON.stringify({
-      id: '00000000-0000-0000-0000-000000000099',
-      room_number: '0',
-      department: 'cloud_tunnel_url',
-      items_summary: url,
-      status: 'active',
-      grand_total: 0
-    });
-    const sbReq = https.request('https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates',
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
+    const fbBody = JSON.stringify({
+      fields: {
+        items_summary: { stringValue: url },
+        department: { stringValue: 'cloud_tunnel_url' },
+        status: { stringValue: 'active' },
+        updated_at: { stringValue: new Date().toISOString() }
       }
     });
-    sbReq.on('error', (err) => console.warn('[Supabase Sync Error]:', err.message));
-    sbReq.write(sbBody);
-    sbReq.end();
-  } catch (e) {}
+    const fbUrl = new URL('https://firestore.googleapis.com/v1/projects/hotelcitypark-crm/databases/(default)/documents/room_charges_inbox/cloud_tunnel_url?key=AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI');
+    const fbReq = https.request(fbUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(fbBody)
+      }
+    }, (res) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log('🔥 [Firebase Cloud Sync] Active Tunnel URL registered to Firestore.');
+      } else {
+        console.warn('[Firebase Sync Warning]: Status', res.statusCode);
+      }
+    });
+    fbReq.on('error', (err) => console.warn('[Firebase Sync Error]:', err.message));
+    fbReq.write(fbBody);
+    fbReq.end();
+  } catch (e) {
+    console.warn('[Firebase Tunnel Sync Notice]:', e.message);
+  }
 
   console.log('\n==================================================================');
   console.log('       HOTEL CITY PARK - WORLDWIDE CLOUD ACCESS IS LIVE!         ');

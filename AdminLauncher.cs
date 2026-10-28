@@ -20,20 +20,21 @@ namespace HotelCityParkAdmin
             if (args != null && args.Length > 0)
             {
                 string a = args[0].ToLower().TrimStart('-', '/');
-                if (a == "crm" || a == "hospitality" || a == "frontdesk") targetPath = "hospitality";
+                if (a == "admin" || a == "owner" || a == "apk" || a == "mobile" || a == "mobile-admin" || a == "expo") targetPath = "admin";
+                else if (a == "crm" || a == "hospitality" || a == "frontdesk") targetPath = "hospitality";
                 else if (a == "restaurant" || a == "pos") targetPath = "restaurant";
                 else if (a == "bar") targetPath = "bar";
                 else if (a == "store" || a == "storeman") targetPath = "storeman";
                 else if (a == "store-admin") targetPath = "store-admin";
                 else if (a == "manage" || a == "rooms") targetPath = "manage";
-                else if (a == "apk" || a == "mobile" || a == "mobile-admin" || a == "expo") targetPath = "admin";
                 else if (args[0].StartsWith("http://") || args[0].StartsWith("https://")) targetPath = args[0];
             }
 
-            // Fast Path: Check if CRM on localhost:3000 is active right now
+            // Fast Path: Check if CRM on localhost:3000 (and Admin on 8081 if admin target) is active right now
             bool crmHealthy = CheckHealth("http://localhost:3000/api/health", 500);
+            bool adminHealthy = CheckHealth("http://localhost:8081/", 500);
 
-            if (crmHealthy)
+            if (crmHealthy && (targetPath != "admin" || adminHealthy))
             {
                 string finalUrl;
                 if (targetPath.StartsWith("http"))
@@ -321,9 +322,10 @@ namespace HotelCityParkAdmin
         {
             checkCount++;
 
-            // 1. Check localhost:3000
+            // 1. Check localhost:3000 and port 8081 if admin
             bool crmUp = Program.CheckHealth("http://localhost:3000/api/health", 400);
-            if (crmUp)
+            bool adminUp = (targetPath == "admin" || targetPath == "admin/") ? Program.CheckHealth("http://localhost:8081/", 400) : true;
+            if (crmUp && adminUp)
             {
                 OnServerReady("http://localhost:3000");
                 return;

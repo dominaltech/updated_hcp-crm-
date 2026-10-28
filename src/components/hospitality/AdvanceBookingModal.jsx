@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../services/api';
 import { useApp } from '../../context/AppContext';
 import ThemedSelect from '../common/ThemedSelect';
+import ThemedDatePicker from '../common/ThemedDatePicker';
 import { printCashReceipt } from '../../services/printService';
 
 export default function AdvanceBookingModal({
@@ -1267,19 +1268,14 @@ export default function AdvanceBookingModal({
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.dateBoxCnColor, textTransform: 'uppercase', marginBottom: '8px' }}>
                         Check-in Date & Time (c/n) *
                       </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="date"
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ThemedDatePicker
                           required
                           value={formData.checkin_date}
                           onChange={(e) => setFormData({ ...formData, checkin_date: e.target.value })}
                           style={{
                             flex: 2,
-                            padding: '10px',
-                            background: t.inputBg,
-                            border: `1px solid ${t.inputBorder}`,
-                            borderRadius: '8px',
-                            color: t.inputText,
+                            height: '42px',
                             fontSize: '0.90rem',
                             fontWeight: 700
                           }}
@@ -1292,6 +1288,8 @@ export default function AdvanceBookingModal({
                           style={{
                             flex: 1,
                             padding: '10px',
+                            height: '42px',
+                            boxSizing: 'border-box',
                             background: t.inputBg,
                             border: `1px solid ${t.inputBorder}`,
                             borderRadius: '8px',
@@ -1315,19 +1313,15 @@ export default function AdvanceBookingModal({
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.dateBoxCoColor, textTransform: 'uppercase', marginBottom: '8px' }}>
                         Check-out Date & Time (c/o) *
                       </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="date"
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ThemedDatePicker
                           required
                           value={formData.checkout_date}
+                          min={formData.checkin_date || ''}
                           onChange={(e) => setFormData({ ...formData, checkout_date: e.target.value })}
                           style={{
                             flex: 2,
-                            padding: '10px',
-                            background: t.inputBg,
-                            border: `1px solid ${t.inputBorder}`,
-                            borderRadius: '8px',
-                            color: t.inputText,
+                            height: '42px',
                             fontSize: '0.90rem',
                             fontWeight: 700
                           }}
@@ -1340,6 +1334,8 @@ export default function AdvanceBookingModal({
                           style={{
                             flex: 1,
                             padding: '10px',
+                            height: '42px',
+                            boxSizing: 'border-box',
                             background: t.inputBg,
                             border: `1px solid ${t.inputBorder}`,
                             borderRadius: '8px',
@@ -1363,7 +1359,7 @@ export default function AdvanceBookingModal({
                       <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: t.dateBoxPayColor, textTransform: 'uppercase', marginBottom: '8px' }}>
                         Advance Paid Amount (₹) & Mode
                       </label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <input
                           type="number"
                           min="0"
@@ -1373,6 +1369,8 @@ export default function AdvanceBookingModal({
                           style={{
                             flex: 1.2,
                             padding: '10px',
+                            height: '42px',
+                            boxSizing: 'border-box',
                             background: t.inputBg,
                             border: `1px solid ${t.inputBorder}`,
                             borderRadius: '8px',
@@ -1536,7 +1534,7 @@ export default function AdvanceBookingModal({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(460px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))',
                     gap: '16px'
                   }}
                 >
@@ -1556,14 +1554,18 @@ export default function AdvanceBookingModal({
                         flexDirection: 'column',
                         justifyContent: 'space-between',
                         gap: '12px',
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
+                        width: '100%',
+                        maxWidth: '100%',
                         transition: 'transform 0.15s ease, box-shadow 0.15s ease'
                       }}
                     >
-                      {/* Top Header: Customer details & Room badge */}
+                      {/* Top Header: Customer details & Room Status */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                        <div>
+                        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '1.15rem', fontWeight: 850, color: t.textPrimary }}>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 850, color: t.textPrimary, wordBreak: 'break-word' }}>
                               {b.customer_name}
                             </span>
                             {b.age ? (
@@ -1600,27 +1602,62 @@ export default function AdvanceBookingModal({
                           </div>
                         </div>
 
-                        {/* Room Category Chip */}
+                        {/* Room Assignment Status Badge */}
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <span
                             style={{
-                              display: 'inline-block',
-                              background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                              color: '#FFFFFF',
-                              fontSize: '0.88rem',
-                              fontWeight: 900,
-                              padding: '5px 14px',
-                              borderRadius: '10px',
-                              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)'
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              background: b.room_number ? (isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7') : (isDark ? '#1E293B' : '#F1F5F9'),
+                              color: b.room_number ? '#10B981' : (isDark ? '#94A3B8' : '#475569'),
+                              border: `1px solid ${b.room_number ? '#86EFAC' : (isDark ? '#334155' : '#CBD5E1')}`
                             }}
                           >
-                            {b.room_type || (b.room_number ? `Room #${b.room_number}` : 'Executive Room')}
+                            {b.room_number ? `Assigned: Room #${b.room_number}` : 'Room: Unassigned (At Check-In)'}
                           </span>
-                          <div style={{ fontSize: '0.74rem', color: t.textSecondary, marginTop: '3px', fontWeight: 600 }}>
-                            {b.room_number ? `Assigned Room: #${b.room_number}` : 'Room: Unassigned (At Check-In)'}
-                          </div>
                         </div>
                       </div>
+
+                      {/* Reserved Room Categories (Handles single room & multi-room bookings seamlessly) */}
+                      {(() => {
+                        const rawTypes = b.room_type || (b.room_number ? `Room #${b.room_number}` : 'Executive Room');
+                        const roomList = rawTypes.split(',').map(s => s.trim()).filter(Boolean);
+                        return (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.70rem', fontWeight: 800, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                              Reserved:
+                            </span>
+                            {roomList.map((roomName, rIdx) => (
+                              <span
+                                key={rIdx}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                  color: '#FFFFFF',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 850,
+                                  padding: '3px 10px',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word',
+                                  maxWidth: '100%'
+                                }}
+                              >
+                                <span style={{ fontSize: '0.80rem' }}>🏨</span>
+                                <span>{roomName}</span>
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
 
                       {/* Middle Info Strip: Check-in, Check-out, Guests, Advance */}
                       <div

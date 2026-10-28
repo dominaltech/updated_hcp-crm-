@@ -1,10 +1,10 @@
 {
-  "url": "https://birmingham-objectives-trainers-organisation.trycloudflare.com",
-  "adminUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/admin/",
-  "crmUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/hospitality",
-  "restaurantUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/restaurant",
-  "barUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/bar",
-  "storeUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/storeman",
-  "downloadUrl": "https://birmingham-objectives-trainers-organisation.trycloudflare.com/download.html",
-  "updatedAt": "2026-10-20T10:23:29.815Z"
+  "url": "http://10.160.83.195:3000",
+  "adminUrl": "http://10.160.83.195:3000/admin/",
+  "crmUrl": "http://10.160.83.195:3000/hospitality",
+  "restaurantUrl": "http://10.160.83.195:3000/restaurant",
+  "barUrl": "http://10.160.83.195:3000/bar",
+  "storeUrl": "http://10.160.83.195:3000/storeman",
+  "downloadUrl": "http://10.160.83.195:3000/download.html",
+  "updatedAt": "2026-10-26T17:45:00.000Z"
 }

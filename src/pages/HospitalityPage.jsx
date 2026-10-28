@@ -8,6 +8,7 @@ import RoomCleaningModal from '../components/hospitality/RoomCleaningModal';
 import HospitalityHistory from '../components/hospitality/HospitalityHistory';
 import AdvanceBookingModal from '../components/hospitality/AdvanceBookingModal';
 import OccupancyChartModal from '../components/hospitality/OccupancyChartModal';
+import CashHandoverModal from '../components/hospitality/CashHandoverModal';
 import { formatCurrency } from '../utils/formatters';
 
 const FLOOR_ORDER = [
@@ -55,6 +56,9 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
 
   // Occupancy Chart State
   const [isOccupancyChartOpen, setIsOccupancyChartOpen] = useState(false);
+
+  // Cash Handover State
+  const [isCashHandoverOpen, setIsCashHandoverOpen] = useState(false);
 
   // Advance Booking & 48-Hour Alert State
   const [isAdvBookingOpen, setIsAdvBookingOpen] = useState(false);
@@ -338,20 +342,23 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
 
     const srcType = String(source.room_type || '').trim().toLowerCase();
     const destType = String(targetRoom.room_type || '').trim().toLowerCase();
-    if (srcType !== destType) {
-      showToast(`Cannot transfer: Room #${source.room_number} is "${source.room_type}" but Room #${targetRoom.room_number} is "${targetRoom.room_type}". Room types must match!`, 'warning', 4500);
-      return;
-    }
+    const isCrossCategory = srcType !== destType;
 
-    // Target is valid and has same room type! Prompt confirmation
-    setTransferConfirmData({ sourceRoom: source, targetRoom });
+    // Target is valid! Prompt confirmation (same category direct, cross category with admin approval)
+    setTransferConfirmData({
+      sourceRoom: source,
+      targetRoom,
+      isCrossCategory,
+      approvalStatus: 'idle',
+      approvalId: null
+    });
   };
 
   const handleTransferSelect = (room) => {
     if (!transferSourceRoom) {
       if (room.status === 'occupied') {
         setTransferSourceRoom(room);
-        showToast(`Selected Room #${room.room_number} (${room.room_type}). Drag or click an available room of the same type to shift.`, 'info', 4000);
+        showToast(`Selected Room #${room.room_number} (${room.room_type}). Drag or click an available room to shift.`, 'info', 4000);
       } else {
         showToast('Click an occupied room first to begin transfer.', 'info', 3000);
       }
@@ -367,13 +374,17 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
     if (room.status === 'ready') {
       const srcType = String(transferSourceRoom.room_type || '').trim().toLowerCase();
       const destType = String(room.room_type || '').trim().toLowerCase();
-      if (srcType !== destType) {
-        showToast(`Cannot transfer: Room #${room.room_number} is "${room.room_type}" but Room #${transferSourceRoom.room_number} is "${transferSourceRoom.room_type}". Room types must match!`, 'warning', 4500);
-        return;
-      }
-      setTransferConfirmData({ sourceRoom: transferSourceRoom, targetRoom: room });
+      const isCrossCategory = srcType !== destType;
+
+      setTransferConfirmData({
+        sourceRoom: transferSourceRoom,
+        targetRoom: room,
+        isCrossCategory,
+        approvalStatus: 'idle',
+        approvalId: null
+      });
     } else {
-      showToast(`Only available (ready) rooms of the same type can receive a transfer.`, 'warning', 3000);
+      showToast(`Only available (ready) rooms can receive a transfer.`, 'warning', 3000);
     }
   };
 
@@ -386,7 +397,9 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
         from_room_id: transferConfirmData.sourceRoom.id,
         to_room_id: transferConfirmData.targetRoom.id,
         transferred_by: staffName,
-        reason: 'Guest room shift (same room type)'
+        reason: transferConfirmData.isCrossCategory
+          ? `Cross-category room shift from ${transferConfirmData.sourceRoom.room_type} to ${transferConfirmData.targetRoom.room_type} (Rates preserved)`
+          : 'Guest room shift (same room type)'
       });
 
       if (res?.success) {
@@ -411,6 +424,108 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
       setIsTransferring(false);
     }
   };
+
+  const requestTransferApproval = async () => {
+    if (!transferConfirmData?.sourceRoom || !transferConfirmData?.targetRoom) return;
+    setIsTransferring(true);
+    try {
+      const staffName = currentUser?.full_name || currentUser?.name || currentUser?.username || 'Front Desk';
+      const source = transferConfirmData.sourceRoom;
+      const target = transferConfirmData.targetRoom;
+
+      const res = await api.post('/owner/approvals/request', {
+        type: 'room_transfer',
+        dept: 'Room',
+        room_number: String(source.room_number),
+        guest_name: source.guest_name || 'Guest',
+        requested_by: staffName,
+        current_total: source.price || 0,
+        amount: 0,
+        reason: `Cross-category shift: Room #${source.room_number} (${source.room_type}) ➔ Room #${target.room_number} (${target.room_type}) • Declared check-in tariff preserved (${formatCurrency(source.price || 0)}) • Raised by ${staffName}`,
+        metadata: {
+          from_room_id: source.id,
+          to_room_id: target.id,
+          from_room_number: source.room_number,
+          to_room_number: target.room_number,
+          from_room_type: source.room_type,
+          to_room_type: target.room_type,
+          guest_name: source.guest_name || 'Guest',
+          current_rate: source.price || 0,
+          requested_by: staffName,
+          reason: `Cross-category room shift: ${source.room_type} ➔ ${target.room_type}`
+        }
+      });
+
+      if (res && (res.id || res.approval_id || res.success)) {
+        const approvalId = res.id || res.approval_id;
+        setTransferConfirmData((prev) => ({
+          ...prev,
+          approvalStatus: 'waiting',
+          approvalId
+        }));
+        showToast('Room shift permission request sent to Admin phone!', 'blue', 4000);
+      } else {
+        showToast('Could not send approval request.', 'error', 4000);
+      }
+    } catch (err) {
+      showToast('Error requesting approval: ' + (err.message || 'Server error'), 'error', 5000);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  // Polling for Admin Approval on cross-category shift (instant 1-second check)
+  useEffect(() => {
+    if (transferConfirmData?.approvalStatus !== 'waiting' || !transferConfirmData?.approvalId) return;
+
+    let isMounted = true;
+    const checkStatus = async () => {
+      try {
+        const res = await api.get(`/owner/approvals/${transferConfirmData.approvalId}/status`);
+        if (!isMounted) return;
+        if (res && res.status === 'APPROVED') {
+          clearInterval(interval);
+          const fromNum = transferConfirmData.sourceRoom?.room_number || '';
+          const toNum = transferConfirmData.targetRoom?.room_number || '';
+          const toType = transferConfirmData.targetRoom?.room_type || '';
+
+          // DIRECT CLOSE: Immediately close modal and reset shift mode
+          setTransferConfirmData(null);
+          setIsTransferMode(false);
+          setTransferSourceRoom(null);
+          setDropTargetRoomId(null);
+
+          // DIRECT REFRESH: Immediately show the shifted room on screen
+          await loadRooms(true);
+          if (loadStats) loadStats();
+
+          showToast(
+            `✓ Admin APPROVED! Room #${fromNum} shifted to Room #${toNum} (${toType}). Check-in rates preserved.`,
+            'green',
+            5000
+          );
+        } else if (res && res.status === 'REJECTED') {
+          clearInterval(interval);
+          setTransferConfirmData(null);
+          setIsTransferMode(false);
+          setTransferSourceRoom(null);
+          setDropTargetRoomId(null);
+          showToast('✕ Admin REJECTED the room shift request.', 'error', 4500);
+        }
+      } catch (err) {
+        // silent retry
+      }
+    };
+
+    // Immediate check right away, then poll every 1 second
+    checkStatus();
+    const interval = setInterval(checkStatus, 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [transferConfirmData?.approvalStatus, transferConfirmData?.approvalId]);
 
   return (
     <section className="panel-view active" id="view-hospitality">
@@ -445,7 +560,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                   <span>👉 <strong>Step 1:</strong> Drag or click an <strong>Occupied Room</strong> to shift.</span>
                 ) : (
                   <span>
-                    🎯 Shifting <strong>Room #{transferSourceRoom.room_number}</strong> ({transferSourceRoom.room_type}): Drop or click into any highlighted ready room of same type!
+                    🎯 Shifting <strong>Room #{transferSourceRoom.room_number}</strong> ({transferSourceRoom.room_type}): Drop into <strong style={{ color: '#059669' }}>🟢 Same Category</strong> for direct shift, or <strong style={{ color: '#d97706' }}>⚡ Cross-Category</strong> for Admin approval (rates preserved)!
                   </span>
                 )}
               </div>
@@ -532,6 +647,19 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                   )}
                 </div>
               )}
+
+              {/* Shift Cash Handover Button */}
+              <button
+                type="button"
+                className="btn-occupancy-chart"
+                id="btn-cash-handover"
+                onClick={() => setIsCashHandoverOpen(true)}
+                title="View & Print Front Office Cash Handover Statement (Shift handover, 2-copy A4 print)"
+                style={{ background: 'linear-gradient(135deg, #059669, #047857)', borderColor: '#059669', color: '#fff' }}
+              >
+                <span style={{ fontSize: '0.88rem' }}>💵</span>
+                <span>Cash Handover</span>
+              </button>
 
               {/* Occupancy Chart Button (Left side of Advance Booking) */}
               <button
@@ -700,13 +828,15 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                         transferSourceRoom &&
                         String(room.room_type || '').trim().toLowerCase() === String(transferSourceRoom.room_type || '').trim().toLowerCase()
                       );
-                      const isDroppable = Boolean(isTransferMode && transferSourceRoom && room.status === 'ready' && isSameRoomType);
+                      const isDroppable = Boolean(isTransferMode && transferSourceRoom && room.status === 'ready');
+                      const isDroppableSame = Boolean(isDroppable && isSameRoomType);
+                      const isDroppableCross = Boolean(isDroppable && !isSameRoomType);
                       const isDropTarget = Boolean(isDroppable && dropTargetRoomId === room.id);
                       const isDimmed = Boolean(
                         isTransferMode &&
                         transferSourceRoom &&
                         room.id !== transferSourceRoom.id &&
-                        !isDroppable
+                        room.status !== 'ready'
                       );
 
                       return (
@@ -724,6 +854,9 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
                           transferSourceRoom={transferSourceRoom}
                           isTransferSource={isTransferSource}
                           isDroppable={isDroppable}
+                          isSameRoomType={isSameRoomType}
+                          isDroppableSame={isDroppableSame}
+                          isDroppableCross={isDroppableCross}
                           isDimmed={isDimmed}
                           isDropTarget={isDropTarget}
                           onTransferDragStart={handleTransferDragStart}
@@ -771,26 +904,66 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
         </div>
       )}
 
-      {/* Room Transfer Confirmation Modal */}
+      {/* Room Transfer Confirmation Modal (Entire Screen Centered Modal) */}
       {transferConfirmData && (
-        <div className="modal-backdrop active" style={{ zIndex: 9999 }}>
-          <div className="modal-container" style={{ maxWidth: '540px', width: '92%', borderRadius: '20px', padding: '24px' }}>
+        <div
+          className="modal-overlay active"
+          id="room-transfer-confirm-modal"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 999999,
+            background: 'rgba(15, 23, 42, 0.78)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            margin: 0
+          }}
+          onClick={(e) => {
+            if (e.target.id === 'room-transfer-confirm-modal' && !isTransferring && transferConfirmData.approvalStatus !== 'approved') {
+              setTransferConfirmData(null);
+            }
+          }}
+        >
+          <div
+            className="modal-container"
+            style={{
+              maxWidth: '560px',
+              width: '94%',
+              borderRadius: '24px',
+              padding: '26px',
+              background: '#ffffff',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+              position: 'relative',
+              margin: 'auto'
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '1.6rem' }}>🔄</span>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#1e293b' }}>
-                    Confirm Room Shift
+                    {transferConfirmData.isCrossCategory ? 'Room Category Shift' : 'Confirm Room Shift'}
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-                    Same room type shift • Tariff remains unchanged
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: transferConfirmData.isCrossCategory ? '#b45309' : '#64748b', fontWeight: transferConfirmData.isCrossCategory ? 700 : 500 }}>
+                    {transferConfirmData.isCrossCategory
+                      ? '⚠️ Different Room Category • Admin APK Approval Required'
+                      : 'Same room type shift • Tariff remains unchanged'}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setTransferConfirmData(null)}
-                disabled={isTransferring}
+                disabled={isTransferring || transferConfirmData.approvalStatus === 'approved'}
                 style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#94a3b8' }}
               >
                 ✕
@@ -815,7 +988,7 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
               </div>
 
               {/* Shift Arrow */}
-              <div style={{ fontSize: '1.8rem', color: '#7c3aed', textAlign: 'center', fontWeight: 900 }}>
+              <div style={{ fontSize: '1.8rem', color: transferConfirmData.isCrossCategory ? '#d97706' : '#7c3aed', textAlign: 'center', fontWeight: 900 }}>
                 ➔
               </div>
 
@@ -836,41 +1009,118 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
               </div>
             </div>
 
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', marginBottom: '22px', fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>
-              <div>💰 <strong>Tariff:</strong> {formatCurrency(transferConfirmData.sourceRoom.price || 0)} / 24 hrs (Unchanged)</div>
+            <div style={{ background: transferConfirmData.isCrossCategory ? '#fffbeb' : '#f8fafc', border: transferConfirmData.isCrossCategory ? '1.5px solid #fde68a' : '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', marginBottom: '22px', fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>
+              <div>💰 <strong>Tariff:</strong> {formatCurrency(transferConfirmData.sourceRoom.price || 0)} / 24 hrs ({transferConfirmData.isCrossCategory ? 'Declared check-in rates strictly preserved • No extra cost' : 'Unchanged'})</div>
               <div style={{ marginTop: '4px' }}>📋 Active booking, folio charges, food &amp; beverage room service tabs, and visitors will move automatically to <strong>Room #{transferConfirmData.targetRoom.room_number}</strong>.</div>
               <div style={{ marginTop: '4px' }}>🧹 <strong>Room #{transferConfirmData.sourceRoom.room_number}</strong> will be marked as <em>Needs Cleaning</em>.</div>
+
+              {transferConfirmData.approvalStatus === 'waiting' && (
+                <div style={{ marginTop: '12px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', color: '#1d4ed8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>📱</span>
+                  <span>Permission request sent to Admin phone! Waiting for Admin approval on Admin APK... ⏳</span>
+                </div>
+              )}
+
+              {transferConfirmData.approvalStatus === 'approved' && (
+                <div style={{ marginTop: '12px', padding: '10px 14px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '10px', color: '#065f46', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>✓</span>
+                  <span>Admin APPROVED the category shift! Room transferred with check-in rates preserved.</span>
+                </div>
+              )}
+
+              {transferConfirmData.approvalStatus === 'rejected' && (
+                <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#b91c1c', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>✕</span>
+                  <span>Admin REJECTED this room shift request.</span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 type="button"
                 className="btn-secondary"
-                disabled={isTransferring}
+                disabled={isTransferring || transferConfirmData.approvalStatus === 'approved'}
                 onClick={() => setTransferConfirmData(null)}
                 style={{ padding: '8px 18px', borderRadius: '12px' }}
               >
-                Cancel
+                {transferConfirmData.approvalStatus === 'waiting' ? 'Cancel Request' : (transferConfirmData.approvalStatus === 'rejected' ? 'Close' : 'Cancel')}
               </button>
-              <button
-                type="button"
-                className="btn-primary"
-                id="btn-confirm-room-transfer-submit"
-                disabled={isTransferring}
-                onClick={executeTransfer}
-                style={{
-                  padding: '8px 24px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
-                  color: '#fff',
-                  fontWeight: 800,
-                  border: 'none',
-                  cursor: isTransferring ? 'wait' : 'pointer',
-                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)'
-                }}
-              >
-                {isTransferring ? 'Transferring...' : 'Confirm Transfer 🚀'}
-              </button>
+
+              {transferConfirmData.isCrossCategory ? (
+                transferConfirmData.approvalStatus === 'waiting' ? (
+                  <button
+                    type="button"
+                    disabled
+                    style={{
+                      padding: '8px 24px',
+                      borderRadius: '12px',
+                      background: '#94a3b8',
+                      color: '#fff',
+                      fontWeight: 800,
+                      border: 'none',
+                      cursor: 'wait'
+                    }}
+                  >
+                    Waiting for Admin ⏳
+                  </button>
+                ) : transferConfirmData.approvalStatus === 'approved' ? (
+                  <button
+                    type="button"
+                    disabled
+                    style={{
+                      padding: '8px 24px',
+                      borderRadius: '12px',
+                      background: '#059669',
+                      color: '#fff',
+                      fontWeight: 800,
+                      border: 'none'
+                    }}
+                  >
+                    Shift Completed ✓
+                  </button>
+                ) : transferConfirmData.approvalStatus === 'rejected' ? null : (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    id="btn-request-shift-approval-submit"
+                    disabled={isTransferring}
+                    onClick={requestTransferApproval}
+                    style={{
+                      padding: '8px 24px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
+                      color: '#fff',
+                      fontWeight: 800,
+                      border: 'none',
+                      cursor: isTransferring ? 'wait' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)'
+                    }}
+                  >
+                    {isTransferring ? 'Sending Request...' : 'Request Admin Approval 📱'}
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  id="btn-confirm-room-transfer-submit"
+                  disabled={isTransferring}
+                  onClick={executeTransfer}
+                  style={{
+                    padding: '8px 24px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
+                    color: '#fff',
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: isTransferring ? 'wait' : 'pointer',
+                    boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)'
+                  }}
+                >
+                  {isTransferring ? 'Transferring...' : 'Confirm Transfer 🚀'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -901,6 +1151,13 @@ export default function HospitalityPage({ onStartCheckin, onOpenFolio, onOpenVis
       <OccupancyChartModal
         isOpen={isOccupancyChartOpen}
         onClose={() => setIsOccupancyChartOpen(false)}
+      />
+
+      {/* Front Office Cash Handover Statement Modal & Print */}
+      <CashHandoverModal
+        isOpen={isCashHandoverOpen}
+        onClose={() => setIsCashHandoverOpen(false)}
+        currentUser={currentUser}
       />
 
       {/* Advance Booking & Pre-Reservations Modal */}

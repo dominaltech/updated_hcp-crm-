@@ -32,6 +32,11 @@ export default function PrintTemplatesContainer() {
            PRINTABLE A4 SHEET: GUEST ACTIVITIES SUMMARY STATEMENT (POINT 20)
            ========================================================================== */}
       <div id="print-activities-summary-sheet" className="printable-full-a4-sheet" style={{ display: 'none' }}></div>
+
+      {/* ==========================================================================
+           PRINTABLE 2-PER-A4 SHEET: CASH HANDOVER STATEMENT (FRONT OFFICE & F&B)
+           ========================================================================== */}
+      <div id="print-cash-handover-sheet" className="printable-two-per-a4-sheet" style={{ display: 'none' }}></div>
     </>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { stopContinuousOrderAlert } from '../../utils/audioAlert';
 
-export default function GuestOrderAcceptModal({ order, onAccept, onClose, isAccepting = false }) {
+export default function GuestOrderAcceptModal({ order, onAccept, onCancel, onClose, isAccepting = false, isCancelling = false }) {
   // Ensure audio is stopped if modal is unmounted
   useEffect(() => {
     return () => {
@@ -397,41 +397,96 @@ export default function GuestOrderAcceptModal({ order, onAccept, onClose, isAcce
           </div>
         </div>
 
-        {/* Action Footer: Accept & Print KOT of New Order Only */}
+        {/* Kitchen Closed Hours Indicator Banner */}
+        {order?.is_closed_hours && (
+          <div
+            style={{
+              backgroundColor: '#fee2e2',
+              borderBottom: '1px solid #fecaca',
+              padding: '10px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#991b1b',
+              fontSize: '0.86rem',
+              fontWeight: 800
+            }}
+          >
+            <span style={{ fontSize: '1.25rem' }}>🌙</span>
+            <div>
+              <div>Restaurant Closing Window Active ({order.restaurant_timings?.closeStart || '10:55 PM'} – {order.restaurant_timings?.closeEnd || '8:00 AM'})</div>
+              <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#b91c1c' }}>
+                Guest placed order during closed hours. Tap Cancel to inform guest that restaurant is closed.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Footer: Accept & Print KOT OR Cancel (Restaurant Closed) */}
         <div
           style={{
             padding: '16px 20px',
             backgroundColor: '#ffffff',
             borderTop: '1px solid #e2e8f0',
             display: 'flex',
-            justifyContent: 'center',
+            gap: '12px',
             alignItems: 'center'
           }}
         >
+          {/* Cancel Request (Restaurant Closed) Button */}
+          <button
+            type="button"
+            onClick={() => onCancel && onCancel(order, 'restaurant_closed')}
+            disabled={isCancelling || isAccepting}
+            style={{
+              flex: 1,
+              padding: '14px 20px',
+              borderRadius: '12px',
+              border: '1.5px solid #ef4444',
+              backgroundColor: order?.is_closed_hours ? '#ef4444' : '#fee2e2',
+              color: order?.is_closed_hours ? '#ffffff' : '#b91c1c',
+              fontWeight: 900,
+              fontSize: '0.98rem',
+              cursor: (isCancelling || isAccepting) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              boxShadow: order?.is_closed_hours ? '0 4px 14px rgba(239,68,68,0.35)' : 'none',
+              opacity: (isCancelling || isAccepting) ? 0.7 : 1,
+              transition: 'all 0.15s ease'
+            }}
+            title="Cancel order and notify guest that restaurant is closed"
+          >
+            <span>❌</span>
+            <span>{isCancelling ? 'Cancelling...' : 'Cancel Request (Closed)'}</span>
+          </button>
+
+          {/* Accept & Print KOT Button */}
           <button
             type="button"
             onClick={() => onAccept(order)}
-            disabled={isAccepting}
+            disabled={isAccepting || isCancelling}
             style={{
-              width: '100%',
-              padding: '14px 28px',
+              flex: 1.4,
+              padding: '14px 24px',
               borderRadius: '12px',
               border: 'none',
               background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
               color: '#ffffff',
               fontWeight: 900,
-              fontSize: '1.05rem',
-              cursor: isAccepting ? 'not-allowed' : 'pointer',
+              fontSize: '1.02rem',
+              cursor: (isAccepting || isCancelling) ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '10px',
               boxShadow: '0 4px 16px rgba(16, 185, 129, 0.35)',
-              opacity: isAccepting ? 0.7 : 1
+              opacity: (isAccepting || isCancelling) ? 0.7 : 1
             }}
           >
-            <span style={{ fontSize: '1.25rem' }}>🖨️</span>
-            <span>{isAccepting ? 'Accepting & Printing KOT...' : 'Accept & Print KOT'}</span>
+            <span style={{ fontSize: '1.2rem' }}>🖨️</span>
+            <span>{isAccepting ? 'Printing KOT...' : 'Accept & Print KOT'}</span>
           </button>
         </div>
       </div>

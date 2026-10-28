@@ -951,6 +951,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                     const custPhone = orderData.customer_phone || '';
                     const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
 
+                    const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
                     let targetTable = null;
 
                     if (destType === 'room' || destLabel.startsWith('RS-') || /Room\s*\d+/i.test(destLabel)) {
@@ -967,10 +968,18 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                       `).get(rsTableNum, `RS-Room ${cleanRoomNum}`, `%Room ${cleanRoomNum}%`);
 
                       if (!targetTable) {
-                        const roomRow = db.prepare('SELECT id, guest_name FROM rooms WHERE room_number = ?').get(cleanRoomNum);
-                        const guestName = custName || orderData.guest_name || roomRow?.guest_name || `Room ${cleanRoomNum} Guest`;
+                        const roomRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(cleanRoomNum);
+                        let guestName = custName || orderData.guest_name || '';
+                        if (!guestName) {
+                          try {
+                            const bRow = db.prepare('SELECT g.name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = (SELECT current_booking_id FROM rooms WHERE room_number = ?)').get(cleanRoomNum);
+                            guestName = bRow?.name || `Room ${cleanRoomNum} Guest`;
+                          } catch (_) {
+                            guestName = `Room ${cleanRoomNum} Guest`;
+                          }
+                        }
                         const insRes = db.prepare(`
-                          INSERT INTO ${tableName} (table_number, table_type, capacity, room_id, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, kot_count, order_started_at)
+                          INSERT INTO ${tableName} (table_number, table_type, capacity, room_id, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
                           VALUES (?, 'room_service', 2, ?, 'occupied', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
                         `).run(
                           rsTableNum,
@@ -997,7 +1006,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
 
                       if (!targetTable) {
                         const insRes = db.prepare(`
-                          INSERT INTO ${tableName} (table_number, table_type, capacity, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, kot_count, order_started_at)
+                          INSERT INTO ${tableName} (table_number, table_type, capacity, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
                           VALUES (?, 'parcel', 1, 'in_process', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
                         `).run(
                           parcelTableNum,

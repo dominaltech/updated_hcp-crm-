@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { socketClient } from '../services/socketClient';
 import { useApp } from './AppContext';
 
 const HospitalityContext = createContext(null);
@@ -44,17 +45,41 @@ export function HospitalityProvider({ children }) {
     }
   }, []);
 
-  // Polling every 3 seconds
+  // Instant WebSocket push updates + background quiet fallback
   useEffect(() => {
     loadRooms();
     loadStats();
 
+    // 1. Instant update when ANY room is checked-in, checked-out, modified, or bills/folios settled
+    const unsubRooms = socketClient.on('ROOMS_UPDATED', () => {
+      loadRooms(true);
+      loadStats();
+    });
+    const unsubFolio = socketClient.on('FOLIO_UPDATED', () => {
+      loadRooms(true);
+      loadStats();
+    });
+    const unsubTables = socketClient.on('TABLES_UPDATED', () => {
+      loadRooms(true);
+      loadStats();
+    });
+    const unsubBar = socketClient.on('BAR_UPDATED', () => {
+      loadRooms(true);
+      loadStats();
+    });
+
     const interval = setInterval(() => {
       loadRooms(true);
       loadStats();
-    }, 15000);
+    }, 20000);
 
-    return () => clearInterval(interval);
+    return () => {
+      unsubRooms();
+      unsubFolio();
+      unsubTables();
+      unsubBar();
+      clearInterval(interval);
+    };
   }, [loadRooms, loadStats]);
 
   const openContextMenu = (event, room) => {

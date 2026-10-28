@@ -1,4 +1,5 @@
 import { amountToWordsIndian, formatCurrency, formatDateTime, cleanVoucherNumber, formatTaxInvoiceNumber } from '../utils/formatters';
+import { numberToWordsINR } from '../utils/numberToWords';
 export { cleanVoucherNumber, formatTaxInvoiceNumber };
 import html2pdf from 'html2pdf.js';
 import { api } from './api';
@@ -174,14 +175,82 @@ export function printSlipWindow(slipHtml) {
 }
 
 /**
+ * Helper to determine Room Service source prefix:
+ * - RSCW: Room Service Customer Web Link
+ * - RSW:  Room Service Waiter App
+ * - RS:   Room Service Front Desk / CRM
+ */
+export function getRoomServicePrefixInfo(tableNumber, obj = {}) {
+  const tStr = String(tableNumber || obj?.table_number || obj?.tableNumber || obj?.table || '');
+  const orderSource = String(obj?.order_source || obj?.orderSource || obj?.source || obj?.order_type || '').toLowerCase();
+  const notes = String(obj?.notes || obj?.special_notes || '').toLowerCase();
+  const waiter = String(obj?.waiter_name || obj?.waiterName || obj?.waiter || '').toLowerCase();
+  const orderNum = String(obj?.orderNumber || obj?.order_number || obj?.bill_number || obj?.billNo || obj?.order_id || '');
+
+  // RSCW: Room Service Customer Web Link
+  const isRSCW = tStr.toUpperCase().startsWith('RSCW-') ||
+    orderNum.toUpperCase().startsWith('RSCW-') ||
+    orderSource.includes('web') ||
+    orderSource === 'rscw' ||
+    Boolean(obj?.is_guest_web) ||
+    Boolean(obj?.is_web_order) ||
+    notes.includes('customer web') ||
+    notes.includes('rscw') ||
+    notes.includes('qr order');
+
+  // RSW: Room Service Waiter Panel
+  const isRSW = !isRSCW && (
+    tStr.toUpperCase().startsWith('RSW-') ||
+    orderNum.toUpperCase().startsWith('RSW-') ||
+    orderSource.includes('waiter') ||
+    orderSource === 'rsw' ||
+    notes.includes('rsw') ||
+    (Boolean(waiter) && waiter !== 'reception' && waiter !== 'front desk' && waiter !== 'admin' && waiter !== 'crm' && (tStr.toUpperCase().startsWith('RS-') || obj?.table_type === 'room_service'))
+  );
+
+  // RS: Room Service CRM Front Desk
+  const isRS = !isRSCW && !isRSW && (
+    tStr.toUpperCase().startsWith('RS-') ||
+    orderNum.toUpperCase().startsWith('RS-') ||
+    orderSource === 'room_service' ||
+    orderSource === 'crm' ||
+    obj?.table_type === 'room_service' ||
+    obj?.order_type === 'room' ||
+    obj?.orderType === 'room'
+  );
+
+  if (isRSCW) {
+    const raw = tStr.startsWith('RSCW-') || tStr.startsWith('RS-') ? tStr : (orderNum.startsWith('RSCW-') || orderNum.startsWith('RS-') ? orderNum : tStr);
+    const rNum = raw.replace(/^(RSCW|RS)-/i, '').split('-')[0].trim();
+    return { isRoomService: true, prefix: 'RSCW', roomNumber: rNum || tStr, label: `Room: ${rNum || tStr} [RSCW]` };
+  }
+  if (isRSW) {
+    const raw = tStr.startsWith('RSW-') || tStr.startsWith('RS-') ? tStr : (orderNum.startsWith('RSW-') || orderNum.startsWith('RS-') ? orderNum : tStr);
+    const rNum = raw.replace(/^(RSW|RS)-/i, '').split('-')[0].trim();
+    return { isRoomService: true, prefix: 'RSW', roomNumber: rNum || tStr, label: `Room: ${rNum || tStr} [RSW]` };
+  }
+  if (isRS) {
+    const raw = tStr.startsWith('RS-') ? tStr : (orderNum.startsWith('RS-') ? orderNum : tStr);
+    const rNum = raw.replace(/^RS-/i, '').split('-')[0].trim();
+    return { isRoomService: true, prefix: 'RS', roomNumber: rNum || tStr, label: `Room: ${rNum || tStr} [RS]` };
+  }
+
+  return { isRoomService: false, prefix: '', roomNumber: '', label: '' };
+}
+
+/**
  * 80mm Thermal KOT Slip
  */
 export function printKOTSlip(kot, tableNumber, waiterName, notes) {
   const items = (kot && Array.isArray(kot.items)) ? kot.items : (Array.isArray(kot) ? kot : []);
-  const tStr = String(tableNumber || '');
-  const isRS = tStr.startsWith('RS-');
+  const tStr = String(tableNumber || kot?.tableNumber || kot?.table_number || '');
+  const rsInfo = getRoomServicePrefixInfo(tStr, { ...(typeof kot === 'object' ? kot : {}), notes, waiterName });
   const isParcel = tStr.startsWith('P-');
-  const displayLoc = isRS ? `Room: ${tStr.replace(/^RS-/i, '').trim()} [Room Service]` : isParcel ? `Parcel #${tStr.replace(/^P-/i, '').trim()} [Takeaway]` : `Table: ${tStr}`;
+  const displayLoc = rsInfo.isRoomService
+    ? `Room: ${rsInfo.roomNumber} [${rsInfo.prefix}]`
+    : isParcel
+    ? `Parcel #${tStr.replace(/^P-/i, '').trim()} [Takeaway]`
+    : `Table: ${tStr}`;
 
   const rows = items
     .map(
@@ -241,10 +310,14 @@ export function printKOTSlip(kot, tableNumber, waiterName, notes) {
  */
 export function printBOTSlip(bot, tableNumber, waiterName, notes) {
   const items = (bot && Array.isArray(bot.items)) ? bot.items : (Array.isArray(bot) ? bot : []);
-  const tStr = String(tableNumber || '');
-  const isRS = tStr.startsWith('RS-');
+  const tStr = String(tableNumber || bot?.tableNumber || bot?.table_number || '');
+  const rsInfo = getRoomServicePrefixInfo(tStr, { ...(typeof bot === 'object' ? bot : {}), notes, waiterName });
   const isParcel = tStr.startsWith('P-');
-  const displayLoc = isRS ? `Room: ${tStr.replace(/^RS-/i, '').trim()} [Room Service]` : isParcel ? `Parcel #${tStr.replace(/^P-/i, '').trim()} [Takeaway]` : `Table: ${tStr}`;
+  const displayLoc = rsInfo.isRoomService
+    ? `Room: ${rsInfo.roomNumber} [${rsInfo.prefix}]`
+    : isParcel
+    ? `Parcel #${tStr.replace(/^P-/i, '').trim()} [Takeaway]`
+    : `Table: ${tStr}`;
 
   const rows = items
     .map(
@@ -306,12 +379,12 @@ export function printPreBillSlip(table, cart, waiterName, customDept = '') {
   const items = Array.isArray(cart) ? cart : [];
   const tableObj = (typeof table === 'object' && table !== null) ? table : { table_number: String(table || '') };
   const tNum = String(tableObj.table_number || tableObj.number || '');
-  const isRS = tableObj.table_type === 'room_service' || tNum.startsWith('RS-');
+  const rsInfo = getRoomServicePrefixInfo(tNum, { ...tableObj, waiterName });
   const isParcel = tableObj.table_type === 'parcel' || tableObj.is_parcel || tNum.startsWith('P-') || tNum.startsWith('BP-');
   const isBar = (customDept === 'bar') || Boolean(tableObj.is_bar || tableObj.department === 'bar' || tNum.startsWith('BP-') || String(tableObj.special_notes || '').toLowerCase().includes('bar'));
 
-  const headerDept = isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : (isRS ? 'Room Service Food & Beverage' : isParcel ? 'Takeaway & Delivery Counter' : 'Restaurant & Dining Floor');
-  const displayLocation = isRS ? `Room: <strong>${tNum.replace(/^RS-/i, '').trim()}</strong>` : isParcel ? `Parcel: <strong>#${tNum.replace(/^(B?P-)/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tNum)}</strong>`;
+  const headerDept = isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : (rsInfo.isRoomService ? `Room Service Food & Beverage [${rsInfo.prefix}]` : isParcel ? 'Takeaway & Delivery Counter' : 'Restaurant & Dining Floor');
+  const displayLocation = rsInfo.isRoomService ? `Room: <strong>${rsInfo.roomNumber}</strong> [<strong>${rsInfo.prefix}</strong>]` : isParcel ? `Parcel: <strong>#${tNum.replace(/^(B?P-)/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tNum)}</strong>`;
 
   const subtotal = items.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
   const discountAmount = Number(tableObj.discount_amount || tableObj.discountAmount || 0);
@@ -442,9 +515,9 @@ export function printCheckoutSlip(rawOrder, customDeptTitle) {
   const total = grandTotal;
 
   const tStr = String(order.table_number || order.tableNumber || '');
-  const isRS = tStr.startsWith('RS-') || order.order_type === 'room' || order.orderType === 'room';
+  const rsInfo = getRoomServicePrefixInfo(tStr, order);
   const isParcel = tStr.startsWith('P-') || order.order_type === 'parcel' || order.orderType === 'parcel';
-  const displayLocation = isRS ? `Room: <strong>${tStr.replace(/^RS-/i, '').trim()}</strong> [Room Service]` : isParcel ? `Parcel: <strong>#${tStr.replace(/^P-/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tStr || 'Counter/Takeaway')}</strong>`;
+  const displayLocation = rsInfo.isRoomService ? `Room: <strong>${rsInfo.roomNumber}</strong> [<strong>${rsInfo.prefix}</strong>]` : isParcel ? `Parcel: <strong>#${tStr.replace(/^P-/i, '').trim()}</strong>` : `Table: <strong>${escapeHtml(tStr || 'Counter/Takeaway')}</strong>`;
 
   const isBar = Boolean(order.is_bar || order.department === 'bar' || (customDeptTitle && customDeptTitle.toUpperCase().includes('BAR')) || (order.department_title && order.department_title.toUpperCase().includes('BAR')) || tStr.startsWith('BP-'));
   const deptTitle = customDeptTitle || order.department_title || (isBar ? 'HOTEL CITY PARK - BAR & LOUNGE' : 'HOTEL CITY PARK - RESTAURANT');
@@ -932,12 +1005,14 @@ export function buildMoneyReceiptHTML(receipt) {
   const rawParticulars = receipt.particulars || receipt.purpose || receipt.notes || receipt.description || (receipt.booking_id ? `Room Booking ${receipt.booking_id}` : 'Official Payment Receipt');
   const cleanParticulars = String(rawParticulars).replace(/Room\s*#\s*/gi, 'Room ');
 
-  // Row 1: "paid while checking" / "paid while Living" / "paid while checkout"
-  const checkStr = (cleanParticulars + ' ' + (receipt.payment_stage || '') + ' ' + (receipt.purpose || '') + ' ' + (receipt.notes || '')).toLowerCase();
+  // Row 1: "Paid for Pre-Booking" / "paid while checking" / "paid while Living" / "paid while checkout"
+  const checkStr = (cleanParticulars + ' ' + (receipt.payment_stage || '') + ' ' + (receipt.purpose || '') + ' ' + (receipt.notes || '') + ' ' + (receipt.stageLabel || '')).toLowerCase();
   let stageLabel = 'Paid For checking';
   if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
     stageLabel = 'Paid while checkout';
-  } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('advance') || checkStr.includes('checking')) {
+  } else if (checkStr.includes('pre-booking') || checkStr.includes('prebooking') || checkStr.includes('adv-') || receipt.is_prebooking || receipt.prebooking || (checkStr.includes('advance') && !checkStr.includes('checkin') && !checkStr.includes('check-in') && !checkStr.includes('checking'))) {
+    stageLabel = 'Paid for Pre-Booking';
+  } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('checking')) {
     stageLabel = 'Paid For checking';
   } else if (checkStr.includes('living') || checkStr.includes('mid-stay') || checkStr.includes('running') || checkStr.includes('stay') || checkStr.includes('fnb') || checkStr.includes('order') || checkStr.includes('restaurant') || checkStr.includes('bar')) {
     stageLabel = 'Paid while Living';
@@ -3250,8 +3325,9 @@ export function buildGuestPaymentSummaryHTML(data) {
     let purposeStr = rawPurpose;
 
     // Single-line particulars without redundant guest name in parentheses
-    // "Advance payment at check-in for Room 101 (Md Yahya Ab Wahid Mundewadi)" -> "paid while checkin : checkin"
-    if (/advance\s+payment\s+at\s+check-?in/i.test(rawPurpose)) {
+    if (/pre-?booking|advance.*pre-?booking/i.test(rawPurpose) || p.is_prebooking || p.prebooking) {
+      purposeStr = 'Paid for Pre-Booking';
+    } else if (/advance\s+payment\s+at\s+check-?in/i.test(rawPurpose)) {
       purposeStr = 'paid while checkin : checkin';
     } else if (/settlement\s+at\s+check-?out/i.test(rawPurpose)) {
       purposeStr = 'paid during checkout : settlement';
@@ -6764,3 +6840,341 @@ export function exportAccountingAnalysisToCsv(records = [], summary = {}) {
     URL.revokeObjectURL(url);
   }, 300);
 }
+
+/**
+ * ============================================================================
+ * PRINTABLE SHIFT CASH HANDOVER STATEMENTS (FRONT OFFICE & F&B)
+ * Fits 2 exact copies on single A4 sheet with middle dotted cutting line:
+ * Top Half: Front / F&B Copy | Bottom Half: Accounts Copy
+ * ============================================================================
+ */
+export function printFrontOfficeCashHandover(data = {}, options = {}) {
+  const sheet = document.getElementById('print-cash-handover-sheet') || document.getElementById('print-petty-cash-sheet');
+  if (!sheet) {
+    console.warn('print-cash-handover-sheet element not found in DOM');
+    return;
+  }
+
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
+  const staffName = options.staffName || data.staffName || 'Cashier';
+  const now = new Date();
+  const dayName = options.dayName || now.toLocaleDateString('en-IN', { weekday: 'long' });
+  const dateStr = options.dateStr || (data.date ? new Date(data.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : now.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+  const timeStr = options.timeStr || now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const shiftLabel = data.shift || options.shiftLabel || 'Shift 1 / Morning';
+
+  const foCashSales = Number(data.foCashSales || 0);
+  const foDeposits = Number(data.foDeposits || 0);
+  const otherIncome = Number(data.otherIncome || 0);
+  const toHandoverA = Number(data.toHandoverA || (foCashSales + foDeposits + otherIncome));
+  const fbCashCollected = Number(data.fbCashCollected || 0);
+
+  const totalReceiptsCR = Number(data.totalReceiptsCR || toHandoverA);
+  const totalRefund = Number(data.totalRefund || 0);
+  const netHandover = Number(data.netHandover || Math.max(0, totalReceiptsCR - totalRefund));
+  const amountWords = numberToWordsINR(netHandover);
+
+  const renderCopyBlock = (copyTitle) => `
+    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 133mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid;">
+      <!-- Header -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #000; padding-bottom: 2mm;">
+          <!-- Left Logo & Hotel Info -->
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain;" />
+            <div style="line-height: 1.2;">
+              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITYPAARK</div>
+              <div style="font-size: 6.8pt; font-weight: 700; color: #222;">119, MURARJI PETH, CHAR HUTATMA CHOWK,</div>
+              <div style="font-size: 6.8pt; font-weight: 700; color: #222;">SOLAPUR-413 001.</div>
+            </div>
+          </div>
+          <!-- Right Meta Info -->
+          <div style="font-size: 8pt; font-weight: 700; line-height: 1.35; text-align: right;">
+            <div><span>DAY :</span> <span style="font-weight: 850;">${escapeHtml(dayName)}</span> &nbsp;&nbsp; <span>SHIFT :</span> <span style="font-weight: 850;">${escapeHtml(shiftLabel)}</span></div>
+            <div><span>DATE :</span> <span style="font-weight: 850;">${escapeHtml(dateStr)}</span> &nbsp;&nbsp; <span>TIME :</span> <span style="font-weight: 850;">${escapeHtml(timeStr)}</span></div>
+            <div><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div style="text-align: center; margin: 2mm 0 2mm; font-size: 10pt; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
+          FRONT OFFICE CASH HANDOVER STATEMENT ${copyTitle ? `<span style="font-size: 8pt; font-weight: 800; color: #444;">(${escapeHtml(copyTitle)})</span>` : ''}
+        </div>
+
+        <!-- Main Receipts & Handover Table -->
+        <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; font-size: 8pt;">
+          <thead>
+            <tr style="background: #f1f5f9; border-bottom: 1.5px solid #000;">
+              <th style="width: 36%; padding: 3px 6px; text-align: left; border-right: 1px solid #000; font-weight: 900;">RECEIPTS</th>
+              <th style="width: 14%; padding: 3px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 900;">AMOUNT</th>
+              <th style="width: 36%; padding: 3px 6px; text-align: left; border-right: 1px solid #000; font-weight: 900;">DETAILS OF CASH HANDOVER</th>
+              <th style="width: 14%; padding: 3px 6px; text-align: right; font-weight: 900;">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">A. Front Office</td>
+              <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total (CR) Receipts Rs.</td>
+              <td style="padding: 2.5px 6px; text-align: right; font-weight: 850;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1. F. O. Cash Sales</td>
+              <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${foCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; font-weight: 800; border-right: 1px solid #000;">Total Refund Rs.</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 850;">${totalRefund.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2. F. O. Deposits</td>
+              <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${foDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">3. Other Income</td>
+              <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${otherIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+            <tr style="border-top: 1px solid #000; border-bottom: 1px solid #000; background: #f8fafc;">
+              <td style="padding: 2.5px 6px; font-weight: 900; border-right: 1px solid #000;">To Handover Rs.</td>
+              <td style="padding: 2.5px 6px; text-align: right; font-weight: 950; border-right: 1.5px solid #000;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2.5px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+            <tr>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">B. To Pay F&B :-</td>
+              <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
+              <td style="padding: 2.5px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">Total F&B Cash Collected</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 850; border-right: 1.5px solid #000;">${fbCashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer: Total in Words and Signatures -->
+      <div style="margin-top: 1.5mm;">
+        <!-- Total Rs in words -->
+        <div style="border: 1px solid #000; padding: 3px 6px; margin-bottom: 2.5mm; background: #fff;">
+          <div style="font-size: 8.5pt; font-weight: 900;">
+            Total Rs. : <span style="font-size: 9.5pt;">₹ ${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div style="font-size: 7.8pt; font-weight: 700; color: #111; margin-top: 1px;">
+            Total in Words : <span style="font-weight: 800; font-style: italic;">${escapeHtml(amountWords)}</span>
+          </div>
+        </div>
+
+        <!-- Signatures Row -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 1mm; font-size: 8pt; font-weight: 750;">
+          <div style="display: flex; align-items: flex-end; gap: 4px;">
+            <span>Signature of Paying Cashier :</span>
+            <span style="font-weight: 900; text-transform: uppercase;">[${escapeHtml(staffName)}]</span>
+            <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 4px;">
+            <span>Signature of Receiving Cashier :</span>
+            <span style="display: inline-block; width: 160px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  sheet.innerHTML = `
+    <div style="width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+      ${renderCopyBlock('FRONT COPY')}
+      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 3.5mm 0; text-align: center; position: relative;">
+        <span style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: #ffffff; padding: 0 10px; font-size: 7.5pt; font-weight: 800; color: #444; letter-spacing: 0.5px;">
+          ✂ CUT HERE (FRONT COPY / ACCOUNTS COPY) ✂
+        </span>
+      </div>
+      ${renderCopyBlock('ACCOUNTS COPY')}
+    </div>
+  `;
+
+  sheet.style.display = 'block';
+  sheet.classList.add('print-active');
+  document.body.classList.add('print-sheet-active');
+
+  const cleanup = () => {
+    sheet.classList.remove('print-active');
+    sheet.style.display = 'none';
+    document.body.classList.remove('print-sheet-active');
+    window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 2500);
+    }, 40);
+  });
+}
+
+export function printFnBCashHandover(data = {}, options = {}) {
+  const sheet = document.getElementById('print-cash-handover-sheet') || document.getElementById('print-petty-cash-sheet');
+  if (!sheet) {
+    console.warn('print-cash-handover-sheet element not found in DOM');
+    return;
+  }
+
+  const exitThemeIsolation = enterPrintThemeIsolation();
+
+  const staffName = options.staffName || data.staffName || 'Cashier';
+  const now = new Date();
+  const dayName = options.dayName || now.toLocaleDateString('en-IN', { weekday: 'long' });
+  const dateStr = options.dateStr || (data.date ? new Date(data.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : now.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+  const timeStr = options.timeStr || now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const shiftLabel = data.shift || options.shiftLabel || 'Shift 1 / Morning';
+
+  const fnbCashSales = Number(data.fnbCashSales || 0);
+  const fnbDeposits = Number(data.fnbDeposits || 0);
+  const toHandoverA = Number(data.toHandoverA || (fnbCashSales + fnbDeposits));
+  const fbFromReception = Number(data.fbFromReception || 0);
+
+  const totalReceiptsCR = Number(data.totalReceiptsCR || toHandoverA);
+  const totalRefund = Number(data.totalRefund || 0);
+  const netHandover = Number(data.netHandover || Math.max(0, totalReceiptsCR - totalRefund));
+  const amountWords = numberToWordsINR(netHandover);
+
+  const renderCopyBlock = (copyTitle) => `
+    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 133mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid;">
+      <!-- Header -->
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #000; padding-bottom: 2mm;">
+          <!-- Left Logo & Hotel Info -->
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain;" />
+            <div style="line-height: 1.2;">
+              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITYPAARK</div>
+              <div style="font-size: 6.8pt; font-weight: 700; color: #222;">119, MURARJI PETH, CHAR HUTATMA CHOWK,</div>
+              <div style="font-size: 6.8pt; font-weight: 700; color: #222;">SOLAPUR-413 001.</div>
+            </div>
+          </div>
+          <!-- Right Meta Info -->
+          <div style="font-size: 8pt; font-weight: 700; line-height: 1.35; text-align: right;">
+            <div><span>DAY :</span> <span style="font-weight: 850;">${escapeHtml(dayName)}</span> &nbsp;&nbsp; <span>SHIFT :</span> <span style="font-weight: 850;">${escapeHtml(shiftLabel)}</span></div>
+            <div><span>DATE :</span> <span style="font-weight: 850;">${escapeHtml(dateStr)}</span> &nbsp;&nbsp; <span>TIME :</span> <span style="font-weight: 850;">${escapeHtml(timeStr)}</span></div>
+            <div><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div style="text-align: center; margin: 2mm 0 2mm; font-size: 10pt; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">
+          F&B CASH HANDOVER STATEMENT ${copyTitle ? `<span style="font-size: 8pt; font-weight: 800; color: #444;">(${escapeHtml(copyTitle)})</span>` : ''}
+        </div>
+
+        <!-- Main Receipts & Handover Table -->
+        <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; font-size: 8pt;">
+          <thead>
+            <tr style="background: #f1f5f9; border-bottom: 1.5px solid #000;">
+              <th style="width: 36%; padding: 3px 6px; text-align: left; border-right: 1px solid #000; font-weight: 900;">RECEIPTS</th>
+              <th style="width: 14%; padding: 3px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 900;">AMOUNT</th>
+              <th style="width: 36%; padding: 3px 6px; text-align: left; border-right: 1px solid #000; font-weight: 900;">DETAILS OF CASH HANDOVER</th>
+              <th style="width: 14%; padding: 3px 6px; text-align: right; font-weight: 900;">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">A. F&B</td>
+              <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total (CR) Receipts Rs.</td>
+              <td style="padding: 2.5px 6px; text-align: right; font-weight: 850;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1. F&B Cash Sales</td>
+              <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${fnbCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; font-weight: 800; border-right: 1px solid #000;">Total Refund Rs.</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 850;">${totalRefund.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2. F&B Deposits</td>
+              <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${fnbDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top: 1px solid #000; border-bottom: 1px solid #000; background: #f8fafc;">
+              <td style="padding: 2.5px 6px; font-weight: 900; border-right: 1px solid #000;">To Handover Rs.</td>
+              <td style="padding: 2.5px 6px; text-align: right; font-weight: 950; border-right: 1.5px solid #000;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2.5px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+            <tr>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">B. To Collect From Reception :-</td>
+              <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
+              <td style="padding: 2.5px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">Total F&B Cash from Reception</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 850; border-right: 1.5px solid #000;">${fbFromReception.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td style="padding: 2px 6px; border-right: 1px solid #000;" colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer: Total in Words and Signatures -->
+      <div style="margin-top: 1.5mm;">
+        <!-- Total Rs in words -->
+        <div style="border: 1px solid #000; padding: 3px 6px; margin-bottom: 2.5mm; background: #fff;">
+          <div style="font-size: 8.5pt; font-weight: 900;">
+            Total Rs. : <span style="font-size: 9.5pt;">₹ ${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div style="font-size: 7.8pt; font-weight: 700; color: #111; margin-top: 1px;">
+            Total in Words : <span style="font-weight: 800; font-style: italic;">${escapeHtml(amountWords)}</span>
+          </div>
+        </div>
+
+        <!-- Signatures Row -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 1mm; font-size: 8pt; font-weight: 750;">
+          <div style="display: flex; align-items: flex-end; gap: 4px;">
+            <span>Signature of Paying Cashier :</span>
+            <span style="font-weight: 900; text-transform: uppercase;">[${escapeHtml(staffName)}]</span>
+            <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 4px;">
+            <span>Signature of Receiving Cashier :</span>
+            <span style="display: inline-block; width: 160px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  sheet.innerHTML = `
+    <div style="width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+      ${renderCopyBlock('FRONT COPY')}
+      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 3.5mm 0; text-align: center; position: relative;">
+        <span style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: #ffffff; padding: 0 10px; font-size: 7.5pt; font-weight: 800; color: #444; letter-spacing: 0.5px;">
+          ✂ CUT HERE (F&B COPY / ACCOUNTS COPY) ✂
+        </span>
+      </div>
+      ${renderCopyBlock('ACCOUNTS COPY')}
+    </div>
+  `;
+
+  sheet.style.display = 'block';
+  sheet.classList.add('print-active');
+  document.body.classList.add('print-sheet-active');
+
+  const cleanup = () => {
+    sheet.classList.remove('print-active');
+    sheet.style.display = 'none';
+    document.body.classList.remove('print-sheet-active');
+    window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 2500);
+    }, 40);
+  });
+}
+

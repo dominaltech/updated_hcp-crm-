@@ -12,7 +12,18 @@ export function formatCheckoutTimeDisplay(dateInput) {
   hours = hours % 12;
   hours = hours ? hours : 12; // 0 converted to 12
   const minsFormatted = minutes < 10 ? '0' + minutes : minutes;
-  return `${hours}:${minsFormatted} ${ampm}`;
+  const timeStr = `${hours}:${minsFormatted} ${ampm}`;
+
+  const now = new Date();
+  const isSameDay = d.getFullYear() === now.getFullYear() &&
+                    d.getMonth() === now.getMonth() &&
+                    d.getDate() === now.getDate();
+  if (!isSameDay) {
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-IN', { month: 'short' });
+    return `${day} ${month}, ${timeStr}`;
+  }
+  return timeStr;
 }
 
 /**

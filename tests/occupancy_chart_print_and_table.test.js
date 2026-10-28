@@ -50,6 +50,8 @@ describe('Occupancy Chart Button, Modal, API, and Print Layout', () => {
     expect(res.body.summary.occupiedCount).toBeGreaterThanOrEqual(0);
     expect(res.body.summary.vacantCount).toBeGreaterThanOrEqual(0);
     expect(res.body.summary.totalPax).toBeGreaterThanOrEqual(0);
+    expect(res.body.summary).toHaveProperty('totalBreakfastPax');
+    expect(res.body.summary).toHaveProperty('totalBreakfastRooms');
   });
 
   it('4. Verifies Breakfast logic: with breakfast -> Yes, without -> No', async () => {
@@ -88,6 +90,7 @@ describe('Occupancy Chart Button, Modal, API, and Print Layout', () => {
     expect(modalContent).toContain('HOTEL CITY PARK');
     expect(modalContent).toContain('ROOM OCCUPANCY CHART');
     expect(modalContent).toContain('ROOM OCCUPANCY :');
+    expect(modalContent).toContain('TOTAL BREAKFAST :');
     expect(modalContent).toContain('TOTAL PAX :');
   });
 });

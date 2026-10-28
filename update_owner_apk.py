@@ -4,7 +4,13 @@ import os
 import shutil
 
 apk_path = r"c:\Aamir Delta\city_backup\HotelCityPark-Owner.apk"
-bundle_src = r"c:\Aamir Delta\city_backup\admin\dist-android\_expo\static\js\android\entry-f8f38f768f8ed7599bb94f4ac91bdbe7.hbc"
+bundle_dir = r"c:\Aamir Delta\city_backup\admin\dist-android\_expo\static\js\android"
+hbc_files = [os.path.join(bundle_dir, f) for f in os.listdir(bundle_dir) if f.endswith(".hbc")]
+if not hbc_files:
+    raise FileNotFoundError("No .hbc bundle file found in " + bundle_dir)
+hbc_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+bundle_src = hbc_files[0]
+print("Using bundle source:", bundle_src)
 temp_apk = r"c:\Aamir Delta\city_backup\temp_owner.apk"
 aligned_apk = r"c:\Aamir Delta\city_backup\aligned_owner.apk"
 
@@ -49,13 +55,17 @@ subprocess.check_call([apksigner, "verify", "--verbose", aligned_apk])
 
 os.replace(aligned_apk, apk_path)
 targets = [
+    r"c:\Aamir Delta\city_backup\HotelCityPark-Admin.apk",
+    r"c:\Aamir Delta\city_backup\public\HotelCityPark-Admin.apk",
     r"c:\Aamir Delta\city_backup\public\HotelCityPark-Owner.apk",
     r"c:\Aamir Delta\city_backup\public\HotelCityPark-Owner-v2.apk",
-    r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Admin.apk",
     r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner.apk",
+    r"c:\Aamir Delta\city_backup\release\public\HotelCityPark-Owner-v2.apk",
     r"c:\Aamir Delta\city_backup\release\dist\HotelCityPark-Owner-v2.apk",
-    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner-v2.apk",
+    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Admin.apk",
     r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner.apk",
+    r"c:\Aamir Delta\city_backup\dist\HotelCityPark-Owner-v2.apk",
     r"c:\Aamir Delta\city_backup\apks\HotelCityPark-Admin.apk",
     r"c:\Aamir Delta\city_backup\apks\HotelCityPark-Owner.apk"
 ]

@@ -15,6 +15,9 @@ export default function RoomCard({
   transferSourceRoom = null,
   isTransferSource = false,
   isDroppable = false,
+  isSameRoomType = false,
+  isDroppableSame = false,
+  isDroppableCross = false,
   isDimmed = false,
   isDropTarget = false,
   onTransferDragStart,
@@ -93,7 +96,9 @@ export default function RoomCard({
         isImminentCheckout ? 'checkout-imminent' : ''
       } ${room.has_overdue_fnb ? 'has-overdue-fnb' : ''} ${isMultiSelected ? 'multi-selected' : ''} ${isGroupHovered ? 'group-linked-hover' : ''} ${
         isTransferSource ? 'transfer-source' : ''
-      } ${isDroppable ? 'transfer-droppable-target' : ''} ${
+      } ${isDroppableSame ? 'transfer-droppable-target' : ''} ${
+        isDroppableCross ? 'transfer-droppable-cross' : ''
+      } ${
         isDropTarget ? 'transfer-droppable-hover' : ''
       } ${isDimmed ? 'transfer-dimmed' : ''}`}
       tabIndex={0}
@@ -179,7 +184,9 @@ export default function RoomCard({
           ? room.status === 'occupied'
             ? `Drag or click Room #${room.room_number} to transfer guest`
             : isDroppable
-            ? `Drop here to transfer to Room #${room.room_number} (${room.room_type})`
+            ? isSameRoomType
+              ? `Drop here for Direct Shift to Room #${room.room_number} (${room.room_type}) - Same Category`
+              : `Drop here to Request Admin Approval for Room #${room.room_number} (${room.room_type}) - Different Category`
             : `Room #${room.room_number}`
           : `Room ${room.room_number}${
               room.status === 'maintenance'
@@ -310,16 +317,24 @@ export default function RoomCard({
               style={{
                 fontSize: '0.62rem',
                 fontWeight: 900,
-                color: isDropTarget ? '#047857' : '#059669',
-                background: isDropTarget ? '#bbf7d0' : '#dcfce7',
+                color: isSameRoomType
+                  ? (isDropTarget ? '#047857' : '#059669')
+                  : (isDropTarget ? '#92400e' : '#b45309'),
+                background: isSameRoomType
+                  ? (isDropTarget ? '#bbf7d0' : '#dcfce7')
+                  : (isDropTarget ? '#fde68a' : '#fef3c7'),
                 padding: '1px 6px',
                 borderRadius: '6px',
-                border: isDropTarget ? '1.5px solid #059669' : '1px solid #86efac',
+                border: isSameRoomType
+                  ? (isDropTarget ? '1.5px solid #059669' : '1px solid #86efac')
+                  : (isDropTarget ? '1.5px solid #d97706' : '1px solid #fcd34d'),
                 marginTop: '1px',
                 whiteSpace: 'nowrap'
               }}
             >
-              {isDropTarget ? '✨ Release' : '🎯 Drop'}
+              {isDropTarget
+                ? (isSameRoomType ? '✨ Direct Shift' : '📱 Request Approval')
+                : (isSameRoomType ? '🟢 Same Type' : '⚡ Cross-Category')}
             </div>
           )}
         </div>

@@ -13,6 +13,7 @@ import CheckinWizardModal from './components/hospitality/CheckinWizard/CheckinWi
 import CheckinSplitReceiptsModal from './components/hospitality/CheckinSplitReceiptsModal';
 import RoomVisitorsModal from './components/hospitality/RoomVisitorsModal';
 import CapacityModal from './components/common/CapacityModal';
+import FnBCashHandoverModal from './components/restaurant/FnBCashHandoverModal';
 import PrintTemplatesContainer from './components/common/PrintTemplatesContainer';
 import {
   printGuestRegistrationA4,
@@ -24,9 +25,10 @@ import {
   printThermalBillSlip
 } from './services/printService';
 import { api } from './services/api';
+import { socketClient } from './services/socketClient';
 
 function AppContent() {
-  const { activePanel, showConfirm, showToast, confirmState, capacityModal } = useApp();
+  const { activePanel, showConfirm, showToast, confirmState, capacityModal, isFnbCashHandoverOpen, setIsFnbCashHandoverOpen, currentUser } = useApp();
   const { rooms, loadRooms, refreshRooms } = useHospitality();
 
   // Active Folio State (when inspecting a room stay)
@@ -51,11 +53,22 @@ function AppContent() {
 
   useEffect(() => {
     if (isAnyModalOpen) {
+      const scrollY = window.scrollY;
+      if (!document.body.dataset.scrollY) {
+        document.body.dataset.scrollY = String(scrollY);
+      }
       document.documentElement.classList.add('modal-open');
       document.body.classList.add('modal-open');
     } else {
+      const savedScrollY = parseInt(document.body.dataset.scrollY || '0', 10);
+      delete document.body.dataset.scrollY;
       document.documentElement.classList.remove('modal-open');
       document.body.classList.remove('modal-open');
+      if (savedScrollY > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+        });
+      }
     }
     return () => {
       document.documentElement.classList.remove('modal-open');
@@ -63,16 +76,38 @@ function AppContent() {
     };
   }, [isAnyModalOpen]);
 
-  // Auto-Print Queue Poller - Solution B: Department-wise Routing
-  // - Hospitality (Front Desk) NEVER triggers KOT or BOT printing popups
-  // - Restaurant screen ONLY triggers Food KOT slips and restaurant pre-bills
-  // - Bar screen ONLY triggers Drink BOT slips and bar pre-bills
+  // Instant WebSocket Print Dispatcher + Quiet Heartbeat Fallback
   useEffect(() => {
-    // Front desk, expenses, and management screens completely ignore kitchen/bar print queues
     if (activePanel !== 'restaurant' && activePanel !== 'bar') {
       return;
     }
 
+    const processSingleJob = async (job) => {
+      if (!job || job.printed) return;
+      try {
+        const jobDept = String(job.data?.department || (job.type === 'kot' ? 'restaurant' : job.type === 'bot' ? 'bar' : '')).toLowerCase();
+        if (jobDept && jobDept !== activePanel) return;
+
+        if (activePanel === 'restaurant' && job.type === 'kot') {
+          printKOTSlip(job.data?.kot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
+        } else if (activePanel === 'bar' && job.type === 'bot') {
+          printBOTSlip(job.data?.bot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
+        } else if (job.type === 'prebill') {
+          printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
+        }
+      } catch (err) {
+        console.error('[AutoPrint] Error processing print job:', job.id, err);
+      } finally {
+        if (job.id) await api.ackPrintJob(job.id).catch(() => {});
+      }
+    };
+
+    // 1. Instant push arrival via WebSocket (<10ms)
+    const unsubWs = socketClient.on('PRINT_JOB', (job) => {
+      processSingleJob(job);
+    });
+
+    // 2. Quiet fallback poller (every 15s instead of 1.5s, no database strain)
     let isProcessing = false;
     const pollPrintQueue = async () => {
       if (isProcessing) return;
@@ -81,33 +116,20 @@ function AppContent() {
         const res = await api.getPendingPrintJobs({ dept: activePanel });
         if (res && res.success && Array.isArray(res.jobs) && res.jobs.length > 0) {
           for (const job of res.jobs) {
-            try {
-              if (activePanel === 'restaurant' && job.type === 'kot') {
-                printKOTSlip(job.data?.kot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
-              } else if (activePanel === 'bar' && job.type === 'bot') {
-                printBOTSlip(job.data?.bot || job.data, job.data?.tableNumber, job.data?.waiterName, job.data?.notes);
-              } else if (job.type === 'prebill') {
-                const jobDept = String(job.data?.department || (activePanel === 'bar' ? 'bar' : 'restaurant')).toLowerCase();
-                if (jobDept === activePanel) {
-                  printPreBillSlip(job.data?.table || { table_number: job.data?.tableNumber }, job.data?.items, job.data?.waiterName, job.data?.department);
-                }
-              }
-            } catch (err) {
-              console.error('[AutoPrint] Error processing print job:', job.id, err);
-            } finally {
-              await api.ackPrintJob(job.id).catch(() => {});
-            }
+            await processSingleJob(job);
           }
         }
       } catch (e) {
-        // Silent catch for background polling
       } finally {
         isProcessing = false;
       }
     };
 
-    const interval = setInterval(pollPrintQueue, 1500);
-    return () => clearInterval(interval);
+    const interval = setInterval(pollPrintQueue, 15000);
+    return () => {
+      unsubWs();
+      clearInterval(interval);
+    };
   }, [activePanel]);
 
   // Handlers for Hospitality Page
@@ -177,7 +199,8 @@ function AppContent() {
       {activePanel === 'hospitality' && (
         activeFolioRoom ? (
           <RoomFolioPage
-            roomId={activeFolioRoom.id}
+            key={activeFolioRoom.room_number || activeFolioRoom.id}
+            roomId={activeFolioRoom.room_number || activeFolioRoom.id}
             initialRoom={activeFolioRoom}
             onBack={() => setActiveFolioRoom(null)}
             onReprintRegForm={handleReprintRegForm}
@@ -256,6 +279,13 @@ function AppContent() {
 
       {/* Capacity Warning Modal */}
       <CapacityModal />
+
+      {/* F&B Cash Handover Statement Modal & 2-Copy A4 Print */}
+      <FnBCashHandoverModal
+        isOpen={isFnbCashHandoverOpen}
+        onClose={() => setIsFnbCashHandoverOpen(false)}
+        currentUser={currentUser}
+      />
     </MainLayout>
   );
 }

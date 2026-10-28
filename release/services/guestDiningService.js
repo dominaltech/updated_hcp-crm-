@@ -2,8 +2,6 @@ const crypto = require('crypto');
 const db = require('../database');
 const notificationService = require('./notificationService');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hlwmsllmqfdxfmqulrat.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
 
 /**
  * Guest Dining & In-Room Ordering Service for Hotel City Park CRM
@@ -32,6 +30,50 @@ function getGuestPortalBaseUrl() {
 
   // Default to official Vercel deployment domain
   return 'https://hcprso.vercel.app';
+}
+
+/**
+ * Retrieve configured restaurant operating and closing hours from system_settings
+ */
+function getRestaurantTimings() {
+  try {
+    const rows = db.prepare("SELECT key, value FROM system_settings WHERE key IN ('restaurant_close_start', 'restaurant_close_end', 'restaurant_order_start', 'restaurant_order_end', 'restaurant_prep_time')").all();
+    const map = {
+      closeStart: '22:55',
+      closeEnd: '08:00',
+      orderStart: '08:00',
+      orderEnd: '21:30',
+      prepTime: '25-45 min'
+    };
+    rows.forEach(r => {
+      if (r.key === 'restaurant_close_start') map.closeStart = r.value;
+      if (r.key === 'restaurant_close_end') map.closeEnd = r.value;
+      if (r.key === 'restaurant_order_start') map.orderStart = r.value;
+      if (r.key === 'restaurant_order_end') map.orderEnd = r.value;
+      if (r.key === 'restaurant_prep_time') map.prepTime = r.value;
+    });
+
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const [sH, sM] = map.closeStart.split(':').map(Number);
+    const [eH, eM] = map.closeEnd.split(':').map(Number);
+    const startMins = sH * 60 + sM;
+    const endMins = eH * 60 + eM;
+    const isClosedNow = startMins > endMins
+      ? (currentMins >= startMins || currentMins < endMins)
+      : (currentMins >= startMins && currentMins < endMins);
+
+    return { ...map, isClosedNow };
+  } catch (_) {
+    return {
+      closeStart: '22:55',
+      closeEnd: '08:00',
+      orderStart: '08:00',
+      orderEnd: '21:30',
+      prepTime: '25-45 min',
+      isClosedNow: false
+    };
+  }
 }
 
 /**
@@ -86,28 +128,10 @@ function generateDiningToken({ bookingId, guestId, guestName, mobile, roomNumber
 
   const whatsappUrl = phoneWithCountry ? `https://api.whatsapp.com/send?phone=${phoneWithCountry}&text=${encodeURIComponent(whatsappText)}` : null;
 
-  // Sync token to Supabase Cloud asynchronously (fail-safe)
+  // Sync token to Firebase Cloud asynchronously (fail-safe)
   try {
-    fetch(`${SUPABASE_URL}/rest/v1/guest_dining_tokens`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({
-        token,
-        booking_id: bookingId,
-        guest_name: guestName.trim(),
-        mobile: cleanMobile,
-        room_numbers: cleanRooms,
-        checkin_time: checkinTime,
-        approx_checkout_time: approxCheckoutTime,
-        status: 'active',
-        created_at: new Date().toISOString()
-      })
-    }).catch(() => null);
+    const firebaseService = require('./firebaseService');
+    firebaseService.syncWaiterDataToCloud(db).catch(() => {});
   } catch (err) {}
 
   return {
@@ -173,7 +197,7 @@ function getGuestSession(token) {
   let orderHistory = [];
   try {
     orderHistory = db.prepare(`
-      SELECT id, order_number, batch_number, items_json, notes, subtotal, tax, grand_total, status, created_at
+      SELECT id, order_number, batch_number, items_json, notes, subtotal, tax, grand_total, status, rejection_reason, cancelled_at, created_at
       FROM guest_inroom_orders
       WHERE token = ?
       ORDER BY batch_number ASC, created_at ASC
@@ -188,6 +212,7 @@ function getGuestSession(token) {
 
   // Check if there are any pending orders waiting for kitchen acceptance
   const hasPendingKitchen = orderHistory.some(o => o.status === 'pending_kitchen');
+  const restaurantTimings = getRestaurantTimings();
 
   return {
     success: true,
@@ -203,7 +228,8 @@ function getGuestSession(token) {
     categories,
     menu: dishes,
     orderHistory,
-    hasPendingKitchen
+    hasPendingKitchen,
+    restaurantTimings
   };
 }
 
@@ -252,7 +278,7 @@ async function submitGuestOrder({ token, items, notes = '', selectedRoom = '' })
     batchNumber = (countRow?.count || 0) + 1;
   } catch (e) {}
 
-  const orderNumber = `RS-${targetRoom}-B${batchNumber}-${Date.now().toString().slice(-4)}`;
+  const orderNumber = `RSCW-${targetRoom}-B${batchNumber}-${Date.now().toString().slice(-4)}`;
 
   // Save to SQLite
   const stmt = db.prepare(`
@@ -279,14 +305,14 @@ async function submitGuestOrder({ token, items, notes = '', selectedRoom = '' })
 
   const orderId = result.lastInsertRowid;
 
-  // Also ensure / update the Room Service table RS-<room> in restaurant_tables so it appears on POS
-  const rsTableNumber = `RS-${targetRoom}`;
+  // Also ensure / update the Room Service table RSCW-<room> in restaurant_tables so it appears on POS
+  const rsTableNumber = `RSCW-${targetRoom}`;
   try {
-    const existingTable = db.prepare('SELECT id, active_cart_json FROM restaurant_tables WHERE table_number = ?').get(rsTableNumber);
+    const existingTable = db.prepare('SELECT id, active_cart_json FROM restaurant_tables WHERE table_number IN (?, ?)').get(rsTableNumber, `RS-${targetRoom}`);
     if (!existingTable) {
       db.prepare(`
         INSERT INTO restaurant_tables (table_number, table_type, status, active_cart_json, waiter_name, special_notes)
-        VALUES (?, 'room_service', 'occupied', ?, 'Guest In-Room', ?)
+        VALUES (?, 'room_service', 'occupied', ?, 'Customer Web Link [RSCW]', ?)
       `).run(rsTableNumber, JSON.stringify(cleanItems), notes || `Guest Order Batch #${batchNumber}`);
     }
   } catch (e) {
@@ -313,33 +339,29 @@ async function submitGuestOrder({ token, items, notes = '', selectedRoom = '' })
     console.warn('[GuestDining] Error dispatching push to Admin APK:', notifErr.message);
   }
 
-  // Sync to Supabase Cloud asynchronously (fail-safe)
+  // Sync to Firebase Cloud asynchronously (fail-safe)
   try {
-    fetch(`${SUPABASE_URL}/rest/v1/guest_inroom_orders`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        id: orderId,
-        order_number: orderNumber,
-        token,
-        booking_id: guest.bookingId,
-        room_numbers: guest.roomNumbers,
-        guest_name: guest.name,
-        guest_phone: guest.mobile,
-        batch_number: batchNumber,
-        items_json: JSON.stringify(cleanItems),
-        notes,
-        subtotal,
-        tax,
-        grand_total: grandTotal,
-        status: 'pending_kitchen',
-        created_at: new Date().toISOString()
-      })
-    }).catch(() => null);
+    const firebaseService = require('./firebaseService');
+    const firstRoom = String(guest.roomNumbers).split(',')[0].trim();
+    firebaseService.pushRoomCharge({
+      room_number: firstRoom,
+      department: 'waiter_kot_order',
+      bill_no: orderNumber,
+      subtotal,
+      gst: tax,
+      grand_total: grandTotal,
+      settled_by: guest.name || 'In-House Guest',
+      items_summary: JSON.stringify({
+        order_type: 'room_service',
+        source: 'guest_inroom_mobile',
+        order_source: 'web_link',
+        customer_name: guest.name || `Room ${guest.roomNumbers}`,
+        token: token || '',
+        notes: (notes || '').trim(),
+        items: cleanItems
+      }),
+      status: 'pending'
+    }).catch(() => {});
   } catch (cloudErr) {}
 
   return {
@@ -369,6 +391,8 @@ function getPendingKitchenOrders() {
       ORDER BY created_at ASC
     `).all();
 
+    const timings = getRestaurantTimings();
+
     return pendingOrders.map(order => {
       let currentItems = [];
       try { currentItems = JSON.parse(order.items_json); } catch (e) { currentItems = []; }
@@ -397,7 +421,9 @@ function getPendingKitchenOrders() {
         items: currentItems,
         previous_items: previousItems,
         new_items: currentItems,
-        has_incremental_items: previousItems.length > 0
+        has_incremental_items: previousItems.length > 0,
+        is_closed_hours: timings.isClosedNow,
+        restaurant_timings: timings
       };
     });
   } catch (err) {
@@ -434,10 +460,10 @@ function acceptKitchenOrder(orderId, acceptedBy = 'Restaurant Counter') {
 
   // Sync to Room Service Table active cart
   const targetRoom = order.room_numbers.split(',')[0].trim();
-  const rsTableNumber = `RS-${targetRoom}`;
+  const rsTableNumber = (order.order_number && String(order.order_number).startsWith('RSCW-')) ? `RSCW-${targetRoom}` : `RS-${targetRoom}`;
 
   try {
-    const existingTable = db.prepare('SELECT id, active_cart_json, printed_cart_json, kot_count FROM restaurant_tables WHERE table_number = ?').get(rsTableNumber);
+    const existingTable = db.prepare('SELECT id, active_cart_json, printed_cart_json, kot_count FROM restaurant_tables WHERE table_number IN (?, ?)').get(rsTableNumber, `RS-${targetRoom}`);
     if (existingTable) {
       let currentCart = [];
       try { currentCart = JSON.parse(existingTable.active_cart_json || '[]'); } catch (e) {}
@@ -450,42 +476,24 @@ function acceptKitchenOrder(orderId, acceptedBy = 'Restaurant Counter') {
 
       db.prepare(`
         UPDATE restaurant_tables 
-        SET active_cart_json = ?, printed_cart_json = ?, kot_count = kot_count + 1, status = 'occupied'
+        SET active_cart_json = ?, printed_cart_json = ?, kot_count = kot_count + 1, status = 'occupied', waiter_name = 'Customer Web Link [RSCW]'
         WHERE id = ?
       `).run(JSON.stringify(updatedCart), JSON.stringify(updatedPrinted), existingTable.id);
     } else {
       db.prepare(`
         INSERT INTO restaurant_tables (table_number, table_type, status, active_cart_json, printed_cart_json, kot_count, waiter_name, special_notes, order_started_at)
-        VALUES (?, 'room_service', 'occupied', ?, ?, 1, 'Room Service (Guest Web)', ?, datetime('now', 'localtime'))
+        VALUES (?, 'room_service', 'occupied', ?, ?, 1, 'Customer Web Link [RSCW]', ?, datetime('now', 'localtime'))
       `).run(rsTableNumber, JSON.stringify(items), JSON.stringify(items), order.notes || `Room ${targetRoom} (${order.guest_name || 'Guest'})`);
     }
 
     // Immediately push updated tables snapshot to Supabase so Waiter APK sees this room service order!
     try {
-      const supabaseService = require('./supabaseService');
-      supabaseService.syncWaiterDataToCloud(db).catch(() => {});
+      const firebaseService = require('./firebaseService');
+      firebaseService.syncWaiterDataToCloud(db).catch(() => {});
     } catch (_) {}
   } catch (e) {
     console.warn('[GuestDining] Notice updating restaurant table:', e.message);
   }
-
-  // Update Supabase Cloud asynchronously (fail-safe)
-  try {
-    fetch(`${SUPABASE_URL}/rest/v1/guest_inroom_orders?id=eq.${orderId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
-        accepted_by: acceptedBy,
-        kot_printed: 1
-      })
-    }).catch(() => null);
-  } catch (cloudErr) {}
 
   // Return KOT print payload: ONLY NEW ITEMS to be printed!
   return {
@@ -499,10 +507,58 @@ function acceptKitchenOrder(orderId, acceptedBy = 'Restaurant Counter') {
       kotNumber: order.batch_number,
       tokenNumber: order.batch_number,
       tableNumber: rsTableNumber,
-      waiterName: 'Room Service (Guest Web)',
+      waiterName: 'Customer Web Link [RSCW]',
       notes: order.notes,
       items: items // Only the new items in this batch!
     }
+  };
+}
+
+/**
+ * Cancel / Reject in-room dining food order from Restaurant POS
+ * Used when order arrives during closing hours or cannot be fulfilled.
+ */
+function cancelKitchenOrder(orderId, reason = 'restaurant_closed', cancelledBy = 'Kitchen Staff') {
+  if (!orderId) throw new Error('Order ID is required');
+
+  const order = db.prepare('SELECT * FROM guest_inroom_orders WHERE id = ?').get(orderId);
+  if (!order) throw new Error('Order not found');
+
+  // Update SQLite
+  db.prepare(`
+    UPDATE guest_inroom_orders 
+    SET status = 'cancelled', rejection_reason = ?, cancelled_at = CURRENT_TIMESTAMP, cancelled_by = ?
+    WHERE id = ?
+  `).run(reason, cancelledBy, orderId);
+
+  // If a transient table RSCW-<room> or RS-<room> exists without other items, clean it up
+  const targetRoom = String(order.room_numbers || '').split(',')[0].trim();
+  try {
+    const tRows = db.prepare("SELECT id, active_cart_json FROM restaurant_tables WHERE table_number IN (?, ?)").all(`RSCW-${targetRoom}`, `RS-${targetRoom}`);
+    tRows.forEach(t => {
+      let cart = [];
+      try { cart = JSON.parse(t.active_cart_json || '[]'); } catch (_) {}
+      if (cart.length === 0 || cart.length <= (Array.isArray(order.items_json) ? order.items_json.length : 5)) {
+        db.prepare("DELETE FROM restaurant_tables WHERE id = ?").run(t.id);
+      }
+    });
+  } catch (_) {}
+
+  // Sync cancellation to Firebase Cloud asynchronously
+  try {
+    const firebaseService = require('./firebaseService');
+    if (typeof firebaseService.deleteCloudRoomCharge === 'function') {
+      firebaseService.deleteCloudRoomCharge(order.order_number).catch(() => {});
+    }
+  } catch (_) {}
+
+  return {
+    success: true,
+    orderId,
+    orderNumber: order.order_number,
+    roomNumber: targetRoom,
+    status: 'cancelled',
+    rejection_reason: reason
   };
 }
 
@@ -514,16 +570,9 @@ function expireTokensForBooking(bookingId) {
   try {
     db.prepare("UPDATE guest_dining_tokens SET status = 'expired' WHERE booking_id = ?").run(bookingId);
     
-    // Cloud sync
-    fetch(`${SUPABASE_URL}/rest/v1/guest_dining_tokens?booking_id=eq.${bookingId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ status: 'expired' })
-    }).catch(() => null);
+    // Cloud sync via Firebase
+    const firebaseService = require('./firebaseService');
+    firebaseService.syncWaiterDataToCloud(db).catch(() => {});
   } catch (err) {
     console.warn('[GuestDining] Error expiring tokens for booking:', err.message);
   }
@@ -615,16 +664,9 @@ function deleteDiningToken(bookingId) {
   try {
     db.prepare("UPDATE guest_dining_tokens SET status = 'expired' WHERE booking_id = ?").run(bookingId);
     
-    // Cloud sync
-    fetch(`${SUPABASE_URL}/rest/v1/guest_dining_tokens?booking_id=eq.${bookingId}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ status: 'expired' })
-    }).catch(() => null);
+    // Cloud sync via Firebase
+    const firebaseService = require('./firebaseService');
+    firebaseService.syncWaiterDataToCloud(db).catch(() => {});
 
     return { success: true, message: 'Dining link deleted/revoked successfully' };
   } catch (err) {
@@ -635,6 +677,7 @@ function deleteDiningToken(bookingId) {
 
 module.exports = {
   getGuestPortalBaseUrl,
+  getRestaurantTimings,
   generateDiningToken,
   getActiveDiningToken,
   deleteDiningToken,
@@ -642,6 +685,7 @@ module.exports = {
   submitGuestOrder,
   getPendingKitchenOrders,
   acceptKitchenOrder,
+  cancelKitchenOrder,
   expireTokensForBooking,
   getRoomPendingOrdersStatus
 };

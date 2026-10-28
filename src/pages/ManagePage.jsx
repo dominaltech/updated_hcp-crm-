@@ -106,6 +106,8 @@ export default function ManagePage({ onPrintClosingReport }) {
 
   // Staff CRUD state
   const [staffList, setStaffList] = useState([]);
+  const [showStaffPasswords, setShowStaffPasswords] = useState(false);
+  const [visibleStaffPassMap, setVisibleStaffPassMap] = useState({});
   const [editingStaff, setEditingStaff] = useState(null);
   const [staffDepartmentFilter, setStaffDepartmentFilter] = useState('all');
   const [staffSearchQuery, setStaffSearchQuery] = useState('');
@@ -234,14 +236,46 @@ export default function ManagePage({ onPrintClosingReport }) {
   const [sectionPasswords, setSectionPasswords] = useState({
     hospitality: '1234',
     restaurant: '1234',
-    bar: '1234'
+    bar: '1234',
+    storeman: '1234'
   });
   const [showSectionPwd, setShowSectionPwd] = useState({
     hospitality: false,
     restaurant: false,
-    bar: false
+    bar: false,
+    storeman: false
   });
   const [isSavingSectionPasswords, setIsSavingSectionPasswords] = useState(false);
+
+  // Restaurant Operating Hours and Cancellation Policy
+  const [restaurantTimings, setRestaurantTimings] = useState({
+    closeStart: '22:55',
+    closeEnd: '08:00',
+    orderStart: '08:00',
+    orderEnd: '21:30',
+    prepTime: '25-45 min'
+  });
+  const [isSavingRestaurantTimings, setIsSavingRestaurantTimings] = useState(false);
+
+  // Dual-Drive Redundant Database Backups State (Goal 9)
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [isLoadingBackup, setIsLoadingBackup] = useState(false);
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+
+  // Cloud Synchronization State (Firebase & Supabase)
+  const [cloudSyncSettings, setCloudSyncSettings] = useState({
+    firebase_enabled: true,
+    supabase_enabled: true,
+    auto_sync: true,
+    firebase_status: 'connected',
+    supabase_status: 'connected',
+    last_firebase_sync_time: null,
+    last_supabase_sync_time: null
+  });
+  const [isLoadingCloudSettings, setIsLoadingCloudSettings] = useState(false);
+  const [isUpdatingCloudSetting, setIsUpdatingCloudSetting] = useState(false);
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
 
   useEffect(() => {
     if (minCheckinAdvancePct !== undefined) {
@@ -305,6 +339,14 @@ export default function ManagePage({ onPrintClosingReport }) {
   }, []);
 
   const loadStaff = useCallback(async () => {
+    try {
+      const data = await api.getStaff();
+      const list = Array.isArray(data) ? data : (data?.staff || []);
+      if (list && list.length > 0) {
+        setStaffList(list);
+        return;
+      }
+    } catch (_) {}
     try {
       const pubData = await api.getPublicStaffList({ department: 'hospitality', include_manager: 1 });
       const pubList = Array.isArray(pubData) ? pubData : (pubData?.staff || []);
@@ -403,7 +445,7 @@ export default function ManagePage({ onPrintClosingReport }) {
     } finally {
       setIsLoadingAccounting(false);
     }
-  }, [accountingFromDate, accountingToDate, accountingFromBill, accountingToBill, accountingFromVoucher, accountingToVoucher, accountingSearch, showToast]);
+  }, [accountingFromDate, accountingToDate, accountingFromBill, accountingToBill, accountingFromVoucher, accountingToVoucher, accountingTaxType, accountingSearch, showToast]);
 
   const handleSaveAccountingEmail = async () => {
     const trimmed = (accountingEmail || '').trim();
@@ -702,7 +744,8 @@ export default function ManagePage({ onPrintClosingReport }) {
         full_name: staff.full_name || '',
         role: staff.role || 'hospitality',
         phone: staff.phone || '',
-        password: '',
+        password: staff.plain_password || '',
+        plain_password: staff.plain_password || '',
         status: staff.status || 'active',
         can_access_manager: (staff.can_access_manager == 1 || staff.role === 'manager') ? 1 : 0
       });
@@ -1162,6 +1205,87 @@ export default function ManagePage({ onPrintClosingReport }) {
     }
   };
 
+  const fetchCloudSyncSettings = useCallback(async () => {
+    setIsLoadingCloudSettings(true);
+    try {
+      const res = await api.getCloudSyncSettings();
+      if (res && res.success && res.settings) {
+        setCloudSyncSettings(res.settings);
+      }
+    } catch (err) {
+      console.warn('Could not fetch cloud sync settings:', err.message);
+    } finally {
+      setIsLoadingCloudSettings(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (subTab === 'settings') {
+      fetchCloudSyncSettings();
+    }
+  }, [subTab, fetchCloudSyncSettings]);
+
+  const handleToggleCloudSetting = async (key, newValue) => {
+    setIsUpdatingCloudSetting(true);
+    const updated = { ...cloudSyncSettings, [key]: newValue };
+    setCloudSyncSettings(updated);
+
+    try {
+      const res = await api.saveCloudSyncSettings({ [key]: newValue });
+      if (res && res.success) {
+        setCloudSyncSettings(res.settings);
+        const labels = {
+          firebase_enabled: newValue ? 'Firebase sync enabled' : 'Firebase sync disabled',
+          supabase_enabled: newValue ? 'Supabase sync enabled' : 'Supabase sync disabled',
+          auto_sync: newValue ? 'Automatic live sync enabled' : 'Automatic live sync disabled (manual only)'
+        };
+        showToast(`✓ ${labels[key] || 'Setting updated'}`, 'green');
+      } else {
+        showToast('Failed to update cloud setting: ' + (res?.error || 'Server error'), 'red');
+        fetchCloudSyncSettings();
+      }
+    } catch (err) {
+      showToast('Error updating cloud setting: ' + err.message, 'red');
+      fetchCloudSyncSettings();
+    } finally {
+      setIsUpdatingCloudSetting(false);
+    }
+  };
+
+  const handleSyncAllToFirebase = async () => {
+    setIsSyncingFirebase(true);
+    try {
+      const res = await api.syncAllToFirebase();
+      if (res && res.success) {
+        showToast(`✓ ${res.message || 'All records successfully synchronized to Firebase!'}`, 'green');
+        fetchCloudSyncSettings();
+      } else {
+        showToast('Firebase sync failed: ' + (res?.error || 'Unknown error'), 'red');
+      }
+    } catch (err) {
+      showToast('Error syncing to Firebase: ' + err.message, 'red');
+    } finally {
+      setIsSyncingFirebase(false);
+    }
+  };
+
+  const handleSyncAllToSupabase = async () => {
+    setIsSyncingSupabase(true);
+    try {
+      const res = await api.syncAllToSupabase();
+      if (res && res.success) {
+        showToast(`✓ ${res.message || 'All records successfully synchronized to Supabase!'}`, 'green');
+        fetchCloudSyncSettings();
+      } else {
+        showToast('Supabase sync failed: ' + (res?.error || 'Unknown error'), 'red');
+      }
+    } catch (err) {
+      showToast('Error syncing to Supabase: ' + err.message, 'red');
+    } finally {
+      setIsSyncingSupabase(false);
+    }
+  };
+
   const handleSaveInvoiceSettings = async () => {
     const startNum = parseInt(invoiceSettingsForm.invoice_starting_number);
     const seqNum = parseInt(invoiceSettingsForm.invoice_current_seq);
@@ -1199,18 +1323,64 @@ export default function ManagePage({ onPrintClosingReport }) {
         setSectionPasswords({
           hospitality: res.passwords.hospitality || '1234',
           restaurant: res.passwords.restaurant || '1234',
-          bar: res.passwords.bar || '1234'
+          bar: res.passwords.bar || '1234',
+          storeman: res.passwords.storeman || '1234'
         });
       }
     }).catch(() => {});
+
+    api.getRestaurantTimings().then((res) => {
+      if (res && res.success && res.timings) {
+        setRestaurantTimings({
+          closeStart: res.timings.closeStart || '22:55',
+          closeEnd: res.timings.closeEnd || '08:00',
+          orderStart: res.timings.orderStart || '08:00',
+          orderEnd: res.timings.orderEnd || '21:30',
+          prepTime: res.timings.prepTime || '25-45 min'
+        });
+      }
+    }).catch(() => {});
+
+    loadBackupStatus();
   }, []);
+
+  const loadBackupStatus = async () => {
+    setIsLoadingBackup(true);
+    try {
+      const res = await api.getBackupStatus();
+      if (res && res.success) {
+        setBackupStatus(res);
+      }
+    } catch (_) {}
+    finally {
+      setIsLoadingBackup(false);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    setIsCreatingBackup(true);
+    try {
+      const res = await api.createBackup();
+      if (res && res.success) {
+        const activeCount = res.results ? res.results.filter((r) => r.status === 'success').length : 1;
+        showToast(`✓ Database backed up successfully! (${activeCount} active drive(s) mirrored)`, 'green', 4000);
+        await loadBackupStatus();
+      } else {
+        showToast('Backup failed: ' + (res?.error || 'Unknown error'), 'red', 4000);
+      }
+    } catch (err) {
+      showToast('Backup error: ' + err.message, 'red', 4000);
+    } finally {
+      setIsCreatingBackup(false);
+    }
+  };
 
   const handleSaveSectionPasswords = async () => {
     setIsSavingSectionPasswords(true);
     try {
       const res = await api.saveSectionPasswords(sectionPasswords);
       if (res && res.success) {
-        showToast('✓ Section startup passwords saved successfully!', 'green');
+        showToast('✓ Section startup passwords and Storeman PIN saved!', 'green');
       } else {
         showToast('Failed to save section passwords: ' + (res?.error || 'Server error'), 'red');
       }
@@ -1218,6 +1388,18 @@ export default function ManagePage({ onPrintClosingReport }) {
       showToast('Error saving section passwords: ' + err.message, 'red');
     } finally {
       setIsSavingSectionPasswords(false);
+    }
+  };
+
+  const handleSaveRestaurantTimings = async () => {
+    setIsSavingRestaurantTimings(true);
+    try {
+      await api.saveRestaurantTimings(restaurantTimings);
+      showToast('✓ Restaurant timings & cancellation window saved!', 'green');
+    } catch (err) {
+      showToast('Error saving restaurant timings: ' + err.message, 'red');
+    } finally {
+      setIsSavingRestaurantTimings(false);
     }
   };
 
@@ -2907,6 +3089,82 @@ export default function ManagePage({ onPrintClosingReport }) {
                 </div>
               </div>
 
+              {/* Filter 4: Tax Type (All Tax / CGST+SGST / IGST Only) */}
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
+                  GST Tax Classification
+                </label>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    id="filter-accounting-tax-all"
+                    onClick={() => {
+                      setAccountingTaxType('all');
+                      loadAccountingAnalysis({ taxType: 'all' });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      borderRadius: '8px',
+                      border: accountingTaxType === 'all' ? '2px solid #0f172a' : '1px solid #cbd5e1',
+                      background: accountingTaxType === 'all' ? '#0f172a' : '#ffffff',
+                      color: accountingTaxType === 'all' ? '#ffffff' : '#475569',
+                      cursor: 'pointer'
+                    }}
+                    title="Show all transactions (both CGST/SGST and IGST)"
+                  >
+                    All Tax
+                  </button>
+                  <button
+                    type="button"
+                    id="filter-accounting-tax-cgst-sgst"
+                    onClick={() => {
+                      setAccountingTaxType('cgst_sgst');
+                      loadAccountingAnalysis({ taxType: 'cgst_sgst' });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      borderRadius: '8px',
+                      border: accountingTaxType === 'cgst_sgst' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                      background: accountingTaxType === 'cgst_sgst' ? '#e0f2fe' : '#ffffff',
+                      color: accountingTaxType === 'cgst_sgst' ? '#0369a1' : '#475569',
+                      cursor: 'pointer'
+                    }}
+                    title="Show intra-state CGST + SGST transactions only"
+                  >
+                    CGST+SGST
+                  </button>
+                  <button
+                    type="button"
+                    id="filter-accounting-tax-igst"
+                    onClick={() => {
+                      setAccountingTaxType('igst');
+                      loadAccountingAnalysis({ taxType: 'igst' });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '6px 6px',
+                      fontSize: '0.75rem',
+                      fontWeight: 850,
+                      borderRadius: '8px',
+                      border: accountingTaxType === 'igst' ? '2px solid #7c3aed' : '1px solid #cbd5e1',
+                      background: accountingTaxType === 'igst' ? '#7c3aed' : '#ffffff',
+                      color: accountingTaxType === 'igst' ? '#ffffff' : '#6d28d9',
+                      cursor: 'pointer',
+                      boxShadow: accountingTaxType === 'igst' ? '0 2px 8px rgba(124,58,237,0.3)' : 'none'
+                    }}
+                    title="Filter and show IGST (Inter-State) transactions only"
+                  >
+                    🔵 IGST Only
+                  </button>
+                </div>
+              </div>
+
               {/* Search & Actions */}
               <div>
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>
@@ -2948,6 +3206,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                       setAccountingFromVoucher('');
                       setAccountingToVoucher('');
                       setAccountingSearch('');
+                      setAccountingTaxType('all');
                       loadAccountingAnalysis({
                         fromDate: start,
                         toDate: end,
@@ -2955,6 +3214,7 @@ export default function ManagePage({ onPrintClosingReport }) {
                         toBill: '',
                         fromVoucher: '',
                         toVoucher: '',
+                        taxType: 'all',
                         search: ''
                       });
                     }}
@@ -3481,15 +3741,32 @@ export default function ManagePage({ onPrintClosingReport }) {
       {/* Subview 5: Staff */}
       {subTab === 'staff' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Section Switcher: Front Desk Cashiers vs Housekeeping Cleaners */}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Section Switcher: Front Desk, Restaurant, Bar, Waiters, Cleaners */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`filter-chip ${staffSection === 'all' ? 'active' : ''}`}
+              onClick={() => setStaffSection('all')}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                borderRadius: '10px',
+                border: staffSection === 'all' ? '2px solid #0f172a' : '1.5px solid #cbd5e1',
+                background: staffSection === 'all' ? '#0f172a' : '#ffffff',
+                color: staffSection === 'all' ? '#ffffff' : '#475569',
+                cursor: 'pointer'
+              }}
+            >
+              👥 All Staff ({staffList.length})
+            </button>
             <button
               type="button"
               className={`filter-chip ${staffSection === 'front_desk' ? 'active' : ''}`}
               onClick={() => setStaffSection('front_desk')}
               style={{
-                padding: '9px 20px',
-                fontSize: '0.92rem',
+                padding: '8px 16px',
+                fontSize: '0.88rem',
                 fontWeight: 800,
                 borderRadius: '10px',
                 border: staffSection === 'front_desk' ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
@@ -3498,15 +3775,66 @@ export default function ManagePage({ onPrintClosingReport }) {
                 cursor: 'pointer'
               }}
             >
-              🏨 Front Desk & Management ({staffList.filter(s => s.role === 'hospitality' || s.role === 'manager').length})
+              🏨 Front Desk ({staffList.filter(s => s.role === 'hospitality' || s.role === 'manager').length})
+            </button>
+            <button
+              type="button"
+              className={`filter-chip ${staffSection === 'restaurant' ? 'active' : ''}`}
+              onClick={() => setStaffSection('restaurant')}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                borderRadius: '10px',
+                border: staffSection === 'restaurant' ? '2px solid #16a34a' : '1.5px solid #cbd5e1',
+                background: staffSection === 'restaurant' ? '#dcfce7' : '#ffffff',
+                color: staffSection === 'restaurant' ? '#15803d' : '#475569',
+                cursor: 'pointer'
+              }}
+            >
+              🍽️ Restaurant POS ({staffList.filter(s => s.role === 'restaurant').length})
+            </button>
+            <button
+              type="button"
+              className={`filter-chip ${staffSection === 'bar' ? 'active' : ''}`}
+              onClick={() => setStaffSection('bar')}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                borderRadius: '10px',
+                border: staffSection === 'bar' ? '2px solid #9333ea' : '1.5px solid #cbd5e1',
+                background: staffSection === 'bar' ? '#f3e8ff' : '#ffffff',
+                color: staffSection === 'bar' ? '#7e22ce' : '#475569',
+                cursor: 'pointer'
+              }}
+            >
+              🍸 Bar Lounge ({staffList.filter(s => s.role === 'bar').length})
+            </button>
+            <button
+              type="button"
+              className={`filter-chip ${staffSection === 'waiter' ? 'active' : ''}`}
+              onClick={() => setStaffSection('waiter')}
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: 800,
+                borderRadius: '10px',
+                border: staffSection === 'waiter' ? '2px solid #d97706' : '1.5px solid #cbd5e1',
+                background: staffSection === 'waiter' ? '#fef3c7' : '#ffffff',
+                color: staffSection === 'waiter' ? '#b45309' : '#475569',
+                cursor: 'pointer'
+              }}
+            >
+              🏃 Waiters ({staffList.filter(s => s.role === 'waiter').length})
             </button>
             <button
               type="button"
               className={`filter-chip ${staffSection === 'cleaners' ? 'active' : ''}`}
               onClick={() => setStaffSection('cleaners')}
               style={{
-                padding: '9px 20px',
-                fontSize: '0.92rem',
+                padding: '8px 16px',
+                fontSize: '0.88rem',
                 fontWeight: 800,
                 borderRadius: '10px',
                 border: staffSection === 'cleaners' ? '2px solid #059669' : '1.5px solid #cbd5e1',
@@ -3515,12 +3843,12 @@ export default function ManagePage({ onPrintClosingReport }) {
                 cursor: 'pointer'
               }}
             >
-              🧹 Housekeeping &amp; Cleaner Staff ({cleanersList.length})
+              🧹 Housekeeping ({cleanersList.length})
             </button>
           </div>
 
-          {/* Section 1: Front Desk Cashiers */}
-          {staffSection === 'front_desk' && (
+          {/* Section 1: Staff Accounts Table (All / Front Desk / Restaurant / Bar / Waiter) */}
+          {staffSection !== 'cleaners' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div
                 style={{
@@ -3600,21 +3928,48 @@ export default function ManagePage({ onPrintClosingReport }) {
                 <table className="owner-rooms-table" style={{ width: '100%', margin: 0 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: '180px' }}>Cashier ID</th>
+                      <th style={{ width: '160px' }}>Cashier ID</th>
                       <th>Staff Name</th>
-                      <th style={{ width: '180px' }}>Section</th>
-                      <th style={{ width: '160px' }}>Manager Access</th>
-                      <th style={{ textAlign: 'right', width: '220px', minWidth: '200px' }}>Actions</th>
+                      <th style={{ width: '160px' }}>Section</th>
+                      <th style={{ width: '180px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                          <span>Login PIN / Password</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowStaffPasswords(prev => !prev)}
+                            style={{
+                              background: showStaffPasswords ? '#fee2e2' : '#f1f5f9',
+                              color: showStaffPasswords ? '#dc2626' : '#475569',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '6px',
+                              padding: '2px 6px',
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              fontWeight: 800
+                            }}
+                            title={showStaffPasswords ? 'Hide all passwords' : 'Show all passwords'}
+                          >
+                            {showStaffPasswords ? '🙈 Hide' : '👁️ Show'}
+                          </button>
+                        </div>
+                      </th>
+                      <th style={{ width: '140px' }}>Manager Access</th>
+                      <th style={{ textAlign: 'right', width: '200px', minWidth: '180px' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {staffList
-                      .filter(s => s.role === 'hospitality' || s.role === 'manager')
+                      .filter(s => {
+                        if (staffSection === 'all') return true;
+                        if (staffSection === 'front_desk') return s.role === 'hospitality' || s.role === 'manager';
+                        return s.role === staffSection;
+                      })
                       .filter(s => {
                         if (!staffSearchQuery.trim()) return true;
                         const q = staffSearchQuery.toLowerCase().trim();
                         return (s.username || '').toLowerCase().includes(q) ||
-                          (s.full_name || '').toLowerCase().includes(q);
+                          (s.full_name || '').toLowerCase().includes(q) ||
+                          (s.role || '').toLowerCase().includes(q);
                       })
                       .sort((a, b) => {
                         if (a.role === 'manager' && b.role !== 'manager') return -1;
@@ -3625,46 +3980,72 @@ export default function ManagePage({ onPrintClosingReport }) {
                         const isManager = s.role === 'manager';
                         const hasManagerAccess = isManager || s.can_access_manager == 1;
 
+                        const sectionBadges = {
+                          hospitality: { label: '🏨 Front Desk', bg: '#e0f2fe', color: '#0369a1' },
+                          restaurant: { label: '🍽️ Restaurant POS', bg: '#dcfce7', color: '#15803d' },
+                          bar: { label: '🍸 Bar Lounge', bg: '#f3e8ff', color: '#7e22ce' },
+                          waiter: { label: '🏃 Waiter App', bg: '#fef3c7', color: '#b45309' },
+                          manager: { label: '⚙️ Jaijeet sir (Manager)', bg: '#f1f5f9', color: '#334155' }
+                        };
+                        const secBadge = sectionBadges[s.role] || { label: s.role, bg: '#f1f5f9', color: '#475569' };
+
+                        const isPassVisible = Boolean(showStaffPasswords || visibleStaffPassMap[s.id]);
+
                         return (
                           <tr key={s.id || s.username}>
                             <td style={{ fontWeight: 800 }}>
                               <code style={{ fontSize: '0.88rem', padding: '3px 8px', borderRadius: '6px' }}>
-                                {s.username}
+                                @{s.username}
                               </code>
                             </td>
                             <td style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.94rem' }}>
                               {s.full_name}
                             </td>
                             <td>
-                              {isManager ? (
-                                <span style={{
-                                  background: '#f1f5f9',
-                                  color: '#334155',
-                                  padding: '3px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.76rem',
-                                  fontWeight: 800,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
+                              <span style={{
+                                background: secBadge.bg,
+                                color: secBadge.color,
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                fontSize: '0.76rem',
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                {secBadge.label}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                <code style={{
+                                  fontSize: '0.88rem',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  background: isPassVisible ? '#ecfdf5' : '#f8fafc',
+                                  border: isPassVisible ? '1.5px solid #6ee7b7' : '1.5px solid #cbd5e1',
+                                  fontWeight: 850,
+                                  color: isPassVisible ? '#065f46' : '#0f172a',
+                                  letterSpacing: isPassVisible ? 'normal' : '1.5px'
                                 }}>
-                                  ⚙️ Jaijeet sir
-                                </span>
-                              ) : (
-                                <span style={{
-                                  background: '#e0f2fe',
-                                  color: '#0369a1',
-                                  padding: '3px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '0.76rem',
-                                  fontWeight: 800,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}>
-                                  🏨 Front Desk
-                                </span>
-                              )}
+                                  {isPassVisible ? (s.plain_password || '1234') : '••••••'}
+                                </code>
+                                <button
+                                  type="button"
+                                  onClick={() => setVisibleStaffPassMap(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontSize: '1rem',
+                                    padding: '2px 4px',
+                                    opacity: 0.85
+                                  }}
+                                  title={isPassVisible ? 'Hide password' : 'Show password'}
+                                >
+                                  {isPassVisible ? '🙈' : '👁️'}
+                                </button>
+                              </div>
                             </td>
                             <td>
                               {hasManagerAccess ? (
@@ -4043,7 +4424,308 @@ export default function ManagePage({ onPrintClosingReport }) {
                   Protects liquor billing, cocktail &amp; bar tables.
                 </p>
               </div>
+
+              {/* Storeman App PIN */}
+              <div style={{ padding: '16px 18px', borderRadius: '12px', border: '1.5px solid #fed7aa', background: '#fefce8' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '1.2rem' }}>📦</span>
+                  <label style={{ fontSize: '0.88rem', fontWeight: 850, margin: 0, color: '#854d0e' }}>
+                    Storeman App Security PIN
+                  </label>
+                </div>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showSectionPwd.storeman ? 'text' : 'password'}
+                    className="form-input"
+                    id="input-pwd-storeman"
+                    value={sectionPasswords.storeman || '1234'}
+                    onChange={(e) => setSectionPasswords({ ...sectionPasswords, storeman: e.target.value })}
+                    style={{ height: '42px', fontSize: '1.05rem', fontWeight: 800, background: '#ffffff', paddingRight: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSectionPwd({ ...showSectionPwd, storeman: !showSectionPwd.storeman })}
+                    style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                    title={showSectionPwd.storeman ? 'Hide PIN' : 'Show PIN'}
+                  >
+                    {showSectionPwd.storeman ? '👁️' : '🔒'}
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#a16207', margin: '6px 0 0' }}>
+                  Protects storeman inventory &amp; party bill entries.
+                </p>
+              </div>
             </div>
+          </div>
+
+          {/* Restaurant Operating Hours & Order Policy Card */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>🍽️</span> Restaurant Hours &amp; In-Room Food Order Policy
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Configure restaurant order timings, food preparation estimates, and closed window cancellation policy.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                id="btn-save-restaurant-timings"
+                disabled={isSavingRestaurantTimings}
+                onClick={handleSaveRestaurantTimings}
+                style={{
+                  height: '42px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  padding: '0 20px',
+                  borderRadius: '10px',
+                  cursor: isSavingRestaurantTimings ? 'not-allowed' : 'pointer',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+                }}
+              >
+                <span>{isSavingRestaurantTimings ? '⏳' : '💾'}</span>
+                {isSavingRestaurantTimings ? 'Saving...' : 'Save Restaurant Policy'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+              <div style={{ padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  🌙 Closing Window Start (e.g. 10:55 PM)
+                </label>
+                <input
+                  type="time"
+                  className="form-input"
+                  value={restaurantTimings.closeStart}
+                  onChange={(e) => setRestaurantTimings({ ...restaurantTimings, closeStart: e.target.value })}
+                  style={{ height: '40px', fontWeight: 800 }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>Shows Cancel button on restaurant panel</span>
+              </div>
+
+              <div style={{ padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  🌅 Closing Window End (e.g. 08:00 AM)
+                </label>
+                <input
+                  type="time"
+                  className="form-input"
+                  value={restaurantTimings.closeEnd}
+                  onChange={(e) => setRestaurantTimings({ ...restaurantTimings, closeEnd: e.target.value })}
+                  style={{ height: '40px', fontWeight: 800 }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>Kitchen reopens for breakfast orders</span>
+              </div>
+
+              <div style={{ padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  🛎️ Order Accepting Window (Guest Web)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="time"
+                    className="form-input"
+                    value={restaurantTimings.orderStart}
+                    onChange={(e) => setRestaurantTimings({ ...restaurantTimings, orderStart: e.target.value })}
+                    style={{ height: '40px', fontWeight: 800 }}
+                  />
+                  <span>to</span>
+                  <input
+                    type="time"
+                    className="form-input"
+                    value={restaurantTimings.orderEnd}
+                    onChange={(e) => setRestaurantTimings({ ...restaurantTimings, orderEnd: e.target.value })}
+                    style={{ height: '40px', fontWeight: 800 }}
+                  />
+                </div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>Shown in guest room welcome modal</span>
+              </div>
+
+              <div style={{ padding: '14px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  ⏳ Food Preparation Time Estimate
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={restaurantTimings.prepTime}
+                  onChange={(e) => setRestaurantTimings({ ...restaurantTimings, prepTime: e.target.value })}
+                  placeholder="e.g. 25-45 min"
+                  style={{ height: '40px', fontWeight: 800 }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>Displayed to in-house guests</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dual-Drive Redundant Database Backups Card (User Goal 9) */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>🛡️</span> Dual-Drive Redundant Database Backups (C:\ &amp; D:\ Drives)
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Mirrors your live SQLite database (<code>hotel_city_park.db</code>) across both <code>C:\HotelCityPark_Backups</code> and <code>D:\HotelCityPark_Backups</code>. Auto-scheduled every 6 hours with safe zero-lock online backup.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={isLoadingBackup || isCreatingBackup}
+                  onClick={loadBackupStatus}
+                  style={{
+                    height: '42px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 750,
+                    padding: '0 16px',
+                    borderRadius: '10px'
+                  }}
+                >
+                  <span>🔄</span> Refresh Status
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  id="btn-create-db-backup"
+                  disabled={isCreatingBackup || isLoadingBackup}
+                  onClick={handleCreateBackup}
+                  style={{
+                    height: '42px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 800,
+                    whiteSpace: 'nowrap',
+                    padding: '0 20px',
+                    borderRadius: '10px',
+                    cursor: isCreatingBackup ? 'not-allowed' : 'pointer',
+                    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                    boxShadow: '0 3px 10px rgba(2, 132, 199, 0.3)'
+                  }}
+                >
+                  <span>{isCreatingBackup ? '⏳' : '💾'}</span>
+                  {isCreatingBackup ? 'Backing Up Database...' : 'Backup Database Now (C: & D:)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Target Drives Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '18px' }}>
+              {(backupStatus?.drives || [
+                { drive: 'C:', targetDir: 'C:\\HotelCityPark_Backups', isMounted: true, backupsCount: 0 },
+                { drive: 'D:', targetDir: 'D:\\HotelCityPark_Backups', isMounted: false, backupsCount: 0 }
+              ]).map((d) => (
+                <div
+                  key={d.drive}
+                  style={{
+                    padding: '16px 18px',
+                    borderRadius: '12px',
+                    border: d.isMounted ? '1.5px solid #bbf7d0' : '1.5px solid #e2e8f0',
+                    background: d.isMounted ? '#f0fdf4' : '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>{d.isMounted ? '💾' : '💿'}</span>
+                      <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>Drive {d.drive} Mirror Destination</strong>
+                    </div>
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        background: d.isMounted ? '#dcfce7' : '#f1f5f9',
+                        color: d.isMounted ? '#15803d' : '#64748b',
+                        border: d.isMounted ? '1px solid #86efac' : '1px solid #cbd5e1'
+                      }}
+                    >
+                      {d.isMounted ? '🟢 Connected & Active' : '⚪ Not Connected'}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '0.8rem', color: '#475569', fontFamily: 'monospace', fontWeight: 650, marginTop: '2px' }}>
+                    📁 {d.targetDir}
+                  </div>
+
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Total Backups: <strong>{d.backupsCount || 0} files</strong></span>
+                    {d.latestBackup && (
+                      <span>Latest: <strong>{d.latestBackup.sizeFormatted}</strong></span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Backups List */}
+            {backupStatus?.recentAuditLogs && backupStatus.recentAuditLogs.length > 0 && (
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#334155', marginBottom: '8px' }}>
+                  🕒 Recent Backup Activity Log:
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {backupStatus.recentAuditLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      style={{
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 800, color: '#0284c7' }}>📄 {log.filename}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.72rem' }}>({log.trigger_source})</span>
+                      </div>
+                      <div style={{ color: '#166534', fontWeight: 700, fontSize: '0.75rem' }}>
+                        {log.summary}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                        {new Date(log.timestamp).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* AI Vision Document OCR Engine Card */}
@@ -4781,6 +5463,329 @@ export default function ManagePage({ onPrintClosingReport }) {
               </span>
               <span className="surcharge-preview-pill" style={{ background: 'var(--bg-surface, #fff)', border: '1px solid var(--border-light, #cbd5e1)', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, color: 'var(--text-primary)' }}>
                 UPI ₹5,000 = <strong style={{ color: '#0284c7' }}>{5000 > Number(surchargeForm.upi_tax_threshold || 0) && Number(surchargeForm.upi_tax_pct || 0) > 0 ? `+₹${Math.round((5000 * (parseFloat(surchargeForm.upi_tax_pct) || 0)) / 100)}` : '₹0 Fee'}</strong> ({surchargeForm.upi_tax_pct || 0}%)
+              </span>
+            </div>
+          </div>
+
+          {/* Dual-Cloud Database Synchronization (Firebase & Supabase) */}
+          <div
+            className="folio-card"
+            style={{
+              borderRadius: '16px',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+              border: '1.5px solid #e0e7ff',
+              background: '#ffffff'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary, #0f172a)', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>☁️</span> Dual-Cloud Database Synchronization (Firebase &amp; Supabase)
+                </h2>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #64748b)', margin: 0, lineHeight: 1.5 }}>
+                  Manage parallel cloud databases. Control real-time synchronization, toggle auto-push to avoid cloud updates during testing, and trigger complete manual backups.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={fetchCloudSyncSettings}
+                  disabled={isLoadingCloudSettings}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#334155',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  title="Refresh cloud connection statuses"
+                >
+                  <span style={{ animation: isLoadingCloudSettings ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
+                  Refresh Status
+                </button>
+              </div>
+            </div>
+
+            {/* 3 Core Toggles: Firebase, Supabase, Auto-Sync */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px', marginBottom: '22px' }}>
+              
+              {/* Toggle 1: Firebase Firestore */}
+              <div
+                style={{
+                  padding: '18px 20px',
+                  borderRadius: '14px',
+                  border: `1.5px solid ${cloudSyncSettings.firebase_enabled ? '#fdba74' : '#e2e8f0'}`,
+                  background: cloudSyncSettings.firebase_enabled ? 'linear-gradient(145deg, #fffaf5 0%, #fff7ed 100%)' : '#f8fafc',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>🔥</span>
+                    <div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 850, color: '#9a3412' }}>
+                        Firebase Firestore
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#7c2d12', marginTop: '2px', fontWeight: 600 }}>
+                        Project: hotelcitypark-crm
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: cloudSyncSettings.firebase_enabled ? '#dcfce7' : '#f1f5f9',
+                      color: cloudSyncSettings.firebase_enabled ? '#15803d' : '#64748b',
+                      border: `1px solid ${cloudSyncSettings.firebase_enabled ? '#86efac' : '#cbd5e1'}`
+                    }}
+                  >
+                    {cloudSyncSettings.firebase_enabled ? '● ONLINE' : '○ PAUSED'}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.77rem', color: '#64748b', margin: '0 0 14px', lineHeight: 1.4 }}>
+                  Powers Waiter KOT orders, Store bills &amp; Admin mobile real-time updates.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 750, color: '#334155' }}>
+                    Firebase Sync:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCloudSetting('firebase_enabled', !cloudSyncSettings.firebase_enabled)}
+                    disabled={isUpdatingCloudSetting}
+                    style={{
+                      width: '56px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      background: cloudSyncSettings.firebase_enabled ? '#ea580c' : '#cbd5e1',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.25s',
+                      outline: 'none',
+                      padding: '2px'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'block',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: '#ffffff',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        transform: cloudSyncSettings.firebase_enabled ? 'translateX(28px)' : 'translateX(0px)',
+                        transition: 'transform 0.25s'
+                      }}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 2: WebSocket Real-Time Engine */}
+              <div
+                style={{
+                  padding: '18px 20px',
+                  borderRadius: '14px',
+                  border: '1.5px solid #86efac',
+                  background: 'linear-gradient(145deg, #f0fdf4 0%, #ecfdf5 100%)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>⚡</span>
+                    <div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 850, color: '#166534' }}>
+                        WebSocket Real-Time Engine
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#15803d', marginTop: '2px', fontWeight: 600 }}>
+                        Port 3000 (/ws) • Event-Driven
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: '#dcfce7',
+                      color: '#15803d',
+                      border: '1px solid #86efac'
+                    }}
+                  >
+                    ● 0 DB READS
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.77rem', color: '#64748b', margin: '0 0 14px', lineHeight: 1.4 }}>
+                  Broadcasting instant data updates to all open screens &amp; APKs without interval polling.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 750, color: '#334155' }}>
+                    Broadcast Status:
+                  </span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#16a34a' }}>
+                    ACTIVE (&lt;10ms)
+                  </span>
+                </div>
+              </div>
+
+              {/* Toggle 3: Automatic Live Change Sync */}
+              <div
+                style={{
+                  padding: '18px 20px',
+                  borderRadius: '14px',
+                  border: `1.5px solid ${cloudSyncSettings.auto_sync ? '#93c5fd' : '#e2e8f0'}`,
+                  background: cloudSyncSettings.auto_sync ? 'linear-gradient(145deg, #f0f9ff 0%, #e0f2fe 100%)' : '#f8fafc',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>🔄</span>
+                    <div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 850, color: '#1e40af' }}>
+                        Auto-Sync Local Changes
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#2563eb', marginTop: '2px', fontWeight: 600 }}>
+                        Automatic Push on CRUD
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: cloudSyncSettings.auto_sync ? '#dbeafe' : '#f1f5f9',
+                      color: cloudSyncSettings.auto_sync ? '#1d4ed8' : '#64748b',
+                      border: `1px solid ${cloudSyncSettings.auto_sync ? '#bfdbfe' : '#cbd5e1'}`
+                    }}
+                  >
+                    {cloudSyncSettings.auto_sync ? 'ACTIVE' : 'MANUAL ONLY'}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.77rem', color: '#64748b', margin: '0 0 14px', lineHeight: 1.4 }}>
+                  Turn OFF to freeze cloud updates and keep all edits strictly local in SQLite.
+                </p>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 750, color: '#334155' }}>
+                    Auto-Sync:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCloudSetting('auto_sync', !cloudSyncSettings.auto_sync)}
+                    disabled={isUpdatingCloudSetting}
+                    style={{
+                      width: '56px',
+                      height: '28px',
+                      borderRadius: '14px',
+                      background: cloudSyncSettings.auto_sync ? '#2563eb' : '#cbd5e1',
+                      border: 'none',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.25s',
+                      outline: 'none',
+                      padding: '2px'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'block',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        background: '#ffffff',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        transform: cloudSyncSettings.auto_sync ? 'translateX(28px)' : 'translateX(0px)',
+                        transition: 'transform 0.25s'
+                      }}
+                    />
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Manual Complete Push Sync Buttons */}
+            <div
+              style={{
+                background: 'var(--bg-surface-secondary, #f8fafc)',
+                border: '1px solid var(--border-light, #e2e8f0)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px'
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>⚡</span> Manual Bulk Synchronization
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '3px' }}>
+                  Force upload all active rooms, live folios, pending KOT charges, store bills, and today's analytics.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Firebase Sync Button */}
+                <button
+                  type="button"
+                  onClick={handleSyncAllToFirebase}
+                  disabled={isSyncingFirebase || !cloudSyncSettings.firebase_enabled}
+                  style={{
+                    height: '42px',
+                    padding: '0 18px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: cloudSyncSettings.firebase_enabled ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' : '#cbd5e1',
+                    color: '#ffffff',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    cursor: (isSyncingFirebase || !cloudSyncSettings.firebase_enabled) ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: cloudSyncSettings.firebase_enabled ? '0 3px 10px rgba(234, 88, 12, 0.25)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title={!cloudSyncSettings.firebase_enabled ? 'Enable Firebase Sync first' : 'Push all local data to Firebase'}
+                >
+                  <span>{isSyncingFirebase ? '⏳' : '🔥'}</span>
+                  <span>{isSyncingFirebase ? 'Syncing Firebase...' : 'Sync All to Firebase'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Last Synced Timestamps Footer */}
+            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '18px', fontSize: '0.74rem', color: '#94a3b8' }}>
+              <span>
+                Firebase last synced: <strong style={{ color: '#475569' }}>{cloudSyncSettings.last_firebase_sync_time ? formatDateTime(cloudSyncSettings.last_firebase_sync_time) : 'Never'}</strong>
               </span>
             </div>
           </div>

@@ -175,6 +175,33 @@ body {
   line-height: 1.45;
   min-height: 100vh;
   overflow-x: hidden;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
+html {
+  overflow-y: auto !important;
+}
+
+/* Custom Scrollbar for Desktop CRM & App Mode */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 /* ==========================================================================
@@ -681,7 +708,8 @@ body.dark-theme #view-hospitality.active,
   margin-top: 3px !important;
 }
 
-.floor-section-header {
+.floor-sections-container .floor-section-header,
+.floor-section:not(.floor-section-card) .floor-section-header {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -692,7 +720,8 @@ body.dark-theme #view-hospitality.active,
   line-height: 1 !important;
 }
 
-.floor-section:first-child .floor-section-header {
+.floor-sections-container .floor-section:first-child .floor-section-header,
+.floor-section:not(.floor-section-card):first-child .floor-section-header {
   margin: 0 0 2px 0 !important;
 }
 
@@ -1280,6 +1309,27 @@ body.dark-theme .floor-room-count,
   background: #e08300;
 }
 
+/* Universal Fullscreen Modal Backdrop */
+.modal-backdrop,
+.modal-backdrop.active {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 999999 !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  margin: 0 !important;
+}
+
 /* ==========================================================================
    MODAL DIALOGS & SLIDE POPUPS (APPLE STYLE)
    ========================================================================== */
@@ -1288,8 +1338,6 @@ body.dark-theme .floor-room-count,
 html.modal-open,
 body.modal-open {
   overflow: hidden !important;
-  height: 100% !important;
-  max-height: 100vh !important;
   overscroll-behavior: none !important;
 }
 
@@ -3812,13 +3860,16 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   #print-payment-summary-sheet.print-active,
   #print-payment-summary-sheet.print-active *,
   #print-activities-summary-sheet.print-active,
-  #print-activities-summary-sheet.print-active * {
+  #print-activities-summary-sheet.print-active *,
+  #print-cash-handover-sheet.print-active,
+  #print-cash-handover-sheet.print-active * {
     visibility: visible !important;
   }
 
   #print-registration-sheet.print-active,
   #print-payment-summary-sheet.print-active,
-  #print-activities-summary-sheet.print-active {
+  #print-activities-summary-sheet.print-active,
+  #print-cash-handover-sheet.print-active {
     display: block !important;
     position: static !important;
     width: 100% !important;
@@ -5359,13 +5410,17 @@ html.dark-theme .folio-page-header {
   box-shadow: var(--shadow-subtle);
 }
 
-.floor-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 14px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-light);
+.floor-section-header,
+.floor-section-card .floor-section-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding-bottom: 14px !important;
+  margin-bottom: 16px !important;
+  border-bottom: 1px solid var(--border-light) !important;
+  text-align: left !important;
 }
 
 .tables-grid {
@@ -14716,6 +14771,34 @@ body.dark-theme .room-service-card:hover,
   background: #a7f3d0 !important;
   transform: scale(1.06) !important;
   box-shadow: 0 8px 24px rgba(4, 120, 87, 0.45) !important;
+  z-index: 25 !important;
+}
+
+/* Cross-category drop target: Empty room of DIFFERENT room type (Requires Admin Approval) */
+.room-card.transfer-droppable-cross {
+  border: 2.5px dashed #d97706 !important;
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%) !important;
+  box-shadow: 0 0 16px rgba(217, 119, 6, 0.35) !important;
+  animation: pulse-drop-cross 1.6s infinite ease-in-out !important;
+  cursor: pointer !important;
+}
+
+@keyframes pulse-drop-cross {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(217, 119, 6, 0.3);
+    border-color: #d97706;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(217, 119, 6, 0.6);
+    border-color: #f59e0b;
+  }
+}
+
+.room-card.transfer-droppable-cross.transfer-droppable-hover {
+  border: 3px solid #b45309 !important;
+  background: #fde68a !important;
+  transform: scale(1.06) !important;
+  box-shadow: 0 8px 24px rgba(180, 83, 9, 0.45) !important;
   z-index: 25 !important;
 }
 

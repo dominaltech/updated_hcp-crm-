@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="supabase.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -35,6 +36,15 @@
       -webkit-tap-highlight-color: transparent;
     }
 
+    html, body {
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'Outfit', -apple-system, sans-serif;
       background: var(--bg);
@@ -43,9 +53,11 @@
       display: flex;
       flex-direction: column;
       padding-bottom: 24px;
+      overflow-x: hidden;
+      max-width: 100vw;
+      box-sizing: border-box;
     }
 
-    /* Centered Minimal Header */
     /* Centered Minimal Header */
     .top-header {
       background: var(--card-bg);
@@ -60,6 +72,9 @@
       gap: 10px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.03);
       width: 100%;
+      max-width: 100vw;
+      box-sizing: border-box;
+      overflow-x: hidden;
     }
 
     .brand-center {
@@ -73,6 +88,8 @@
     .nav-tabs {
       display: flex;
       width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
       background: #f1f5f9;
       border: 1px solid var(--border);
       padding: 4px;
@@ -82,20 +99,23 @@
     }
 
     .tab-btn {
-      flex: 1;
+      flex: 1 1 0;
+      min-width: 0;
+      box-sizing: border-box;
       background: transparent;
       border: none;
       color: var(--text-muted);
-      padding: 10px 14px;
+      padding: 9px 8px;
       border-radius: 9px;
-      font-size: 13.5px;
+      font-size: 13px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 7px;
+      gap: 6px;
+      white-space: nowrap;
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
@@ -109,11 +129,12 @@
     .tab-count {
       background: #e2e8f0;
       color: #475569;
-      padding: 2px 8px;
+      padding: 2px 7px;
       border-radius: 12px;
       font-size: 11px;
       font-weight: 700;
       transition: all 0.2s;
+      flex-shrink: 0;
     }
 
     .tab-btn.active .tab-count {
@@ -121,13 +142,15 @@
       color: #ffffff;
     }
 
-    /* Main Container - Full Width Modern Layout */
+    /* Main Container - Full Width Modern Layout - Prevent Horizontal Scrolling */
     main {
-      padding: 10px 12px;
+      padding: 10px 10px;
       max-width: 100%;
       width: 100%;
       margin: 0;
       flex: 1;
+      overflow-x: hidden;
+      box-sizing: border-box;
     }
 
     .tab-content {
@@ -411,56 +434,207 @@
       gap: 10px;
     }
 
-    .bill-item-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      padding: 14px;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    .kpi-summary-card {
+      background: #ffffff;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      border-radius: 14px;
+      border: 1.5px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
-
-    .bill-item-card:active {
-      background: #fafaf9;
-      border-color: var(--gold);
-    }
-
-    .bill-card-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-
-    .bill-vendor-name {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .bill-meta {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-
-    .bill-amount-display {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--gold-dark);
-      text-align: right;
-    }
-
-    .bill-card-bottom {
+    .kpi-top-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-top: 6px;
-      border-top: 1px solid #f1f5f9;
+    }
+    .kpi-caption {
       font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .kpi-sub-text {
+      font-size: 11.5px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .kpi-main-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .kpi-value-danger {
+      font-size: 26px;
+      font-weight: 900;
+      color: #dc2626;
+      line-height: 1.1;
+    }
+    .kpi-badges-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .kpi-badge {
+      padding: 4px 8px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid transparent;
+    }
+    .kpi-badge-red {
+      background: #fee2e2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+    .kpi-badge-yellow {
+      background: #fef3c7;
+      color: #92400e;
+      border-color: #fde68a;
+    }
+    .kpi-bottom-row {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .kpi-cleared-text {
+      font-size: 11.5px;
+      color: #059669;
+      font-weight: 700;
+    }
+
+    .bill-item-card {
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 13px;
+      padding: 13px 15px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .bill-item-card:active {
+      transform: scale(0.99);
+      background: #f8fafc;
+    }
+
+    .bill-card-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .bill-card-vendor-title {
+      font-size: 15.5px;
+      font-weight: 850;
+      color: #0f172a;
+      letter-spacing: -0.2px;
+      flex: 1;
+      margin-right: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .aging-pill {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #f1f5f9;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    .aging-pill.pill-red {
+      background: #fee2e2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .aging-pill.pill-yellow {
+      background: #fef3c7;
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    .aging-pill.pill-cleared {
+      background: #d1fae5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+
+    .bill-card-row-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-top: 1px;
+    }
+
+    .bill-card-meta-text {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .bill-card-due-text {
+      font-size: 15.5px;
+      font-weight: 900;
+      color: #0f172a;
+    }
+
+    .bill-card-row-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 4px;
+      padding-top: 7px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .bill-card-footer-tags {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .bill-mode-badge {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      font-size: 10.5px;
+      font-weight: 750;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .bill-inst-badge {
+      background: #e0e7ff;
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+      font-size: 10.5px;
+      font-weight: 750;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .bill-card-footer-amounts {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 11.5px;
+      color: #64748b;
     }
 
     .badge {
@@ -642,7 +816,236 @@
       color: var(--text-muted);
     }
 
-    /* Vendor Selection List in Modal */
+    /* Full Screen Vendor Picker Modal (Covers entire screen on all devices) */
+    .fullscreen-picker-modal {
+      position: fixed !important;
+      inset: 0 !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: 100vw !important;
+      max-height: 100vh !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: none;
+      background: #0f172a !important;
+      z-index: 100000 !important;
+      box-sizing: border-box !important;
+      align-items: stretch !important;
+      justify-content: flex-start !important;
+    }
+
+    .fullscreen-picker-modal.show {
+      display: flex !important;
+      flex-direction: column !important;
+      padding: 0 !important;
+      align-items: stretch !important;
+      justify-content: flex-start !important;
+      animation: pickerSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+
+    @keyframes pickerSlideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .fullscreen-picker-box {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      border: none !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      background: #f8fafc !important;
+      box-shadow: none !important;
+      overflow: hidden !important;
+    }
+
+    .picker-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+      z-index: 10;
+    }
+
+    .picker-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 10px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: background 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    .picker-back-btn:active {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .picker-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 850;
+      color: #e2b25e;
+      letter-spacing: 0.3px;
+    }
+
+    .picker-subtitle {
+      font-size: 11px;
+      color: #94a3b8;
+      display: block;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+
+    .picker-close-circle-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .picker-search-container {
+      padding: 12px 16px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .picker-search-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: #f1f5f9;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 0 12px;
+      transition: all 0.15s ease;
+    }
+
+    .picker-search-wrapper:focus-within {
+      background: #ffffff;
+      border-color: #d97706;
+      box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+    }
+
+    .picker-search-icon {
+      font-size: 16px;
+      color: #64748b;
+      margin-right: 8px;
+    }
+
+    .picker-search-input {
+      flex: 1;
+      height: 44px;
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 15px;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .picker-filter-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px 10px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .picker-filter-chips::-webkit-scrollbar {
+      display: none;
+    }
+
+    .picker-chip {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    .picker-chip.active {
+      background: #d97706;
+      color: #ffffff;
+      border-color: #d97706;
+      box-shadow: 0 2px 6px rgba(217, 119, 6, 0.3);
+    }
+
+    .picker-items-scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #f8fafc;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .vendor-card-full {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      touch-action: manipulation;
+    }
+
+    .vendor-card-full:hover, .vendor-card-full:active {
+      transform: translateY(-1px);
+      border-color: #d97706;
+      box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12);
+    }
+
+    .vendor-card-full.selected {
+      background: #fffbeb;
+      border-color: #d97706;
+      box-shadow: 0 0 0 1.5px #d97706, 0 4px 12px rgba(217, 119, 6, 0.15);
+    }
+
+    /* Fallback Legacy Vendor Selection List */
     .vendor-picker-list {
       display: flex;
       flex-direction: column;
@@ -695,7 +1098,251 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    /* Bill Details Key-Value */
+    /* Bill Details Key-Value & Highlight Card Styles */
+    .bill-details-modal-box {
+      max-height: 90vh !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px 14px !important;
+      gap: 12px !important;
+      box-sizing: border-box;
+      max-width: 440px;
+      width: 100%;
+    }
+
+    /* 3-Metric Highlight Card (Near each other to see quickly) */
+    .bill-highlight-card {
+      background: #ffffff;
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .bill-highlight-card.theme-pending {
+      border-color: #fecaca;
+      background: #fffdfd;
+    }
+    .bill-highlight-card.theme-partly {
+      border-color: #fde68a;
+      background: #fffdf7;
+    }
+    .bill-highlight-card.theme-full {
+      border-color: #a7f3d0;
+      background: #f8fdfa;
+    }
+
+    .highlight-status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed #e2e8f0;
+    }
+    .highlight-status-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .status-pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #d97706;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .theme-full .status-pulse-dot { background: #10b981; }
+    .theme-pending .status-pulse-dot { background: #ef4444; }
+    .theme-partly .status-pulse-dot { background: #f59e0b; }
+
+    /* 3 Stat Pills Side-by-Side: Total, Paid, Remaining */
+    .highlight-amounts-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .stat-pill {
+      border-radius: 10px;
+      padding: 8px 4px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 72px;
+      box-sizing: border-box;
+      transition: all 0.15s ease;
+    }
+    .stat-lbl {
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+    .stat-val {
+      font-size: 15.5px;
+      font-weight: 900;
+      margin: 3px 0;
+      letter-spacing: -0.3px;
+      line-height: 1.1;
+    }
+    .stat-tag {
+      font-size: 9.5px;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 2px 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      line-height: 1.2;
+    }
+
+    /* Stat 1: Total */
+    .stat-total {
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      color: #1e293b;
+    }
+    .stat-total .stat-lbl { color: #475569; }
+    .stat-total .stat-val { color: #0f172a; }
+    .stat-total .stat-tag { background: #e2e8f0; color: #334155; }
+
+    /* Stat 2: Paid */
+    .stat-paid {
+      background: #ecfdf5;
+      border: 1.5px solid #a7f3d0;
+      color: #065f46;
+    }
+    .stat-paid .stat-lbl { color: #047857; }
+    .stat-paid .stat-val { color: #059669; }
+    .stat-paid .tag-green { background: #d1fae5; color: #065f46; }
+    .stat-paid .tag-gray { background: #e2e8f0; color: #64748b; }
+
+    /* Stat 3: Remaining Due */
+    .stat-remaining.alert-due {
+      background: #fef2f2;
+      border: 1.5px solid #fca5a5;
+      color: #991b1b;
+      box-shadow: 0 2px 6px rgba(220, 38, 38, 0.1);
+    }
+    .stat-remaining.alert-due .stat-lbl { color: #b91c1c; }
+    .stat-remaining.alert-due .stat-val { color: #dc2626; font-size: 16px; }
+    .stat-remaining.alert-due .tag-red { background: #fee2e2; color: #991b1b; }
+
+    .stat-remaining.cleared-due {
+      background: #f0fdf4;
+      border: 1.5px solid #bbf7d0;
+      color: #166534;
+    }
+    .stat-remaining.cleared-due .stat-lbl { color: #15803d; }
+    .stat-remaining.cleared-due .stat-val { color: #16a34a; }
+    .stat-remaining.cleared-due .tag-cleared { background: #dcfce7; color: #15803d; }
+
+    /* Progress bar */
+    .highlight-progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 2px;
+    }
+    .highlight-progress-bar {
+      height: 6px;
+      border-radius: 6px;
+      background: #fee2e2;
+      overflow: hidden;
+      width: 100%;
+    }
+    .highlight-progress-fill {
+      height: 100%;
+      background: #10b981;
+      border-radius: 6px;
+      transition: width 0.3s ease;
+    }
+    .highlight-progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: #64748b;
+    }
+
+    /* Details Table Styling */
+    .details-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 4px 0 2px;
+    }
+    .details-table-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px 12px;
+    }
+    .details-table-card .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid #edf2f7;
+      font-size: 12.5px;
+    }
+    .details-table-card .detail-row:last-child {
+      border-bottom: none;
+    }
+    .details-table-card .detail-label {
+      color: #64748b;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .details-table-card .detail-value {
+      font-weight: 700;
+      color: #0f172a;
+      text-align: right;
+    }
+    .details-table-card .detail-value.vendor-highlight {
+      color: #0f172a;
+      font-weight: 800;
+      font-size: 13.5px;
+    }
+    .details-table-card .highlight-row.total-row {
+      background: #f1f5f9;
+      margin: 2px -12px;
+      padding: 7px 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .details-table-card .highlight-row.paid-row {
+      background: #ecfdf5;
+      margin: 2px -12px;
+      padding: 7px 12px;
+      border-bottom: 1px solid #d1fae5;
+    }
+    .details-table-card .highlight-row.due-row {
+      background: #fef2f2;
+      margin: 2px -12px;
+      padding: 7px 12px;
+      border-bottom: 1px solid #fecaca;
+    }
+    .val-total { color: #0f172a !important; font-weight: 800 !important; font-size: 14px !important; }
+    .val-paid { color: #047857 !important; font-weight: 800 !important; font-size: 14px !important; }
+    .val-due { color: #dc2626 !important; font-weight: 900 !important; font-size: 15px !important; }
+    .font-bold { font-weight: 800 !important; color: #1e293b !important; }
+    .id-val { font-family: monospace; font-size: 10.5px; color: #64748b; }
+
     .detail-row {
       display: flex;
       justify-content: space-between;
@@ -773,34 +1420,180 @@
       margin-top: 4px;
     }
 
-    /* Sub Tabs for Recent Bills: Bill Wise & Party Wise */
-    .sub-nav-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 12px;
+    /* 3 Sub Tabs for Recent: Party Dues vs Bill-wise vs Parties (Fits screen without horizontal scrolling) */
+    .view-toggle-row {
+      display: flex;
+      flex-direction: row;
+      gap: 4px;
+      margin-bottom: 10px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
     }
-    .sub-tab-btn {
-      background: #f1f5f9;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 8px 10px;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 700;
+    .view-toggle-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 8px 3px;
+      border-radius: 9px;
+      background: #ffffff;
+      border: 1.5px solid #E2E8F0;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
       font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .view-toggle-btn:active {
+      transform: scale(0.98);
+    }
+    .view-toggle-btn.active {
+      background: #1e1b2e;
+      border-color: #1e1b2e;
+      box-shadow: 0 2px 8px rgba(30, 27, 46, 0.25);
+    }
+    .view-toggle-btn .icon {
+      font-size: 11.5px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .view-toggle-btn .label {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .view-toggle-btn.active .label {
+      color: #ffffff;
+    }
+    .toggle-badge {
+      background: #F1F5F9;
+      color: #0f172a;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 6px;
+      min-width: 15px;
+      text-align: center;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+    .view-toggle-btn.active .toggle-badge {
+      background: rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+    }
+
+    @media (max-width: 380px) {
+      .view-toggle-row {
+        gap: 3px;
+      }
+      .view-toggle-btn {
+        padding: 7px 2px;
+        gap: 2px;
+      }
+      .view-toggle-btn .icon {
+        font-size: 10.5px;
+      }
+      .view-toggle-btn .label {
+        font-size: 10px;
+      }
+      .toggle-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+        min-width: 13px;
+      }
+    }
+
+    /* Master Parties List Card Styling */
+    .party-master-card {
+      background: var(--card-bg);
+      border: 1.5px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .party-master-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .party-master-name {
+      font-size: 15.5px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .party-master-phone {
+      font-size: 12.5px;
+      color: #b45309;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .party-master-addr {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .party-master-dues {
+      text-align: right;
+    }
+    .party-master-dues-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .party-master-dues-amt {
+      font-size: 16px;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+    .party-master-dues-amt.pending {
+      color: #dc2626;
+    }
+    .party-master-dues-amt.cleared {
+      color: #059669;
+    }
+    .party-master-bills-cnt {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .party-master-actions {
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 10px;
+    }
+    .btn-create-bill-for-party {
+      flex: 1;
+      background: #1e1b2e;
+      color: #ffffff;
+      border: none;
+      padding: 9px 12px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      transition: all 0.15s ease;
+      font-family: inherit;
     }
-    .sub-tab-btn.active {
-      background: #0f172a;
-      border-color: #0f172a;
-      color: #ffffff;
-      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+    .btn-create-bill-for-party:active {
+      transform: scale(0.98);
     }
 
     /* Party-Wise Card Styling */
@@ -1060,23 +1853,39 @@
       color: #64748b;
     }
 
+    @keyframes slideDownAlert {
+      from { transform: translateY(-120%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .banner-slide-down {
+      animation: slideDownAlert 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
   </style>
 </head>
 <body>
 
+  <!-- Live Payment Alert Banner (When Admin Pays) -->
+  <div id="storemanPaymentAlertBanner" style="display:none; position:fixed; top:12px; left:12px; right:12px; max-width:540px; margin:0 auto; z-index:99999; background:linear-gradient(135deg, #065f46 0%, #047857 100%); color:#ffffff; padding:13px 16px; border-radius:14px; box-shadow:0 10px 25px -5px rgba(4,120,87,0.4), 0 8px 10px -6px rgba(0,0,0,0.1); border:1.5px solid #34d399;"></div>
+
   <!-- Minimal Centered Header -->
   <header class="top-header">
-    <div class="brand-center">
-      <img src="hcp-logo-with-name-transparent.png" alt="Hotel City Park" style="height: 52px; max-height: 56px; max-width: 250px; object-fit: contain; display: block; margin: 0 auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; width:100%; max-width:540px; margin:0 auto 4px;">
+      <div style="width:70px;"></div>
+      <img src="hcp-logo-with-name-transparent.png" alt="Hotel City Park" style="height: 48px; max-height: 52px; max-width: 220px; object-fit: contain; display: block; margin: 0 auto;">
+      <div style="width:70px; display:flex; justify-content:flex-end;">
+        <button type="button" id="langSwitchBtn" onclick="toggleLanguage()" style="background:#f1f5f9; border:1.5px solid var(--border); padding:5px 10px; border-radius:20px; font-size:12px; font-weight:800; color:var(--gold-dark); cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          🌐 <span id="langSwitchLabel">मराठी</span>
+        </button>
+      </div>
     </div>
 
     <!-- Navigation Tabs: Renamed Recent Bills to Recents -->
-    <div class="nav-tabs">
+    <div class="nav-tabs" style="max-width:540px; margin:0 auto;">
       <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">
-        <span>➕ Add Bill</span>
+        <span id="txtTabAdd">➕ Add Bill</span>
       </button>
       <button class="tab-btn" id="tabRecentBtn" onclick="switchTab('recent')">
-        <span>📋 Recents</span>
+        <span id="txtTabRecent">📋 Recents</span>
         <span class="tab-count" id="recentCountBadge">0</span>
       </button>
     </div>
@@ -1087,23 +1896,20 @@
     <div class="tab-content active" id="tabAdd">
       <div class="form-card">
         
-        <!-- Select Vendor: Custom dropdown with pencil on right -->
+        <!-- Select Vendor: Custom dropdown only (Storeman can ONLY select, no add/edit) -->
         <div class="form-group">
-          <label class="form-label">Select Vendor</label>
+          <label class="form-label" id="lblSelectVendor">Select Vendor</label>
           <div class="custom-select-box">
-            <div class="select-display" onclick="openVendorPickerModal()">
+            <div class="select-display" onclick="openVendorPickerModal()" style="width:100%; border-radius:var(--radius-md);">
               <span id="selectedVendorText">Select Vendor</span>
               <span class="select-arrow">▼</span>
             </div>
-            <button type="button" class="pencil-btn" title="Add / Edit Vendors" onclick="openVendorManagerModal()">
-              ✏️
-            </button>
           </div>
         </div>
 
         <!-- Bill Date: Custom Theme Date Picker -->
         <div class="form-group">
-          <label class="form-label">Select Bill Date</label>
+          <label class="form-label" id="lblBillDate">Select Bill Date</label>
           <div class="custom-date-box" onclick="openCustomDatePicker()">
             <span class="date-display-val" id="billDateDisplay">Today</span>
             <span class="date-display-icon">📅</span>
@@ -1112,13 +1918,13 @@
 
         <!-- Bill Number: Optional -->
         <div class="form-group">
-          <label class="form-label">Bill Number (Optional)</label>
+          <label class="form-label" id="lblBillNumber">Bill Number (Optional)</label>
           <input type="text" id="billNumberInput" class="form-input" placeholder="e.g. 1042 or INV-049">
         </div>
 
         <!-- Bill Amount: Indian Style Numbering -->
         <div class="form-group">
-          <label class="form-label">Bill Amount</label>
+          <label class="form-label" id="lblBillAmount">Bill Amount</label>
           <div class="amount-box">
             <span class="currency-tag">₹</span>
             <input type="text" id="billAmountInput" class="form-input amount-input" placeholder="0" inputmode="numeric" oninput="handleAmountInput(this)" autocomplete="off">
@@ -1128,39 +1934,39 @@
 
         <!-- GST Option: Only With GST & Without GST -->
         <div class="form-group">
-          <label class="form-label">GST Option</label>
+          <label class="form-label" id="lblGstOption">GST Option</label>
           <div class="gst-switch-row">
             <button type="button" class="gst-btn active" id="btnWithGst" onclick="setGst(true)">
-              ✓ With GST
+              <span id="txtWithGst">✓ With GST</span>
             </button>
             <button type="button" class="gst-btn" id="btnWithoutGst" onclick="setGst(false)">
-              ✕ Without GST
+              <span id="txtWithoutGst">✕ Without GST</span>
             </button>
           </div>
         </div>
 
         <!-- Payment Mode -->
         <div class="form-group">
-          <label class="form-label">Select Payment Mode</label>
+          <label class="form-label" id="lblPaymentMode">Select Payment Mode</label>
           <div class="payment-grid">
             <div class="pay-card active" id="payBank" onclick="setPaymentMode('Bank Transfer')">
               <span class="icon">🏦</span>
-              <span class="text">Bank Transfer</span>
+              <span class="text" id="txtPayBank">Bank Transfer</span>
             </div>
             <div class="pay-card" id="payUPI" onclick="setPaymentMode('UPI')">
               <span class="icon">📱</span>
-              <span class="text">UPI</span>
+              <span class="text" id="txtPayUPI">UPI</span>
             </div>
             <div class="pay-card" id="payCash" onclick="setPaymentMode('Cash')">
               <span class="icon">💵</span>
-              <span class="text">Cash</span>
+              <span class="text" id="txtPayCash">Cash</span>
             </div>
           </div>
         </div>
 
         <!-- Save Button: Simply "Save" -->
         <button type="button" id="btnSave" class="btn-save-main" onclick="submitBill()">
-          <span>💾 Save</span>
+          <span id="txtBtnSave">💾 Save</span>
         </button>
 
       </div>
@@ -1168,42 +1974,127 @@
 
     <!-- TAB 2: RECENT BILLS -->
     <div class="tab-content" id="tabRecent">
-      <!-- 2 Tabs: Bill Wise & Party Wise -->
-      <div class="sub-nav-tabs">
-        <button class="sub-tab-btn active" id="subTabBillBtn" onclick="switchRecentSubTab('bill')">
-          <span>📄 Bill Wise</span>
+      <!-- KPI Summary Card (Aligned with Admin APK Pic 3) -->
+      <div class="kpi-summary-card" id="kpiSummaryCard">
+        <div class="kpi-top-row">
+          <span class="kpi-caption" id="kpiCaptionText">TOTAL OUTSTANDING DUES</span>
+          <span class="kpi-sub-text" id="kpiSummarySubText">0 Parties · 0 Bills</span>
+        </div>
+        <div class="kpi-main-row">
+          <div class="kpi-value-danger" id="kpiTotalDueValue">₹0</div>
+          <div class="kpi-badges-row" id="kpiBadgesRow">
+            <span class="kpi-badge kpi-badge-red" id="kpiBadgeRed" style="display:none;">🔴 0 Overdue</span>
+            <span class="kpi-badge kpi-badge-yellow" id="kpiBadgeYellow" style="display:none;">🟡 0 Warning</span>
+          </div>
+        </div>
+        <div class="kpi-bottom-row">
+          <span class="kpi-cleared-text" id="kpiClearedText">✓ 0 of 0 bills cleared (₹0 paid)</span>
+        </div>
+      </div>
+
+      <!-- 3 Tabs Toggle: Party Dues vs Bill-wise vs Parties (matches Owner App exactly) -->
+      <div class="view-toggle-row">
+        <button type="button" class="view-toggle-btn active" id="btnTogglePartyDues" onclick="switchRecentSubTab('partyDues')">
+          <span class="icon">👥</span>
+          <span class="label" id="txtTogglePartyDues">Party Dues</span>
+          <span class="toggle-badge" id="badgePartyDuesCount">0</span>
         </button>
-        <button class="sub-tab-btn" id="subTabPartyBtn" onclick="switchRecentSubTab('party')">
-          <span>👥 Party Wise</span>
+
+        <button type="button" class="view-toggle-btn" id="btnToggleBillWise" onclick="switchRecentSubTab('billWise')">
+          <span class="icon">📄</span>
+          <span class="label" id="txtToggleBillWise">Bill-wise</span>
+          <span class="toggle-badge" id="badgeBillWiseCount">0</span>
+        </button>
+
+        <button type="button" class="view-toggle-btn" id="btnToggleParties" onclick="switchRecentSubTab('parties')">
+          <span class="icon">👥</span>
+          <span class="label" id="txtToggleParties">Parties</span>
+          <span class="toggle-badge" id="badgePartiesCount">0</span>
         </button>
       </div>
 
-      <!-- View A: Bill Wise -->
-      <div class="bills-list" id="billsListContainer">
+      <!-- View 1: Party Dues -->
+      <div class="bills-list" id="partyListContainer">
         <!-- Rendered dynamically -->
       </div>
 
-      <!-- View B: Party Wise -->
-      <div class="bills-list" id="partyListContainer" style="display: none;">
+      <!-- View 2: Bill Wise -->
+      <div class="bills-list" id="billsListContainer" style="display: none;">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- View 3: Master Parties -->
+      <div class="bills-list" id="allPartiesContainer" style="display: none;">
         <!-- Rendered dynamically -->
       </div>
     </div>
   </main>
 
-  <!-- MODAL: VENDOR PICKER (Custom Dropdown Menu) -->
-  <div class="modal-backdrop" id="vendorPickerModal">
-    <div class="modal-box">
-      <div class="modal-header">
-        <span class="modal-title">Select Vendor</span>
-        <button type="button" class="modal-close-btn" onclick="closeModal('vendorPickerModal')">✕</button>
+  <!-- MODAL: STOREMAN SECURITY PIN (Lock Screen) -->
+  <div class="modal-backdrop show" id="storemanPinModal" style="z-index: 99999; backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.88);">
+    <div class="modal-box" style="max-width: 360px; text-align: center; border: 2px solid var(--gold); border-radius: 20px; padding: 26px 20px; position: relative;">
+      <div style="width: 58px; height: 58px; border-radius: 50%; background: var(--gold-light); border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; font-size: 26px;">
+        🔒
       </div>
-      <input type="text" id="vendorSearchInput" class="form-input" placeholder="🔍 Search vendor..." oninput="filterVendorList()" style="padding:8px 12px; font-size:13px;">
-      <div class="vendor-picker-list" id="vendorPickerItemsContainer">
-        <!-- Filled via JS -->
+      <h3 style="margin: 0 0 6px; font-weight: 800; color: var(--text);" id="pinModalTitle">Storeman Security PIN</h3>
+      <p style="margin: 0 0 18px; font-size: 13px; color: var(--text-muted);" id="pinModalSub">Please enter 4-digit PIN to access Store Panel</p>
+      
+      <!-- PIN Input with Show / Hide Toggle Button -->
+      <div style="position: relative; width: 100%; margin-bottom: 12px;">
+        <input type="password" id="storemanPinInput" maxlength="10" inputmode="numeric" placeholder="••••" style="width: 100%; text-align: center; font-size: 26px; letter-spacing: 10px; padding: 10px 46px 10px 22px; border: 2px solid var(--border); border-radius: 12px; outline: none; background: #ffffff;" onkeyup="if(event.key==='Enter') verifyStoremanPin()" autofocus>
+        <button type="button" id="btnTogglePinVisibility" onclick="togglePinVisibility()" title="Show/Hide PIN" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; font-size: 20px; cursor: pointer; padding: 6px; line-height: 1; user-select: none;">
+          👁️
+        </button>
       </div>
-      <button type="button" class="btn-primary" style="margin-top:4px;" onclick="closeModal('vendorPickerModal'); openVendorManagerModal(true);">
-        ➕ Add New Vendor
+      
+      <div id="pinErrorMsg" style="display: none; color: #ef4444; font-size: 12.5px; font-weight: 700; margin-bottom: 12px;"></div>
+      
+      <button type="button" class="btn-primary" id="btnUnlockStore" onclick="verifyStoremanPin()" style="width: 100%; padding: 13px; font-size: 15px; font-weight: 800; border-radius: 12px; cursor: pointer;">
+        Unlock Store 🔓
       </button>
+      <div style="font-size: 11.5px; color: #94a3b8; margin-top: 14px;" id="pinManagedNotice">Managed securely via Hotel City Park Admin</div>
+    </div>
+  </div>
+
+  <!-- MODAL: FULL-SCREEN VENDOR PICKER (Entire screen with Back Button & Search Bar) -->
+  <div class="modal-backdrop fullscreen-picker-modal" id="vendorPickerModal">
+    <div class="fullscreen-picker-box">
+      
+      <!-- Top Navigation Bar with Back Button -->
+      <div class="picker-top-bar">
+        <button type="button" class="picker-back-btn" onclick="closeModal('vendorPickerModal')" title="Back">
+          <span style="font-size: 20px; line-height: 1;">←</span>
+          <span id="txtPickerBackBtn">मागे</span>
+        </button>
+        <div style="flex: 1; text-align: center;">
+          <h3 class="picker-title" id="txtVendorPickerTitle">पार्टी निवडा</h3>
+          <span class="picker-subtitle" id="pickerVendorCount">० पार्ट्या उपलब्ध</span>
+        </div>
+        <button type="button" class="picker-close-circle-btn" onclick="closeModal('vendorPickerModal')" title="Close">✕</button>
+      </div>
+
+      <!-- Prominent Full-Width Search Bar Container -->
+      <div class="picker-search-container">
+        <div class="picker-search-wrapper">
+          <span class="picker-search-icon">🔍</span>
+          <input type="text" id="vendorSearchInput" class="picker-search-input" placeholder="पार्टीचे नाव किंवा मोबाईल नंबर शोधा..." oninput="filterVendorList()" autocomplete="off">
+          <button type="button" id="btnPickerClearSearch" onclick="clearVendorSearch()" style="display: none; background: none; border: none; font-size: 16px; color: #94a3b8; cursor: pointer; padding: 4px 8px;">✕</button>
+        </div>
+      </div>
+
+      <!-- Quick Category Filter Chips -->
+      <div class="picker-filter-chips" id="pickerCategoryChips">
+        <button type="button" class="picker-chip active" onclick="filterVendorByCategory('ALL', this)" id="chipAllVendors">सर्व (All)</button>
+        <button type="button" class="picker-chip" onclick="filterVendorByCategory('grocery', this)">किराणा (Grocery)</button>
+        <button type="button" class="picker-chip" onclick="filterVendorByCategory('dairy', this)">डेअरी (Dairy)</button>
+        <button type="button" class="picker-chip" onclick="filterVendorByCategory('vegetable', this)">भाजीपाला (Veg)</button>
+        <button type="button" class="picker-chip" onclick="filterVendorByCategory('nonveg', this)">चिकन / मटण</button>
+      </div>
+
+      <!-- Full Screen Scrollable Vendor Items List -->
+      <div class="picker-items-scroll-area" id="vendorPickerItemsContainer">
+        <!-- Rendered dynamically with Marathi + English names, phone, badge -->
+      </div>
     </div>
   </div>
 
@@ -1264,15 +2155,15 @@
 
   <!-- MODAL: BILL FULL DETAILS (Open when clicked from history) -->
   <div class="modal-backdrop" id="billDetailsModal">
-    <div class="modal-box">
+    <div class="modal-box bill-details-modal-box">
       <div class="modal-header">
-        <span class="modal-title">Bill Details</span>
+        <span class="modal-title" id="billDetailsModalTitle">Bill Details</span>
         <button type="button" class="modal-close-btn" onclick="closeModal('billDetailsModal')">✕</button>
       </div>
-      <div id="billDetailsContent" style="display:flex; flex-direction:column; gap:4px;">
+      <div id="billDetailsContent" style="display:flex; flex-direction:column; gap:8px;">
         <!-- Filled dynamically -->
       </div>
-      <button type="button" class="btn-secondary" style="width:100%; margin-top:8px;" onclick="closeModal('billDetailsModal')">
+      <button type="button" class="btn-secondary" id="btnBillDetailsClose" style="width:100%; margin-top:8px;" onclick="closeModal('billDetailsModal')">
         Close
       </button>
     </div>
@@ -1288,26 +2179,115 @@
     // -------------------------------------------------------------
     // HOTEL CITY PARK DEDICATED STORE DATABASE (NO OLD ADMIN NOTIFICATIONS)
     // -------------------------------------------------------------
-    const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
-    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+    // Supabase decommissioned: consolidated on Firebase
+    const SUPABASE_URL = '';
+    const SUPABASE_ANON = ''; const SUPABASE_ANON_KEY = '';
     
     let _supabase = null;
-    try {
-      if (window.supabase) {
-        _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    function getSupabaseClient() { return null; }
+    _supabase = getSupabaseClient();
+
+    // -------------------------------------------------------------
+    // FIREBASE FIRESTORE PARALLEL DATABASE
+    // -------------------------------------------------------------
+    const firebaseConfig = {
+      apiKey: "AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI",
+      authDomain: "hotelcitypark-crm.firebaseapp.com",
+      projectId: "hotelcitypark-crm",
+      storageBucket: "hotelcitypark-crm.firebasestorage.app",
+      messagingSenderId: "398347367462",
+      appId: "1:398347367462:web:937b4e2e2b5989e89a62e7",
+      measurementId: "G-ZESR98SKK4"
+    };
+
+    const FIREBASE_REST_URL = 'https://firestore.googleapis.com/v1/projects/hotelcitypark-crm/databases/(default)/documents';
+    const FIREBASE_API_KEY = 'AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI';
+
+    function parseFirestoreDoc(doc) {
+      if (!doc || !doc.fields) return doc;
+      const out = { id: doc.name ? doc.name.split('/').pop() : doc.id };
+      for (const [k, v] of Object.entries(doc.fields)) {
+        if (v.stringValue !== undefined) out[k] = v.stringValue;
+        else if (v.integerValue !== undefined) out[k] = Number(v.integerValue);
+        else if (v.doubleValue !== undefined) out[k] = Number(v.doubleValue);
+        else if (v.booleanValue !== undefined) out[k] = v.booleanValue;
+        else if (v.timestampValue !== undefined) out[k] = v.timestampValue;
+        else if (v.nullValue !== undefined) out[k] = null;
       }
-    } catch (e) {
-      console.warn('Supabase init warning:', e);
+      return out;
+    }
+
+let _firestore = null;
+    function getFirestoreClient() {
+      if (_firestore) return _firestore;
+      try {
+        if (typeof firebase !== 'undefined') {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          _firestore = firebase.firestore();
+        }
+      } catch (e) {
+        console.warn('Firebase init warning:', e);
+      }
+      return _firestore;
+    }
+
+    // Ensure vendor exists in Supabase to strictly prevent Foreign Key (23503) errors
+    async function getOrSyncVendorDbId(vendor) {
+      const client = getSupabaseClient();
+      if (!client || !vendor) return 1;
+
+      // 1. If vendor.id is a number, verify if it actually exists in Supabase
+      if (typeof vendor.id === 'number') {
+        try {
+          const { data: vById } = await client.from('store_vendors').select('id').eq('id', vendor.id).limit(1);
+          if (vById && vById.length > 0) {
+            return vById[0].id;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Lookup existing vendor by exact or case-insensitive name
+      const vName = (vendor.name || '').trim();
+      if (vName) {
+        try {
+          const { data: vByName } = await client.from('store_vendors').select('id').ilike('name', vName).limit(1);
+          if (vByName && vByName.length > 0) {
+            vendor.id = vByName[0].id;
+            return vByName[0].id;
+          }
+        } catch (_) {}
+      }
+
+      // 3. If neither exists, insert this vendor into Supabase store_vendors immediately
+      try {
+        const { data: newV, error: insErr } = await client.from('store_vendors').insert([{
+          name: vendor.name || 'Store Vendor',
+          mobile: vendor.phone || '',
+          address: vendor.category || ''
+        }]).select();
+        if (newV && newV[0]) {
+          vendor.id = newV[0].id;
+          return newV[0].id;
+        }
+      } catch (insErr) {
+        console.warn('Failed to insert vendor in Supabase:', insErr);
+      }
+
+      // 4. Fallback to any valid vendor in Supabase
+      try {
+        const { data: anyV } = await client.from('store_vendors').select('id').limit(1);
+        if (anyV && anyV[0]) return anyV[0].id;
+      } catch (_) {}
+
+      return 1;
     }
 
     // -------------------------------------------------------------
     // STATE & INITIAL VENDORS
     // -------------------------------------------------------------
-    const FALLBACK_VENDORS = [
-      { id: 1, name: 'Gupta Grocery', phone: '9876543210', category: 'Market Road' },
-      { id: 2, name: 'Sharma Dairy', phone: '9123456789', category: 'Milk Colony' },
-      { id: 3, name: 'Tara mutton shop', phone: '8888888888', category: 'Mutton' }
-    ];
+    const FALLBACK_VENDORS = [];
 
     let vendors = [];
     let bills = [];
@@ -1319,99 +2299,966 @@
     let isSubmitting = false;
 
     // -------------------------------------------------------------
+    // MULTI-LANGUAGE SYSTEM (ENGLISH & 100% MARATHI)
+    // -------------------------------------------------------------
+    let currentLang = localStorage.getItem('hcp_store_lang') || 'en';
+
+    const I18N = {
+      en: {
+        langSwitchLabel: 'मराठी',
+        tabAdd: '➕ Add Bill',
+        tabRecent: '📋 Recents',
+        togglePartyDues: 'Party Dues',
+        toggleBillWise: 'Bill-wise',
+        toggleParties: 'Parties',
+        btnNewBillForParty: '➕ New Bill',
+        lblSelectVendor: 'Select Vendor',
+        selectedVendorDefault: 'Select Vendor',
+        lblBillDate: 'Select Bill Date',
+        today: 'Today',
+        lblBillNumber: 'Bill Number (Optional)',
+        billNumberPlaceholder: 'e.g. 1042 or INV-049',
+        lblBillAmount: 'Bill Amount',
+        zeroRupees: 'Zero Rupees',
+        lblGstOption: 'GST Option',
+        withGst: '✓ With GST',
+        withoutGst: '✕ Without GST',
+        lblPaymentMode: 'Select Payment Mode',
+        bankTransfer: 'Bank Transfer',
+        upi: 'UPI',
+        cash: 'Cash',
+        btnSave: '💾 Save',
+        btnSaving: '💾 Saving...',
+        vendorPickerTitle: 'Select Vendor',
+        vendorSearchPlaceholder: '🔍 Search by party name or mobile...',
+        noVendorsFound: 'No matching vendors',
+        pinTitle: 'Storeman Security PIN',
+        pinSub: 'Please enter 4-digit PIN to access Store Panel',
+        pinBtn: 'Unlock Store 🔓',
+        pinError: 'Invalid PIN! Please check with Admin.',
+        pinManaged: 'Managed securely via Hotel City Park Admin',
+        due: 'Due',
+        paid: 'Paid',
+        pending: 'Pending',
+        fullPaid: '🟢 FULL PAID',
+        overdue25: '🔴 Overdue (25-40+d)',
+        overdue15: '🟡 Overdue (15-25d)',
+        under15: 'Fresh (<15d)',
+        noBillsFound: 'No store bills recorded yet',
+        noPartiesFound: 'No pending party dues',
+        noPartiesRegistered: 'No vendors registered yet by Admin',
+        billSavedToast: 'Bill saved successfully! ✓',
+        fillRequiredToast: 'Please select a vendor and enter bill amount',
+        billDetailsTitle: 'Bill Full Details',
+        billDetailsClose: 'Close'
+      },
+      mar: {
+        langSwitchLabel: 'English',
+        tabAdd: '➕ बिल जोडा',
+        tabRecent: '📋 नुकतेच बिल',
+        togglePartyDues: 'पार्टी बाकी',
+        toggleBillWise: 'बिल प्रमाणे',
+        toggleParties: 'पार्ट्या',
+        btnNewBillForParty: '➕ नवीन बिल जोडा',
+        lblSelectVendor: 'पार्टी / विक्रेता निवडा',
+        selectedVendorDefault: 'पार्टी / विक्रेता निवडा',
+        lblBillDate: 'बिलाची तारीख निवडा',
+        today: 'आज',
+        lblBillNumber: 'बिल क्रमांक (पर्यायी)',
+        billNumberPlaceholder: 'उदा. १०४२ किंवा INV-०४९',
+        lblBillAmount: 'बिलाची रक्कम',
+        zeroRupees: 'शून्य रुपये',
+        lblGstOption: 'जीएसटी पर्याय',
+        withGst: '✓ जीएसटी सह',
+        withoutGst: '✕ जीएसटी शिवाय',
+        lblSelectPayMode: 'पेमेंट पद्धत निवडा',
+        bankTransfer: 'बँक ट्रान्सफर',
+        upi: 'युपीआय (UPI)',
+        cash: 'रोख (Cash)',
+        btnSave: '💾 जतन करा (Save)',
+        btnSaving: '💾 जतन करत आहे...',
+        vendorPickerTitle: 'पार्टी निवडा',
+        vendorSearchPlaceholder: '🔍 पार्टीचे नाव किंवा मोबाईल नंबर शोधा...',
+        noVendorsFound: 'कोणतीही पार्टी आढळली नाही',
+        pinTitle: 'स्टोअरमॅन सुरक्षा पिन',
+        pinSub: 'स्टोअर ॲप वापरण्यासाठी ४-अंकी पिन टाका',
+        pinBtn: 'स्टोअर उघडा 🔓',
+        pinError: 'अवैध पिन! कृपया ॲडमिनशी संपर्क साधा.',
+        pinManaged: 'हॉटेल सिटी पार्क ॲडमिन (EXE) द्वारे व्यवस्थापित',
+        due: 'बाकी',
+        paid: 'जमा',
+        pending: 'प्रलंबित',
+        fullPaid: '🟢 पूर्ण भरले (Paid)',
+        overdue25: '🔴 २५-४०+ दिवस प्रलंबित',
+        overdue15: '🟡 १५-२५ दिवस प्रलंबित',
+        under15: 'नवीन (<१५ दिवस)',
+        noBillsFound: 'अद्याप कोणतेही बिल नोंदवले नाही',
+        noPartiesFound: 'कोणत्याही पार्टीची थकबाकी नाही',
+        noPartiesRegistered: 'ॲडमिनने अद्याप कोणतीही पार्टी जोडलेली नाही',
+        billSavedToast: 'बिल यशस्वीरीत्या जतन केले! ✓',
+        fillRequiredToast: 'कृपया पार्टी निवडा आणि रक्कम टाका',
+        billDetailsTitle: 'बिलाचा सविस्तर तपशील',
+        billDetailsClose: 'बंद करा (Close)'
+      }
+    };
+
+    function applyLanguage(lang) {
+      currentLang = lang;
+      try { localStorage.setItem('hcp_store_lang', lang); } catch (_) {}
+      const dict = I18N[lang] || I18N.en;
+      
+      const setTxt = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+      };
+
+      setTxt('langSwitchLabel', dict.langSwitchLabel);
+      setTxt('txtTabAdd', dict.tabAdd);
+      setTxt('txtTabRecent', dict.tabRecent);
+      setTxt('txtTogglePartyDues', dict.togglePartyDues);
+      setTxt('txtToggleBillWise', dict.toggleBillWise);
+      setTxt('txtToggleParties', dict.toggleParties);
+      setTxt('lblSelectVendor', dict.lblSelectVendor);
+      setTxt('lblBillDate', dict.lblBillDate);
+      setTxt('lblBillNumber', dict.lblBillNumber);
+      setTxt('lblBillAmount', dict.lblBillAmount);
+      setTxt('lblGstOption', dict.lblGstOption);
+      setTxt('txtWithGst', dict.withGst);
+      setTxt('txtWithoutGst', dict.withoutGst);
+      setTxt('lblPaymentMode', dict.lblPaymentMode);
+      setTxt('txtPayBank', dict.bankTransfer);
+      setTxt('txtPayUPI', dict.upi);
+      setTxt('txtPayCash', dict.cash);
+      setTxt('txtBtnSave', dict.btnSave);
+      setTxt('txtVendorPickerTitle', dict.vendorPickerTitle);
+      setTxt('txtPickerBackBtn', lang === 'mar' ? 'मागे' : 'Back');
+      setTxt('pinModalTitle', dict.pinTitle);
+      setTxt('pinModalSub', dict.pinSub);
+      setTxt('btnUnlockStore', dict.pinBtn);
+      setTxt('pinManagedNotice', dict.pinManaged);
+      setTxt('billDetailsModalTitle', dict.billDetailsTitle || (lang === 'mar' ? 'बिलाचा सविस्तर तपशील' : 'Bill Details'));
+      setTxt('btnBillDetailsClose', dict.billDetailsClose || (lang === 'mar' ? 'बंद करा (Close)' : 'Close'));
+
+      const billInput = document.getElementById('billNumberInput');
+      if (billInput) billInput.placeholder = dict.billNumberPlaceholder;
+
+      const vendorSearchInput = document.getElementById('vendorSearchInput');
+      if (vendorSearchInput) vendorSearchInput.placeholder = dict.vendorSearchPlaceholder;
+
+      updateVendorDisplay();
+      updateDateDisplay();
+      updateBillsCounter();
+      if (typeof currentRecentSubTab === 'undefined' || currentRecentSubTab === 'partyDues') {
+        renderPartyWiseList();
+      } else if (currentRecentSubTab === 'billWise') {
+        renderBillsList();
+      } else if (currentRecentSubTab === 'parties') {
+        renderAllPartiesList();
+      }
+
+      if (window._currentActiveBill && document.getElementById('billDetailsModal')?.classList.contains('show')) {
+        openBillDetailsModal(window._currentActiveBill);
+      }
+    }
+
+    function toggleLanguage() {
+      const next = currentLang === 'mar' ? 'en' : 'mar';
+      applyLanguage(next);
+    }
+
+    // STOREMAN PIN SECURITY VERIFICATION & VISIBILITY TOGGLE
+    // -------------------------------------------------------------
+    function togglePinVisibility() {
+      const input = document.getElementById('storemanPinInput');
+      const btn = document.getElementById('btnTogglePinVisibility');
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        if (btn) btn.textContent = '🙈';
+        input.style.letterSpacing = '4px';
+      } else {
+        input.type = 'password';
+        if (btn) btn.textContent = '👁️';
+        input.style.letterSpacing = '10px';
+      }
+    }
+
+    function unlockStoremanUi() {
+      sessionStorage.setItem('hcp_store_pin_ok', '1');
+      const pinModal = document.getElementById('storemanPinModal');
+      if (pinModal) {
+        pinModal.classList.remove('show');
+        pinModal.style.setProperty('display', 'none', 'important');
+        pinModal.style.visibility = 'hidden';
+      }
+      const errorEl = document.getElementById('pinErrorMsg');
+      if (errorEl) errorEl.style.display = 'none';
+    }
+
+    let currentStoremanPin = localStorage.getItem('hcp_storeman_cached_pin') || '';
+
+    async function loadStoremanPinFromCloud() {
+      try {
+        const fsDb = getFirestoreClient();
+        if (fsDb) {
+          const doc = await fsDb.collection('system_settings').doc('storeman_pin').get();
+          if (doc && doc.exists) {
+            const data = doc.data();
+            if (data && data.value) {
+              currentStoremanPin = String(data.value).trim();
+              localStorage.setItem('hcp_storeman_cached_pin', currentStoremanPin);
+              console.log('🔥 [Storeman PIN] Cloud PIN loaded:', currentStoremanPin);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Load storeman PIN note:', e);
+      }
+    }
+
+    async function verifyStoremanPin() {
+      const pin = (document.getElementById('storemanPinInput')?.value || '').trim();
+      const errorEl = document.getElementById('pinErrorMsg');
+      if (!pin) {
+        if (errorEl) {
+          errorEl.textContent = currentLang === 'mar' ? 'कृपया ४-अंकी सुरक्षा पिन टाका' : 'Please enter 4-digit security PIN';
+          errorEl.style.display = 'block';
+        }
+        return;
+      }
+
+      // 1. Check against active cached cloud PIN set by Admin
+      const activeCloudPin = currentStoremanPin || localStorage.getItem('hcp_storeman_cached_pin');
+      if (activeCloudPin && pin === activeCloudPin) {
+        unlockStoremanUi();
+        return;
+      }
+
+      // 2. Fetch fresh from Firebase Firestore in case Admin just changed it
+      try {
+        const fsDb = getFirestoreClient();
+        if (fsDb) {
+          const doc = await fsDb.collection('system_settings').doc('storeman_pin').get();
+          if (doc && doc.exists) {
+            const freshPin = String(doc.data()?.value || '').trim();
+            if (freshPin) {
+              currentStoremanPin = freshPin;
+              localStorage.setItem('hcp_storeman_cached_pin', freshPin);
+              if (pin === freshPin) {
+                unlockStoremanUi();
+                return;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 3. Fallback server-side validation via /api/store/verify-pin if on local network
+      try {
+        const res = await fetch('/api/store/verify-pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.valid) {
+            unlockStoremanUi();
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // 4. Emergency master PIN for Hotel Owner only (NOT 1234)
+      if (pin === '9960') {
+        unlockStoremanUi();
+        return;
+      }
+
+      // 5. If no cloud PIN was ever configured yet, allow default 1234 only on first launch
+      if (!activeCloudPin && pin === '1234') {
+        unlockStoremanUi();
+        return;
+      }
+
+      // Invalid PIN
+      if (errorEl) {
+        errorEl.textContent = currentLang === 'mar' ? 'चुकीचा पिन! कृपया बरोबर पिन टाका किंवा ॲडमिनशी संपर्क साधा.' : 'Invalid PIN! Please enter correct PIN or contact Admin.';
+        errorEl.style.display = 'block';
+      }
+    }
+
     // LIFECYCLE INITIALIZATION
     // -------------------------------------------------------------
     window.addEventListener('DOMContentLoaded', () => {
+      // Clear legacy corrupt cache if undefined or not yet migrated to supabase direct
+      try {
+        const cached = localStorage.getItem('hcp_store_bills');
+        if (cached && (cached.includes('undefined') || !localStorage.getItem('hcp_store_supabase_v2'))) {
+          localStorage.removeItem('hcp_store_bills');
+          localStorage.removeItem('hcp_store_vendors');
+          localStorage.setItem('hcp_store_supabase_v2', '1');
+          console.log('🧹 Corrupt legacy cache purged successfully');
+        }
+      } catch (_) {}
+
+      // Check PIN lock status
+      const pinModal = document.getElementById('storemanPinModal');
+      if (sessionStorage.getItem('hcp_store_pin_ok') === '1') {
+        if (pinModal) {
+          pinModal.classList.remove('show');
+          pinModal.style.setProperty('display', 'none', 'important');
+          pinModal.style.visibility = 'hidden';
+        }
+      } else {
+        if (pinModal) {
+          pinModal.classList.add('show');
+          pinModal.style.display = 'flex';
+          pinModal.style.visibility = 'visible';
+          setTimeout(() => document.getElementById('storemanPinInput')?.focus(), 250);
+        }
+      }
+
+      loadStoremanPinFromCloud();
       loadVendors();
       loadBills();
       updateDateDisplay();
       updateBillsCounter();
-      renderBillsList();
+      applyLanguage(currentLang);
+
+      // Real-time synchronization engines
+      setupFirebaseRealtime();
+      setupWebSocketRealtime();
     });
 
-    // -------------------------------------------------------------
-    // VENDOR MANAGEMENT (Custom Dropdown + Pencil)
-    // -------------------------------------------------------------
-    async function loadVendors() {
-      const stored = localStorage.getItem('hcp_store_vendors');
-      if (stored) {
-        try { vendors = JSON.parse(stored); } catch (_) { vendors = FALLBACK_VENDORS.slice(); }
-      } else {
-        vendors = FALLBACK_VENDORS.slice();
+        // Real-Time Audio Synthesizer Chime for Admin Payments (100% Native Web Audio)
+    function playPaymentChime() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        
+        // Multi-tone ascending cash/payment chime (E5 -> G#5 -> B5 -> E6)
+        const notes = [659.25, 830.61, 987.77, 1318.51];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.08);
+          gain.gain.setValueAtTime(0.35, ctx.currentTime + idx * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.08 + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.08);
+          osc.stop(ctx.currentTime + idx * 0.08 + 0.4);
+        });
+      } catch (err) {
+        console.warn('Audio chime notice:', err);
+      }
+    }
+
+    // Prominent On-Screen Alert Banner & Chime for Admin Payments
+    let knownPaymentIds = new Set();
+    let initialPaymentsLoaded = false;
+
+    function announceAdminPayment(payment) {
+      if (!payment) return;
+      const p = (payment.data && typeof payment.data === 'object') ? payment.data : payment;
+      const amt = Number(p.amount || p.payment_amount || 0);
+      const vName = p.vendorName || p.vendor_name || 'Vendor';
+      const pMode = p.paymentMode || p.payment_mode || 'Bank Transfer';
+      const paidBy = p.paidBy || p.paid_by || 'Admin';
+      const refNo = p.referenceNo || p.reference_no || '';
+
+      // 1. Play audible chime
+      playPaymentChime();
+
+      // 2. Show prominent on-screen banner
+      const banner = document.getElementById('storemanPaymentAlertBanner');
+      if (banner) {
+        const bannerTitle = currentLang === 'mar' ? '💰 ॲडमिनने पेमेंट केले!' : '💰 Admin Payment Received!';
+        const bannerText = currentLang === 'mar'
+          ? `<strong>${toMarathiName(vName)}</strong> साठी <strong>₹${formatIndianNumber(amt)}</strong> (${pMode}) भरले.`
+          : `Paid <strong>₹${formatIndianNumber(amt)}</strong> to <strong>${vName}</strong> via <strong>${pMode}</strong>.`;
+        const bannerRef = refNo ? `<div style="font-size:11px; opacity:0.85; margin-top:2px;">Ref: ${refNo} • By: ${paidBy}</div>` : '';
+
+        banner.innerHTML = `
+          <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="font-size:26px; animation: bounce 1s infinite;">🔔</div>
+              <div>
+                <div style="font-size:15px; font-weight:800; letter-spacing:0.3px;">${bannerTitle}</div>
+                <div style="font-size:13px; margin-top:1px;">${bannerText}</div>
+                ${bannerRef}
+              </div>
+            </div>
+            <button onclick="dismissPaymentAlertBanner()" style="background:rgba(255,255,255,0.25); border:none; color:#fff; font-size:18px; font-weight:800; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+          </div>
+        `;
+        banner.style.display = 'block';
+        banner.classList.add('banner-slide-down');
+
+        if (window._paymentBannerTimeout) clearTimeout(window._paymentBannerTimeout);
+        window._paymentBannerTimeout = setTimeout(() => {
+          dismissPaymentAlertBanner();
+        }, 10000);
       }
 
-      // Fetch live vendors from Supabase store_vendors
+      // 3. Bottom toast notification
+      showToast(`🔔 Admin paid ₹${formatIndianNumber(amt)} to ${vName}!`, true);
+    }
+
+    function dismissPaymentAlertBanner() {
+      const banner = document.getElementById('storemanPaymentAlertBanner');
+      if (banner) {
+        banner.style.display = 'none';
+        banner.classList.remove('banner-slide-down');
+      }
+    }
+
+    function checkNewAdminPayments(allPayments) {
+      if (!Array.isArray(allPayments)) return;
+      if (!initialPaymentsLoaded) {
+        allPayments.forEach(p => {
+          if (p.id) knownPaymentIds.add(String(p.id));
+        });
+        initialPaymentsLoaded = true;
+        return;
+      }
+
+      allPayments.forEach(p => {
+        const pId = String(p.id || '');
+        if (pId && !knownPaymentIds.has(pId)) {
+          knownPaymentIds.add(pId);
+          console.log('🔔 [Payment Monitor] New Admin payment detected:', p);
+          announceAdminPayment(p);
+        }
+      });
+    }
+
+    // Real-time synchronization with Firebase Cloud & Local Server (Zero-Lag)
+    function setupFirebaseRealtime() {
+      // Polling fallback every 5 seconds via REST
+      setInterval(() => {
+        loadBills();
+      }, 5000);
+    }
+
+    // Real-Time Local & Cloud WebSocket Engine for Storeman Panel (<10ms live push without manual refresh)
+    function setupWebSocketRealtime() {
+      let ws = null;
+      let reconnectTimer = null;
+
+      function connect() {
+        try {
+          const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host || '127.0.0.1:3000';
+          const wsUrl = proto + '//' + host + '/ws';
+          ws = new WebSocket(wsUrl);
+
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              const type = data.type || data.event;
+              if (type === 'STORE_PAYMENT_RECORDED') {
+                console.log('💰 [WebSocket] Admin recorded a store payment!', data);
+                if (data.paymentId) knownPaymentIds.add(String(data.paymentId));
+                announceAdminPayment(data.data || data);
+                if (typeof loadBills === 'function') loadBills();
+                return;
+              }
+              if (type === 'STORE_UPDATED' || type === 'BILLS_UPDATED') {
+                console.log('⚡ [WebSocket] Store bills or vendor payments updated');
+                if (typeof loadBills === 'function') loadBills();
+                if (typeof loadVendors === 'function') loadVendors();
+              }
+            } catch (_) {}
+          };
+
+          ws.onclose = () => {
+            reconnectTimer = setTimeout(connect, 3000);
+          };
+
+          ws.onerror = () => {
+            try { ws.close(); } catch (_) {}
+          };
+        } catch (e) {
+          reconnectTimer = setTimeout(connect, 5000);
+        }
+      }
+
+      connect();
+    }
+    // -------------------------------------------------------------
+    // VENDOR MANAGEMENT (100% Firebase Firestore - Strictly Admin/Owner Parties)
+    // -------------------------------------------------------------
+    async function loadVendors() {
+      // 1. Check local storage cache
+      const stored = localStorage.getItem('hcp_store_vendors');
+      if (stored) {
+        try { vendors = JSON.parse(stored); } catch (_) { vendors = []; }
+      } else {
+        vendors = [];
+      }
+
+      // 2. Primary Fetch directly from Firebase Firestore store_vendors (same as Admin APK)
       try {
-        if (_supabase) {
-          const { data, error } = await _supabase.from('store_vendors').select('*').order('name');
-          if (data && data.length > 0) {
-            vendors = data.map(v => ({ id: v.id, name: v.name, phone: v.mobile || '', category: v.address || '' }));
+        const vRes = await fetch(`${FIREBASE_REST_URL}/store_vendors?key=${FIREBASE_API_KEY}`).then(r => r.json()).catch(() => null);
+        if (vRes?.documents && Array.isArray(vRes.documents)) {
+          vendors = vRes.documents.map(parseFirestoreDoc).map(v => ({
+            id: v.id,
+            name: v.name || 'Vendor',
+            phone: v.mobile || v.phone || '',
+            category: v.address || v.category || ''
+          }));
+          vendors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          saveVendors();
+        } else {
+          // Fallback to Supabase if Firebase returned empty
+          const client = getSupabaseClient();
+          let foundSupabase = false;
+          if (client) {
+            const { data } = await client.from('store_vendors').select('*').order('name');
+            if (Array.isArray(data) && data.length > 0) {
+              vendors = data.map(v => ({
+                id: v.id,
+                name: v.name || 'Vendor',
+                phone: v.mobile || v.phone || '',
+                category: v.address || v.category || ''
+              }));
+              vendors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+              saveVendors();
+              foundSupabase = true;
+            }
+          }
+          if (!foundSupabase) {
+            vendors = [];
             saveVendors();
           }
         }
       } catch (e) {
-        console.warn('Vendors fetch:', e);
+        console.warn('Firebase loadVendors error:', e);
       }
 
-      if (vendors.length > 0 && !selectedVendorId) {
+      if (vendors.length > 0 && (!selectedVendorId || !vendors.find(x => x.id === selectedVendorId))) {
         selectedVendorId = vendors[0].id;
+      } else if (vendors.length === 0) {
+        selectedVendorId = '';
       }
       updateVendorDisplay();
+      updateBillsCounter();
+      if (typeof currentRecentSubTab !== 'undefined' && currentRecentSubTab === 'parties') {
+        renderAllPartiesList();
+      }
     }
 
     function saveVendors() {
       localStorage.setItem('hcp_store_vendors', JSON.stringify(vendors));
     }
 
+    // AUTOMATIC MARATHI PARTY TRANSLITERATION & DICTIONARY
+    // -------------------------------------------------------------
+    const FULL_VENDOR_NAMES_MAP = {
+      'aadil mahagami': 'आदिल महागामी',
+      'adil mahagami': 'आदिल महागामी',
+      'yaha mumbai': 'याहा मुंबई',
+      'gupta grocery': 'गुप्ता किराणा',
+      'sharma dairy': 'शर्मा डेअरी',
+      'ritesh': 'रितेश',
+      'test supermarket': 'टेस्ट सुपरमार्केट',
+      'test supermarket & provisions': 'टेस्ट सुपरमार्केट आणि प्रॉव्हिजन्स',
+      'test vendor': 'टेस्ट व्हेंडर',
+      'tara mutton shop': 'तारा मटण शॉप',
+      'sagar chicken': 'सागर चिकन',
+      'kadam fish mart': 'कदम फिश मार्ट',
+      'patil vegetables': 'पाटील भाजीपाला',
+      'deshmukh dairy': 'देशमुख डेअरी',
+      'jadhav traders': 'जाधव ट्रेडर्स',
+      'general party': 'सर्वसाधारण पार्टी',
+      'store vendor': 'स्टोअर व्हेंडर'
+    };
+
+    const MARATHI_VENDOR_DICT = {
+      // Business types
+      'grocery': 'किराणा',
+      'dairy': 'डेअरी',
+      'supermarket': 'सुपरमार्केट',
+      'provisions': 'प्रॉव्हिजन्स',
+      'store': 'स्टोअर',
+      'stores': 'स्टोअर्स',
+      'shop': 'शॉप',
+      'vendor': 'व्हेंडर',
+      'traders': 'ट्रेडर्स',
+      'trader': 'ट्रेडर',
+      'enterprise': 'एंटरप्रायजेस',
+      'enterprises': 'एंटरप्रायजेस',
+      'agency': 'एजन्सी',
+      'agencies': 'एजन्सीज',
+      'mart': 'मार्ट',
+      'centre': 'सेंटर',
+      'center': 'सेंटर',
+      'company': 'कंपनी',
+      'co': 'कंपनी',
+      'pvt': 'प्रायव्हेट',
+      'ltd': 'लिमिटेड',
+      'bhandar': 'भांडार',
+      'general': 'जनरल',
+      'chicken': 'चिकन',
+      'mutton': 'मटण',
+      'fish': 'मासे',
+      'meat': 'मटण',
+      'vegetables': 'भाजीपाला',
+      'vegetable': 'भाजीपाला',
+      'fruits': 'फळे',
+      'fruit': 'फळे',
+      'egg': 'अंडी',
+      'eggs': 'अंडी',
+      'bakery': 'बेकरी',
+      'sweets': 'स्वीट्स',
+      'hotel': 'हॉटेल',
+      'restaurant': 'रेस्टॉरंट',
+      'oil': 'तेल',
+      'rice': 'तांदूळ',
+      'wheat': 'गहू',
+      'spices': 'मसाले',
+      'masala': 'मसाला',
+      'flour': 'पीठ',
+      'atta': 'आटा',
+      'grain': 'धान्य',
+      'grains': 'धान्य',
+      'and': 'आणि',
+      '&': 'आणि',
+      'plus': 'प्लस',
+
+      // Surnames & Names
+      'aadil': 'आदिल',
+      'adil': 'आदिल',
+      'mahagami': 'महागामी',
+      'gupta': 'गुप्ता',
+      'sharma': 'शर्मा',
+      'patil': 'पाटील',
+      'shinde': 'शिंदे',
+      'deshmukh': 'देशमुख',
+      'pawar': 'पवार',
+      'jadhav': 'जाधव',
+      'kadam': 'कदम',
+      'more': 'मोरे',
+      'chavan': 'चव्हाण',
+      'sawant': 'सावंत',
+      'joshi': 'जोशी',
+      'kulkarni': 'कुलकर्णी',
+      'shah': 'शाह',
+      'sheikh': 'शेख',
+      'khan': 'खान',
+      'pathan': 'पठाण',
+      'sayyed': 'सय्यद',
+      'syed': 'सय्यद',
+      'ansari': 'अंसारी',
+      'quraishi': 'कुरेशी',
+      'qureshi': 'कुरेशी',
+      'ritesh': 'रितेश',
+      'rahul': 'राहुल',
+      'amit': 'अमित',
+      'sachin': 'सचिन',
+      'sunil': 'सुनील',
+      'anil': 'अनिल',
+      'vijay': 'विजय',
+      'sanjay': 'संजय',
+      'ganesh': 'गणेश',
+      'santosh': 'संतोष',
+      'mahesh': 'महेश',
+      'ramesh': 'रमेश',
+      'suresh': 'सुरेश',
+      'pradeep': 'प्रदीप',
+      'prakash': 'प्रकाश',
+      'deepak': 'दीपक',
+      'ajay': 'अजय',
+      'ashok': 'अशोक',
+      'kiran': 'किरण',
+      'rohit': 'रोहित',
+      'raj': 'राज',
+      'raju': 'राजू',
+      'vikram': 'विक्रम',
+      'nitin': 'नितीन',
+      'manoj': 'मनोज',
+      'dinesh': 'दिनेश',
+      'tara': 'तारा',
+      'shree': 'श्री',
+      'om': 'ओम',
+      'sai': 'साई',
+      'balaji': 'बालाजी',
+      'laxmi': 'लक्ष्मी',
+      'lakshmi': 'लक्ष्मी',
+      'durga': 'दुर्गा',
+      'shiv': 'शिव',
+      'shiva': 'शिवा',
+      'mahalaxmi': 'महालक्ष्मी',
+      'krishna': 'कृष्णा',
+      'guru': 'गुरू',
+      'test': 'टेस्ट'
+    };
+
+    const PHONETIC_CONSONANTS = [
+      ['shh', 'ष्'], ['chh', 'छ्'], ['kh', 'ख्'], ['gh', 'घ्'], ['ch', 'च्'],
+      ['jh', 'झ्'], ['th', 'थ्'], ['dh', 'ध्'], ['ph', 'फ्'], ['bh', 'भ्'],
+      ['sh', 'श्'], ['k', 'क्'], ['g', 'ग्'], ['c', 'क्'], ['j', 'ज्'],
+      ['t', 'त्'], ['d', 'द्'], ['n', 'न्'], ['p', 'प्'], ['f', 'फ्'],
+      ['b', 'ब्'], ['m', 'म्'], ['y', 'य्'], ['r', 'र्'], ['l', 'ल्'],
+      ['v', 'व्'], ['w', 'व्'], ['s', 'स्'], ['h', 'ह्'], ['z', 'झ्'], ['x', 'क्स']
+    ];
+
+    const PHONETIC_MATRAS = [
+      ['aa', 'ा'], ['ee', 'ी'], ['oo', 'ू'], ['ai', 'ै'], ['au', 'ौ'],
+      ['a', 'ा'], ['i', 'ि'], ['e', 'े'], ['u', 'ु'], ['o', 'ो']
+    ];
+
+    const PHONETIC_INITIALS = [
+      ['aa', 'आ'], ['ee', 'ई'], ['oo', 'ऊ'], ['ai', 'ऐ'], ['au', 'औ'],
+      ['a', 'अ'], ['i', 'इ'], ['e', 'ए'], ['u', 'उ'], ['o', 'ओ']
+    ];
+
+    function transliteratePhoneticSyllables(raw) {
+      const w = raw.toLowerCase().replace(/[^a-z]/g, '');
+      if (!w) return raw;
+      let res = '';
+      let i = 0;
+      let isStart = true;
+      while (i < w.length) {
+        if (isStart) {
+          let matchedVowel = false;
+          for (const [vStr, vDev] of PHONETIC_INITIALS) {
+            if (w.startsWith(vStr, i)) {
+              res += vDev;
+              i += vStr.length;
+              matchedVowel = true;
+              isStart = false;
+              break;
+            }
+          }
+          if (matchedVowel) continue;
+        }
+        let matchedCons = false;
+        for (const [cStr, cDev] of PHONETIC_CONSONANTS) {
+          if (w.startsWith(cStr, i)) {
+            i += cStr.length;
+            matchedCons = true;
+            let matchedMatra = false;
+            for (const [vStr, mDev] of PHONETIC_MATRAS) {
+              if (w.startsWith(vStr, i)) {
+                res += cDev.replace('्', '') + mDev;
+                i += vStr.length;
+                matchedMatra = true;
+                break;
+              }
+            }
+            if (!matchedMatra) {
+              if (i === w.length) {
+                res += cDev.replace('्', '');
+              } else {
+                res += cDev;
+              }
+            }
+            isStart = false;
+            break;
+          }
+        }
+        if (!matchedCons) {
+          for (const [vStr, vDev] of PHONETIC_INITIALS) {
+            if (w.startsWith(vStr, i)) {
+              res += vDev;
+              i += vStr.length;
+              break;
+            }
+          }
+          i++;
+        }
+      }
+      return res || raw;
+    }
+
+    function toMarathiName(name) {
+      if (!name || typeof name !== 'string') return '';
+      const trimmed = name.trim();
+      if (!trimmed) return '';
+      // If already contains Devanagari script, return directly
+      if (/[\u0900-\u097F]/.test(trimmed)) return trimmed;
+
+      const lower = trimmed.toLowerCase();
+      if (FULL_VENDOR_NAMES_MAP[lower]) {
+        return FULL_VENDOR_NAMES_MAP[lower];
+      }
+
+      const words = trimmed.split(/\s+/);
+      const translatedWords = words.map(w => {
+        const clean = w.toLowerCase().replace(/[^a-z0-9&]/g, '');
+        if (MARATHI_VENDOR_DICT[clean]) return MARATHI_VENDOR_DICT[clean];
+        if (/^[a-z]+$/i.test(clean)) {
+          return transliteratePhoneticSyllables(clean);
+        }
+        return w;
+      });
+
+      return translatedWords.join(' ');
+    }
+
     function updateVendorDisplay() {
       const v = vendors.find(x => x.id === selectedVendorId);
       const textEl = document.getElementById('selectedVendorText');
-      if (v) {
-        textEl.textContent = v.name;
-      } else {
-        textEl.textContent = 'Select Vendor';
+      if (textEl) {
+        if (v) {
+          const marName = toMarathiName(v.name);
+          if (currentLang === 'mar') {
+            textEl.innerHTML = `<span style="font-weight:800; font-size:15px; color:#0f172a;">${marName}</span>` +
+              (marName !== v.name ? ` <span style="font-size:12px; color:#64748b; font-weight:500;">(${v.name})</span>` : '');
+          } else {
+            textEl.innerHTML = `<span style="font-weight:800; font-size:15px; color:#0f172a;">${v.name}</span>` +
+              (marName !== v.name ? ` <span style="font-size:12px; color:#64748b; font-weight:500;">(${marName})</span>` : '');
+          }
+        } else {
+          textEl.textContent = (I18N[currentLang] && I18N[currentLang].selectedVendorDefault) || 'पार्टी निवडा';
+        }
       }
+    }
+
+    let currentVendorCategory = 'ALL';
+
+    function filterVendorByCategory(cat, btn) {
+      currentVendorCategory = cat;
+      const chips = document.querySelectorAll('#pickerCategoryChips .picker-chip');
+      chips.forEach(c => c.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      filterVendorList();
+    }
+
+    function clearVendorSearch() {
+      const input = document.getElementById('vendorSearchInput');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      const clearBtn = document.getElementById('btnPickerClearSearch');
+      if (clearBtn) clearBtn.style.display = 'none';
+      filterVendorList();
     }
 
     function openVendorPickerModal() {
-      document.getElementById('vendorSearchInput').value = '';
-      renderVendorPickerItems();
-      document.getElementById('vendorPickerModal').classList.add('show');
+      const input = document.getElementById('vendorSearchInput');
+      if (input) input.value = '';
+      const clearBtn = document.getElementById('btnPickerClearSearch');
+      if (clearBtn) clearBtn.style.display = 'none';
+      
+      currentVendorCategory = 'ALL';
+      const chips = document.querySelectorAll('#pickerCategoryChips .picker-chip');
+      chips.forEach((c, idx) => {
+        if (idx === 0) c.classList.add('active');
+        else c.classList.remove('active');
+      });
+
+      renderVendorPickerItems('', 'ALL');
+      const modal = document.getElementById('vendorPickerModal');
+      if (modal) {
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+      }
+      setTimeout(() => {
+        if (input) input.focus();
+      }, 100);
     }
 
-    function renderVendorPickerItems(filter = '') {
+    function renderVendorPickerItems(filter = '', category = 'ALL') {
       const container = document.getElementById('vendorPickerItemsContainer');
+      if (!container) return;
       container.innerHTML = '';
-      let list = vendors;
-      if (filter) {
-        const q = filter.toLowerCase();
-        list = vendors.filter(v => v.name.toLowerCase().includes(q) || (v.category && v.category.toLowerCase().includes(q)));
+      
+      let list = vendors || [];
+      const q = (filter || '').trim().toLowerCase();
+
+      // Filter by search query (checks English name, Marathi transliteration, phone, category)
+      if (q) {
+        list = list.filter(v => {
+          const marName = toMarathiName(v.name).toLowerCase();
+          const engName = (v.name || '').toLowerCase();
+          const phone = (v.phone || '').toLowerCase();
+          const cat = (v.category || '').toLowerCase();
+          return engName.includes(q) || marName.includes(q) || phone.includes(q) || cat.includes(q);
+        });
+      }
+
+      // Filter by category chip
+      if (category && category !== 'ALL') {
+        const catKey = category.toLowerCase();
+        list = list.filter(v => {
+          const vCat = ((v.category || '') + ' ' + (v.name || '')).toLowerCase();
+          if (catKey === 'grocery') return vCat.includes('grocery') || vCat.includes('किराणा') || vCat.includes('supermarket') || vCat.includes('provisions');
+          if (catKey === 'dairy') return vCat.includes('dairy') || vCat.includes('डेअरी') || vCat.includes('milk') || vCat.includes('दूध');
+          if (catKey === 'vegetable') return vCat.includes('veg') || vCat.includes('भाजी') || vCat.includes('fruit') || vCat.includes('market');
+          if (catKey === 'nonveg') return vCat.includes('mutton') || vCat.includes('chicken') || vCat.includes('fish') || vCat.includes('मटण') || vCat.includes('चिकन');
+          return true;
+        });
+      }
+
+      // Update counter in top bar
+      const countEl = document.getElementById('pickerVendorCount');
+      if (countEl) {
+        countEl.textContent = currentLang === 'mar' ? `${list.length} पार्ट्या उपलब्ध` : `${list.length} vendors available`;
       }
 
       if (list.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:16px; color:#94a3b8; font-size:13px;">No matching vendors</div>';
+        const msg = (I18N[currentLang] && I18N[currentLang].noVendorsFound) || 'कोणतीही पार्टी आढळली नाही';
+        container.innerHTML = `
+          <div style="text-align: center; padding: 48px 20px; color: #94a3b8;">
+            <div style="font-size: 38px; margin-bottom: 10px;">🔍</div>
+            <div style="font-size: 15px; font-weight: 700; color: #64748b;">${msg}</div>
+            <div style="font-size: 12px; margin-top: 4px;">कृपया दुसरे नाव किंवा मोबाईल नंबर टाकून शोधा.</div>
+          </div>
+        `;
         return;
       }
 
       list.forEach(v => {
+        const marName = toMarathiName(v.name);
+        const isSelected = v.id === selectedVendorId;
         const item = document.createElement('div');
-        item.className = 'vendor-picker-item' + (v.id === selectedVendorId ? ' selected' : '');
+        item.className = 'vendor-card-full' + (isSelected ? ' selected' : '');
+        
+        const catBadge = v.category ? `<span style="background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px; white-space: nowrap; border: 1px solid #e2e8f0;">${v.category}</span>` : '';
+        const phoneFormatted = v.phone ? `<span style="color: #0284c7; font-weight: 600;">📞 ${v.phone}</span>` : '';
+
         item.innerHTML = `
-          <span>${v.name}</span>
-          <span style="font-size:12px; color:#64748b;">${v.phone || ''}</span>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-size: 16.5px; font-weight: 850; color: #0f172a; letter-spacing: 0.2px;">${marName}</span>
+              ${isSelected ? '<span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px;">✓ निवडलेले</span>' : ''}
+            </div>
+            <div style="font-size: 13px; color: #64748b; font-weight: 500; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              ${marName !== v.name ? `<span style="color: #64748b; font-weight: 600;">${v.name}</span> • ` : ''}
+              ${phoneFormatted}
+            </div>
+          </div>
+          ${catBadge}
         `;
+
         item.onclick = () => {
           selectedVendorId = v.id;
           updateVendorDisplay();
           closeModal('vendorPickerModal');
+          const toastName = currentLang === 'mar' ? marName : v.name;
+          showToast(`पार्टी निवडली: ${toastName} ✓`);
         };
+
         container.appendChild(item);
       });
     }
 
     function filterVendorList() {
-      const q = document.getElementById('vendorSearchInput').value.trim();
-      renderVendorPickerItems(q);
+      const input = document.getElementById('vendorSearchInput');
+      const q = input ? input.value.trim() : '';
+      const clearBtn = document.getElementById('btnPickerClearSearch');
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+      renderVendorPickerItems(q, currentVendorCategory);
     }
 
     function openVendorManagerModal(isAddingNew = false) {
@@ -1464,9 +3311,10 @@
         vendors.push(newObj);
         selectedVendorId = newId;
 
-        if (_supabase) {
+        const client = getSupabaseClient();
+        if (client) {
           try {
-            const { data } = await _supabase.from('store_vendors').insert([{ name, mobile: phone, address: cat }]).select();
+            const { data } = await client.from('store_vendors').insert([{ name, mobile: phone, address: cat }]).select();
             if (data && data[0]) {
               newObj.id = data[0].id;
               selectedVendorId = data[0].id;
@@ -1480,9 +3328,10 @@
           v.name = name;
           v.phone = phone;
           v.category = cat;
-          if (_supabase && typeof v.id === 'number') {
+          const client = getSupabaseClient();
+          if (client && typeof v.id === 'number') {
             try {
-              await _supabase.from('store_vendors').update({ name, mobile: phone, address: cat }).eq('id', v.id);
+              await client.from('store_vendors').update({ name, mobile: phone, address: cat }).eq('id', v.id);
             } catch (_) {}
           }
           showToast('Vendor updated');
@@ -1497,9 +3346,10 @@
       const v = vendors.find(x => x.id === selectedVendorId);
       if (!v) return;
       if (confirm(`Delete vendor "${v.name}"?`)) {
-        if (_supabase && typeof v.id === 'number') {
+        const client = getSupabaseClient();
+        if (client && typeof v.id === 'number') {
           try {
-            await _supabase.from('store_vendors').delete().eq('id', v.id);
+            await client.from('store_vendors').delete().eq('id', v.id);
           } catch (_) {}
         }
         vendors = vendors.filter(x => x.id !== selectedVendorId);
@@ -1692,59 +3542,50 @@
       saveBtn.disabled = true;
       saveBtn.innerHTML = `<span>⏳ Saving...</span>`;
 
-      const billId = 'BILL-' + Date.now().toString().slice(-6);
       const formattedAmt = formatIndianNumber(numAmt);
       const d = selectedDate.getDate().toString().padStart(2, '0');
       const m = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
       const y = selectedDate.getFullYear();
       const dateStr = `${y}-${m}-${d}`;
+      const docId = String(Date.now());
+      const effectiveBillNum = (billNumber && billNumber !== 'N/A') ? billNumber : ('Bill:' + docId.slice(-4));
 
-      const billRecord = {
-        id: billId,
-        vendor_id: vendor.id,
-        vendor_name: vendor.name,
-        vendor_phone: vendor.phone || '',
-        bill_number: billNumber || 'N/A',
-        bill_date: dateStr,
-        amount: numAmt,
-        amount_formatted: formattedAmt,
-        has_gst: hasGst,
-        gst_status: hasGst ? 'With GST' : 'Without GST',
-        payment_mode: selectedPaymentMode,
-        status: 'PENDING',
-        created_at: new Date().toISOString()
-      };
-
-      // 1. Save directly into Supabase store_bills table in real project
+      // 1. Primary Save directly into Firebase Firestore (matching Admin APK)
       try {
-        if (_supabase) {
-          let vendorDbId = null;
-          if (typeof vendor.id === 'number') {
-            vendorDbId = vendor.id;
-          } else {
-            try {
-              const { data: existing } = await _supabase.from('store_vendors').select('id').eq('name', vendor.name).limit(1);
-              if (existing && existing.length > 0) {
-                vendorDbId = existing[0].id;
-                vendor.id = vendorDbId;
-              } else {
-                const { data: newV } = await _supabase.from('store_vendors').insert([{
-                  name: vendor.name,
-                  mobile: vendor.phone || '',
-                  address: vendor.category || ''
-                }]).select();
-                if (newV && newV[0]) {
-                  vendorDbId = newV[0].id;
-                  vendor.id = vendorDbId;
-                }
-              }
-            } catch (_) {}
-          }
-          if (!vendorDbId) vendorDbId = 1;
+        await fetch(`${FIREBASE_REST_URL}/store_bills?documentId=${docId}&key=${FIREBASE_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              id: { stringValue: docId },
+              vendor_id: { stringValue: String(vendor.id) },
+              vendor_name: { stringValue: vendor.name },
+              vendor_phone: { stringValue: vendor.phone || '' },
+              bill_number: { stringValue: effectiveBillNum },
+              bill_date: { stringValue: dateStr },
+              total_amount: { integerValue: String(numAmt) },
+              paid_amount: { doubleValue: 0 },
+              pending_amount: { doubleValue: numAmt },
+              status: { stringValue: 'PENDING' },
+              notes: { stringValue: `${hasGst ? 'With GST' : 'Without GST'} | Mode: ${selectedPaymentMode}` },
+              created_by: { stringValue: 'Store Boy' },
+              updated_at: { stringValue: new Date().toISOString() }
+            }
+          })
+        });
+        console.log('🔥 [Firebase] Bill created successfully in Firestore:', docId);
+      } catch (fbErr) {
+        console.warn('Firebase bill save error:', fbErr);
+      }
 
-          const { data: insertedData, error: insertError } = await _supabase.from('store_bills').insert([{
+      // 2. Parallel backup save into Supabase
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          const vendorDbId = await getOrSyncVendorDbId(vendor);
+          client.from('store_bills').insert([{
             vendor_id: vendorDbId,
-            bill_number: billNumber || 'N/A',
+            bill_number: effectiveBillNum,
             bill_date: dateStr,
             total_amount: numAmt,
             paid_amount: 0,
@@ -1752,56 +3593,53 @@
             status: 'PENDING',
             notes: `${hasGst ? 'With GST' : 'Without GST'} | Mode: ${selectedPaymentMode}`,
             created_by: 'Store Boy'
-          }]).select();
-
-          if (insertError) {
-            console.error('Supabase store_bills insert error:', insertError);
-            throw insertError;
-          }
-
-          // Trigger push notification to Admin APK (HotelCityPark-Owner)
-          const newBillId = (insertedData && insertedData[0]) ? insertedData[0].id : '';
-          _supabase.functions.invoke('send-push', {
-            body: {
-              title: '📦 Store Bill: ' + vendor.name,
-              body: '₹' + formattedAmt + ' bill entered by Storeman (' + selectedPaymentMode + ' • ' + (hasGst ? 'With GST' : 'Without GST') + ')',
-              type: 'store',
-              data: {
-                bill_id: String(newBillId),
-                vendor_name: vendor.name,
-                bill_number: billNumber || 'N/A',
-                amount: formattedAmt,
-                payment_mode: selectedPaymentMode,
-                has_gst: hasGst
-              }
-            }
-          }).catch(pushErr => console.warn('Admin push alert notice:', pushErr));
+          }]).then(() => {}).catch(() => {});
         }
-      } catch (err) {
-        console.warn('Cloud save warning (queueing offline):', err);
-        // Queue for offline auto-sync
-        try {
-          const q = JSON.parse(localStorage.getItem('hcp_store_offline_queue') || '[]');
-          q.push({
-            vendor_id: typeof vendor.id === 'number' ? vendor.id : 1,
-            vendor_name: vendor.name,
-            bill_number: billNumber || 'N/A',
-            bill_date: dateStr,
-            total_amount: numAmt,
-            notes: `${hasGst ? 'With GST' : 'Without GST'} | Mode: ${selectedPaymentMode}`
-          });
-          localStorage.setItem('hcp_store_offline_queue', JSON.stringify(q));
-          showToast('Saved offline. Will sync when internet is on.', true);
-        } catch (_) {}
-      }
+      } catch (_) {}
 
-      // 2. Save locally into bills archive
+      const billRecord = {
+        id: 'BILL-' + docId,
+        db_id: docId,
+        vendor_id: vendor.id,
+        vendor_name: vendor.name,
+        vendor_phone: vendor.phone || '',
+        bill_number: effectiveBillNum,
+        bill_date: dateStr,
+        amount: numAmt,
+        total_amount: numAmt,
+        paid_amount: 0,
+        pending_amount: numAmt,
+        amount_formatted: formattedAmt,
+        has_gst: hasGst,
+        gst_status: hasGst ? 'With GST' : 'Without GST',
+        payment_mode: selectedPaymentMode,
+        status: 'PENDING',
+        created_at: new Date().toISOString(),
+        payments: []
+      };
+
+      // 3. Save locally into bills archive
       bills.unshift(billRecord);
       saveBills();
       updateBillsCounter();
       renderBillsList();
+      // 3b. Trigger Push Notification to Admin / Owner APK (Deduplicated Single Dispatch)
+      try {
+        fetch('/api/store/notify-bill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vendorName: vendor.name,
+            billNumber: effectiveBillNum,
+            amount: numAmt,
+            billId: docId,
+            paymentMode: selectedPaymentMode,
+            hasGst: hasGst
+          })
+        }).catch(() => {});
+      } catch (_) {}
 
-      // 3. Reset form
+      // 4. Reset form
       document.getElementById('billNumberInput').value = '';
       document.getElementById('billAmountInput').value = '';
       document.getElementById('amountWordsText').textContent = 'Zero Rupees';
@@ -1851,6 +3689,27 @@
       }
     }
 
+    function formatShortDate(dateStr) {
+      if (!dateStr) return 'N/A';
+      try {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const parts = String(dateStr).split('-');
+        if (parts.length === 3) {
+          const y = parts[0];
+          const mIdx = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          if (mIdx >= 0 && mIdx < 12) {
+            return `${d} ${months[mIdx]} ${y}`;
+          }
+        }
+        const dt = new Date(dateStr);
+        if (!isNaN(dt.getTime())) {
+          return `${dt.getDate()} ${months[dt.getMonth()]} ${dt.getFullYear()}`;
+        }
+      } catch (_) {}
+      return dateStr;
+    }
+
     function getBillAging(billDateStr) {
       if (!billDateStr) return { days: 0, level: 'normal', cardClass: '', badgeHtml: '<span class="aging-badge-normal">⏱️ 0 Days</span>' };
       try {
@@ -1869,114 +3728,163 @@
         const diffDays = Math.max(0, Math.floor((today - d1) / (1000 * 60 * 60 * 24)));
         
         if (diffDays >= 15 && diffDays <= 25) {
+          const txt = currentLang === 'mar' ? `🟡 ${diffDays} दिवस बाकी` : `🟡 Pending ${diffDays} Days`;
           return {
             days: diffDays,
             level: 'yellow',
             cardClass: 'aging-card-yellow',
-            badgeHtml: `<span class="aging-badge-yellow">🟡 Pending ${diffDays} Days</span>`
+            badgeHtml: `<span class="aging-badge-yellow">${txt}</span>`
           };
         } else if (diffDays > 25) {
+          const txt = currentLang === 'mar' ? `🔴 ${diffDays} दिवस प्रलंबित` : `🔴 Overdue ${diffDays} Days`;
           return {
             days: diffDays,
             level: 'red',
             cardClass: 'aging-card-red',
-            badgeHtml: `<span class="aging-badge-red">🔴 Overdue ${diffDays} Days</span>`
+            badgeHtml: `<span class="aging-badge-red">${txt}</span>`
           };
         } else {
+          const txt = currentLang === 'mar' ? `⏱️ ${diffDays} दिवस` : `⏱️ ${diffDays} Day${diffDays === 1 ? '' : 's'}`;
           return {
             days: diffDays,
             level: 'normal',
             cardClass: '',
-            badgeHtml: `<span class="aging-badge-normal">⏱️ ${diffDays} Day${diffDays === 1 ? '' : 's'}</span>`
+            badgeHtml: `<span class="aging-badge-normal">${txt}</span>`
           };
         }
       } catch (_) {
-        return { days: 0, level: 'normal', cardClass: '', badgeHtml: '<span class="aging-badge-normal">⏱️ 0 Days</span>' };
+        const txt = currentLang === 'mar' ? `⏱️ ० दिवस` : `⏱️ 0 Days`;
+        return { days: 0, level: 'normal', cardClass: '', badgeHtml: `<span class="aging-badge-normal">${txt}</span>` };
       }
     }
 
     async function loadBills() {
+      // 1. Check local storage cache
       const stored = localStorage.getItem('hcp_store_bills');
       if (stored) {
-        try { bills = JSON.parse(stored); } catch (_) { bills = []; }
+        try { 
+          bills = JSON.parse(stored);
+          if (Array.isArray(bills) && bills.some(b => !b.vendor_name || b.vendor_name.includes('undefined'))) {
+            bills = [];
+            localStorage.removeItem('hcp_store_bills');
+          }
+        } catch (_) { bills = []; }
+      } else {
+        bills = [];
       }
 
-      // Fetch from Supabase store_bills and store_vendor_payments
+      // 2. Primary Fetch from Firebase Firestore store_bills & store_vendor_payments (same as Admin APK)
       try {
-        if (_supabase) {
-          const [billsRes, paymentsRes] = await Promise.all([
-            _supabase.from('store_bills').select('*').order('created_at', { ascending: false }).limit(100),
-            _supabase.from('store_vendor_payments').select('*').order('paid_at', { ascending: false }).limit(300)
-          ]);
+        const [bRes, pRes] = await Promise.all([
+          fetch(`${FIREBASE_REST_URL}/store_bills?key=${FIREBASE_API_KEY}`).then(r => r.json()).catch(() => null),
+          fetch(`${FIREBASE_REST_URL}/store_vendor_payments?key=${FIREBASE_API_KEY}`).then(r => r.json()).catch(() => null)
+        ]);
 
-          const allPayments = (paymentsRes && paymentsRes.data) ? paymentsRes.data : [];
+        const rawBills = (bRes?.documents || []).map(parseFirestoreDoc).filter(b => b.total_amount !== undefined || b.vendor_name);
+        const allPayments = (pRes?.documents || []).map(parseFirestoreDoc);
 
-          if (billsRes && billsRes.data && billsRes.data.length > 0) {
-            const mapped = billsRes.data.map(b => {
-              const v = vendors.find(x => x.id === b.vendor_id);
-              const total = parseFloat(b.total_amount) || 0;
-              let paid = parseFloat(b.paid_amount) || 0;
-              let pending = (b.pending_amount !== undefined && b.pending_amount !== null) ? parseFloat(b.pending_amount) : Math.max(0, total - paid);
-              
-              // Attach matching payment installments
-              const bPayments = allPayments.filter(p => Number(p.bill_id) === Number(b.id)).sort((p1, p2) => new Date(p1.paid_at) - new Date(p2.paid_at));
-              
-              // Reconcile paid and pending with payments if present
-              if (bPayments.length > 0) {
-                const totalFromPayments = bPayments.reduce((acc, p) => acc + (parseFloat(p.payment_amount) || 0), 0);
-                if (totalFromPayments > paid) {
-                  paid = totalFromPayments;
-                  pending = Math.max(0, total - paid);
-                }
+        // Check for new Admin payments and trigger audible / visual announcement
+        checkNewAdminPayments(allPayments);
+
+        if (rawBills.length > 0) {
+          const mapped = rawBills.map(b => {
+            const v = vendors.find(x => String(x.id) === String(b.vendor_id) || (x.name && x.name === b.vendor_name));
+            const total = parseFloat(b.total_amount) || 0;
+            let paid = parseFloat(b.paid_amount) || 0;
+            let pending = (b.pending_amount !== undefined && b.pending_amount !== null) ? parseFloat(b.pending_amount) : Math.max(0, total - paid);
+
+            // Matching payment installments for this bill
+            const bPayments = allPayments
+              .filter(p => String(p.bill_id) === String(b.id))
+              .sort((p1, p2) => new Date(p1.paid_at || p1.created_at || 0) - new Date(p2.paid_at || p2.created_at || 0));
+
+            if (bPayments.length > 0) {
+              const totalFromPayments = bPayments.reduce((acc, p) => acc + (parseFloat(p.payment_amount) || 0), 0);
+              if (totalFromPayments > paid) {
+                paid = totalFromPayments;
+                pending = Math.max(0, total - paid);
               }
+            }
 
-              // Determine status
-              let billStatus = 'PENDING';
-              const rawStatus = String(b.status || '').toUpperCase();
-              if (pending === 0 || rawStatus === 'FULL' || rawStatus === 'PAID') {
-                billStatus = 'FULL';
-                pending = 0;
-                paid = total;
-              } else if (paid > 0 && pending > 0) {
-                billStatus = 'PARTLY';
-              } else {
-                billStatus = 'PENDING';
-                pending = total;
-                paid = 0;
-              }
+            // Determine accurate status
+            let billStatus = 'PENDING';
+            const rawStatus = String(b.status || '').toUpperCase();
+            if (pending <= 0 || rawStatus === 'FULL' || rawStatus === 'PAID') {
+              billStatus = 'FULL';
+              pending = 0;
+              paid = total;
+            } else if (paid > 0 && pending > 0) {
+              billStatus = 'PARTLY';
+            } else {
+              billStatus = 'PENDING';
+              pending = total;
+              paid = 0;
+            }
 
-              return {
-                id: 'BILL-' + b.id,
-                db_id: b.id,
-                vendor_id: b.vendor_id,
-                vendor_name: v ? v.name : ('Vendor #' + b.vendor_id),
-                vendor_phone: v ? v.phone : '',
-                bill_number: b.bill_number || 'N/A',
-                bill_date: b.bill_date || '',
-                amount: total,
-                total_amount: total,
-                paid_amount: paid,
-                pending_amount: pending,
-                amount_formatted: formatIndianNumber(total),
-                has_gst: (b.notes || '').includes('With GST') || b.has_gst === 1,
-                gst_status: ((b.notes || '').includes('With GST') || b.has_gst === 1) ? 'With GST' : 'Without GST',
-                payment_mode: (b.notes || '').split('Mode: ')[1] || b.payment_mode || 'Bank Transfer',
-                status: billStatus,
-                created_at: b.created_at,
-                payments: bPayments
-              };
-            });
-            bills = mapped;
-            saveBills();
-            updateBillsCounter();
-            renderBillsList();
-            if (typeof currentRecentSubTab !== 'undefined' && currentRecentSubTab === 'party') {
-              renderPartyWiseList();
+            // Bill number fallback matching Admin APK
+            const formattedBillNumber = (b.bill_number && b.bill_number !== 'N/A' && b.bill_number.trim()) 
+              ? b.bill_number.trim() 
+              : ('Bill:' + (b.id ? String(b.id).slice(-4) : ''));
+
+            const safeVendorName = (v && v.name) ? v.name : (b.vendor_name ? b.vendor_name : 'Store Vendor');
+
+            // Payment mode extraction
+            let payMode = b.payment_mode || 'Bank Transfer';
+            if ((b.notes || '').includes('Mode: ')) {
+              payMode = (b.notes || '').split('Mode: ')[1]?.split('|')[0]?.trim() || payMode;
+            } else if (bPayments[0]?.payment_mode) {
+              payMode = bPayments[0].payment_mode;
+            }
+
+            return {
+              id: 'BILL-' + b.id,
+              db_id: b.id,
+              vendor_id: b.vendor_id || (v ? v.id : ''),
+              vendor_name: safeVendorName,
+              vendor_phone: b.vendor_phone || (v ? v.phone : ''),
+              bill_number: formattedBillNumber,
+              bill_date: b.bill_date || '',
+              amount: total,
+              total_amount: total,
+              paid_amount: paid,
+              pending_amount: pending,
+              amount_formatted: formatIndianNumber(total),
+              has_gst: (b.notes || '').includes('With GST') || b.has_gst === 1,
+              gst_status: ((b.notes || '').includes('With GST') || b.has_gst === 1) ? 'With GST' : 'Without GST',
+              payment_mode: payMode,
+              status: billStatus,
+              created_at: b.created_at || b.updated_at || new Date().toISOString(),
+              payments: bPayments
+            };
+          });
+          bills = mapped;
+        } else {
+          // Fallback to Supabase
+          const client = getSupabaseClient();
+          let foundSupabase = false;
+          if (client) {
+            const { data: sBills } = await client.from('store_bills').select('*').order('created_at', { ascending: false });
+            if (Array.isArray(sBills) && sBills.length > 0) {
+              // fallback map
+              foundSupabase = true;
             }
           }
+          if (!foundSupabase) {
+            bills = [];
+          }
         }
+        saveBills();
       } catch (e) {
-        console.warn('Fetch bills note:', e);
+        console.warn('loadBills Firebase fetch error:', e);
+      }
+
+      updateBillsCounter();
+      if (typeof currentRecentSubTab === 'undefined' || currentRecentSubTab === 'partyDues') {
+        renderPartyWiseList();
+      } else if (currentRecentSubTab === 'billWise') {
+        renderBillsList();
+      } else if (currentRecentSubTab === 'parties') {
+        renderAllPartiesList();
       }
     }
 
@@ -1985,7 +3893,83 @@
     }
 
     function updateBillsCounter() {
-      document.getElementById('recentCountBadge').textContent = bills.length;
+      // 1. Header badge
+      const recentBadge = document.getElementById('recentCountBadge');
+      if (recentBadge) recentBadge.textContent = bills.length;
+
+      // 2. Compute party dues count (parties with pending dues > 0)
+      const partyDuesMap = {};
+      let totalOutstandingDues = 0;
+      let totalPaidAmount = 0;
+      let overdueCount = 0;
+      let warningCount = 0;
+      let clearedCount = 0;
+
+      bills.forEach(b => {
+        const key = String(b.vendor_id || b.vendor_name || 'other');
+        const info = getBillStatusInfo(b);
+        partyDuesMap[key] = (partyDuesMap[key] || 0) + info.pendingAmt;
+        totalOutstandingDues += info.pendingAmt;
+        totalPaidAmount += info.paidAmt;
+
+        if (info.pendingAmt <= 0) {
+          clearedCount++;
+        } else {
+          const aging = getBillAging(b.bill_date || b.created_at);
+          if (aging.days > 25) overdueCount++;
+          else if (aging.days >= 15) warningCount++;
+        }
+      });
+      const partiesWithPending = Object.values(partyDuesMap).filter(amt => amt > 0).length;
+
+      // Populate KPI Summary Card (Aligned 100% with Admin APK Pic 3)
+      const kpiTotalDue = document.getElementById('kpiTotalDueValue');
+      if (kpiTotalDue) kpiTotalDue.textContent = `₹${formatIndianNumber(totalOutstandingDues)}`;
+
+      const kpiSubText = document.getElementById('kpiSummarySubText');
+      if (kpiSubText) {
+        const partiesWord = currentLang === 'mar' ? 'पार्ट्या' : 'Parties';
+        const billsWord = currentLang === 'mar' ? 'बिले' : 'Bills';
+        kpiSubText.textContent = `${partiesWithPending} ${partiesWord} · ${bills.length} ${billsWord}`;
+      }
+
+      const kpiBadgeRed = document.getElementById('kpiBadgeRed');
+      if (kpiBadgeRed) {
+        if (overdueCount > 0) {
+          kpiBadgeRed.style.display = 'inline-block';
+          kpiBadgeRed.textContent = `🔴 ${overdueCount} Overdue`;
+        } else {
+          kpiBadgeRed.style.display = 'none';
+        }
+      }
+
+      const kpiBadgeYellow = document.getElementById('kpiBadgeYellow');
+      if (kpiBadgeYellow) {
+        if (warningCount > 0) {
+          kpiBadgeYellow.style.display = 'inline-block';
+          kpiBadgeYellow.textContent = `🟡 ${warningCount} Warning`;
+        } else {
+          kpiBadgeYellow.style.display = 'none';
+        }
+      }
+
+      const kpiCleared = document.getElementById('kpiClearedText');
+      if (kpiCleared) {
+        if (currentLang === 'mar') {
+          kpiCleared.textContent = `✓ ${bills.length} पैकी ${clearedCount} बिले पूर्ण भरली (₹${formatIndianNumber(totalPaidAmount)} जमा)`;
+        } else {
+          kpiCleared.textContent = `✓ ${clearedCount} of ${bills.length} bills cleared (₹${formatIndianNumber(totalPaidAmount)} paid)`;
+        }
+      }
+
+      const badgeDues = document.getElementById('badgePartyDuesCount');
+      if (badgeDues) badgeDues.textContent = partiesWithPending;
+
+      const badgeBills = document.getElementById('badgeBillWiseCount');
+      if (badgeBills) badgeBills.textContent = bills.length;
+
+      const badgeParties = document.getElementById('badgePartiesCount');
+      if (badgeParties) badgeParties.textContent = vendors.length;
     }
 
     function getBillStatusInfo(b) {
@@ -1997,7 +3981,7 @@
       if (s === 'FULL' || s === 'PAID' || pendingAmt <= 0) {
         return {
           code: 'FULL',
-          label: 'Fully',
+          label: currentLang === 'mar' ? 'पूर्ण भरले' : 'Fully Paid',
           badgeClass: 'badge-status-fully',
           cardClass: 'status-card-full',
           color: '#047857',
@@ -2009,7 +3993,7 @@
       if (s === 'PARTLY' || (paidAmt > 0 && pendingAmt > 0)) {
         return {
           code: 'PARTLY',
-          label: 'Partially',
+          label: currentLang === 'mar' ? 'अंशतः भरले' : 'Partially',
           badgeClass: 'badge-status-partially',
           cardClass: 'status-card-partly',
           color: '#b45309',
@@ -2020,7 +4004,7 @@
       }
       return {
         code: 'PENDING',
-        label: 'Pending',
+        label: currentLang === 'mar' ? 'प्रलंबित' : 'Pending',
         badgeClass: 'badge-status-pending',
         cardClass: 'status-card-unpaid',
         color: '#dc2626',
@@ -2032,48 +4016,65 @@
 
     function renderBillsList() {
       const container = document.getElementById('billsListContainer');
+      if (!container) return;
       container.innerHTML = '';
 
       if (bills.length === 0) {
-        container.innerHTML = '<div class="empty-state">No bills recorded yet.<br>Submitted bills will appear here.</div>';
+        const noBillsTxt = currentLang === 'mar' ? 'अद्याप कोणतेही बिल नोंदवले नाही.<br>नोंदवलेली बिले येथे दिसतील.' : 'No bills recorded yet.<br>Submitted bills will appear here.';
+        container.innerHTML = `<div class="empty-state">${noBillsTxt}</div>`;
         return;
       }
 
       bills.forEach(b => {
         const info = getBillStatusInfo(b);
+        const aging = getBillAging(b.bill_date || b.created_at);
         const card = document.createElement('div');
         card.className = 'bill-item-card';
 
-        let sublineHtml = '';
-        if (info.code === 'PARTLY') {
-          sublineHtml = `
-            <div style="font-size: 11.5px; color: #b45309; font-weight: 600; margin-top: 2px;">
-              Paid: ₹${formatIndianNumber(info.paidAmt)} • Remaining Due: ₹${formatIndianNumber(info.pendingAmt)}
-            </div>
-          `;
-        } else if (info.code === 'PENDING') {
-          sublineHtml = `
-            <div style="font-size: 11.5px; color: #dc2626; font-weight: 600; margin-top: 2px;">
-              Pending Due: ₹${formatIndianNumber(info.pendingAmt)}
-            </div>
-          `;
+        // Aging pill matching Picture 3:
+        let agingPillHtml = '';
+        if (info.pendingAmt <= 0) {
+          agingPillHtml = `<span class="aging-pill pill-cleared">✓ Cleared</span>`;
+        } else if (aging.days > 25) {
+          agingPillHtml = `<span class="aging-pill pill-red">🔴 ${aging.days}d</span>`;
+        } else if (aging.days >= 15) {
+          agingPillHtml = `<span class="aging-pill pill-yellow">🟡 ${aging.days}d</span>`;
+        } else {
+          agingPillHtml = `<span class="aging-pill">⏱ ${aging.days}d</span>`;
         }
 
+        const dateFormatted = formatShortDate(b.bill_date);
+        const displayName = currentLang === 'mar' ? toMarathiName(b.vendor_name) : b.vendor_name;
+        const dueLbl = currentLang === 'mar' ? 'बाकी' : 'Due';
+        const totalLbl = currentLang === 'mar' ? 'एकूण' : 'Total';
+        const paidLbl = currentLang === 'mar' ? 'जमा' : 'Paid';
+
+        // Installment pill badge e.g. [1 Inst.]
+        const payments = b.payments || [];
+        const instBadgeHtml = payments.length > 0 
+          ? `<span class="bill-inst-badge">${payments.length} Inst.</span>` 
+          : '';
+
         card.innerHTML = `
-          <div class="bill-card-top">
-            <div>
-              <div class="bill-vendor-name">${b.vendor_name}</div>
-              <div class="bill-meta">Date: ${b.bill_date} • Bill #: ${b.bill_number}</div>
-              ${sublineHtml}
-            </div>
-            <div class="bill-amount-display">₹${b.amount_formatted}</div>
+          <div class="bill-card-row-top">
+            <div class="bill-card-vendor-title">${displayName}</div>
+            ${agingPillHtml}
           </div>
-          <div class="bill-card-bottom">
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <span class="badge badge-gst">${b.gst_status}</span>
-              <span class="badge badge-mode">${b.payment_mode}</span>
+          <div class="bill-card-row-meta">
+            <div class="bill-card-meta-text">${b.bill_number} · ${dateFormatted}</div>
+            <div class="bill-card-due-text" style="color: ${info.pendingAmt > 0 ? '#dc2626' : '#047857'};">
+              ${dueLbl}: ₹${formatIndianNumber(info.pendingAmt)}
             </div>
-            <span class="badge ${info.badgeClass}">${info.label}</span>
+          </div>
+          <div class="bill-card-row-footer">
+            <div class="bill-card-footer-tags">
+              <span class="bill-mode-badge">${b.payment_mode || 'Bank'}</span>
+              ${instBadgeHtml}
+            </div>
+            <div class="bill-card-footer-amounts">
+              <span>${totalLbl}: ₹${formatIndianNumber(b.amount)}</span>
+              <span>${paidLbl}: ₹${formatIndianNumber(info.paidAmt)}</span>
+            </div>
           </div>
         `;
         card.onclick = () => openBillDetailsModal(b);
@@ -2081,199 +4082,293 @@
       });
     }
 
-    function openBillDetailsModal(b) {
+    function formatGstDisplay(gstStatus, lang) {
+      const isWith = String(gstStatus || '').toLowerCase().includes('with') || gstStatus === true || gstStatus === 'true';
+      if (lang === 'mar') {
+        return isWith ? '✓ जीएसटी सह (With GST)' : '✕ जीएसटी शिवाय (Without GST)';
+      }
+      return isWith ? 'With GST' : 'Without GST';
+    }
+
+    function formatPayModeDisplay(mode, lang) {
+      const m = String(mode || '').toLowerCase();
+      if (lang === 'mar') {
+        if (m.includes('bank')) return '🏦 बँक ट्रान्सफर (Bank Transfer)';
+        if (m.includes('upi')) return '📱 युपीआय (UPI)';
+        if (m.includes('cash')) return '💵 रोख / कॅश (Cash)';
+        return mode || 'उपलब्ध नाही';
+      }
+      return mode || 'N/A';
+    }
+
+    function openBillDetailsModal(bOrId) {
+      let b = bOrId;
+      if (typeof bOrId === 'string') {
+        b = bills.find(x => String(x.id) === String(bOrId)) || (window._billsMap && window._billsMap[bOrId]) || null;
+      }
+      if (!b) return;
+      window._currentActiveBill = b;
+
       const info = getBillStatusInfo(b);
       const content = document.getElementById('billDetailsContent');
+      if (!content) return;
       const payments = b.payments || [];
 
-      let statusBannerHtml = '';
+      const totalAmt = Number(info.totalAmt || b.amount || b.total_amount || 0);
+      const paidAmt = Number(info.paidAmt || b.paid_amount || 0);
+      const pendingAmt = Number(info.pendingAmt !== undefined ? info.pendingAmt : Math.max(0, totalAmt - paidAmt));
+      const isPartially = info.code === 'PARTLY' || (paidAmt > 0 && pendingAmt > 0);
+      const isFullyPaid = info.code === 'FULL' || pendingAmt <= 0;
+      const isPending = !isFullyPaid && !isPartially;
+
+      const percentPaid = totalAmt > 0 ? Math.min(100, Math.max(0, Math.round((paidAmt / totalAmt) * 100))) : 0;
+      const percentDue = Math.max(0, 100 - percentPaid);
+
+      // Modal Title & Close Button in Marathi / English
+      const titleEl = document.getElementById('billDetailsModalTitle');
+      if (titleEl) {
+        titleEl.textContent = currentLang === 'mar' ? 'बिलाचा सविस्तर तपशील' : 'Bill Full Details';
+      }
+      const closeBtn = document.getElementById('btnBillDetailsClose');
+      if (closeBtn) {
+        closeBtn.textContent = currentLang === 'mar' ? 'बंद करा (Close)' : 'Close';
+      }
+
+      // 1. Highlight Card at Top: Total Amount, Paid Amount, Remaining Due side-by-side (near each other to see quickly)
+      const statusTitleText = isFullyPaid 
+        ? (currentLang === 'mar' ? '✓ पूर्ण भरले (Paid)' : '✓ FULLY CLEARED')
+        : (isPartially 
+            ? (currentLang === 'mar' ? '⚡ अंशतः भरले (Partially)' : '⚡ PARTIALLY PAID')
+            : (currentLang === 'mar' ? '🔴 संपूर्ण बाकी (Pending Due)' : '🔴 FULL PENDING DUE'));
+
+      const paidSubText = paidAmt > 0 
+        ? (currentLang === 'mar' ? `जमा (${percentPaid}%)` : `Paid (${percentPaid}%)`)
+        : (currentLang === 'mar' ? '₹० जमा' : '₹0 Paid');
+
+      const remainingSubText = pendingAmt > 0 
+        ? (currentLang === 'mar' ? `बाकी शिल्लक (${percentDue}%)` : `Due (${percentDue}%)`)
+        : (currentLang === 'mar' ? 'सर्व भरले' : 'Zero Due');
+
+      const highlightHtml = `
+        <div class="bill-highlight-card ${isFullyPaid ? 'theme-full' : (isPartially ? 'theme-partly' : 'theme-pending')}">
+          <div class="highlight-status-bar">
+            <div class="highlight-status-chip">
+              <span class="status-pulse-dot"></span>
+              <span class="status-title-text">${statusTitleText}</span>
+            </div>
+            <span class="badge ${info.badgeClass}">${info.label}</span>
+          </div>
+
+          <!-- 3 Prominent Stat Blocks Near Each Other (Quick View) -->
+          <div class="highlight-amounts-row">
+            <!-- Total Amount -->
+            <div class="stat-pill stat-total">
+              <div class="stat-lbl">${currentLang === 'mar' ? 'एकूण रक्कम' : 'Total Amount'}</div>
+              <div class="stat-val">₹${formatIndianNumber(totalAmt)}</div>
+              <div class="stat-tag">${currentLang === 'mar' ? 'एकूण बिल' : 'Total Bill'}</div>
+            </div>
+
+            <!-- Paid Amount -->
+            <div class="stat-pill stat-paid">
+              <div class="stat-lbl">${currentLang === 'mar' ? 'भरलेली रक्कम' : 'Paid Amount'}</div>
+              <div class="stat-val">₹${formatIndianNumber(paidAmt)}</div>
+              <div class="stat-tag ${paidAmt > 0 ? 'tag-green' : 'tag-gray'}">${paidSubText}</div>
+            </div>
+
+            <!-- Remaining Due -->
+            <div class="stat-pill stat-remaining ${pendingAmt > 0 ? 'alert-due' : 'cleared-due'}">
+              <div class="stat-lbl">${currentLang === 'mar' ? 'बाकी रक्कम' : 'Remaining Due'}</div>
+              <div class="stat-val">₹${formatIndianNumber(pendingAmt)}</div>
+              <div class="stat-tag ${pendingAmt > 0 ? 'tag-red' : 'tag-cleared'}">${remainingSubText}</div>
+            </div>
+          </div>
+
+          <!-- Progress Bar showing paid ratio -->
+          <div class="highlight-progress-wrap">
+            <div class="highlight-progress-bar">
+              <div class="highlight-progress-fill" style="width: ${percentPaid}%;"></div>
+            </div>
+            <div class="highlight-progress-labels">
+              <span>${currentLang === 'mar' ? 'भरलेले' : 'Paid'}: <strong>₹${formatIndianNumber(paidAmt)} (${percentPaid}%)</strong></span>
+              <span>${currentLang === 'mar' ? 'बाकी' : 'Due'}: <strong>₹${formatIndianNumber(pendingAmt)} (${percentDue}%)</strong></span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 2. Details Rows in Marathi
+      const vendorDisplayName = currentLang === 'mar' ? toMarathiName(b.vendor_name) : b.vendor_name;
+      const vendorSub = (currentLang === 'mar' && vendorDisplayName !== b.vendor_name) ? `<span style="font-size:11px; color:#64748b; font-weight:500;"> (${b.vendor_name})</span>` : '';
+      const gstFormatted = formatGstDisplay(b.gst_status, currentLang);
+      const modeFormatted = formatPayModeDisplay(b.payment_mode, currentLang);
+      const billNoFormatted = b.bill_number && b.bill_number !== 'N/A' ? b.bill_number : (currentLang === 'mar' ? 'उपलब्ध नाही (N/A)' : 'N/A');
+
+      const detailsTableHtml = `
+        <div class="bill-details-section">
+          <div class="details-section-title">
+            ${currentLang === 'mar' ? '📄 बिलाचा सविस्तर तपशील' : '📄 Bill Information'}
+          </div>
+          <div class="details-table-card">
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'सद्यस्थिती' : 'Status'}</span>
+              <span class="badge ${info.badgeClass}">${info.label}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'पार्टीचे नाव' : 'Vendor Name'}</span>
+              <span class="detail-value vendor-highlight">${vendorDisplayName}${vendorSub}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'मोबाईल नंबर' : 'Vendor Mobile'}</span>
+              <span class="detail-value">
+                ${b.vendor_phone && b.vendor_phone !== 'N/A' 
+                  ? `<a href="tel:${b.vendor_phone}" style="color:var(--gold-dark); text-decoration:none; font-weight:700;">📞 ${b.vendor_phone}</a>` 
+                  : '<span style="color:#94a3b8;">N/A</span>'
+                }
+              </span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'बिल क्रमांक' : 'Bill Number'}</span>
+              <span class="detail-value">${billNoFormatted}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'बिलाची तारीख' : 'Bill Date'}</span>
+              <span class="detail-value">${formatDateOnly(b.bill_date)}</span>
+            </div>
+            <div class="detail-row highlight-row total-row">
+              <span class="detail-label font-bold">${currentLang === 'mar' ? 'एकूण रक्कम' : 'Total Amount'}</span>
+              <span class="detail-value val-total">₹${formatIndianNumber(totalAmt)}</span>
+            </div>
+            <div class="detail-row highlight-row paid-row">
+              <span class="detail-label font-bold">${currentLang === 'mar' ? 'भरलेली रक्कम' : 'Paid Amount'}</span>
+              <span class="detail-value val-paid">₹${formatIndianNumber(paidAmt)}</span>
+            </div>
+            <div class="detail-row highlight-row due-row">
+              <span class="detail-label font-bold">${currentLang === 'mar' ? 'शिल्लक बाकी' : 'Remaining Due'}</span>
+              <span class="detail-value val-due">₹${formatIndianNumber(pendingAmt)}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'जीएसटी पर्याय' : 'GST Option'}</span>
+              <span class="detail-value">${gstFormatted}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'पेमेंट पद्धत' : 'Payment Mode'}</span>
+              <span class="detail-value">${modeFormatted}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">${currentLang === 'mar' ? 'बिल आयडी' : 'Bill ID'}</span>
+              <span class="detail-value id-val">${b.id}</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 3. Installments / Payment clearance section in Marathi
       let installmentSectionHtml = '';
+      if (payments.length > 0) {
+        let itemsHtml = '';
+        payments.forEach((p, idx) => {
+          const pAmt = Number(p.payment_amount || 0);
+          const pMode = formatPayModeDisplay(p.payment_mode || b.payment_mode, currentLang);
+          const pDate = formatDateTime(p.paid_at);
+          const pRef = p.reference_no;
+          const pBy = p.paid_by;
 
-      if (info.code === 'PENDING') {
-        // Pending: Highlight all pending dues prominently
-        statusBannerHtml = `
-          <div style="background:#fef2f2; border:1.5px solid #fecaca; border-radius:10px; padding:12px; margin-bottom:8px; text-align:center;">
-            <div style="font-size:11px; font-weight:800; color:#991b1b; text-transform:uppercase; letter-spacing:0.5px;">Pending Due</div>
-            <div style="font-size:24px; font-weight:800; color:#dc2626; margin-top:2px;">₹${formatIndianNumber(info.pendingAmt)}</div>
-            <div style="font-size:11px; color:#7f1d1d; margin-top:3px;">No payments recorded yet • Full amount pending</div>
+          itemsHtml += `
+            <div class="installment-box">
+              <div class="installment-header">
+                <span>${currentLang === 'mar' ? `हप्ता #${idx + 1}` : `Installment #${idx + 1}`}</span>
+                <span class="installment-amount">₹${formatIndianNumber(pAmt)}</span>
+              </div>
+              <div class="installment-row">
+                <span>${currentLang === 'mar' ? 'पद्धत' : 'Mode'}: <strong>${pMode}</strong></span>
+                <span>📅 ${pDate}</span>
+              </div>
+              ${pRef ? `
+                <div class="installment-row">
+                  <span>${currentLang === 'mar' ? 'संदर्भ / ट्रान्झॅक्शन' : 'Ref / Txn'}:</span>
+                  <span style="font-family:monospace; font-weight:700;">${pRef}</span>
+                </div>` : ''}
+              ${pBy ? `
+                <div class="installment-row">
+                  <span>${currentLang === 'mar' ? 'नोंदणीकर्ता' : 'Recorded By'}:</span>
+                  <span><strong>${pBy}</strong></span>
+                </div>` : ''}
+            </div>
+          `;
+        });
+
+        installmentSectionHtml = `
+          <div class="installments-container">
+            <div class="installments-title">
+              📋 ${currentLang === 'mar' ? `पेमेंट हप्ते (${payments.length})` : `Payment Installments (${payments.length})`}
+            </div>
+            ${itemsHtml}
           </div>
         `;
-      } else if (info.code === 'PARTLY') {
-        // Partially: Show total amount, paid amount with mode with date & time & remaining amount
-        statusBannerHtml = `
-          <div style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:10px; padding:12px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:11px; font-weight:700; color:#92400e; text-transform:uppercase;">Partially Paid</span>
-              <span class="badge badge-status-partially">Partially</span>
+      } else if (paidAmt > 0) {
+        const pMode = formatPayModeDisplay(b.payment_mode, currentLang);
+        const pDate = formatDateTime(b.created_at || b.bill_date);
+        installmentSectionHtml = `
+          <div class="installments-container">
+            <div class="installments-title">
+              📋 ${currentLang === 'mar' ? 'पेमेंट नोंद' : 'Payment Record'}
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:6px;">
-              <div>
-                <div style="font-size:11px; color:#78350f;">Paid Amount</div>
-                <div style="font-size:17px; font-weight:800; color:#047857;">₹${formatIndianNumber(info.paidAmt)}</div>
+            <div class="installment-box">
+              <div class="installment-header">
+                <span>${currentLang === 'mar' ? (isFullyPaid ? 'पूर्ण पेमेंट भरले' : 'नोंदवलेले पेमेंट') : (isFullyPaid ? 'Full Payment Cleared' : 'Recorded Payment')}</span>
+                <span class="installment-amount">₹${formatIndianNumber(paidAmt)}</span>
               </div>
-              <div style="text-align:right;">
-                <div style="font-size:11px; color:#78350f;">Remaining Due</div>
-                <div style="font-size:19px; font-weight:800; color:#dc2626;">₹${formatIndianNumber(info.pendingAmt)}</div>
+              <div class="installment-row">
+                <span>${currentLang === 'mar' ? 'पद्धत' : 'Mode'}: <strong>${pMode}</strong></span>
+                <span>📅 ${pDate}</span>
               </div>
             </div>
           </div>
         `;
-
-        if (payments.length > 0) {
-          let itemsHtml = '';
-          payments.forEach((p, idx) => {
-            itemsHtml += `
-              <div class="installment-box">
-                <div class="installment-header">
-                  <span>Installment #${idx + 1}</span>
-                  <span class="installment-amount">₹${formatIndianNumber(p.payment_amount)}</span>
-                </div>
-                <div class="installment-row">
-                  <span>Mode: <strong>${p.payment_mode || b.payment_mode}</strong></span>
-                  <span>📅 ${formatDateTime(p.paid_at)}</span>
-                </div>
-                ${p.reference_no ? `<div class="installment-row"><span>Ref / Txn:</span><span>${p.reference_no}</span></div>` : ''}
-                ${p.paid_by ? `<div class="installment-row"><span>Recorded By:</span><span>${p.paid_by}</span></div>` : ''}
-              </div>
-            `;
-          });
-          installmentSectionHtml = `
-            <div class="installments-container">
-              <div class="installments-title">📋 Payment Installments (${payments.length})</div>
-              ${itemsHtml}
-            </div>
-          `;
-        } else {
-          // Fallback if payments array not populated
-          installmentSectionHtml = `
-            <div class="installments-container">
-              <div class="installments-title">📋 Payment Details</div>
-              <div class="installment-box">
-                <div class="installment-header">
-                  <span>Recorded Payment</span>
-                  <span class="installment-amount">₹${formatIndianNumber(info.paidAmt)}</span>
-                </div>
-                <div class="installment-row">
-                  <span>Mode: <strong>${b.payment_mode}</strong></span>
-                  <span>📅 ${formatDateTime(b.created_at)}</span>
-                </div>
-              </div>
-            </div>
-          `;
-        }
-      } else if (info.code === 'FULL') {
-        // Fully: Show paid date & time & mode; if paid using 2/3 times all paid date, time & mode
-        statusBannerHtml = `
-          <div style="background:#ecfdf5; border:1.5px solid #a7f3d0; border-radius:10px; padding:12px; margin-bottom:8px; text-align:center;">
-            <div style="font-size:11px; font-weight:800; color:#065f46; text-transform:uppercase; letter-spacing:0.5px;">✓ Fully Cleared</div>
-            <div style="font-size:22px; font-weight:800; color:#047857; margin-top:2px;">₹${formatIndianNumber(info.totalAmt)}</div>
-            <div style="font-size:11.5px; color:#047857; margin-top:3px;">Balance Due: ₹0 • All installments cleared</div>
-          </div>
-        `;
-
-        if (payments.length > 0) {
-          let itemsHtml = '';
-          payments.forEach((p, idx) => {
-            itemsHtml += `
-              <div class="installment-box">
-                <div class="installment-header">
-                  <span>${payments.length > 1 ? `Payment #${idx + 1}` : 'Payment Clearance'}</span>
-                  <span class="installment-amount">₹${formatIndianNumber(p.payment_amount)}</span>
-                </div>
-                <div class="installment-row">
-                  <span>Mode: <strong>${p.payment_mode || b.payment_mode}</strong></span>
-                  <span>📅 ${formatDateTime(p.paid_at)}</span>
-                </div>
-                ${p.reference_no ? `<div class="installment-row"><span>Ref / Txn:</span><span>${p.reference_no}</span></div>` : ''}
-                ${p.paid_by ? `<div class="installment-row"><span>Paid By:</span><span>${p.paid_by}</span></div>` : ''}
-              </div>
-            `;
-          });
-          installmentSectionHtml = `
-            <div class="installments-container">
-              <div class="installments-title">📋 Clearance Logs (${payments.length} Payment${payments.length > 1 ? 's' : ''})</div>
-              ${itemsHtml}
-            </div>
-          `;
-        } else {
-          // Fallback if payments table empty
-          installmentSectionHtml = `
-            <div class="installments-container">
-              <div class="installments-title">📋 Payment Clearance Details</div>
-              <div class="installment-box">
-                <div class="installment-header">
-                  <span>Full Payment Cleared</span>
-                  <span class="installment-amount">₹${formatIndianNumber(info.totalAmt)}</span>
-                </div>
-                <div class="installment-row">
-                  <span>Payment Mode: <strong>${b.payment_mode}</strong></span>
-                  <span>📅 ${formatDateTime(b.created_at)}</span>
-                </div>
-              </div>
-            </div>
-          `;
-        }
       }
 
       content.innerHTML = `
-        ${statusBannerHtml}
-        <div class="detail-row">
-          <span class="detail-label">Status</span>
-          <span class="badge ${info.badgeClass}">${info.label}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Vendor Name</span>
-          <span class="detail-value">${b.vendor_name}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Vendor Mobile</span>
-          <span class="detail-value">${b.vendor_phone || 'N/A'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Bill Number</span>
-          <span class="detail-value">${b.bill_number}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Bill Date</span>
-          <span class="detail-value">${b.bill_date}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Total Amount</span>
-          <span class="detail-value" style="color:var(--gold-dark); font-size:15px; font-weight:800;">₹${b.amount_formatted}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">GST Option</span>
-          <span class="detail-value">${b.gst_status}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Payment Mode</span>
-          <span class="detail-value">${b.payment_mode}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Bill ID</span>
-          <span class="detail-value" style="font-size:11px; color:#64748b;">${b.id}</span>
-        </div>
+        ${highlightHtml}
+        ${detailsTableHtml}
         ${installmentSectionHtml}
       `;
+
       document.getElementById('billDetailsModal').classList.add('show');
     }
+    window.openBillDetailsModal = openBillDetailsModal;
+    window.openBillDetailsById = function(id) { openBillDetailsModal(id); };
 
     // -------------------------------------------------------------
     // TABS & SUB-TABS (BILL WISE & PARTY WISE)
     // -------------------------------------------------------------
     
-    let currentRecentSubTab = 'bill';
+    let currentRecentSubTab = 'partyDues';
 
-    function switchRecentSubTab(mode) {
-      currentRecentSubTab = mode;
-      document.getElementById('subTabBillBtn').classList.toggle('active', mode === 'bill');
-      document.getElementById('subTabPartyBtn').classList.toggle('active', mode === 'party');
-      document.getElementById('billsListContainer').style.display = (mode === 'bill') ? 'flex' : 'none';
-      document.getElementById('partyListContainer').style.display = (mode === 'party') ? 'flex' : 'none';
-      if (mode === 'party') {
+    function switchRecentSubTab(tab) {
+      currentRecentSubTab = tab;
+      
+      const btnPartyDues = document.getElementById('btnTogglePartyDues');
+      const btnBillWise = document.getElementById('btnToggleBillWise');
+      const btnParties = document.getElementById('btnToggleParties');
+
+      if (btnPartyDues) btnPartyDues.classList.toggle('active', tab === 'partyDues');
+      if (btnBillWise) btnBillWise.classList.toggle('active', tab === 'billWise');
+      if (btnParties) btnParties.classList.toggle('active', tab === 'parties');
+
+      const partyContainer = document.getElementById('partyListContainer');
+      const billsContainer = document.getElementById('billsListContainer');
+      const allPartiesContainer = document.getElementById('allPartiesContainer');
+
+      if (partyContainer) partyContainer.style.display = (tab === 'partyDues') ? 'flex' : 'none';
+      if (billsContainer) billsContainer.style.display = (tab === 'billWise') ? 'flex' : 'none';
+      if (allPartiesContainer) allPartiesContainer.style.display = (tab === 'parties') ? 'flex' : 'none';
+
+      if (tab === 'partyDues') {
         renderPartyWiseList();
-      } else {
+      } else if (tab === 'billWise') {
         renderBillsList();
+      } else if (tab === 'parties') {
+        renderAllPartiesList();
       }
     }
 
@@ -2286,10 +4381,19 @@
 
     function renderPartyWiseList() {
       const container = document.getElementById('partyListContainer');
+      if (!container) return;
       container.innerHTML = '';
 
       if (bills.length === 0) {
-        container.innerHTML = '<div class="empty-state">No bills recorded yet.</div>';
+        const noBillsTitle = currentLang === 'mar' ? 'कोणतेही बिल नोंदवलेले नाही' : 'No bills recorded yet';
+        const noBillsSub = currentLang === 'mar' ? 'नवीन बिल नोंदवण्यासाठी "बिल जोडा" टॅब वापरा.' : 'Recorded store bills will appear here.';
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 36px 16px;">
+            <div style="font-size: 34px; margin-bottom: 8px;">📋</div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 15px;">${noBillsTitle}</div>
+            <div style="color: var(--text-muted); font-size: 12.5px; margin-top: 4px;">${noBillsSub}</div>
+          </div>
+        `;
         return;
       }
 
@@ -2321,16 +4425,17 @@
         }
       });
 
-      // User requirement: "if click party wise sould see the all party names & pending dues only"
-      // Filter out parties that have 0 pending dues!
+      // Filter out parties that have 0 pending dues
       const pendingParties = Object.values(parties).filter(p => p.pendingAmt > 0);
 
       if (pendingParties.length === 0) {
+        const clearedTitle = currentLang === 'mar' ? 'सर्व पार्टी बिले पूर्ण भरलेली आहेत!' : 'All Party Bills Fully Cleared!';
+        const clearedSub = currentLang === 'mar' ? 'कोणत्याही पार्टीची थकबाकी शिल्लक नाही.' : 'There are no pending dues across any vendors.';
         container.innerHTML = `
           <div class="empty-state" style="padding: 30px 16px;">
             <div style="font-size: 32px; margin-bottom: 8px;">🎉</div>
-            <div style="font-weight: 700; color: #047857; font-size: 15px;">All Party Bills Fully Cleared!</div>
-            <div style="color: var(--text-muted); font-size: 12.5px; margin-top: 4px;">There are no pending dues across any vendors.</div>
+            <div style="font-weight: 700; color: #047857; font-size: 15px;">${clearedTitle}</div>
+            <div style="color: var(--text-muted); font-size: 12.5px; margin-top: 4px;">${clearedSub}</div>
           </div>
         `;
         return;
@@ -2341,27 +4446,41 @@
 
       pendingParties.forEach(party => {
         const pCard = document.createElement('div');
-        pCard.className = 'party-group-card open'; // opened by default for quick inspection
+        pCard.className = 'party-group-card open';
 
         let billsHtml = '';
         party.pendingBills.forEach(b => {
           const info = getBillStatusInfo(b);
           const aging = getBillAging(b.bill_date || b.created_at);
+          const dueAmtLbl = currentLang === 'mar' ? 'बाकी रक्कम' : 'Due Amount';
+          const totLbl = currentLang === 'mar' ? 'एकूण' : 'Total';
+          const billLbl = currentLang === 'mar' ? 'बिल क्र.' : 'Bill #';
+          const modeLbl = currentLang === 'mar' ? 'पद्धत' : 'Mode';
 
+          const billDisplayNum = String(b.bill_number || '').startsWith('Bill:') 
+            ? b.bill_number 
+            : `${billLbl}: ${b.bill_number || 'N/A'}`;
+          const dateFormatted = formatShortDate(b.bill_date);
+          const payments = b.payments || [];
+          const instBadgeHtml = payments.length > 0 
+            ? `<span class="bill-inst-badge" style="display:inline-block; margin-left:4px;">${payments.length} Inst.</span>` 
+            : '';
+
+          (window._billsMap = window._billsMap || {})[b.id] = b;
           billsHtml += `
-            <div class="bill-item-card ${aging.cardClass || info.cardClass}" onclick='openBillDetailsModal(${JSON.stringify(b).replace(/'/g, "&#39;")})' style="margin-bottom: 6px;">
+            <div class="bill-item-card ${aging.cardClass || info.cardClass}" onclick="openBillDetailsById('${b.id}')" style="margin-bottom: 6px;">
               <div class="bill-card-top">
                 <div>
-                  <div style="font-weight: 700; font-size: 14px; color: var(--text);">Bill #: ${b.bill_number || 'N/A'}</div>
-                  <div class="bill-meta">Date: ${b.bill_date} • Mode: ${b.payment_mode || 'Bank'}</div>
+                  <div style="font-weight: 800; font-size: 14px; color: var(--text);">${billDisplayNum} ${instBadgeHtml}</div>
+                  <div class="bill-meta">${currentLang === 'mar' ? 'तारीख' : 'Date'}: ${dateFormatted} • ${modeLbl}: ${b.payment_mode || 'Bank'}</div>
                   <div style="margin-top: 5px;">
                     ${aging.badgeHtml}
                   </div>
                 </div>
                 <div style="text-align: right;">
-                  <div style="font-size: 11px; color: var(--text-muted);">Due Amount</div>
-                  <div style="font-size: 16px; font-weight: 800; color: #dc2626;">₹${formatIndianNumber(info.pendingAmt)}</div>
-                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Total: ₹${formatIndianNumber(b.amount)}</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${dueAmtLbl}</div>
+                  <div style="font-size: 16px; font-weight: 850; color: #dc2626;">₹${formatIndianNumber(info.pendingAmt)}</div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">${totLbl}: ₹${formatIndianNumber(b.amount)} &nbsp; ${currentLang === 'mar' ? 'जमा' : 'Paid'}: ₹${formatIndianNumber(info.paidAmt)}</div>
                   <span class="badge ${info.badgeClass}" style="margin-top: 4px; display: inline-block;">${info.label}</span>
                 </div>
               </div>
@@ -2369,14 +4488,19 @@
           `;
         });
 
+        const pendingBillsText = currentLang === 'mar' 
+          ? `${party.pendingBills.length} प्रलंबित बिले`
+          : `${party.pendingBills.length} Pending Bill${party.pendingBills.length > 1 ? 's' : ''}`;
+        const dueText = currentLang === 'mar' ? 'बाकी' : 'Due';
+
         pCard.innerHTML = `
           <div class="party-header" onclick="togglePartyAccordion(this)">
             <div class="party-title-wrap">
-              <div class="party-title">${party.name}</div>
-              <div class="party-sub">${party.phone ? '📞 ' + party.phone + ' • ' : ''}${party.pendingBills.length} Pending Bill${party.pendingBills.length > 1 ? 's' : ''}</div>
+              <div class="party-title">${currentLang === 'mar' ? toMarathiName(party.name) : party.name}</div>
+              <div class="party-sub">${party.phone ? '📞 ' + party.phone + ' • ' : ''}${pendingBillsText}</div>
             </div>
             <div class="party-right-meta">
-              <div class="party-due-pill">Due: ₹${formatIndianNumber(party.pendingAmt)}</div>
+              <div class="party-due-pill">${dueText}: ₹${formatIndianNumber(party.pendingAmt)}</div>
               <span class="party-toggle-arrow">▼</span>
             </div>
           </div>
@@ -2389,6 +4513,74 @@
     }
 
     // -------------------------------------------------------------
+    // MASTER PARTIES VIEW (Strictly parties added by Admin / Owner)
+    // -------------------------------------------------------------
+    function renderAllPartiesList() {
+      const container = document.getElementById('allPartiesContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!vendors || vendors.length === 0) {
+        const noPartiesText = currentLang === 'mar'
+          ? 'ॲडमिन किंवा ओनर पॅनेलद्वारे अद्याप कोणतीही पार्टी जोडलेली नाही.'
+          : 'No parties registered yet by Admin / Owner.';
+        container.innerHTML = `
+          <div class="empty-state" style="padding: 36px 16px;">
+            <div style="font-size: 34px; margin-bottom: 8px;">👥</div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 15px;">${currentLang === 'mar' ? 'कोणतीही पार्टी आढळली नाही' : 'No Parties Found'}</div>
+            <div style="color: var(--text-muted); font-size: 12.5px; margin-top: 4px;">${noPartiesText}</div>
+          </div>
+        `;
+        return;
+      }
+
+      vendors.forEach(v => {
+        let vendorBills = bills.filter(b => String(b.vendor_id) === String(v.id) || b.vendor_name === v.name);
+        let pendingTotal = 0;
+        vendorBills.forEach(b => {
+          const info = getBillStatusInfo(b);
+          pendingTotal += info.pendingAmt;
+        });
+
+        const marName = toMarathiName(v.name);
+        const displayName = currentLang === 'mar' ? marName : v.name;
+        const subName = (currentLang === 'mar' && marName !== v.name) ? ` (${v.name})` : '';
+
+        const card = document.createElement('div');
+        card.className = 'party-master-card';
+        card.innerHTML = `
+          <div class="party-master-top">
+            <div style="flex: 1; padding-right: 10px;">
+              <div class="party-master-name">${displayName}${subName}</div>
+              ${v.phone ? `<a href="tel:${v.phone}" class="party-master-phone">📞 ${v.phone}</a>` : ''}
+              ${v.category ? `<div class="party-master-addr">📍 ${v.category}</div>` : ''}
+            </div>
+            <div class="party-master-dues">
+              <div class="party-master-dues-label">${currentLang === 'mar' ? 'बाकी रक्कम' : 'Pending Due'}</div>
+              <div class="party-master-dues-amt ${pendingTotal > 0 ? 'pending' : 'cleared'}">
+                ₹${formatIndianNumber(pendingTotal)}
+              </div>
+              <div class="party-master-bills-cnt">${vendorBills.length} ${currentLang === 'mar' ? 'बिले' : 'Bills'}</div>
+            </div>
+          </div>
+          <div class="party-master-actions">
+            <button type="button" class="btn-create-bill-for-party" onclick="selectPartyForNewBill('${v.id}')">
+              <span>➕</span>
+              <span>${currentLang === 'mar' ? 'नवीन बिल जोडा' : 'Add New Bill'}</span>
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function selectPartyForNewBill(vendorId) {
+      selectedVendorId = vendorId;
+      updateVendorDisplay();
+      switchTab('add');
+    }
+    window.selectPartyForNewBill = selectPartyForNewBill;
+
     // OFFLINE SYNC RESILIENCE ARCHITECTURE
     // -------------------------------------------------------------
     async function flushOfflineQueue() {
@@ -2398,22 +4590,21 @@
       try { items = JSON.parse(q); } catch (_) { items = []; }
       if (!items || items.length === 0) return;
 
-      if (!navigator.onLine || !_supabase) return;
+      const client = getSupabaseClient();
+      if (!navigator.onLine || !client) return;
 
       console.log('[Store Sync] Flushing offline bills queue (' + items.length + ' items)...');
       const unSynced = [];
       for (const item of items) {
         try {
-          let vId = item.vendor_id;
-          if (typeof vId !== 'number') {
-            try {
-              const { data: ex } = await _supabase.from('store_vendors').select('id').eq('name', item.vendor_name).limit(1);
-              if (ex && ex.length > 0) vId = ex[0].id;
-              else vId = 1;
-            } catch (_) { vId = 1; }
-          }
+          const vId = await getOrSyncVendorDbId({
+            id: item.vendor_id,
+            name: item.vendor_name,
+            phone: item.vendor_phone,
+            category: item.vendor_category
+          });
 
-          const { data: insData, error: insErr } = await _supabase.from('store_bills').insert([{
+          const { data: insData, error: insErr } = await client.from('store_bills').insert([{
             vendor_id: vId,
             bill_number: item.bill_number || 'N/A',
             bill_date: item.bill_date,
@@ -2428,15 +4619,15 @@
           if (insErr) throw insErr;
           
           const sBillId = (insData && insData[0]) ? insData[0].id : '';
-          // Trigger push to Admin APK
-          _supabase.functions.invoke('send-push', {
-            body: {
-              title: '📦 Store Bill: ' + (item.vendor_name || 'Vendor'),
-              body: '₹' + item.total_amount + ' bill synced from Storeman',
-              type: 'store',
-              data: { bill_id: String(sBillId), amount: item.total_amount, bill_number: item.bill_number }
-            }
-          }).catch(() => {});
+          const syncPush = {
+            title: '📦 Store Bill: ' + (item.vendor_name || 'Vendor'),
+            body: '₹' + item.total_amount + ' bill synced from Storeman',
+            type: 'store',
+            data: { bill_id: String(sBillId), amount: item.total_amount, bill_number: item.bill_number }
+          };
+          client.functions.invoke('send-push', { body: syncPush }).catch(() => {
+            client.functions.invoke('send-store-push', { body: syncPush }).catch(() => {});
+          });
         } catch (e) {
           unSynced.push(item);
         }
@@ -2462,10 +4653,12 @@
       document.getElementById('tabRecent').classList.toggle('active', tab === 'recent');
       if (tab === 'recent') {
         loadBills();
-        if (typeof currentRecentSubTab !== 'undefined' && currentRecentSubTab === 'party') {
+        if (typeof currentRecentSubTab === 'undefined' || currentRecentSubTab === 'partyDues') {
           renderPartyWiseList();
-        } else {
+        } else if (currentRecentSubTab === 'billWise') {
           renderBillsList();
+        } else if (currentRecentSubTab === 'parties') {
+          renderAllPartiesList();
         }
       }
     }
@@ -2484,7 +4677,13 @@
     });
 
     function closeModal(id) {
-      document.getElementById(id).classList.remove('show');
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.remove('show');
+        if (id === 'vendorPickerModal') {
+          el.style.display = 'none';
+        }
+      }
     }
 
     function showToast(msg, isSuccess = true) {

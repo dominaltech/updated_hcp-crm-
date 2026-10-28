@@ -67,6 +67,7 @@ export function AppProvider({ children }) {
     const path = window.location.pathname.replace('/', '').toLowerCase();
     return path === 'accounting' ? 'accounting' : 'analytics';
   });
+  const [isFnbCashHandoverOpen, setIsFnbCashHandoverOpen] = useState(false);
 
   // Section Startup Access & Locked/Unlocked State
   const [unlockedSection, setUnlockedSection] = useState(() => {
@@ -404,10 +405,12 @@ export function AppProvider({ children }) {
         title = options.title || title;
         message = options.message || message;
         icon = options.icon || icon;
-        confirmText = options.confirmText || confirmText;
-        cancelText = options.cancelText || cancelText;
-        isDestructive = options.isDestructive || false;
-        if (typeof optionalCallbackOrMsg === 'function') {
+        confirmText = options.confirmLabel || options.confirmText || confirmText;
+        cancelText = options.cancelLabel || options.cancelText || cancelText;
+        isDestructive = options.isDestructive || Boolean(options.confirmColor && (options.confirmColor.includes('red') || options.confirmColor === '#dc2626'));
+        if (typeof options.onConfirm === 'function') {
+          callback = options.onConfirm;
+        } else if (typeof optionalCallbackOrMsg === 'function') {
           callback = optionalCallbackOrMsg;
         }
       }
@@ -661,6 +664,41 @@ export function AppProvider({ children }) {
     }
   }, [activePanel, restaurantSubTab, barSubTab, isManagerUnlocked]);
 
+  // Admin Mode session initialization & JWT acquisition
+  useEffect(() => {
+    const search = (typeof window !== 'undefined' && window.location.search) || '';
+    const hasAdminQuery = search.includes('admin=1') || search.includes('role=owner');
+    if (hasAdminQuery) {
+      try {
+        sessionStorage.setItem('is_admin_mode', '1');
+      } catch (_) {}
+
+      fetch('/api/auth/admin-session')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.success && data.token) {
+            api.setAuthToken(data.token);
+            if (data.user) {
+              setCurrentUser(data.user);
+            }
+          }
+        })
+        .catch((err) => console.warn('Could not initialize admin session token:', err));
+    } else {
+      try {
+        sessionStorage.removeItem('is_admin_mode');
+      } catch (_) {}
+    }
+  }, []);
+
+  const isAdminMode = Boolean(
+    currentUser?.role === 'manager' ||
+    currentUser?.username?.toLowerCase() === 'admin' ||
+    currentUser?.can_access_manager ||
+    (typeof window !== 'undefined' && (window.location.search.includes('admin=1') || window.location.search.includes('role=owner'))) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('is_admin_mode') === '1')
+  );
+
   // Handle browser back/forward navigation
   useEffect(() => {
     const handlePopState = () => {
@@ -735,7 +773,10 @@ export function AppProvider({ children }) {
     isSectionSelectOpen,
     openSectionSelect,
     closeSectionSelect,
-    unlockSection
+    unlockSection,
+    isAdminMode,
+    isFnbCashHandoverOpen,
+    setIsFnbCashHandoverOpen
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

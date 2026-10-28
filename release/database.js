@@ -695,13 +695,18 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN checked_out_by TEXT DEFAULT NULL;
 try { db.exec("ALTER TABLE restaurant_orders ADD COLUMN cashier_name TEXT DEFAULT '';"); } catch (e) {}
 try { db.exec("ALTER TABLE bar_orders ADD COLUMN cashier_name TEXT DEFAULT '';"); } catch (e) {}
 try { db.exec("ALTER TABLE staff_users ADD COLUMN can_access_manager INTEGER DEFAULT 0;"); } catch (e) {}
+try { db.exec("ALTER TABLE staff_users ADD COLUMN plain_password TEXT DEFAULT '';"); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET can_access_manager = 1 WHERE role = 'manager';").run(); } catch (e) {}
 try { db.prepare("UPDATE staff_users SET full_name = 'Jaijeet sir' WHERE username = 'admin' OR (role = 'manager' AND full_name = 'General Manager');").run(); } catch (e) {}
+try { db.prepare("UPDATE staff_users SET plain_password = 'admin123' WHERE username = 'admin' AND (plain_password IS NULL OR plain_password = '');").run(); } catch (e) {}
+try { db.prepare("UPDATE staff_users SET plain_password = 'rest123' WHERE username IN ('rest1', 'rest2') AND (plain_password IS NULL OR plain_password = '');").run(); } catch (e) {}
+try { db.prepare("UPDATE staff_users SET plain_password = 'bar123' WHERE username IN ('bar1', 'bar2') AND (plain_password IS NULL OR plain_password = '');").run(); } catch (e) {}
+try { db.prepare("UPDATE staff_users SET plain_password = '1234' WHERE username IN ('waiter1', 'waiter2') AND (plain_password IS NULL OR plain_password = '');").run(); } catch (e) {}
 const bcrypt = require('bcryptjs');
 try {
   const adminRow = db.prepare("SELECT id, password FROM staff_users WHERE username = 'admin'").get();
   if (adminRow && !bcrypt.compareSync('admin123', adminRow.password)) {
-    db.prepare("UPDATE staff_users SET password = ? WHERE id = ?").run(bcrypt.hashSync('admin123', 10), adminRow.id);
+    db.prepare("UPDATE staff_users SET password = ?, plain_password = 'admin123' WHERE id = ?").run(bcrypt.hashSync('admin123', 10), adminRow.id);
   }
 } catch (e) {}
 
@@ -712,9 +717,9 @@ const ensureStaffAccount = (username, defaultPassword, fullName, role, phone, ca
   if (!existing) {
     try {
       db.prepare(`
-        INSERT OR IGNORE INTO staff_users (username, password, full_name, role, phone, status, can_access_manager)
-        VALUES (?, ?, ?, ?, ?, 'active', ?)
-      `).run(username, bcrypt.hashSync(defaultPassword, 10), fullName, role, phone, managerAccess);
+        INSERT OR IGNORE INTO staff_users (username, password, plain_password, full_name, role, phone, status, can_access_manager)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+      `).run(username, bcrypt.hashSync(defaultPassword, 10), defaultPassword, fullName, role, phone, managerAccess);
     } catch (e) {}
   }
 };
@@ -1072,6 +1077,20 @@ if (!defaultOta) {
 const defaultMinAdvance = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('min_checkin_advance_pct');
 if (!defaultMinAdvance) {
   db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('min_checkin_advance_pct', '50');
+}
+
+// Cloud Synchronization Gatekeeper Defaults (Firebase & Supabase)
+const defaultFirebaseSync = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('cloud_firebase_enabled');
+if (!defaultFirebaseSync) {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('cloud_firebase_enabled', '1');
+}
+const defaultSupabaseSync = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('cloud_supabase_enabled');
+if (!defaultSupabaseSync || defaultSupabaseSync.value === '1') {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('cloud_supabase_enabled', '0');
+}
+const defaultAutoSync = db.prepare('SELECT value FROM system_settings WHERE key = ?').get('cloud_auto_sync');
+if (!defaultAutoSync) {
+  db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').run('cloud_auto_sync', '1');
 }
 
 // Performance Indexes for Instant Navigation & Sub-Millisecond History Lookups
@@ -1619,19 +1638,91 @@ function ensureGuestDiningTables(database) {
     try {
       db.prepare('ALTER TABLE guest_inroom_orders ADD COLUMN cloud_inbox_id TEXT').run();
     } catch (_) {}
+    try {
+      db.prepare('ALTER TABLE guest_inroom_orders ADD COLUMN rejection_reason TEXT DEFAULT NULL').run();
+    } catch (_) {}
+    try {
+      db.prepare('ALTER TABLE guest_inroom_orders ADD COLUMN cancelled_at DATETIME DEFAULT NULL').run();
+    } catch (_) {}
+    try {
+      db.prepare('ALTER TABLE guest_inroom_orders ADD COLUMN cancelled_by TEXT DEFAULT NULL').run();
+    } catch (_) {}
+
+    // Seed default restaurant operating and closing hours if not already present
+    try {
+      db.exec(`
+        INSERT OR IGNORE INTO system_settings (key, value) VALUES 
+          ('restaurant_close_start', '22:55'),
+          ('restaurant_close_end', '08:00'),
+          ('restaurant_order_start', '08:00'),
+          ('restaurant_order_end', '21:30'),
+          ('restaurant_prep_time', '25-45 min'),
+          ('storeman_pin', '1234');
+      `);
+    } catch (_) {}
   } catch (err) {
     console.warn('Notice ensuring guest dining tables:', err.message);
   }
 }
 
+function repairCorruptedApproxCheckoutTimes(dbInstance) {
+  try {
+    const corruptBookings = dbInstance.prepare(`
+      SELECT b.id, b.checkin_time, b.approx_checkout_time, b.room_rate, b.total_room_charge
+      FROM bookings b
+      WHERE b.status = 'active'
+        AND (
+          b.approx_checkout_time IS NULL
+          OR b.approx_checkout_time = ''
+          OR b.approx_checkout_time <= b.checkin_time
+          OR b.approx_checkout_time LIKE '2026-10-25 07:%'
+          OR b.approx_checkout_time LIKE '2026-10-25 08:%'
+        )
+    `).all();
+
+    if (corruptBookings.length > 0) {
+      const updateStmt = dbInstance.prepare('UPDATE bookings SET approx_checkout_time = ? WHERE id = ?');
+      dbInstance.transaction(() => {
+        for (const b of corruptBookings) {
+          const cInStr = b.checkin_time;
+          if (!cInStr) continue;
+          const dIn = new Date(cInStr.includes('T') ? cInStr : cInStr.replace(' ', 'T') + '+05:30');
+          if (isNaN(dIn.getTime())) continue;
+
+          const rate = Number(b.room_rate) || 2000;
+          const charge = Number(b.total_room_charge) || rate;
+          let nights = 1;
+          if (charge > rate) {
+            if (charge % rate === 0) {
+              nights = Math.round(charge / rate);
+            } else {
+              nights = Math.max(1, Math.round(charge / (rate * 1.05)));
+            }
+          }
+          const dOut = new Date(dIn.getFullYear(), dIn.getMonth(), dIn.getDate() + nights, 11, 0, 0);
+          const y = dOut.getFullYear();
+          const m = String(dOut.getMonth() + 1).padStart(2, '0');
+          const d = String(dOut.getDate()).padStart(2, '0');
+          const newCheckout = `${y}-${m}-${d} 11:00:00`;
+          updateStmt.run(newCheckout, b.id);
+        }
+      })();
+    }
+  } catch (err) {
+    console.warn('[Database] Notice repairing checkout times:', err.message);
+  }
+}
+
 ensureStoreTables(db);
 ensureGuestDiningTables(db);
+repairCorruptedApproxCheckoutTimes(db);
 
 db.DEFAULT_ROOMS_CATALOG = DEFAULT_ROOMS_CATALOG;
 db.seedDefaultRooms = seedDefaultRooms;
 db.migrateSplitPaymentsToIndividualLedgers = migrateSplitPaymentsToIndividualLedgers;
 db.ensureStoreTables = ensureStoreTables;
 db.ensureGuestDiningTables = ensureGuestDiningTables;
+db.repairCorruptedApproxCheckoutTimes = repairCorruptedApproxCheckoutTimes;
 
 module.exports = db;
 

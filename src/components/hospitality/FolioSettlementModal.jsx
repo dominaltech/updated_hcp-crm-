@@ -11,7 +11,8 @@ export default function FolioSettlementModal({
   room,
   folioData,
   onClose,
-  onCheckoutSuccess
+  onCheckoutSuccess,
+  onCheckoutStart
 }) {
   const { showToast, currentUser, surchargeSettings } = useApp();
   const cardPct = surchargeSettings?.card_surcharge_pct !== undefined ? Number(surchargeSettings.card_surcharge_pct) : 2.5;
@@ -131,8 +132,8 @@ export default function FolioSettlementModal({
   const extraExpensesVal = Number(folioData?.expensesTotal || folioData?.extraExpensesTotal || 0);
   const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal + extraExpensesVal) - effectiveAdvancePaid);
   const balanceDue = isOtaPrepaid
-    ? otaPrepaidBalanceDue
-    : (folioData ? Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (folioData.stayCalcNow?.balanceDue ?? 0)) : 0);
+    ? Math.round(otaPrepaidBalanceDue)
+    : (folioData ? Math.round(Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (folioData.stayCalcNow?.balanceDue ?? 0))) : 0);
 
   const summaryRefund = Number(folioData?.summary?.refundAmount || folioData?.refundAmount || 0);
   const stayCalcRefundDue = Number(folioData?.stayCalcNow?.refundDue || 0);
@@ -318,6 +319,12 @@ export default function FolioSettlementModal({
       return;
     }
 
+    if (room?.status && room.status !== 'occupied') {
+      showToast(`Room #${room.room_number || ''} is not currently occupied (${room.status}) and has already been checked out.`, 'warning', 4500);
+      onClose();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const settleAmt = isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled);
@@ -391,6 +398,9 @@ export default function FolioSettlementModal({
         isIgst: checkoutTaxMode === 'IGST'
       };
 
+      if (typeof onCheckoutStart === 'function') {
+        try { onCheckoutStart(); } catch (_) {}
+      }
       const res = await api.checkout(room.id, payload);
       if (res && res.success) {
         if (isCompanyPayingLater) {

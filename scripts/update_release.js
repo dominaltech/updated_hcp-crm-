@@ -111,6 +111,11 @@ if (fs.existsSync(path.join(rootDir, '.env'))) {
   console.log('  ✓ release/.env updated');
 }
 
+if (fs.existsSync(path.join(rootDir, 'firebase-service-account.json'))) {
+  fs.copyFileSync(path.join(rootDir, 'firebase-service-account.json'), path.join(releaseDir, 'firebase-service-account.json'));
+  console.log('  ✓ release/firebase-service-account.json updated');
+}
+
 // Compile latest HotelCityPark.exe launcher if csc is available
 const cscCandidates = [
   'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
@@ -190,6 +195,9 @@ if (fs.existsSync(electronAppDir)) {
   copyDirSync(path.join(rootDir, 'electron'), path.join(electronAppDir, 'electron'));
   if (fs.existsSync(path.join(rootDir, '.env'))) {
     fs.copyFileSync(path.join(rootDir, '.env'), path.join(electronAppDir, '.env'));
+  }
+  if (fs.existsSync(path.join(rootDir, 'firebase-service-account.json'))) {
+    fs.copyFileSync(path.join(rootDir, 'firebase-service-account.json'), path.join(electronAppDir, 'firebase-service-account.json'));
   }
 
   // Sync admin/dist to electron app

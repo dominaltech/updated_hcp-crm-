@@ -18,7 +18,9 @@ export default function Header() {
     setManageSubTab,
     theme,
     toggleTheme,
-    openSectionSelect
+    openSectionSelect,
+    isFnbCashHandoverOpen,
+    setIsFnbCashHandoverOpen
   } = useApp();
 
   const hospitalityContext = useHospitality();
@@ -347,6 +349,34 @@ export default function Header() {
         </div>
 
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* F&B / Bar Cash Handover Button (on the right side of header) */}
+          {(activeDepartment === 'restaurant' || activeDepartment === 'bar') && (
+            <button
+              type="button"
+              className="btn-occupancy-chart"
+              id={activeDepartment === 'bar' ? 'tab-bar-cash-handover' : 'tab-fnb-cash-handover'}
+              onClick={() => setIsFnbCashHandoverOpen(true)}
+              title="View & Print F&B Cash Handover Statement (Shift handover, 2-copy A4 print)"
+              style={{
+                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                borderColor: '#047857',
+                color: '#ffffff',
+                fontWeight: 750,
+                fontSize: '0.82rem',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              <span style={{ fontSize: '0.90rem' }}>💵</span>
+              <span>Cash Handover</span>
+            </button>
+          )}
+
           {/* Dark / Light Mode Switcher */}
           <button
             type="button"

@@ -12,20 +12,11 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hlwmsllmqfdxfmqulrat.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+// Supabase decommissioned: all cloud operations redirect to Firebase Firestore
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
 
 let supabase = null;
-
-try {
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false }
-    });
-  }
-} catch (err) {
-  console.warn('[Supabase] Initialization warning:', err.message);
-}
 
 // Resilient Offline Protection & Circuit Breaker
 const REQUEST_TIMEOUT_MS = 8000; // 8 seconds max for any cloud call
@@ -76,12 +67,14 @@ function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
 let activeLocalDbInstance = null;
 
 function markNetworkFailure(err) {
+  const errMsg = String(err?.message || err || '');
   consecutiveFailures++;
-  if (consecutiveFailures >= FAILURE_THRESHOLD) {
+  const isHardCloudError = errMsg.includes('503') || errMsg.includes('schema cache') || errMsg.includes('budget') || errMsg.includes('timeout');
+  if (consecutiveFailures >= FAILURE_THRESHOLD || isHardCloudError) {
     if (!isOffline) {
       isOffline = true;
       lastOfflineTime = Date.now();
-      console.warn(`[Supabase] ⚠️ Offline mode engaged (${consecutiveFailures} consecutive errors): ${err?.message || err}`);
+      console.warn(`[Supabase] ⚠️ Offline mode engaged (${errMsg})`);
     }
   }
 }
@@ -106,8 +99,13 @@ function markNetworkSuccess() {
   }
 }
 
+function isSupabaseSyncEnabled() {
+  return false; // Decommissioned per user directive: all cloud sync consolidated onto Firebase
+}
+
 function canAttemptCloud() {
   if (!supabase) return false;
+  if (!isSupabaseSyncEnabled()) return false;
   if (isOffline && (Date.now() - lastOfflineTime < OFFLINE_COOLDOWN_MS)) {
     return false; // Fast return 0ms when offline
   }
@@ -183,6 +181,10 @@ async function syncActiveOccupancy(data) {
           grand_total: fTotal,
           items_summary: JSON.stringify({
             roomCharge: Number(f.roomCharge || 0),
+            dailyRate: Number(f.dailyRate || f.room_rate || f.baseRate || 0),
+            room_rate: Number(f.room_rate || f.dailyRate || f.baseRate || 0),
+            baseRate: Number(f.baseRate || f.dailyRate || f.room_rate || 0),
+            tariffSubtotal: Number(f.tariffSubtotal || 0),
             total: fTotal,
             grandTotal: fTotal,
             paid: fPaid,
@@ -453,6 +455,7 @@ async function fetchPendingRoomCharges(roomNumber) {
 
     if (error) {
       console.warn(`[Supabase] fetchPendingRoomCharges notice for Room ${roomNumber}:`, error.message);
+      markNetworkFailure(error);
       return [];
     }
     markNetworkSuccess();
@@ -490,6 +493,43 @@ async function markChargesImported(chargeIds) {
     return true;
   } catch (err) {
     markNetworkFailure(err);
+    return false;
+  }
+}
+
+/**
+ * Permanently deletes or voids a room charge in Supabase room_charges_inbox
+ * so that deleted restaurant/bar bills never resurrect upon cloud sync.
+ */
+async function deleteCloudRoomCharge(orderNumber, orderId) {
+  if (!canAttemptCloud()) return false;
+  try {
+    let deleted = false;
+    if (orderNumber) {
+      const cleanNum = String(orderNumber).trim();
+      const { error: err1 } = await withTimeout(
+        supabase
+          .from('room_charges_inbox')
+          .delete()
+          .eq('bill_no', cleanNum),
+        REQUEST_TIMEOUT_MS
+      );
+      if (!err1) deleted = true;
+    }
+    if (orderId) {
+      const { error: err2 } = await withTimeout(
+        supabase
+          .from('room_charges_inbox')
+          .delete()
+          .eq('order_id', Number(orderId)),
+        REQUEST_TIMEOUT_MS
+      );
+      if (!err2) deleted = true;
+    }
+    if (deleted) markNetworkSuccess();
+    return deleted;
+  } catch (err) {
+    console.warn('[Supabase] deleteCloudRoomCharge notice:', err.message);
     return false;
   }
 }
@@ -641,8 +681,9 @@ async function pullCloudRoomChargesToLocal(localDb) {
 }
 
 function formatToLocalSqliteString(isoDateStr) {
-  if (!isoDateStr) return new Date().toISOString().replace('T', ' ').substring(0, 19);
+  if (!isoDateStr) return null;
   const raw = String(isoDateStr).trim();
+  if (!raw || raw === 'null' || raw === 'undefined' || raw === 'NaN') return null;
   // If already in YYYY-MM-DD HH:mm:ss format, return directly without timezone alteration
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(raw)) {
     return raw.replace('T', ' ').substring(0, 19);
@@ -657,7 +698,7 @@ function formatToLocalSqliteString(isoDateStr) {
       }
     }
     const d = new Date(raw);
-    if (isNaN(d.getTime())) return raw.replace('T', ' ').substring(0, 19);
+    if (isNaN(d.getTime())) return null;
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -666,7 +707,7 @@ function formatToLocalSqliteString(isoDateStr) {
     const secs = String(d.getSeconds()).padStart(2, '0');
     return `${year}-${month}-${day} ${hours}:${mins}:${secs}`;
   } catch (_) {
-    return raw.replace('T', ' ').substring(0, 19);
+    return null;
   }
 }
 
@@ -675,7 +716,7 @@ function syncPaymentsForBooking(localDb, bookingId, roomId, paidAmount, fMeta, c
   const paymentsList = Array.isArray(fMeta?.payments) && fMeta.payments.length > 0
     ? fMeta.payments
     : (paidAmount > 0 ? [{
-        receiptNo: fMeta?.advanceReceiptNo || 'CR01',
+        receiptNo: fMeta?.advanceReceiptNo || (fMeta?.voucherNumber ? `RCP-${fMeta.voucherNumber}` : `RCP-260920-${bookingId}`),
         mode: fMeta?.paymentMode || 'cash',
         amount: paidAmount,
         cashier: fMeta?.checkedInBy || 'Staff',
@@ -812,9 +853,23 @@ async function pullCloudOccupanciesToLocal(localDb) {
             }
           } catch (_) {}
         }
-        const roomRate = Number(fMeta.roomCharge || fMeta.tariffSubtotal || folioInfo.subtotal || room.price || 2400);
-        const totalRoomCharge = Number(fMeta.total || fMeta.grandTotal || fMeta.roomCharge || folioInfo.grand_total || room.price || 2400);
-        const paid = Number(fMeta.paid || cr.total_paid || 0);
+        const rawNewRate = Number(fMeta.dailyRate || fMeta.baseRate || fMeta.room_rate || 0);
+        const roomRate = (rawNewRate > 0 && rawNewRate < 50000) ? rawNewRate : Number(room.price_single || room.price || 2400);
+
+        let stayDays = 1;
+        try {
+          if (checkinTime && approxCheckout) {
+            const dIn = new Date(String(checkinTime).includes('T') ? checkinTime : String(checkinTime).replace(' ', 'T') + '+05:30').getTime();
+            const dOut = new Date(String(approxCheckout).includes('T') ? approxCheckout : String(approxCheckout).replace(' ', 'T') + '+05:30').getTime();
+            if (!isNaN(dIn) && !isNaN(dOut) && dOut > dIn) {
+              stayDays = Math.max(1, Math.round((dOut - dIn) / (24 * 3600 * 1000)));
+            }
+          }
+        } catch (_) {}
+
+        const rawTotalCharge = Number(fMeta.roomCharge || folioInfo.subtotal || 0);
+        const totalRoomCharge = (rawTotalCharge > 0 && rawTotalCharge < 200000) ? rawTotalCharge : Math.round(roomRate * stayDays);
+        const paid = Number(fMeta.paid || cr.total_paid || (String(cr.payment_status || fMeta.payment_status || '').toLowerCase() === 'paid' ? totalRoomCharge : 0));
         const discount = Number(fMeta.discount || 0);
         const voucherNumber = fMeta.voucherNumber || folioInfo.bill_no || ('BK-' + (cr.booking_id || rNum));
         const source = fMeta.source || 'Walk-in';
@@ -868,9 +923,49 @@ async function pullCloudOccupanciesToLocal(localDb) {
 
         const cloudCheckin = formatToLocalSqliteString(fMeta.checkinTime || fMeta.checkin_time || cr.checkin_time);
         const cloudApproxOut = formatToLocalSqliteString(fMeta.approxCheckout || fMeta.expectedCheckout || fMeta.approx_checkout_time || cr.approx_checkout_time || cr.expected_checkout_time || null);
-        const cloudPaid = Number(fMeta.paid || cr.total_paid || 0);
-        const cloudTotal = Number(fMeta.total || fMeta.grandTotal || fMeta.roomCharge || folioInfo.grand_total || 0);
-        const cloudRate = Number(fMeta.tariffSubtotal || fMeta.roomCharge || folioInfo.subtotal || 0);
+        
+        // Never clobber local approx_checkout_time with an older, null, or corrupted timestamp
+        let shouldUpdateCheckout = false;
+        if (cloudApproxOut) {
+          if (!activeBooking.approx_checkout_time) {
+            shouldUpdateCheckout = true;
+          } else {
+            try {
+              const dCloud = new Date(String(cloudApproxOut).includes('T') ? cloudApproxOut : String(cloudApproxOut).replace(' ', 'T') + '+05:30').getTime();
+              const dLocal = new Date(String(activeBooking.approx_checkout_time).includes('T') ? activeBooking.approx_checkout_time : String(activeBooking.approx_checkout_time).replace(' ', 'T') + '+05:30').getTime();
+              // Only update if cloud date is genuinely extending the stay by at least 12 hours
+              if (!isNaN(dCloud) && !isNaN(dLocal) && (dCloud - dLocal) > 12 * 3600 * 1000) {
+                shouldUpdateCheckout = true;
+              }
+            } catch (_) {}
+          }
+        }
+        const effectiveApproxOut = shouldUpdateCheckout ? cloudApproxOut : activeBooking.approx_checkout_time;
+        const effectiveCheckin = cloudCheckin || activeBooking.checkin_time;
+
+        // RATE RECOVERY & SANITIZATION:
+        // room_rate MUST STRICTLY be the 1-night per-day room rate.
+        // It must NEVER be overwritten with multi-day stay sums!
+        const rawRate = Number(fMeta.dailyRate || fMeta.baseRate || fMeta.room_rate || 0);
+        const currentValidRate = Number(activeBooking.room_rate && activeBooking.room_rate < 50000 ? activeBooking.room_rate : (room.price_single || room.price || 2400));
+        const safeRate = (rawRate > 0 && rawRate < 50000) ? rawRate : currentValidRate;
+
+        let stayDays = 1;
+        try {
+          const tIn = effectiveCheckin;
+          const tOut = effectiveApproxOut;
+          if (tIn && tOut) {
+            const dIn = new Date(String(tIn).includes('T') ? tIn : String(tIn).replace(' ', 'T') + '+05:30').getTime();
+            const dOut = new Date(String(tOut).includes('T') ? tOut : String(tOut).replace(' ', 'T') + '+05:30').getTime();
+            if (!isNaN(dIn) && !isNaN(dOut) && dOut > dIn) {
+              stayDays = Math.max(1, Math.round((dOut - dIn) / (24 * 3600 * 1000)));
+            }
+          }
+        } catch (_) {}
+
+        const rawTotal = Number(fMeta.total || fMeta.grandTotal || fMeta.roomCharge || folioInfo.grand_total || 0);
+        const safeTotal = (rawTotal > 0 && rawTotal < 200000) ? rawTotal : Math.round(safeRate * stayDays);
+        const cloudPaid = Number(fMeta.paid || cr.total_paid || (String(cr.payment_status || fMeta.payment_status || '').toLowerCase() === 'paid' ? safeTotal : 0));
         const adultsMale = fMeta.adultsMale ?? fMeta.adults_male ?? null;
         const adultsFemale = fMeta.adultsFemale ?? fMeta.adults_female ?? null;
         const checkedInBy = fMeta.checkedInBy || folioInfo.settled_by || null;
@@ -878,10 +973,10 @@ async function pullCloudOccupanciesToLocal(localDb) {
 
         localDb.prepare(`
           UPDATE bookings 
-          SET checkin_time = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE checkin_time END,
-              approx_checkout_time = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE approx_checkout_time END,
-              room_rate = CASE WHEN ? > 0 THEN ? ELSE room_rate END,
-              total_room_charge = CASE WHEN ? > 0 THEN ? ELSE total_room_charge END,
+          SET checkin_time = COALESCE(?, checkin_time),
+              approx_checkout_time = COALESCE(?, approx_checkout_time),
+              room_rate = ?,
+              total_room_charge = ?,
               total_paid = MAX(COALESCE(total_paid, 0), ?),
               advance_payment = MAX(COALESCE(advance_payment, 0), ?),
               advance_receipt_no = COALESCE(?, advance_receipt_no),
@@ -890,10 +985,10 @@ async function pullCloudOccupanciesToLocal(localDb) {
               adults_female = CASE WHEN ? IS NOT NULL THEN ? ELSE adults_female END
           WHERE id = ?
         `).run(
-          cloudCheckin, cloudCheckin, cloudCheckin,
-          cloudApproxOut, cloudApproxOut, cloudApproxOut,
-          cloudRate, cloudRate,
-          cloudTotal, cloudTotal,
+          effectiveCheckin,
+          effectiveApproxOut,
+          safeRate,
+          safeTotal,
           cloudPaid, cloudPaid,
           advReceiptNo, checkedInBy,
           adultsMale, adultsMale,
@@ -1075,36 +1170,49 @@ async function syncAllActiveRoomsFromLocal(localDb) {
       } catch (_) {}
       liveStayDays = Math.max(1, liveStayDays);
 
-      const dailyBase = Number(b.room_rate || b.room_price || 0);
+      // Declared departure stay days from booking
+      let declaredStayDays = 1;
+      try {
+        if (b.checkin_time && b.approx_checkout_time) {
+          const dIn = new Date(toIstIso(b.checkin_time)).getTime();
+          const dOut = new Date(toIstIso(b.approx_checkout_time)).getTime();
+          const diffHours = (dOut - dIn) / (1000 * 60 * 60);
+          declaredStayDays = Math.max(1, Math.round(diffHours / 24));
+        }
+      } catch (_) {}
+      const targetStayDays = Math.max(declaredStayDays, liveStayDays);
+
+      const rawDaily = Number(b.room_rate || b.room_price || 0);
+      const dailyBase = (rawDaily > 0 && rawDaily < 50000) ? rawDaily : (Number(b.room_price) || 2400);
       const mp = String(b.meal_plan || '').toLowerCase();
       const hasBf = (mp === 'with_breakfast' || mp === 'breakfast' || (mp.includes('breakfast') && !mp.includes('without')));
       const bfPax = hasBf ? Math.max(1, (b.adults_male || 0) + (b.adults_female || 0)) : 0;
       const bfDaily = hasBf ? (bfPax * (Number(b.breakfast_price) || 250)) : 0;
       const extraMattressDaily = Number(b.extra_bed_charge || 0);
 
-      const nowBaseTariff = liveStayDays * dailyBase;
-      const nowExtraMattressCost = liveStayDays * extraMattressDaily;
-      const nowBreakfastCost = liveStayDays * bfDaily;
-      const nowPreTaxGross = nowBaseTariff + nowExtraMattressCost + nowBreakfastCost + extensionCharge;
+      const decBaseTariff = targetStayDays * dailyBase;
+      const decExtraMattressCost = targetStayDays * extraMattressDaily;
+      const decBreakfastCost = targetStayDays * bfDaily;
+      const decPreTaxGross = decBaseTariff + decExtraMattressCost + decBreakfastCost + extensionCharge;
 
       const discountPct = Number(b.discount_pct || 0);
-      let nowDiscountAmount = discountPct > 0
-        ? Math.round((nowPreTaxGross * discountPct) / 100)
+      let decDiscountAmount = discountPct > 0
+        ? Math.round((decPreTaxGross * discountPct) / 100)
         : Number(b.discount_amount || 0);
 
-      if (liveStayDays > 1 && discountPct === 0 && Number(b.discount_amount || 0) > 0) {
-        nowDiscountAmount = Math.round(Number(b.discount_amount || 0) * liveStayDays);
+      if (targetStayDays > 1 && discountPct === 0 && Number(b.discount_amount || 0) > 0) {
+        decDiscountAmount = Math.round(Number(b.discount_amount || 0) * targetStayDays);
       }
 
-      const nowPreTaxRoom = nowPreTaxGross - nowDiscountAmount;
-      const roomGst = Math.round(nowPreTaxRoom * 0.05);
-      const liveRoomCharge = nowPreTaxRoom + roomGst;
+      const decPreTaxRoom = decPreTaxGross - decDiscountAmount;
+      const roomGst = Math.round(decPreTaxRoom * 0.05);
+      const decRoomCharge = decPreTaxRoom + roomGst;
 
       const foodTotal = restOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
       const barTotal = barOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-      const roomCharge = (liveStayDays > 1 || extensionCharge > 0) ? liveRoomCharge : (Number(b.total_room_charge || liveRoomCharge));
+      const roomCharge = decRoomCharge > 0 ? decRoomCharge : (Number(b.total_room_charge || 0));
       const extra = Number(b.extra_bed_charge || 0);
-      const discount = nowDiscountAmount;
+      const discount = decDiscountAmount;
       const tax = roomGst;
       const grandTotal = Math.max(0, roomCharge + foodTotal + barTotal);
       const paid = Number(b.total_paid || b.advance_payment || 0);
@@ -1134,7 +1242,10 @@ async function syncAllActiveRoomsFromLocal(localDb) {
         balance_due: pending,
         folio: {
           roomCharge,
-          tariffSubtotal: Number(b.room_rate || nowBaseTariff + nowExtraMattressCost + nowBreakfastCost),
+          dailyRate: dailyBase,
+          room_rate: dailyBase,
+          baseRate: dailyBase,
+          tariffSubtotal: Number(decBaseTariff + decExtraMattressCost + decBreakfastCost),
           restaurant: foodTotal,
           bar: barTotal,
           foodTotal,
@@ -1147,12 +1258,22 @@ async function syncAllActiveRoomsFromLocal(localDb) {
           paid,
           pending,
           refundDue,
-          stayCalcNow: {
+          stayCalcDeclared: {
             roomCharge,
             grandTotal,
             paid,
             refundDue,
             balanceDue: pending,
+            stayDurationStr: `${targetStayDays} day${targetStayDays > 1 ? 's' : ''}`,
+            chargedDays: targetStayDays,
+            expectedNights: targetStayDays
+          },
+          stayCalcNow: {
+            roomCharge: (liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05),
+            grandTotal: (liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal,
+            paid,
+            refundDue: Math.max(0, paid - ((liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal)),
+            balanceDue: Math.max(0, ((liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal) - paid),
             stayDurationStr: `${liveStayDays} day${liveStayDays > 1 ? 's' : ''}`,
             chargedDays: liveStayDays,
             extraHours
@@ -1623,12 +1744,17 @@ async function pollCloudApprovals(db) {
           const newStatus = (row.status || '').toLowerCase() === 'approved' ? 'APPROVED' : 'REJECTED';
           const existing = db.prepare('SELECT status FROM owner_approvals WHERE id = ?').get(approvalId);
           if (existing && existing.status === 'PENDING') {
-            db.prepare(`
-              UPDATE owner_approvals
-              SET status = ?, action_by = ?, action_at = datetime('now','localtime')
-              WHERE id = ?
-            `).run(newStatus, row.settled_by || 'Admin', approvalId);
-            console.log(`[Cloud Approval] Synced decision from cloud: Request #${approvalId} is now ${newStatus}`);
+            try {
+              const notificationService = require('./notificationService');
+              notificationService.updateApprovalStatus(approvalId, newStatus, row.settled_by || 'Admin');
+              console.log(`[Cloud Approval] Synced decision from cloud: Request #${approvalId} is now ${newStatus}`);
+            } catch (syncErr) {
+              db.prepare(`
+                UPDATE owner_approvals
+                SET status = ?, action_by = ?, action_at = datetime('now','localtime')
+                WHERE id = ?
+              `).run(newStatus, row.settled_by || 'Admin', approvalId);
+            }
           }
         }
       }
@@ -2226,6 +2352,7 @@ module.exports = {
   fetchActiveOccupancies,
   fetchPendingRoomCharges,
   markChargesImported,
+  deleteCloudRoomCharge,
   syncAllActiveRoomsFromLocal,
   syncApprovalRequestToCloud,
   pollCloudApprovals,

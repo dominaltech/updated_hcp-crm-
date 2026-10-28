@@ -215,9 +215,11 @@ export default function Step6Stay({
   useEffect(() => {
     if (discountPermissionModal.status !== 'waiting' || !discountPermissionModal.approvalId) return;
 
-    const interval = setInterval(async () => {
+    let isMounted = true;
+    const checkDiscountStatus = async () => {
       try {
         const res = await api.get(`/owner/approvals/${discountPermissionModal.approvalId}/status`);
+        if (!isMounted) return;
         if (res && res.status === 'APPROVED') {
           clearInterval(interval);
           setDiscountPermissionModal(prev => ({ ...prev, status: 'approved' }));
@@ -229,8 +231,10 @@ export default function Step6Stay({
           updateDraft(updates);
           showToast(`✓ Admin APPROVED ${discountPermissionModal.requestedPct}% discount for this check-in!`, 'green');
           setTimeout(() => {
-            setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null });
-          }, 1500);
+            if (isMounted) {
+              setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null });
+            }
+          }, 1200);
         } else if (res && res.status === 'REJECTED') {
           clearInterval(interval);
           setDiscountPermissionModal(prev => ({ ...prev, status: 'rejected' }));
@@ -239,9 +243,15 @@ export default function Step6Stay({
       } catch (err) {
         // silent retry
       }
-    }, 2000);
+    };
 
-    return () => clearInterval(interval);
+    checkDiscountStatus();
+    const interval = setInterval(checkDiscountStatus, 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [discountPermissionModal.status, discountPermissionModal.approvalId, discountPermissionModal.requestedPct]);
 
 

@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
 import { printPettyCashVoucher, printCashReceipt } from '../services/printService';
+import { socketClient } from '../services/socketClient';
 import DocumentScannerModal from '../components/common/DocumentScannerModal';
 import ThemedDatePicker from '../components/common/ThemedDatePicker';
 import ThemedSelect from '../components/common/ThemedSelect';
@@ -14,7 +15,16 @@ import ExpenseCategoriesMasterModal, {
 export const EXPENSE_CATEGORIES = DEFAULT_EXPENSE_CATEGORIES;
 
 export default function ExpensesPage({ onPrintVoucher }) {
-  const { showToast, showConfirm, currentUser, setActivePanel } = useApp();
+  const { showToast, showConfirm, currentUser, setActivePanel, isAdminMode } = useApp();
+
+  const isAdmin = Boolean(
+    isAdminMode ||
+    currentUser?.role === 'manager' ||
+    currentUser?.username?.toLowerCase() === 'admin' ||
+    Boolean(currentUser?.can_access_manager) ||
+    (typeof window !== 'undefined' && (window.location.search.includes('admin=1') || window.location.search.includes('role=owner'))) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('is_admin_mode') === '1')
+  );
 
   const [activeTab, setActiveTab] = useState('expenses'); // 'expenses' | 'refunds'
   const [expenses, setExpenses] = useState([]);
@@ -165,6 +175,15 @@ export default function ExpensesPage({ onPrintVoucher }) {
 
   useEffect(() => {
     loadExpenses();
+
+    // Instant real-time updates via WebSockets
+    const unsubExpenses = socketClient.on('EXPENSES_UPDATED', () => {
+      loadExpenses();
+    });
+
+    return () => {
+      unsubExpenses();
+    };
   }, [loadExpenses]);
 
   // When form category changes, reset purpose to first purpose of that category
@@ -467,6 +486,10 @@ export default function ExpensesPage({ onPrintVoucher }) {
   };
 
   const handleDeleteExpense = async (id) => {
+    if (!isAdmin) {
+      showToast('Expenses can only be deleted by an Administrator.', 'error');
+      return;
+    }
     const confirmed = await showConfirm({
       title: 'Delete Record?',
       message: 'Are you sure you want to permanently delete this record?',
@@ -886,15 +909,17 @@ export default function ExpensesPage({ onPrintVoucher }) {
                         >
                           🖨️
                         </button>
-                        <button
-                          type="button"
-                          className="filter-chip"
-                          onClick={() => handleDeleteExpense(exp.id)}
-                          style={{ fontSize: '0.72rem', padding: '3px 8px', color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
-                          title="Delete Voucher"
-                        >
-                          🗑️
-                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="filter-chip"
+                            onClick={() => handleDeleteExpense(exp.id)}
+                            style={{ fontSize: '0.72rem', padding: '3px 8px', color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                            title="Delete Voucher"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -986,15 +1011,17 @@ export default function ExpensesPage({ onPrintVoucher }) {
                       >
                         🖨️ Bill Slip
                       </button>
-                      <button
-                        type="button"
-                        className="filter-chip"
-                        onClick={() => handleDeleteExpense(ref.id)}
-                        style={{ fontSize: '0.72rem', padding: '4px 8px', color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
-                        title="Delete Refund Record"
-                      >
-                        🗑️
-                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => handleDeleteExpense(ref.id)}
+                          style={{ fontSize: '0.72rem', padding: '4px 8px', color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                          title="Delete Refund Record"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import BillEditModal from './BillEditModal';
 import ThemedDatePicker from '../common/ThemedDatePicker';
+import FnBCashHandoverModal from './FnBCashHandoverModal';
 
 export function getPaymentModeBadge(mode) {
   const m = String(mode || 'cash').toLowerCase().trim();
@@ -29,7 +30,7 @@ export function getPaymentModeBadge(mode) {
 }
 
 export default function SettledBillsView({ onPrintBill, onResettle, department = 'restaurant' }) {
-  const { showToast, showConfirm } = useApp();
+  const { showToast, showConfirm, currentUser, setIsFnbCashHandoverOpen, isAdminMode } = useApp();
 
   const [bills, setBills] = useState([]);
   const [dateFrom, setDateFrom] = useState('');
@@ -38,6 +39,7 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [editingBill, setEditingBill] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHandoverOpen, setIsHandoverOpen] = useState(false);
 
   const loadSettledBills = useCallback(async () => {
     setIsLoading(true);
@@ -89,7 +91,20 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
     }
   };
 
+  const isHotelAdmin = Boolean(
+    isAdminMode ||
+    currentUser?.role === 'manager' ||
+    currentUser?.username?.toLowerCase() === 'admin' ||
+    Boolean(currentUser?.can_access_manager) ||
+    (typeof window !== 'undefined' && (window.location.search.includes('admin=1') || window.location.search.includes('role=owner'))) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('is_admin_mode') === '1')
+  );
+
   const handleDeleteSelected = async () => {
+    if (!isHotelAdmin) {
+      showToast('Settled F&B bills can only be deleted by an Administrator.', 'red');
+      return;
+    }
     const count = selectedIds.size;
     if (count === 0) return;
 
@@ -119,6 +134,10 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
   };
 
   const handleDeleteSingleBill = async (b) => {
+    if (!isHotelAdmin) {
+      showToast('Settled F&B bills can only be deleted by an Administrator.', 'red');
+      return;
+    }
     const billNo = b.order_number || b.id;
     const table = b.table_name || (b.table_number ? `Table ${b.table_number}` : 'Walk-in');
     const amount = formatCurrency(b.grand_total || b.total || 0);
@@ -203,9 +222,31 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
           >
             <span>🔄</span> Refresh
           </button>
+          <button
+            type="button"
+            className="btn-primary"
+            id="btn-fnb-cash-handover"
+            onClick={() => (setIsFnbCashHandoverOpen ? setIsFnbCashHandoverOpen(true) : setIsHandoverOpen(true))}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'linear-gradient(135deg, #ea580c, #c2410c)',
+              borderColor: '#c2410c',
+              color: '#ffffff',
+              borderRadius: '8px',
+              fontWeight: 750,
+              fontSize: '0.82rem',
+              boxShadow: '0 2px 8px rgba(234, 88, 12, 0.25)'
+            }}
+            title="View & Print F&B Cash Handover Statement (Shift handover, 2-copy A4 print)"
+          >
+            <span>💵</span> F&B Cash Handover
+          </button>
         </div>
 
-        {selectedIds.size > 0 && (
+        {isHotelAdmin && selectedIds.size > 0 && (
           <button
             type="button"
             className="btn-danger"
@@ -233,14 +274,16 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
         <table className="owner-rooms-table" id="settled-bills-table">
           <thead>
             <tr>
-              <th style={{ width: '50px', textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={filteredBills.length > 0 && selectedIds.size === filteredBills.length}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  style={{ cursor: 'pointer', width: '19px', height: '19px', accentColor: '#0071e3' }}
-                />
-              </th>
+              {isHotelAdmin && (
+                <th style={{ width: '50px', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredBills.length > 0 && selectedIds.size === filteredBills.length}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    style={{ cursor: 'pointer', width: '19px', height: '19px', accentColor: '#0071e3' }}
+                  />
+                </th>
+              )}
               <th>Order #</th>
               <th>Table / Counter</th>
               <th>Token</th>
@@ -268,14 +311,16 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                   }}
                   title="Click row to edit, add/remove items, or view audit logs"
                 >
-                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(b.id)}
-                      onChange={() => handleToggleSelect(b.id)}
-                      style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: '#0071e3' }}
-                    />
-                  </td>
+                  {isHotelAdmin && (
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(b.id)}
+                        onChange={() => handleToggleSelect(b.id)}
+                        style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: '#0071e3' }}
+                      />
+                    </td>
+                  )}
                   <td style={{ fontWeight: 800 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span className="settled-order-num" style={{ color: isEdited ? '#b45309' : 'var(--text-primary, #0f172a)' }}>
@@ -365,30 +410,32 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
                     >
                       🖨️ Reprint
                     </button>
-                    <button
-                      type="button"
-                      className="settled-delete-single-btn"
-                      onClick={() => handleDeleteSingleBill(b)}
-                      title="Void / Delete this bill (mistakenly settled by staff)"
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        padding: '4px 9px',
-                        borderRadius: '6px',
-                        fontSize: '0.74rem',
-                        fontWeight: 750,
-                        cursor: 'pointer',
-                        marginLeft: '6px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <span>🗑️</span>
-                      <span>Delete</span>
-                    </button>
+                    {isHotelAdmin && (
+                      <button
+                        type="button"
+                        className="settled-delete-single-btn"
+                        onClick={() => handleDeleteSingleBill(b)}
+                        title="Void / Delete this bill (mistakenly settled by staff)"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          color: '#ef4444',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          padding: '4px 9px',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          fontWeight: 750,
+                          cursor: 'pointer',
+                          marginLeft: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span>🗑️</span>
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -419,6 +466,13 @@ export default function SettledBillsView({ onPrintBill, onResettle, department =
           }}
         />
       )}
+
+      {/* F&B Cash Handover Statement Modal & Print */}
+      <FnBCashHandoverModal
+        isOpen={isHandoverOpen}
+        onClose={() => setIsHandoverOpen(false)}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

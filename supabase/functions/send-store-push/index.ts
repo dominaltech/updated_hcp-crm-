@@ -155,11 +155,14 @@ serve(async (req) => {
         },
         android: {
           priority: "HIGH",
+          collapse_key: isPayment ? `store_payment_${payload.vendor_id || vendorName}` : `store_bill_${billId || 'bill'}`,
           notification: {
             channel_id: "high_importance_channel",
             sound: "default",
             default_vibrate_timings: true,
             notification_priority: "PRIORITY_MAX",
+            tag: isPayment ? `store_payment_${payload.vendor_id || vendorName}` : `store_bill_${billId || 'bill'}`,
+            click_action: "FLUTTER_NOTIFICATION_CLICK"
           }
         }
       }
