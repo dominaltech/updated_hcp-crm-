@@ -20,35 +20,28 @@ if (cachedTunnelUrl && cachedTunnelUrl.includes('blond-ethnic')) {
   try { localStorage.removeItem('hcp_cached_tunnel_url'); } catch (e) {}
 }
 
-// Fetch latest active tunnel URL from Supabase cloud sync
+// Fetch latest active tunnel URL from Firebase cloud sync
 export const fetchCloudTunnelUrl = async (force = false) => {
   if (!force && cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) return cachedTunnelUrl;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
-      'https://hlwmsllmqfdxfmqulrat.supabase.co/rest/v1/room_charges_inbox?department=eq.cloud_tunnel_url&select=items_summary&limit=1',
-      {
-        signal: controller.signal,
-        headers: {
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk'
-        }
-      }
+      'https://firestore.googleapis.com/v1/projects/hotelcitypark-crm/databases/(default)/documents/room_charges_inbox/cloud_tunnel_url?key=AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI',
+      { signal: controller.signal }
     );
     clearTimeout(timer);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data[0]?.items_summary) {
-        const fresh = data[0].items_summary.replace(/\/+$/, '');
-        if (fresh && fresh.includes('trycloudflare.com')) {
-          cachedTunnelUrl = fresh;
-          try { localStorage.setItem('hcp_cached_tunnel_url', fresh); } catch (e) {}
-          return fresh;
-        }
+      const fresh = data?.fields?.items_summary?.stringValue?.replace(/\/+$/, '');
+      if (fresh && fresh.includes('trycloudflare.com')) {
+        cachedTunnelUrl = fresh;
+        try { localStorage.setItem('hcp_cached_tunnel_url', fresh); } catch (e) {}
+        return fresh;
       }
     }
   } catch (e) {
-    console.warn('[WaiterAPI] Could not fetch tunnel from Supabase:', e.message);
+    console.warn('[WaiterAPI] Could not fetch tunnel from Firebase:', e.message);
   }
   return (cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic')) ? cachedTunnelUrl : CLOUD_TUNNEL_URL;
 };
@@ -112,6 +105,19 @@ export const getBaseUrl = () => {
   }
 
   return `http://${LOCAL_WIFI_IP}:3000/api`;
+};
+
+export const getWsUrl = () => {
+  const base = getBaseUrl();
+  let root = base.replace(/\/api\/?$/, '');
+  if (!root.startsWith('http')) {
+    if (typeof window !== 'undefined') {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${window.location.host}/ws`;
+    }
+    return `ws://${LOCAL_WIFI_IP}:3000/ws`;
+  }
+  return root.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws';
 };
 
 let _token = localStorage.getItem('hcp_waiter_token') || null;
@@ -238,35 +244,34 @@ export const request = async (endpoint, options = {}) => {
   }
 };
 
-// Supabase Cloud Direct Endpoints for Independent Internet & Cellular Sync
-export const SUPABASE_URL = 'https://hlwmsllmqfdxfmqulrat.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
+// Supabase Cloud Decommissioned: Consolidated 100% on Firebase
+export const SUPABASE_URL = '';
+export const SUPABASE_ANON_KEY = '';
+
+export const FIREBASE_PROJECT_ID = 'hotelcitypark-crm';
+export const FIREBASE_API_KEY = 'AIzaSyCtZnkdk1_q8rWrISnD8P2Rhi-jcPn1QTI';
+export const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 let inMemoryCloudPkg = null;
 let lastCloudPkgFetch = 0;
 
-// Eagerly fetch and cache the entire live waiter package from Supabase Cloud
+// Eagerly fetch and cache the entire live waiter package from Firebase Firestore
 export const fetchCloudWaiterPackage = async (force = false) => {
   const now = Date.now();
-  if (!force && inMemoryCloudPkg && (now - lastCloudPkgFetch < 5000)) return inMemoryCloudPkg;
+  if (!force && inMemoryCloudPkg && (now - lastCloudPkgFetch < 30000)) return inMemoryCloudPkg;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6000);
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_cloud_sync_pkg&select=items_summary&limit=1`,
-      {
-        signal: controller.signal,
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
-      }
+      `${FIRESTORE_BASE}/room_charges_inbox/waiter_cloud_sync_pkg?key=${FIREBASE_API_KEY}`,
+      { signal: controller.signal }
     );
     clearTimeout(timer);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data[0]?.items_summary) {
-        const pkg = JSON.parse(data[0].items_summary);
+      const rawSummary = data?.fields?.items_summary?.stringValue;
+      if (rawSummary) {
+        const pkg = JSON.parse(rawSummary);
         inMemoryCloudPkg = pkg;
         lastCloudPkgFetch = Date.now();
         try {
@@ -318,82 +323,79 @@ export const pushWaiterOrderToCloud = async (orderData) => {
     ? String(orderData.room_number || orderData.destination_label || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim()
     : String(orderData.destination_label || 'Table');
 
-  const payload = {
-    room_number: cleanRoom,
-    room_id: orderData.destination_id || 0,
-    department: 'waiter_kot_order',
-    order_id: 0,
-    bill_no: cleanShortKot,
-    subtotal: subtotal,
-    gst: gstAmount,
-    grand_total: grandTotal,
-    settled_by: orderData.waiter_name || 'Captain',
-    items_summary: JSON.stringify(orderData),
-    status: 'pending',
-    created_at: new Date().toISOString()
+  const fbPayload = {
+    fields: {
+      room_number: { stringValue: String(cleanRoom) },
+      room_id: { integerValue: String(orderData.destination_id || 0) },
+      department: { stringValue: 'waiter_kot_order' },
+      order_id: { integerValue: '0' },
+      bill_no: { stringValue: cleanShortKot },
+      subtotal: { doubleValue: Number(subtotal) },
+      gst: { doubleValue: Number(gstAmount) },
+      grand_total: { doubleValue: Number(grandTotal) },
+      settled_by: { stringValue: String(orderData.waiter_name || 'Captain') },
+      items_summary: { stringValue: JSON.stringify(orderData) },
+      status: { stringValue: 'pending' },
+      created_at: { stringValue: new Date().toISOString() }
+    }
   };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+  const res = await fetch(`${FIRESTORE_BASE}/room_charges_inbox?key=${FIREBASE_API_KEY}`, {
     method: 'POST',
     signal: controller.signal,
-    headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    },
-    body: JSON.stringify(payload)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fbPayload)
   });
   clearTimeout(timer);
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.message || `Supabase cloud error HTTP ${res.status}`);
+    throw new Error(errData.error?.message || `Firebase cloud error HTTP ${res.status}`);
   }
   const inserted = await res.json();
-  return Array.isArray(inserted) ? inserted[0] : inserted;
+  const docId = inserted.name ? inserted.name.split('/').pop() : cleanShortKot;
+  return { id: docId, bill_no: cleanShortKot, ...orderData };
 };
 
-// Fetch recent cloud orders for My Orders view
+// Fetch recent cloud orders for My Orders view via Firebase Firestore (0 Supabase)
 export const fetchCloudRecentOrders = async (dept = 'restaurant') => {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6000);
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&order=created_at.desc&limit=30`,
-      {
-        signal: controller.signal,
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
-      }
+      `${FIRESTORE_BASE}/room_charges_inbox?pageSize=30&key=${FIREBASE_API_KEY}`,
+      { signal: controller.signal }
     );
     clearTimeout(timer);
     if (res.ok) {
-      const rows = await res.json();
-      const mapped = rows.map(r => {
+      const data = await res.json();
+      const docs = data.documents || [];
+      const mapped = docs.map(d => {
+        const f = d.fields || {};
+        const id = d.name.split('/').pop();
         let p = {};
-        try { p = JSON.parse(r.items_summary || '{}'); } catch (_) {}
-        const orderNum = (r.bill_no && r.bill_no !== 'KOT') ? r.bill_no : (r.id ? 'KOT-' + String(r.id).replace(/^cloud-/, '').slice(-6).toUpperCase() : 'KOT');
+        try { p = JSON.parse(f.items_summary?.stringValue || '{}'); } catch (_) {}
+        const billNo = f.bill_no?.stringValue || '';
+        const orderNum = (billNo && billNo !== 'KOT') ? billNo : (id ? 'KOT-' + String(id).replace(/^cloud-/, '').slice(-6).toUpperCase() : 'KOT');
+        const grandTotal = Number(f.grand_total?.doubleValue ?? f.grand_total?.integerValue ?? 0);
         return {
-          id: r.id,
+          id,
           order_number: orderNum,
           bill_no: orderNum,
-          table_number: p.destination_label || r.room_number,
-          waiter_name: p.waiter_name || r.settled_by,
-          total: r.grand_total,
-          created_at: r.created_at,
-          status: r.status === 'printed' ? 'KOT Dispatched' : (r.status === 'pending' ? 'Queued' : r.status),
+          table_number: p.destination_label || f.room_number?.stringValue || 'Table',
+          waiter_name: p.waiter_name || f.settled_by?.stringValue || '',
+          total: grandTotal,
+          created_at: f.created_at?.stringValue || d.createTime,
+          status: f.status?.stringValue === 'printed' ? 'KOT Dispatched' : (f.status?.stringValue === 'pending' ? 'Queued' : (f.status?.stringValue || 'pending')),
           items: p.items || [],
-          department: p.department || 'restaurant'
+          department: p.department || f.department?.stringValue || 'restaurant'
         };
       }).filter(o => !dept || o.department.toLowerCase() === dept.toLowerCase());
       return { success: true, orders: mapped };
     }
   } catch (e) {
-    console.warn('[WaiterAPI] Could not fetch cloud orders:', e.message);
+    console.warn('[WaiterAPI] Could not fetch cloud orders from Firebase:', e.message);
   }
   return { success: true, orders: [] };
 };
@@ -435,55 +437,8 @@ export const api = {
       }
     }
 
-    // 2. Check dedicated Supabase staff_users table directly
-    try {
-      const staffRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/staff_users?username=ilike.${encodeURIComponent(uClean)}&status=eq.active&select=*&limit=1`,
-        {
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-          }
-        }
-      );
-      if (staffRes.ok) {
-        const matched = await staffRes.json();
-        if (Array.isArray(matched) && matched.length > 0) {
-          const s = matched[0];
-          const storedPass = String(s.password || '');
-          let isValid = false;
-          if (storedPass.startsWith('$2')) {
-            try {
-              isValid = bcrypt.compareSync(pClean, storedPass);
-            } catch (_) {
-              isValid = false;
-            }
-          } else {
-            isValid = (storedPass === pClean);
-          }
-          if (isValid) {
-            const userObj = {
-              id: s.id,
-              username: s.username,
-              full_name: s.full_name || s.username,
-              role: s.role || 'waiter',
-              phone: s.phone || ''
-            };
-            const pseudoToken = 'cloud_' + Date.now();
-            setAuthToken(pseudoToken);
-            localStorage.setItem('hcp_waiter_user', JSON.stringify(userObj));
-            return { success: true, token: pseudoToken, user: userObj };
-          } else {
-            return { success: false, error: 'Invalid ID or password. Please verify your credentials.' };
-          }
-        }
-      }
-    } catch (supErr) {
-      console.log('[WaiterAPI] staff_users query notice:', supErr.message);
-    }
-
-    // 3. Fallback: Validate via Supabase Cloud Package
-    console.log('[WaiterAPI] Validating credentials via Supabase Cloud package...');
+    // 2. Validate via Firebase Cloud Package or local cached staff
+    console.log('[WaiterAPI] Validating credentials via Firebase Cloud package...');
     let pkg = null;
     try {
       pkg = await fetchCloudWaiterPackage(true);
@@ -854,37 +809,34 @@ export const api = {
         created_at: new Date().toISOString()
       };
 
+      const fbPayload = {
+        fields: {
+          room_number: { stringValue: String(tableObj?.table_number || `RS-${roomNum}`) },
+          room_id: { integerValue: String(paymentData.room_id || 0) },
+          department: { stringValue: department === 'bar' ? 'bar' : 'restaurant' },
+          order_id: { integerValue: '0' },
+          bill_no: { stringValue: payload.bill_no },
+          subtotal: { doubleValue: Number(subtotalAmt) },
+          gst: { doubleValue: Number(gstAmt) },
+          grand_total: { doubleValue: Number(grandAmt) },
+          settled_by: { stringValue: String(paymentData.waiter_name || 'Captain') },
+          status: { stringValue: 'pending' },
+          items_summary: { stringValue: payload.items_summary },
+          created_at: { stringValue: payload.created_at }
+        }
+      };
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 7000);
-      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
+      await fetch(`${FIRESTORE_BASE}/room_charges_inbox?key=${FIREBASE_API_KEY}`, {
         method: 'POST',
         signal: controller.signal,
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fbPayload)
       });
       clearTimeout(timer);
 
-      // Also mark any matching active orders in room_charges_inbox as settled
-      const tableNumberStr = tableObj?.table_number || String(destinationId);
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&room_number=eq.${encodeURIComponent(tableNumberStr)}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ status: 'settled' })
-        }
-      ).catch(() => {});
-
-      return { success: true, message: 'Settlement dispatched to cloud successfully' };
+      return { success: true, message: 'Settlement dispatched to Firebase Cloud successfully' };
     } catch (cErr) {
       console.error('[WaiterAPI] Cloud settlement failed:', cErr);
       throw cErr;
@@ -921,59 +873,43 @@ export const api = {
       }
     }
 
-    // Supabase Cloud Cancellation
+    // Firebase Cloud Cancellation
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
       const tableNumberStr = tableObj?.table_number || String(tableId);
 
-      // Cancel matching pending order in cloud inbox
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/room_charges_inbox?department=eq.waiter_kot_order&room_number=eq.${encodeURIComponent(tableNumberStr)}`,
-        {
-          method: 'PATCH',
-          signal: controller.signal,
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ status: 'cancelled' })
-        }
-      ).catch(() => {});
-
-      // Dispatch cancel event for local CRM printer and SQLite cleanup
-      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          room_number: tableNumberStr,
-          room_id: Number(tableId) || 0,
-          department: 'waiter_kot_cancel',
-          order_id: 0,
-          bill_no: 'VOID',
-          subtotal: 0,
-          gst: 0,
-          grand_total: 0,
-          settled_by: 'Waiter',
-          items_summary: JSON.stringify({
+      const fbPayload = {
+        fields: {
+          room_number: { stringValue: String(tableNumberStr) },
+          room_id: { integerValue: String(tableId || 0) },
+          department: { stringValue: 'waiter_kot_cancel' },
+          order_id: { integerValue: '0' },
+          bill_no: { stringValue: 'VOID' },
+          subtotal: { doubleValue: 0 },
+          gst: { doubleValue: 0 },
+          grand_total: { doubleValue: 0 },
+          settled_by: { stringValue: 'Waiter Void' },
+          items_summary: { stringValue: JSON.stringify({
             action: 'cancel_table',
             department: department || 'restaurant',
             table_id: tableId,
             table_number: tableNumberStr
-          }),
-          status: 'pending',
-          created_at: new Date().toISOString()
-        })
-      }).catch(() => {});
+          }) },
+          status: { stringValue: 'pending' },
+          created_at: { stringValue: new Date().toISOString() }
+        }
+      };
 
+      await fetch(`${FIRESTORE_BASE}/room_charges_inbox?key=${FIREBASE_API_KEY}`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fbPayload)
+      });
       clearTimeout(timer);
     } catch (e) {
-      console.warn('[WaiterAPI] Cloud cancel notice:', e.message);
+      console.warn('[WaiterAPI] Firebase cloud cancel notice:', e.message);
     }
 
     // Clean up local cached table status immediately in localStorage and inMemoryCloudPkg
@@ -1059,52 +995,38 @@ export const api = {
       }
     }
 
-    // Cancel in Supabase Cloud
+    // Cancel in Firebase Firestore
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/room_charges_inbox?id=eq.${orderId}`,
-        {
-          method: 'PATCH',
-          signal: controller.signal,
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ status: 'cancelled' })
-        }
-      ).catch(() => {});
-
-      // Send cancel event to CRM
-      await fetch(`${SUPABASE_URL}/rest/v1/room_charges_inbox`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          room_number: String(orderObj?.table_number || orderId),
-          room_id: 0,
-          department: 'waiter_kot_cancel',
-          order_id: Number(orderId) || 0,
-          bill_no: 'VOID',
-          subtotal: 0,
-          gst: 0,
-          grand_total: 0,
-          settled_by: 'Waiter',
-          items_summary: JSON.stringify({
+      const fbPayload = {
+        fields: {
+          room_number: { stringValue: String(orderObj?.table_number || orderId) },
+          room_id: { integerValue: '0' },
+          department: { stringValue: 'waiter_kot_cancel' },
+          order_id: { integerValue: String(orderId || 0) },
+          bill_no: { stringValue: 'VOID' },
+          subtotal: { doubleValue: 0 },
+          gst: { doubleValue: 0 },
+          grand_total: { doubleValue: 0 },
+          settled_by: { stringValue: 'Waiter Void' },
+          items_summary: { stringValue: JSON.stringify({
             action: 'cancel_order',
             department: department || 'restaurant',
-            order_id: orderId
-          }),
-          status: 'pending',
-          created_at: new Date().toISOString()
-        })
-      }).catch(() => {});
+            order_id: orderId,
+            cancelled_at: new Date().toISOString()
+          }) },
+          status: { stringValue: 'pending' },
+          created_at: { stringValue: new Date().toISOString() }
+        }
+      };
 
+      await fetch(`${FIRESTORE_BASE}/room_charges_inbox?key=${FIREBASE_API_KEY}`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fbPayload)
+      });
       clearTimeout(timer);
     } catch (_) {}
 

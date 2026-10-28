@@ -80,9 +80,9 @@ export default function RoomServiceView({
 
             return (
               <button
-                key={room.id}
+                key={room.room_number || room.id}
                 type="button"
-                id={`room-card-${room.id}`}
+                id={`room-card-${room.room_number || room.id}`}
                 onClick={() => onSelectRoom(room)}
                 style={{
                   background: 'var(--bg-surface)',

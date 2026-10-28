@@ -39,6 +39,26 @@ export default function TableSessionView({
   }, [table, isRoomService, occupiedRooms]);
 
   const [chargeToRoomId, setChargeToRoomId] = useState(initialRoomId);
+  const [staffList, setStaffList] = useState([]);
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getPublicStaffList().then(res => {
+      const list = res?.staff || res || [];
+      if (isMounted && Array.isArray(list)) {
+        setStaffList(list.filter(s => s.status === 'active' || !s.status));
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (table?.waiter_name) {
+      setWaiterName(table.waiter_name);
+    }
+  }, [table?.waiter_name]);
+
   const cartEndRef = useRef(null);
 
   // Auto-scroll cart down as new dishes are added
@@ -380,6 +400,54 @@ export default function TableSessionView({
             }}
           >
             {isRoomService ? '🛎️ Room Service' : isParcel ? '📦 Parcel' : '🍽️ Dine-In'}
+          </div>
+
+          {/* Attending Waiter Transfer Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b' }}>👤 Attending Waiter:</span>
+            <select
+              value={waiterName}
+              disabled={isTransferring}
+              onChange={async (e) => {
+                const newWaiter = e.target.value;
+                setWaiterName(newWaiter);
+                if (!table?.id) return;
+                setIsTransferring(true);
+                try {
+                  if (department === 'bar') {
+                    await api.transferBarTable(table.id, newWaiter);
+                  } else {
+                    await api.transferRestaurantTable(table.id, newWaiter);
+                  }
+                  showToast(`Table ${table.table_number || table.id} transferred to ${newWaiter || 'Unassigned'}!`, 'green');
+                } catch (err) {
+                  showToast('Error transferring table: ' + err.message, 'red');
+                } finally {
+                  setIsTransferring(false);
+                }
+              }}
+              style={{
+                padding: '3px 6px',
+                borderRadius: '6px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                background: '#ffffff',
+                color: '#0f172a',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">-- Choose Waiter --</option>
+              {staffList.map((s) => {
+                const label = s.full_name || s.username;
+                return (
+                  <option key={s.id} value={label}>
+                    {label} {s.role ? `(${s.role})` : ''}
+                  </option>
+                );
+              })}
+            </select>
           </div>
         </div>
 

@@ -41,6 +41,10 @@ async function request(endpoint, options = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const search = (typeof window !== 'undefined' && window.location.search) || '';
+  if (search.includes('admin=1') || search.includes('role=owner') || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('is_admin_mode') === '1')) {
+    headers['x-admin-mode'] = '1';
+  }
 
   const config = {
     ...options,
@@ -179,6 +183,7 @@ export const api = {
   generateKOT: (id, data) => request(`/restaurant/tables/${id}/kot`, { method: 'POST', body: data }),
   generateRestaurantPrebill: (id, data) => request(`/restaurant/tables/${id}/prebill`, { method: 'POST', body: data }),
   settleRestaurantTable: (id, data) => request(`/restaurant/tables/${id}/settle`, { method: 'POST', body: data }),
+  transferRestaurantTable: (id, waiter_name) => request(`/restaurant/tables/${id}/transfer`, { method: 'POST', body: { waiter_name } }),
   updateRestaurantTableStatus: (id, status) => request(`/restaurant/tables/${id}/status`, { method: 'POST', body: { status } }),
   getRestaurantSettledBills: () => request('/restaurant/settled-bills'),
   getRestaurantOrderDetail: (id) => request(`/restaurant/orders/${id}`),
@@ -190,6 +195,9 @@ export const api = {
   // Guest In-Room Dining & WhatsApp Food Ordering
   getGuestPendingOrders: () => request('/guest/pending-orders'),
   acceptGuestOrder: (orderId, acceptedBy) => request('/guest/accept-order', { method: 'POST', body: { orderId, acceptedBy } }),
+  cancelGuestOrder: (orderId, reason) => request('/guest/cancel-order', { method: 'POST', body: { orderId, reason } }),
+  getRestaurantTimings: () => request('/restaurant/timings'),
+  saveRestaurantTimings: (data) => request('/restaurant/timings', { method: 'POST', body: data }),
   getRoomDiningAlerts: () => request('/guest/room-alerts'),
   getGuestSession: (token) => request(`/guest/session/${encodeURIComponent(token)}`),
   generateGuestDiningLink: (bookingId) => request(`/guest/generate-link/${bookingId}`, { method: 'POST' }),
@@ -215,6 +223,7 @@ export const api = {
   generateBOT: (id, data) => request(`/bar/tables/${id}/bot`, { method: 'POST', body: data }),
   generateBarPrebill: (id, data) => request(`/bar/tables/${id}/prebill`, { method: 'POST', body: data }),
   settleBarTable: (id, data) => request(`/bar/tables/${id}/settle`, { method: 'POST', body: data }),
+  transferBarTable: (id, waiter_name) => request(`/bar/tables/${id}/transfer`, { method: 'POST', body: { waiter_name } }),
   getBarSettledBills: () => request('/bar/settled-bills'),
   getBarOrderDetail: (id) => request(`/bar/orders/${id}`),
   resettleBarOrder: (id, data) => request(`/bar/orders/${id}/resettle`, { method: 'POST', body: data }),
@@ -246,6 +255,12 @@ export const api = {
   // Invoice Sequence & Financial Year Settings
   getInvoiceSettings: () => request('/settings/invoice-sequence'),
   saveInvoiceSettings: (data) => request('/settings/invoice-sequence', { method: 'POST', body: data }),
+
+  // Cloud Synchronization (Firebase)
+  getCloudSyncSettings: () => request('/settings/cloud-sync'),
+  saveCloudSyncSettings: (data) => request('/settings/cloud-sync', { method: 'POST', body: data }),
+  syncAllToFirebase: () => request('/cloud-sync/firebase/sync-all', { method: 'POST' }),
+  syncAllToSupabase: () => Promise.resolve({ success: true, message: 'Supabase decommissioned. All synchronization consolidated on Firebase.' }),
 
   // Visitors
   getVisitors: (roomId) => request(`/rooms/${roomId}/visitors`),
@@ -367,8 +382,28 @@ export const api = {
   getSectionPasswords: () => request('/settings/section-passwords'),
   saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
 
-  // Room Occupancy Chart
+  // Room Occupancy Chart & 7-Day Matrix
   getOccupancyChart: () => request('/hospitality/occupancy-chart'),
+  getOccupancyMatrix: (startDate) => request('/hospitality/occupancy-matrix' + (startDate ? `?startDate=${startDate}` : '')),
+
+  // Shift Cash Handover Statements (Front Office & F&B)
+  getFoCashHandoverData: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/hospitality/cash-handover-data${qs ? '?' + qs : ''}`);
+  },
+  getFnbCashHandoverData: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/restaurant/cash-handover-data${qs ? '?' + qs : ''}`);
+  },
+
+  // Storeman Security PIN
+  getStorePin: () => request('/store/pin'),
+  saveStorePin: (pin) => request('/store/pin', { method: 'POST', body: { pin } }),
+  verifyStorePin: (pin) => request('/store/verify-pin', { method: 'POST', body: { pin } }),
+
+  // Dual-Drive Database Backups (Goal 9)
+  getBackupStatus: () => request('/system/backup/status'),
+  createBackup: () => request('/system/backup/create', { method: 'POST' }),
 
   // Print Queue for Auto-Printing
   getPendingPrintJobs: (params) => {
@@ -378,6 +413,8 @@ export const api = {
   ackPrintJob: (id) => request(`/print-queue/${id}/ack`, { method: 'POST' }),
 
   request,
+  get: (endpoint, options = {}) => request(endpoint, { ...options, method: 'GET' }),
+  post: (endpoint, body, options = {}) => request(endpoint, { ...options, method: 'POST', body }),
 
   // Auth Token Management
   setAuthToken,

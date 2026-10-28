@@ -78,13 +78,41 @@ export default function MyOrdersView({
   const myName = currentUser?.full_name || currentUser?.username || 'Waiter';
   const myId = currentUser?.id;
 
-  // Show all active running tables and room service orders for this department
-  // Deduplicate by clean destination key so duplicate entries never render
+  const isManagerOrCaptain = 
+    currentUser?.role === 'manager' || 
+    currentUser?.role === 'admin' || 
+    currentUser?.role === 'restaurant' ||
+    String(currentUser?.username || '').toLowerCase().includes('cap') ||
+    String(currentUser?.username || '').toLowerCase().includes('admin');
+
+  const [captainViewMode, setCaptainViewMode] = useState('my'); // 'my' | 'all'
+
+  // Show running tables and room service orders for this department
+  // Regular waiters ONLY see their own active orders
   const myActiveTables = useMemo(() => {
     const rawActive = tables.filter((t) => {
       const items = extractOrderItems(t);
       const hasActiveOrder = (t.status !== 'available' && t.status !== '') || items.length > 0;
-      return hasActiveOrder;
+      if (!hasActiveOrder) return false;
+
+      const isMine =
+        (t.waiter_id && t.waiter_id === myId) ||
+        (t.waiter_name && (
+          String(t.waiter_name).toLowerCase() === String(myName).toLowerCase() ||
+          String(t.waiter_name).toLowerCase() === String(currentUser?.username || '').toLowerCase()
+        ));
+
+      // Regular waiters ONLY see their own active tables (cannot see or settle another waiter's table)
+      if (!isManagerOrCaptain) {
+        return isMine;
+      }
+
+      // If Captain / Manager chooses 'my' vs 'all'
+      if (isManagerOrCaptain && captainViewMode === 'my') {
+        return isMine;
+      }
+
+      return true;
     });
 
     const dedupedMap = new Map();
@@ -318,12 +346,25 @@ export default function MyOrdersView({
             setActionInProgress(null);
             return;
           }
-          const roomObj = occupiedRooms.find(r => String(r.id) === String(selectedRoomId));
-          settlePayload.room_id = selectedRoomId;
-          settlePayload.room_number = roomObj?.room_number || '';
+          const roomObj = occupiedRooms.find(r => 
+            String(r.room_number) === String(selectedRoomId) || 
+            String(r.id) === String(selectedRoomId)
+          );
+          const targetRoomNumber = String(roomObj?.room_number || selectedRoomId).replace(/^RS-/i, '').replace(/^Room\s*/i, '').trim();
+          const targetRoomId = roomObj?.room_id || (typeof roomObj?.id === 'number' ? roomObj.id : null);
+
+          settlePayload.room_id = targetRoomId;
+          settlePayload.room_number = targetRoomNumber;
+          settlePayload.target_room_number = targetRoomNumber;
+          settlePayload.charge_to_room = targetRoomNumber;
           settlePayload.is_paid = isPaidAtRoom ? 1 : 0;
-          if (roomObj?.guest_name) settlePayload.customer_name = `Room ${roomObj.room_number} - ${roomObj.guest_name}`;
-          if (roomObj?.guest_phone && roomObj.guest_phone !== '—') settlePayload.guest_phone = roomObj.guest_phone;
+          settlePayload.customer_name = roomObj?.guest_name 
+            ? `Room ${targetRoomNumber} - ${roomObj.guest_name}`
+            : `Room ${targetRoomNumber}`;
+          if (roomObj?.guest_phone && roomObj.guest_phone !== '—') {
+            settlePayload.guest_phone = roomObj.guest_phone;
+          }
+          settlePayload.special_notes = `Transferred from ${settleModalTable.table_number || settleModalTable.name || 'Table'} to Room ${targetRoomNumber}`;
         } else if (paymentMode === 'owner') {
           settlePayload.payment_mode = 'owner';
           settlePayload.payment_method = 'owner';
@@ -349,7 +390,10 @@ export default function MyOrdersView({
       }
 
       await api.settleTable(department, settleModalTable.id, settlePayload, settleModalTable);
-      setMsg(`✅ Order for ${settleModalTable.table_number || settleModalTable.name} settled successfully!`);
+      const targetDisplay = (paymentMode === 'room_folio' && settlePayload.room_number)
+        ? `Order settled to Room ${settlePayload.room_number} successfully!`
+        : `Order for ${settleModalTable.table_number || settleModalTable.name} settled successfully!`;
+      setMsg(`✅ ${targetDisplay}`);
       setSettleModalTable(null);
       setSelectedOrder(null);
       setTimeout(() => setMsg(''), 4000);
@@ -466,6 +510,46 @@ export default function MyOrdersView({
           <span>All Orders ({allDepartmentOrders.length})</span>
         </button>
       </div>
+
+      {/* Captain / Admin Floor Super-Filter */}
+      {isManagerOrCaptain && activeSubTab === 'active' && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+          <button
+            type="button"
+            onClick={() => setCaptainViewMode('my')}
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-xs, 8px)',
+              border: captainViewMode === 'my' ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+              background: captainViewMode === 'my' ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-surface)',
+              color: captainViewMode === 'my' ? 'var(--apple-blue)' : 'var(--text-secondary)',
+              fontSize: '0.74rem',
+              fontWeight: 850,
+              cursor: 'pointer'
+            }}
+          >
+            👤 My Assigned Tables
+          </button>
+          <button
+            type="button"
+            onClick={() => setCaptainViewMode('all')}
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-xs, 8px)',
+              border: captainViewMode === 'all' ? '1.5px solid var(--apple-blue)' : '1px solid var(--border-medium)',
+              background: captainViewMode === 'all' ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-surface)',
+              color: captainViewMode === 'all' ? 'var(--apple-blue)' : 'var(--text-secondary)',
+              fontSize: '0.74rem',
+              fontWeight: 850,
+              cursor: 'pointer'
+            }}
+          >
+            🛡️ All Floor Tables ({tables.filter(t => (t.status !== 'available' && t.status !== '') || (t.cart && t.cart.length > 0)).length})
+          </button>
+        </div>
+      )}
 
       {/* Search Input */}
       <div style={{ marginBottom: '10px', position: 'relative' }}>
@@ -750,6 +834,10 @@ export default function MyOrdersView({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        const isRoom = t.table_type === 'room_service' || String(t.table_number || '').startsWith('RS-');
+                        const rawNum = String(t.table_number || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+                        if (isRoom && rawNum) setSelectedRoomId(rawNum);
+                        else setSelectedRoomId('');
                         setSettleModalTable(t);
                       }}
                       style={{
@@ -871,8 +959,21 @@ export default function MyOrdersView({
                           {o.payment_mode || o.payment_method || 'Order'}
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        <strong>{o.table_number || o.customer_name || 'Counter'}</strong>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)' }}>{o.table_number || o.customer_name || 'Counter'}</strong>
+                        {o.room_number && (
+                          <span style={{
+                            background: 'rgba(59, 130, 246, 0.12)',
+                            color: 'var(--apple-blue)',
+                            fontWeight: 850,
+                            fontSize: '0.68rem',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(59, 130, 246, 0.3)'
+                          }}>
+                            🛏️ Room {o.room_number}
+                          </span>
+                        )}
                         {o.created_at && ` • 🕒 ${new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                         {o.waiter_name && ` • 👤 ${o.waiter_name}`}
                       </div>
@@ -1009,14 +1110,28 @@ export default function MyOrdersView({
                     ? `Order: ${selectedOrder.data.table_number || `Table ${selectedOrder.data.id}`}`
                     : `Order #${formatCleanOrderNumber(selectedOrder.data)}`}
                 </h3>
-                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  {selectedOrder.type === 'table'
-                    ? `Token #${selectedOrder.data.token_number || 1} • KOT #${selectedOrder.data.kot_count || 1}`
-                    : `Settled • ${selectedOrder.data.payment_mode || selectedOrder.data.payment_method || 'Order'}`}
-                  {(selectedOrder.data.order_started_at || selectedOrder.data.created_at) && (
-                    <span> • 🕒 {new Date(selectedOrder.data.order_started_at || selectedOrder.data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px' }}>
+                  <span>
+                    {selectedOrder.type === 'table'
+                      ? `Token #${selectedOrder.data.token_number || 1} • KOT #${selectedOrder.data.kot_count || 1}`
+                      : `Settled • ${selectedOrder.data.payment_mode || selectedOrder.data.payment_method || 'Order'}`}
+                  </span>
+                  {selectedOrder.data.room_number && (
+                    <span style={{
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      color: 'var(--apple-blue)',
+                      fontWeight: 850,
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(59, 130, 246, 0.3)'
+                    }}>
+                      🛏️ Room {selectedOrder.data.room_number}
+                    </span>
                   )}
-                  {selectedOrder.data.waiter_name && <span> • 👤 {selectedOrder.data.waiter_name}</span>}
+                  {(selectedOrder.data.order_started_at || selectedOrder.data.created_at) && (
+                    <span>• 🕒 {new Date(selectedOrder.data.order_started_at || selectedOrder.data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  )}
+                  {selectedOrder.data.waiter_name && <span>• 👤 {selectedOrder.data.waiter_name}</span>}
                 </div>
               </div>
 
@@ -1548,37 +1663,77 @@ export default function MyOrdersView({
                   </div>
 
                   {/* Room Folio Sub-options for Dine-in Table */}
-                  {paymentMode === 'room_folio' && (
-                    <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
-                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                        Select In-House Room:
-                      </label>
-                      <select
-                        value={selectedRoomId}
-                        onChange={(e) => setSelectedRoomId(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: 'var(--radius-xs)',
-                          border: '1px solid var(--border-medium)',
-                          background: 'var(--bg-surface)',
-                          color: 'var(--text-primary)',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          marginBottom: '10px'
-                        }}
-                      >
-                        <option value="">-- Choose Occupied Room --</option>
-                        {occupiedRooms.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            Room {r.room_number} {r.guest_name ? `(${r.guest_name})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                  {paymentMode === 'room_folio' && (() => {
+                    const selectedRoomObj = occupiedRooms.find(r => 
+                      String(r.room_number) === String(selectedRoomId) || 
+                      String(r.id) === String(selectedRoomId)
+                    );
+                    return (
+                      <div style={{ background: 'var(--bg-surface-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '14px', border: '1px solid var(--border-medium)' }}>
+                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                          Select In-House Room:
+                        </label>
+                        <select
+                          value={selectedRoomId}
+                          onChange={(e) => setSelectedRoomId(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: 'var(--radius-xs)',
+                            border: '1.5px solid var(--border-medium)',
+                            background: 'var(--bg-surface)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.84rem',
+                            fontWeight: 700,
+                            marginBottom: '10px'
+                          }}
+                        >
+                          <option value="">-- Choose Occupied Room ({occupiedRooms.length} available) --</option>
+                          {occupiedRooms.map((r) => (
+                            <option key={r.room_number || r.id} value={r.room_number}>
+                              Room {r.room_number} {r.guest_name ? `• ${r.guest_name}` : ''}
+                            </option>
+                          ))}
+                        </select>
 
-                      <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                        Billing Status in Room Folio:
-                      </label>
+                        {/* Prominent Selected Room Confirmation Card */}
+                        {selectedRoomObj && (
+                          <div style={{
+                            background: 'rgba(59, 130, 246, 0.12)',
+                            border: '1.5px solid var(--apple-blue)',
+                            borderRadius: 'var(--radius-xs, 8px)',
+                            padding: '8px 10px',
+                            marginBottom: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px'
+                          }}>
+                            <div style={{
+                              background: 'var(--apple-blue)',
+                              color: '#ffffff',
+                              padding: '5px 8px',
+                              borderRadius: '5px',
+                              fontWeight: 900,
+                              fontSize: '0.86rem',
+                              letterSpacing: '0.02em',
+                              flexShrink: 0
+                            }}>
+                              ROOM {selectedRoomObj.room_number}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 850, fontSize: '0.85rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {selectedRoomObj.guest_name || 'In-House Guest'}
+                              </div>
+                              <div style={{ fontSize: '0.70rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                📞 {selectedRoomObj.guest_phone || selectedRoomObj.guest_mobile || 'No mobile stored'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                          Billing Status in Room Folio:
+                        </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <button
                           type="button"
@@ -1614,7 +1769,8 @@ export default function MyOrdersView({
                         </button>
                       </div>
                     </div>
-                  )}
+                  );
+                })()}
 
                   {/* Owner Account Sub-options */}
                   {paymentMode === 'owner' && (

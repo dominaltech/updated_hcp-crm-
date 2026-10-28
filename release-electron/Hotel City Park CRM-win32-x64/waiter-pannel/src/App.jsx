@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { App as CapApp } from '@capacitor/app';
-import { api } from './api/client';
+import { api, getWsUrl } from './api/client';
 import LoginScreen from './components/LoginScreen';
 import HeaderBar from './components/HeaderBar';
 import DepartmentSwitcher from './components/DepartmentSwitcher';
@@ -519,6 +519,62 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, destination, fetchLiveData]);
 
+  // Instant real-time WebSocket Engine for Waiter Panel (<10ms live push without manual refresh)
+  useEffect(() => {
+    if (!currentUser) return;
+    let ws = null;
+    let reconnectTimer = null;
+    let isDisposed = false;
+
+    const connectWs = () => {
+      if (isDisposed) return;
+      try {
+        const wsUrl = getWsUrl();
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const type = data.type || data.event;
+            if (
+              type === 'TABLES_UPDATED' ||
+              type === 'BAR_UPDATED' ||
+              type === 'ROOMS_UPDATED' ||
+              type === 'FOLIO_UPDATED' ||
+              type === 'ORDERS_UPDATED'
+            ) {
+              fetchLiveData(true);
+            }
+          } catch (_) {}
+        };
+
+        ws.onclose = () => {
+          if (!isDisposed) {
+            reconnectTimer = setTimeout(connectWs, 3000);
+          }
+        };
+
+        ws.onerror = () => {
+          try { ws.close(); } catch (_) {}
+        };
+      } catch (e) {
+        if (!isDisposed) {
+          reconnectTimer = setTimeout(connectWs, 5000);
+        }
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      isDisposed = true;
+      clearTimeout(reconnectTimer);
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+      }
+    };
+  }, [currentUser, fetchLiveData]);
+
   // Cart operations
   const handleAddToCart = (item) => {
     setCart((prev) => {
@@ -553,6 +609,27 @@ export default function App() {
   };
 
   const handleSelectTable = (table) => {
+    const isManagerOrCaptain = 
+      currentUser?.role === 'manager' || 
+      currentUser?.role === 'admin' || 
+      currentUser?.role === 'restaurant' ||
+      String(currentUser?.username || '').toLowerCase().includes('cap') ||
+      String(currentUser?.username || '').toLowerCase().includes('admin');
+
+    const isMine =
+      (table.waiter_id && table.waiter_id === currentUser?.id) ||
+      (table.waiter_name && (
+        String(table.waiter_name).toLowerCase() === String(currentUser?.full_name || '').toLowerCase() ||
+        String(table.waiter_name).toLowerCase() === String(currentUser?.username || '').toLowerCase()
+      ));
+
+    const isOccupied = table.status === 'occupied' || (table.cart && table.cart.length > 0) || table.status === 'running';
+
+    if (isOccupied && !isMine && !isManagerOrCaptain) {
+      showToast(`🔒 Table ${table.table_number || table.id} is attended by ${table.waiter_name || 'another waiter'}. You cannot take orders.`);
+      return;
+    }
+
     const numStr = String(table.table_number || table.name || '');
     const isRS = table.table_type === 'room_service' || numStr.startsWith('RS-');
     const isP = table.table_type === 'parcel' || numStr.startsWith('P-');
@@ -571,6 +648,27 @@ export default function App() {
   };
 
   const handleSelectDestinationForMore = (dest) => {
+    const isManagerOrCaptain = 
+      currentUser?.role === 'manager' || 
+      currentUser?.role === 'admin' || 
+      currentUser?.role === 'restaurant' ||
+      String(currentUser?.username || '').toLowerCase().includes('cap') ||
+      String(currentUser?.username || '').toLowerCase().includes('admin');
+
+    const targetWaiter = dest.rawTable?.waiter_name || dest.rawOrder?.waiter_name || dest.waiter_name;
+    const targetWaiterId = dest.rawTable?.waiter_id || dest.rawOrder?.waiter_id || dest.waiter_id;
+    const isMine =
+      (targetWaiterId && targetWaiterId === currentUser?.id) ||
+      (targetWaiter && (
+        String(targetWaiter).toLowerCase() === String(currentUser?.full_name || '').toLowerCase() ||
+        String(targetWaiter).toLowerCase() === String(currentUser?.username || '').toLowerCase()
+      ));
+
+    if (targetWaiter && !isMine && !isManagerOrCaptain) {
+      showToast(`🔒 Order is attended by ${targetWaiter}. You cannot add items.`);
+      return;
+    }
+
     let type = dest.type || 'table';
     const label = dest.label || dest.table_number || `Table ${dest.id}`;
     if (label.startsWith('RS-') || type === 'room') {
@@ -625,6 +723,37 @@ export default function App() {
   // Punch KOT order with offline queue resilience
   const handlePunchOrder = async ({ notes, customerName, customerPhone }) => {
     if (!destination || cart.length === 0) return;
+
+    // Instant collision check for Dine-In tables
+    if (destination.type === 'table') {
+      const freshTable = tables.find((t) => String(t.id) === String(destination.id));
+      if (freshTable) {
+        const isManagerOrCaptain = 
+          currentUser?.role === 'manager' || 
+          currentUser?.role === 'admin' || 
+          currentUser?.role === 'restaurant' ||
+          String(currentUser?.username || '').toLowerCase().includes('cap') ||
+          String(currentUser?.username || '').toLowerCase().includes('admin');
+
+        const isMine =
+          !freshTable.waiter_name ||
+          (freshTable.waiter_id && freshTable.waiter_id === currentUser?.id) ||
+          (freshTable.waiter_name && (
+            String(freshTable.waiter_name).toLowerCase() === String(currentUser?.full_name || '').toLowerCase() ||
+            String(freshTable.waiter_name).toLowerCase() === String(currentUser?.username || '').toLowerCase()
+          ));
+
+        const isTakenByOther = (freshTable.status === 'occupied' || (freshTable.cart && freshTable.cart.length > 0)) && !isMine && !isManagerOrCaptain;
+        if (isTakenByOther) {
+          setIsPunching(false);
+          setCart([]);
+          setDestination(null);
+          showToast(`⚠️ Collision Alert: Table ${destination.label} was just taken by ${freshTable.waiter_name}! Your cart has been reset.`, 5000);
+          return;
+        }
+      }
+    }
+
     setIsPunching(true);
 
     const resolvedCustName = customerName || destination.customerName || (destination.type === 'parcel' ? destination.label : '');
@@ -635,6 +764,7 @@ export default function App() {
       destination_type: destination.type,
       destination_id: destination.id,
       destination_label: destination.label,
+      room_number: destination.room_number || (destination.type === 'room' ? String(destination.label || destination.id || '').replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim() : undefined),
       items: cart,
       waiter_id: currentUser.id,
       waiter_name: currentUser.full_name || currentUser.username,
@@ -757,6 +887,9 @@ export default function App() {
         order_number: cleanKotNumber,
         bill_no: cleanKotNumber,
         table_number: targetTableNumber,
+        room_number: cleanRoomNum || undefined,
+        customer_name: resolvedCustName,
+        customer_phone: resolvedCustPhone,
         waiter_name: currentUser.full_name || currentUser.username || 'Waiter',
         total: punchedItems.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.quantity || it.qty) || 1)), 0),
         created_at: nowIso,
@@ -1045,6 +1178,7 @@ export default function App() {
               currentUser={currentUser}
               onSelectTable={handleSelectTable}
               isLoading={isLoading}
+              showToast={showToast}
             />
           )}
 

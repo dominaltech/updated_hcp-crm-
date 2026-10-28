@@ -5,7 +5,8 @@ export default function TablesView({
   department,
   currentUser,
   onSelectTable,
-  isLoading
+  isLoading,
+  showToast
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const isBar = department === 'bar';
@@ -56,11 +57,14 @@ export default function TablesView({
 
         {/* Legend */}
         <div style={{ display: 'flex', gap: '6px', fontSize: '0.70rem', fontWeight: 800, color: 'var(--text-secondary)', flexShrink: 0 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--apple-green)' }} /> Vacant
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--apple-orange)' }} /> Mine
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#94a3b8' }} /> Locked 🔒
           </span>
         </div>
       </div>
@@ -88,13 +92,26 @@ export default function TablesView({
         >
           {filtered.map((t) => {
             const hasCart = (t.cart && t.cart.length > 0) || (t.running_orders && t.running_orders.length > 0);
-            const isOccupied = t.status === 'occupied' || hasCart;
+            const isOccupied = t.status === 'occupied' || hasCart || t.status === 'running';
             const isBilled = t.status === 'billed';
+
+            const isManagerOrCaptain = 
+              currentUser?.role === 'manager' || 
+              currentUser?.role === 'admin' || 
+              currentUser?.role === 'restaurant' ||
+              String(currentUser?.username || '').toLowerCase().includes('cap') ||
+              String(currentUser?.username || '').toLowerCase().includes('admin');
+
             const isMyTable = isOccupied && (
-              t.waiter_id === currentUser?.id ||
-              t.waiter_name === currentUser?.full_name ||
-              t.waiter_name === currentUser?.username
+              (t.waiter_id && t.waiter_id === currentUser?.id) ||
+              (t.waiter_name && (
+                String(t.waiter_name).toLowerCase() === String(currentUser?.full_name || '').toLowerCase() ||
+                String(t.waiter_name).toLowerCase() === String(currentUser?.username || '').toLowerCase()
+              ))
             );
+
+            const isLockedByOther = isOccupied && !isMyTable && !isManagerOrCaptain;
+            const isCaptainAssist = isOccupied && !isMyTable && isManagerOrCaptain;
 
             let cardBg = 'var(--bg-surface)';
             let borderColor = 'var(--border-medium)';
@@ -117,6 +134,20 @@ export default function TablesView({
               badgeBg = isBar ? 'var(--apple-purple-subtle)' : 'var(--apple-orange-subtle)';
               badgeColor = isBar ? 'var(--apple-purple)' : 'var(--apple-orange)';
               badgeBorder = isBar ? 'var(--apple-purple)' : 'var(--apple-orange)';
+            } else if (isLockedByOther) {
+              cardBg = 'rgba(148, 163, 184, 0.12)';
+              borderColor = 'rgba(148, 163, 184, 0.45)';
+              statusText = `🔒 ${t.waiter_name || 'LOCKED'}`;
+              badgeBg = 'rgba(148, 163, 184, 0.25)';
+              badgeColor = '#475569';
+              badgeBorder = '#94a3b8';
+            } else if (isCaptainAssist) {
+              cardBg = 'var(--apple-blue-subtle)';
+              borderColor = 'var(--apple-blue)';
+              statusText = `🛡️ ${t.waiter_name || 'ASSIST'}`;
+              badgeBg = 'var(--apple-blue-subtle)';
+              badgeColor = 'var(--apple-blue)';
+              badgeBorder = 'var(--apple-blue)';
             } else if (isOccupied) {
               cardBg = 'var(--apple-blue-subtle)';
               borderColor = 'var(--apple-blue)';
@@ -132,15 +163,27 @@ export default function TablesView({
             }
             const billTotal = t.total_amount || t.cart_total || (Array.isArray(parsedItems) ? parsedItems.reduce((s, it) => s + ((Number(it.price) || 0) * (Number(it.qty || it.quantity) || 1)), 0) : 0);
 
+            const handleCardClick = () => {
+              if (isLockedByOther) {
+                const label = t.table_number || `Table ${t.id}`;
+                const toastMsg = `🔒 ${label} is attended by ${t.waiter_name || 'another waiter'}. You cannot take orders or modify it.`;
+                if (typeof showToast === 'function') {
+                  showToast(toastMsg, 4000);
+                }
+                return;
+              }
+              onSelectTable(t);
+            };
+
             return (
               <button
                 key={t.id}
                 type="button"
                 id={`table-card-${t.id}`}
-                onClick={() => onSelectTable(t)}
+                onClick={handleCardClick}
                 style={{
                   background: cardBg,
-                  border: `1.5px solid ${borderColor}`,
+                  border: isLockedByOther ? `1.5px dashed ${borderColor}` : `1.5px solid ${borderColor}`,
                   borderRadius: 'var(--radius-md)',
                   padding: '14px 10px',
                   display: 'flex',
@@ -149,7 +192,8 @@ export default function TablesView({
                   justifyContent: 'center',
                   textAlign: 'center',
                   boxShadow: 'var(--shadow-subtle)',
-                  cursor: 'pointer',
+                  cursor: isLockedByOther ? 'not-allowed' : 'pointer',
+                  opacity: isLockedByOther ? 0.82 : 1,
                   position: 'relative',
                   minHeight: '124px',
                   overflow: 'hidden',
@@ -191,7 +235,7 @@ export default function TablesView({
                         fontSize,
                         fontWeight: 900,
                         lineHeight: 1.15,
-                        color: 'var(--text-primary)',
+                        color: isLockedByOther ? '#64748b' : 'var(--text-primary)',
                         letterSpacing: len > 5 ? '-0.01em' : '-0.03em',
                         margin: '10px 0 4px',
                         maxWidth: '100%',
@@ -207,8 +251,30 @@ export default function TablesView({
                   );
                 })()}
 
-                {/* Bill Amount or Table Type */}
-                {isOccupied && billTotal > 0 ? (
+                {/* Bill Amount or Table Type / Waiter Subtitle */}
+                {isLockedByOther ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 800 }}>
+                      Attended by {t.waiter_name || 'Staff'}
+                    </span>
+                    {billTotal > 0 && (
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#94a3b8', marginTop: '2px' }}>
+                        ₹{Number(billTotal).toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
+                ) : isCaptainAssist ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--apple-blue)', fontWeight: 800 }}>
+                      🛡️ {t.waiter_name || 'Staff'} (Assist)
+                    </span>
+                    {billTotal > 0 && (
+                      <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--apple-orange)', marginTop: '2px' }}>
+                        ₹{Number(billTotal).toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
+                ) : isOccupied && billTotal > 0 ? (
                   <span style={{ fontSize: '0.86rem', fontWeight: 900, color: 'var(--apple-orange)' }}>
                     ₹{Number(billTotal).toLocaleString('en-IN')}
                   </span>
