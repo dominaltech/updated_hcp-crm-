@@ -6003,6 +6003,11 @@ app.post('/api/restaurant/tables', requireAuth, requireRole('manager', 'restaura
     const result = stmt.run(table_number.trim(), table_type || 'dine_in', parseInt(capacity) || 4, initialStatus, special_notes || '', room_id || null);
     const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(result.lastInsertRowid);
 
+    try {
+      socketServer.broadcast('TABLES_UPDATED', { tableId: result.lastInsertRowid, tableNumber: table.table_number, status: initialStatus });
+      if (typeof firebaseService.syncWaiterDataToCloud === 'function') firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+    } catch (_) {}
+
     res.json({ success: true, tableId: result.lastInsertRowid, table: formatTableOutput(table) });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -6317,6 +6322,19 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
       department: 'restaurant',
       timestamp: new Date().toISOString()
     });
+
+    // Broadcast WebSocket update immediately so restaurant POS reflects new order instantly
+    try {
+      socketServer.broadcast('TABLES_UPDATED', { 
+        tableId: id, 
+        tableNumber: table.table_number, 
+        status: 'occupied', 
+        waiterName: waiter_name || table.waiter_name || 'Staff' 
+      });
+      if (typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
 
     res.json({
       success: true,
@@ -7907,6 +7925,11 @@ app.post('/api/bar/tables', requireAuth, requireRole('manager', 'bar', 'waiter',
     const result = stmt.run(table_number.trim(), table_type || 'table', parseInt(capacity) || 4, initialStatus, special_notes || '', room_id || null);
     const table = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(result.lastInsertRowid);
 
+    try {
+      socketServer.broadcast('BAR_UPDATED', { tableId: result.lastInsertRowid, tableNumber: table.table_number, status: initialStatus });
+      if (typeof firebaseService.syncWaiterDataToCloud === 'function') firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+    } catch (_) {}
+
     res.json({ success: true, tableId: result.lastInsertRowid, table: formatBarTableOutput(table) });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -8148,6 +8171,19 @@ app.post('/api/bar/tables/:id/bot', requireAuth, requireRole('manager', 'bar', '
       department: 'bar',
       timestamp: new Date().toISOString()
     });
+
+    // Broadcast WebSocket update immediately so bar POS reflects new order instantly
+    try {
+      socketServer.broadcast('BAR_UPDATED', { 
+        tableId: id, 
+        tableNumber: table.table_number, 
+        status: 'occupied', 
+        waiterName: waiter_name || table.waiter_name || 'Bartender' 
+      });
+      if (typeof firebaseService.syncWaiterDataToCloud === 'function') {
+        firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+      }
+    } catch (_) {}
 
     res.json({
       success: true,

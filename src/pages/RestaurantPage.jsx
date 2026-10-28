@@ -11,9 +11,10 @@ import StaffLittleBadge from '../components/common/StaffLittleBadge';
 import GuestOrderAcceptModal from '../components/restaurant/GuestOrderAcceptModal';
 import { startContinuousOrderAlert, stopContinuousOrderAlert } from '../utils/audioAlert';
 import { printKOTSlip, printPreBillSlip, printThermalBillSlip } from '../services/printService';
+import { socketClient } from '../services/socketClient';
 
 export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
-  const { showToast, setActivePanel, currentUser, restaurantSubTab, setRestaurantSubTab } = useApp();
+  const { showToast, setActivePanel, currentUser, restaurantSubTab, setRestaurantSubTab, setIsFnbCashHandoverOpen } = useApp();
 
   const activeSubTab = restaurantSubTab || 'tables';
   const setActiveSubTab = setRestaurantSubTab || (() => {});
@@ -88,6 +89,12 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
       const data = await api.getRestaurantTables();
       const list = Array.isArray(data) ? data : (data?.tables || []);
       setTables(list);
+      // Keep active table session in sync with fresh database updates
+      setActiveSessionTable(curr => {
+        if (!curr) return null;
+        const fresh = list.find(t => t.id === curr.id || t.table_number === curr.table_number);
+        return fresh || curr;
+      });
     } catch (err) {
       if (!isSilent) showToast('Error loading restaurant tables: ' + err.message, 'red');
     } finally {
@@ -169,19 +176,62 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
     }
   };
 
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+
+  const handleCancelGuestOrder = async (order, reason = 'restaurant_closed') => {
+    if (!order || isCancellingOrder) return;
+    setIsCancellingOrder(true);
+    try {
+      await api.cancelGuestOrder(order.id, reason, currentUser?.full_name || 'Restaurant Staff');
+      stopContinuousOrderAlert();
+      showToast(`✓ Order for Room ${order.room_numbers} cancelled (${reason === 'restaurant_closed' ? 'Restaurant Closed' : reason})`, 'amber');
+      await checkPendingGuestOrders();
+      setActiveAlertOrder(null);
+    } catch (err) {
+      showToast('Error cancelling order: ' + err.message, 'red');
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
   useEffect(() => {
     loadTables();
     loadMenuAndCategories();
     checkPendingGuestOrders();
 
+    // 1. Instant real-time updates via WebSockets
+    const unsubTables = socketClient.on('TABLES_UPDATED', (payload) => {
+      loadTables(true);
+      if (payload && payload.tableNumber) {
+        const orderNotice = payload.orderType === 'room'
+          ? `🛎️ Room Service order: ${payload.tableNumber}`
+          : (payload.orderType === 'parcel'
+            ? `📦 Takeaway Parcel: ${payload.tableNumber}`
+            : `🛎️ Table ${payload.tableNumber} updated`);
+        showToast(payload.waiterName ? `${orderNotice} (${payload.waiterName})` : orderNotice, 'info', 3000);
+      }
+    });
+
+    const unsubOrders = socketClient.on('GUEST_ORDERS_UPDATED', () => {
+      checkPendingGuestOrders();
+    });
+
+    const unsubRooms = socketClient.on('ROOMS_UPDATED', () => {
+      loadMenuAndCategories();
+    });
+
+    // 2. Quiet fallback interval
     const interval = setInterval(() => {
       if (!activeSessionTable) {
         loadTables(true);
       }
       checkPendingGuestOrders();
-    }, 3000);
+    }, 20000);
 
     return () => {
+      unsubTables();
+      unsubOrders();
+      unsubRooms();
       clearInterval(interval);
       stopContinuousOrderAlert();
     };
@@ -376,9 +426,6 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
                     <span style={{ fontSize: '1.3rem' }}>🍽️</span>
                     <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800 }}>Dine-In Tables</h3>
                   </div>
-                  <span className="status-pill ready">
-                    {dineinTables.filter((t) => t.status === 'free' || t.status === 'available').length} Free / {dineinTables.length} Total
-                  </span>
                 </div>
                 <div
                   className="tables-grid"
@@ -439,33 +486,6 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
                     <span style={{ fontSize: '1.3rem' }}>🛎️</span>
                     <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800 }}>Room Service</h3>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className="status-pill ready">
-                      {roomServiceTables.length} Active Room Order{roomServiceTables.length === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={handleOpenRoomChooser}
-                      style={{
-                        background: 'linear-gradient(135deg, #0071e3 0%, #0284c7 100%)',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '10px',
-                        padding: '6px 14px',
-                        fontSize: '0.84rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 2px 8px rgba(0, 113, 227, 0.25)'
-                      }}
-                    >
-                      <span>+</span>
-                      <span>Order Room Service</span>
-                    </button>
-                  </div>
                 </div>
 
                 <div
@@ -520,33 +540,6 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.3rem' }}>📦</span>
                     <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800 }}>Parcels &amp; Takeaway Section</h3>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className="status-pill ready">
-                      {parcelTables.length} Active Parcel{parcelTables.length === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={handleCreateParcel}
-                      style={{
-                        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '10px',
-                        padding: '6px 14px',
-                        fontSize: '0.84rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: '0 2px 8px rgba(245, 158, 11, 0.25)'
-                      }}
-                    >
-                      <span>+</span>
-                      <span>New Parcel</span>
-                    </button>
                   </div>
                 </div>
 
@@ -671,8 +664,10 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
       <GuestOrderAcceptModal
         order={activeAlertOrder}
         onAccept={handleAcceptGuestOrder}
+        onCancel={handleCancelGuestOrder}
         onClose={() => setActiveAlertOrder(null)}
         isAccepting={isAcceptingOrder}
+        isCancelling={isCancellingOrder}
       />
     </section>
   );

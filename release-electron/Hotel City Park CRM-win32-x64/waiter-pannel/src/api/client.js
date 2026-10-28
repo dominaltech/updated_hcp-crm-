@@ -683,19 +683,63 @@ export const api = {
             timeout: 3500
           });
         }
+      } else if (destination_type === 'parcel') {
+        const cleanParcelNum = String(destination_label || destination_id || '')
+          .match(/\d+/)?.[0] || String(destination_id || Date.now().toString().slice(-3));
+        const parcelNumber = department === 'bar' ? `BP-${cleanParcelNum}` : `P-${cleanParcelNum}`;
+        const custName = orderData.customer_name || `Parcel #${cleanParcelNum}`;
+
+        const tableEndpoint = department === 'bar' ? '/bar/tables' : '/restaurant/tables';
+        const tblRes = await request(tableEndpoint, {
+          method: 'POST',
+          body: {
+            table_number: parcelNumber,
+            table_type: 'parcel',
+            capacity: 1,
+            special_notes: `Takeaway Parcel #${cleanParcelNum}`
+          },
+          timeout: 3500
+        });
+
+        const tableId = tblRes?.tableId || tblRes?.table?.id;
+        if (tableId) {
+          const kotEndpoint = department === 'bar' ? `/bar/tables/${tableId}/bot` : `/restaurant/tables/${tableId}/kot`;
+          return await request(kotEndpoint, {
+            method: 'POST',
+            body: {
+              items: items.map(it => ({
+                id: it.id,
+                name: it.name,
+                price: it.price,
+                qty: it.quantity || it.qty || 1,
+                quantity: it.quantity || it.qty || 1,
+                is_parcel: true,
+                notes: it.notes || ''
+              })),
+              waiter_id,
+              waiter_name,
+              customer_name: custName,
+              customer_phone: orderData.guest_phone || orderData.customer_phone || '',
+              notes: notes || `Takeaway Parcel #${cleanParcelNum}`,
+              timestamp: new Date().toISOString()
+            },
+            timeout: 3500
+          });
+        }
       }
     } catch (locErr) {
-      console.log('[WaiterAPI] Local CRM not reachable, dispatching order via Supabase Cloud...', locErr.message);
+      console.log('[WaiterAPI] Local CRM not reachable, dispatching order via Cloud Sync...', locErr.message);
     }
   }
 
-    // 2. Direct Supabase Cloud Order Placement (Works on 4G/5G, Netlify link, remote Wi-Fi!)
+    // 2. Direct Firebase Cloud Order Placement (Works on 4G/5G, Netlify link, remote Wi-Fi!)
     try {
       const cloudRes = await pushWaiterOrderToCloud({
         department: department || 'restaurant',
         destination_type: destination_type || 'table',
         destination_id: destination_id,
         destination_label: destination_label || `Table ${destination_id}`,
+        room_number: orderData.room_number || (destination_type === 'room' ? String(destination_label || destination_id || '').match(/\d+/)?.[0] : undefined),
         items: items.map(it => ({
           id: it.id,
           name: it.name,
