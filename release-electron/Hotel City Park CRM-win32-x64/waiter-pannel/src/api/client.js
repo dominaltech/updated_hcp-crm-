@@ -2,7 +2,18 @@ import { Capacitor } from '@capacitor/core';
 import bcrypt from 'bcryptjs';
 
 export const CLOUD_TUNNEL_URL = 'https://lender-lean-tables-patent.trycloudflare.com';
-export const LOCAL_WIFI_IP = '10.160.83.195';
+export const LOCAL_WIFI_IP = '10.120.45.195';
+
+let lastLocalSuccess = 0;
+let lastLocalFailure = 0;
+
+export const isLocalHealthy = () => {
+  // If local failed recently (within last 30s) and hasn't succeeded since, bypass local wait and use cloud immediately
+  if (lastLocalFailure > lastLocalSuccess && Date.now() - lastLocalFailure < 30000) {
+    return false;
+  }
+  return true;
+};
 
 export const isNativePlatform = () => {
   try {
@@ -189,11 +200,14 @@ export const request = async (endpoint, options = {}) => {
   const primaryUrl = `${base}${normEndpoint}`;
 
   try {
-    return await doFetch(primaryUrl, options, options.timeout || 8000);
+    const res = await doFetch(primaryUrl, options, options.timeout || 8000);
+    lastLocalSuccess = Date.now();
+    return res;
   } catch (err) {
     // If network error or timeout, attempt dual fallback before failing
     const isNetworkErr = err.name === 'AbortError' || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
     if (isNetworkErr) {
+      lastLocalFailure = Date.now();
       console.warn(`[WaiterAPI] Primary endpoint ${primaryUrl} failed. Trying fallback...`);
 
       // Determine alternate fallback URL
@@ -643,7 +657,7 @@ export const api = {
       (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('vercel.app'));
     const hasLiveTunnel = cachedTunnelUrl && !cachedTunnelUrl.includes('blond-ethnic') && !cachedTunnelUrl.includes('hudson-universal');
 
-    if (!isRemoteHosted || hasLiveTunnel) {
+    if ((!isRemoteHosted || hasLiveTunnel) && isLocalHealthy()) {
       try {
         if (destination_type === 'table') {
         const endpoint = department === 'bar'
@@ -669,7 +683,7 @@ export const api = {
             notes: notes || '',
             timestamp: new Date().toISOString()
           },
-          timeout: 3500
+          timeout: 1200
         });
       } else if (destination_type === 'room') {
         const roomNum = String(orderData.room_number || destination_label || '').match(/\d+/)?.[0] || String(destination_id);
@@ -686,7 +700,7 @@ export const api = {
             room_id: destination_id,
             special_notes: `Room ${roomNum} (${guestName})`
           },
-          timeout: 3500
+          timeout: 1200
         });
 
         const tableId = tblRes?.tableId || tblRes?.table?.id;
@@ -710,7 +724,7 @@ export const api = {
               notes: notes || `Room Service for Room ${roomNum}`,
               timestamp: new Date().toISOString()
             },
-            timeout: 3500
+            timeout: 1200
           });
         }
       } else if (destination_type === 'parcel') {
@@ -728,7 +742,7 @@ export const api = {
             capacity: 1,
             special_notes: `Takeaway Parcel #${cleanParcelNum}`
           },
-          timeout: 3500
+          timeout: 1200
         });
 
         const tableId = tblRes?.tableId || tblRes?.table?.id;
@@ -753,7 +767,7 @@ export const api = {
               notes: notes || `Takeaway Parcel #${cleanParcelNum}`,
               timestamp: new Date().toISOString()
             },
-            timeout: 3500
+            timeout: 1200
           });
         }
       }
@@ -808,7 +822,7 @@ export const api = {
     const isRemoteHosted = typeof window !== 'undefined' && 
       (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
 
-    if (isRemoteHosted) {
+    if (isRemoteHosted || !isLocalHealthy()) {
       return pushWaiterOrderToCloud({
         department: department || 'restaurant',
         destination_type: 'table',
@@ -823,7 +837,7 @@ export const api = {
     const endpoint = department === 'bar'
       ? `/bar/tables/${destinationId}/prebill`
       : `/restaurant/tables/${destinationId}/prebill`;
-    return request(endpoint, { method: 'POST', timeout: 2500 }).catch(async () => {
+    return request(endpoint, { method: 'POST', timeout: 1500 }).catch(async () => {
       // Fallback: enqueue prebill in cloud
       return pushWaiterOrderToCloud({
         department: department || 'restaurant',
@@ -847,15 +861,15 @@ export const api = {
       enqueue_print: true
     };
 
-    if (!isRemoteHosted) {
+    if (!isRemoteHosted && isLocalHealthy()) {
       try {
         const endpoint = department === 'bar'
           ? `/bar/tables/${destinationId}/settle`
           : `/restaurant/tables/${destinationId}/settle`;
-        const res = await request(endpoint, { method: 'POST', body: fullPayload, timeout: 3000 });
+        const res = await request(endpoint, { method: 'POST', body: fullPayload, timeout: 1500 });
         if (res && res.success) return res;
       } catch (locErr) {
-        console.warn('[WaiterAPI] Local settleTable failed, falling back to Supabase Cloud:', locErr.message);
+        console.warn('[WaiterAPI] Local settleTable failed, falling back to Firebase Cloud:', locErr.message);
       }
     }
 
@@ -958,13 +972,13 @@ export const api = {
     const isRemoteHosted = typeof window !== 'undefined' && 
       (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('netlify.app'));
 
-    if (!isRemoteHosted) {
+    if (!isRemoteHosted && isLocalHealthy()) {
       try {
         const endpoint = department === 'bar' ? `/bar/tables/${tableId}/cancel` : `/restaurant/tables/${tableId}/cancel`;
-        const res = await request(endpoint, { method: 'POST', timeout: 2500 });
+        const res = await request(endpoint, { method: 'POST', timeout: 1500 });
         if (res && res.success) return res;
       } catch (err) {
-        console.warn('[WaiterAPI] Local cancelTable attempt failed, falling back to Supabase Cloud void:', err.message);
+        console.warn('[WaiterAPI] Local cancelTable attempt failed, falling back to Firebase Cloud void:', err.message);
       }
     }
 

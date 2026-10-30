@@ -16176,6 +16176,11 @@ async function startServer() {
       console.log('🔥 [Firebase Realtime] Waiter Order & Cloud Listener started unconditionally.');
     }
 
+    // Immediate check for any pending orders placed while server or laptop was asleep
+    if (typeof firebaseService.pollPendingCloudOrders === 'function') {
+      firebaseService.pollPendingCloudOrders(db).catch(() => {});
+    }
+
     // 2. STAGGERED CALM HEARTBEAT BACKUP (Every 20 seconds):
     // Realtime WebSockets already deliver instant updates (<10ms).
     // This calm heartbeat acts as a silent fallback.
@@ -16189,6 +16194,14 @@ async function startServer() {
         firebaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
       }
     }, 20000);
+
+    // 3. ZERO-IP CLOUD ORDER SAFETY-NET POLLER (Every 5 seconds):
+    // Continuous self-healing poller ensuring zero dropped orders during Wi-Fi changes, sleep/wake, or socket disconnects
+    setInterval(() => {
+      if (typeof firebaseService.pollPendingCloudOrders === 'function') {
+        firebaseService.pollPendingCloudOrders(db).catch(() => {});
+      }
+    }, 5000);
 
     // Initial sync of live waiter menu, tables, and staff to Firebase Firestore and Supabase bridge
     if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {
