@@ -996,8 +996,550 @@ async function syncWaiterDataToCloud(db) {
 }
 
 // ==========================================
-// 6. REALTIME LISTENERS (Zero-Polling)
+// 6. REALTIME LISTENERS & SAFETY-NET POLLER
 // ==========================================
+const processingDocIds = new Set();
+
+/**
+ * Universal Processor for Incoming Cloud Inbox Documents
+ * Used by both Realtime Firestore Listeners and the 5-Second Safety-Net Poller.
+ * Guarantees zero dropped orders even when laptop sleeps, Wi-Fi disconnects, or IP changes.
+ */
+async function processCloudInboxDoc(db, doc, data, onNewPendingOrder = null) {
+  if (!db || !doc || !data) return;
+  const docId = String(doc.id || '');
+  if (data.status !== 'pending') return;
+  if (processingDocIds.has(docId)) return;
+  processingDocIds.add(docId);
+
+  try {
+    const socketServer = require('./socketServer');
+
+    // 1. Waiter Cancellation from Mobile Waiter Panel (Void Table or Void Order)
+    if (data.department === 'waiter_kot_cancel') {
+      try {
+        let cancelInfo = {};
+        try { cancelInfo = JSON.parse(data.items_summary || '{}'); } catch (_) {}
+        const dept = (cancelInfo.department || 'restaurant').toLowerCase();
+        const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+        const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+        const ordTable = dept === 'bar' ? 'bar_orders' : 'restaurant_orders';
+        const action = cancelInfo.action || 'cancel_table';
+        const tId = cancelInfo.table_id || data.room_id;
+        const tNum = String(cancelInfo.table_number || data.room_number || '').trim();
+
+        if (action === 'cancel_order') {
+          const orderId = cancelInfo.order_id || data.order_id;
+          const ordNum = cancelInfo.order_number || data.bill_no;
+          if (orderId || ordNum) {
+            try {
+              const ord = db.prepare(`SELECT * FROM ${ordTable} WHERE id = ? OR order_number = ?`).get(orderId, ordNum);
+              if (ord) {
+                db.prepare(`UPDATE ${ordTable} SET status = 'cancelled' WHERE id = ?`).run(ord.id);
+                console.log(`🗑️ [Firebase Realtime] Cancelled ${ordTable} #${ord.order_number || ord.id}`);
+                socketServer.broadcast('ORDERS_UPDATED', { orderId: ord.id, status: 'cancelled' });
+              }
+            } catch (_) {}
+          }
+        }
+
+        // Look up target table with canonical normalization
+        let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
+
+        if (targetTable) {
+          const isTemp = targetTable.table_type === 'parcel' ||
+                         targetTable.table_type === 'room_service' ||
+                         String(targetTable.table_number).startsWith('RS-') ||
+                         String(targetTable.table_number).startsWith('P-') ||
+                         String(targetTable.table_number).startsWith('BP-');
+
+          if (isTemp) {
+            db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(targetTable.id);
+            console.log(`🗑️ [Firebase Realtime] Deleted temp ${targetTable.table_type} table ${targetTable.table_number} on waiter cancellation.`);
+          } else {
+            db.prepare(`
+              UPDATE ${tableName}
+              SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
+                  ${countCol} = 0, token_number = 0, order_started_at = NULL,
+                  waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
+              WHERE id = ?
+            `).run(targetTable.id);
+            console.log(`🗑️ [Firebase Realtime] Reset table ${targetTable.table_number} to available on waiter cancellation.`);
+          }
+
+          // Cancel running uncompleted orders for this table
+          try {
+            db.prepare(`UPDATE ${ordTable} SET status = 'cancelled' WHERE (table_number = ? OR table_id = ?) AND status NOT IN ('completed', 'cancelled')`).run(targetTable.table_number, targetTable.id);
+          } catch (_) {}
+
+          socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
+            tableId: targetTable.id,
+            tableNumber: targetTable.table_number,
+            status: 'available',
+            action: 'cancel'
+          });
+        } else if (tNum) {
+          // Fallback by table_number
+          if (tNum.startsWith('RS-') || tNum.startsWith('P-') || tNum.startsWith('BP-')) {
+            db.prepare(`DELETE FROM ${tableName} WHERE table_number = ?`).run(tNum);
+          } else {
+            db.prepare(`
+              UPDATE ${tableName}
+              SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
+                  ${countCol} = 0, token_number = 0, order_started_at = NULL,
+                  waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
+              WHERE table_number = ? OR table_number = ?
+            `).run(tNum, tNum.replace(/^Table\s*/i, 'T'));
+          }
+          socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
+            tableNumber: tNum,
+            status: 'available',
+            action: 'cancel'
+          });
+        }
+
+        if (typeof syncWaiterDataToCloud === 'function') {
+          syncWaiterDataToCloud(db).catch(() => {});
+        }
+
+        doc.ref.update({ status: 'cancelled_at_crm', processed_at: new Date().toISOString() }).catch(() => {});
+      } catch (cancelErr) {
+        console.warn('[Firebase Realtime] Error processing waiter cancellation:', cancelErr.message);
+      }
+    }
+
+    // 2. Pre-Bill Request from Waiter Panel
+    let parsedInfo = {};
+    try { parsedInfo = JSON.parse(data.items_summary || '{}'); } catch (_) {}
+    const isPrebill = parsedInfo.notes === 'PREBILL_REQUEST' || String(data.bill_no).startsWith('PREBILL-');
+    if (isPrebill) {
+      try {
+        const dept = (parsedInfo.department || 'restaurant').toLowerCase();
+        const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+        const destLabel = String(parsedInfo.destination_label || data.room_number || '').trim();
+        const tId = parsedInfo.destination_id || data.room_id;
+
+        let targetTable = resolveTargetTable(db, tableName, tId, destLabel, 'table');
+
+        if (targetTable) {
+          let currentCart = [];
+          try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
+          if (currentCart.length === 0) {
+            try { currentCart = JSON.parse(targetTable.printed_cart_json || '[]'); } catch (_) {}
+          }
+
+          if (currentCart.length > 0) {
+            db.prepare(`UPDATE ${tableName} SET status = 'billed' WHERE id = ?`).run(targetTable.id);
+            const subtotal = currentCart.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
+            const restGstPct = dept === 'bar' ? 10 : 5;
+            const tax = Math.round(subtotal * (restGstPct / 100));
+            const grandTotal = subtotal + tax;
+
+            if (typeof global.enqueuePrintJob === 'function') {
+              global.enqueuePrintJob('prebill', {
+                tableNumber: targetTable.table_number,
+                tokenNumber: targetTable.token_number || 1,
+                items: currentCart,
+                subtotal,
+                tax,
+                grandTotal,
+                department: dept,
+                timestamp: new Date().toISOString()
+              });
+            }
+
+            console.log(`🧾 [Firebase Realtime] Pre-bill generated for ${targetTable.table_number}`);
+            socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
+              tableId: targetTable.id,
+              tableNumber: targetTable.table_number,
+              status: 'billed',
+              orderType: targetTable.table_type
+            });
+
+            if (typeof syncWaiterDataToCloud === 'function') {
+              syncWaiterDataToCloud(db).catch(() => {});
+            }
+          }
+        }
+        doc.ref.update({ status: 'prebilled_at_crm', processed_at: new Date().toISOString() }).catch(() => {});
+      } catch (pbErr) {
+        console.warn('[Firebase Realtime] Error processing prebill request:', pbErr.message);
+      }
+    }
+
+    // 3. Mobile Settlement from Waiter Panel
+    if (String(data.bill_no).startsWith('SETTLE-')) {
+      try {
+        let settleData = {};
+        try { settleData = JSON.parse(data.items_summary || '{}'); } catch (_) {}
+        const dept = (data.department || settleData.department || 'restaurant').toLowerCase();
+        const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+        const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+        const ordTable = dept === 'bar' ? 'bar_orders' : 'restaurant_orders';
+        const tNum = String(settleData.table_number || data.room_number || '').trim();
+        const tId = settleData.destinationId || settleData.table_id || data.room_id;
+
+        let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
+
+        let items = Array.isArray(settleData.items) && settleData.items.length > 0 ? settleData.items : [];
+        if (items.length === 0 && targetTable) {
+          try { items = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
+          if (items.length === 0) {
+            try { items = JSON.parse(targetTable.printed_cart_json || '[]'); } catch (_) {}
+          }
+        }
+
+        const subtotal = Number(data.subtotal || settleData.subtotal || 0);
+        const gst = Number(data.gst || settleData.gst || 0);
+        const grandTotal = Number(data.grand_total || settleData.grand_total || 0);
+        const paymentMode = (settleData.payment_mode || settleData.paymentMode || 'cash').toLowerCase();
+        const waiterName = settleData.waiter_name || data.settled_by || 'Captain';
+        const custName = settleData.customer_name || (targetTable ? targetTable.customer_name : '') || `Table ${tNum}`;
+        const orderNumber = (dept === 'bar' ? 'BAR-' : 'RES-') + Date.now().toString().slice(-6);
+        const isPaid = (paymentMode === 'room_folio' || paymentMode === 'room') ? 0 : 1;
+
+        const insertRes = db.prepare(`
+          INSERT INTO ${ordTable} (
+            order_number, customer_name, order_type, table_number, table_id,
+            waiter_name, items_json, subtotal, tax, total, payment_mode, is_paid, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', datetime('now', 'localtime'))
+        `).run(
+          orderNumber,
+          custName,
+          targetTable ? (targetTable.table_type === 'parcel' ? 'parcel' : (targetTable.table_type === 'room_service' ? 'room' : 'table')) : 'table',
+          tNum || (targetTable ? targetTable.table_number : 'Table'),
+          targetTable ? targetTable.id : null,
+          waiterName,
+          JSON.stringify(items),
+          subtotal,
+          gst,
+          grandTotal,
+          paymentMode,
+          isPaid
+        );
+
+        // Instantly enqueue bill thermal receipt on CRM PC printer
+        if (typeof global.enqueuePrintJob === 'function') {
+          global.enqueuePrintJob('bill', {
+            department: dept,
+            tableNumber: tNum || (targetTable ? targetTable.table_number : 'Table'),
+            order: {
+              id: insertRes ? insertRes.lastInsertRowid : null,
+              orderNumber,
+              order_number: orderNumber,
+              token_number: targetTable?.token_number || 1,
+              table_number: tNum || (targetTable ? targetTable.table_number : 'Table'),
+              customer_name: custName,
+              customerName: custName,
+              waiter_name: waiterName,
+              items,
+              subtotal,
+              tax: gst,
+              total: grandTotal,
+              grand_total: grandTotal,
+              payment_mode: paymentMode,
+              paymentMode: paymentMode,
+              is_paid: isPaid,
+              settled_at: new Date().toISOString()
+            }
+          });
+          console.log(`🖨️ [Firebase Realtime] Enqueued bill print job on CRM for ${tNum}: ${orderNumber}`);
+        }
+
+        if (targetTable) {
+          const isTemp = targetTable.table_type === 'parcel' ||
+                         targetTable.table_type === 'room_service' ||
+                         String(targetTable.table_number).startsWith('RS-') ||
+                         String(targetTable.table_number).startsWith('P-') ||
+                         String(targetTable.table_number).startsWith('BP-');
+
+          if (isTemp) {
+            db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(targetTable.id);
+          } else {
+            db.prepare(`
+              UPDATE ${tableName}
+              SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
+                  ${countCol} = 0, token_number = 0, order_started_at = NULL,
+                  waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
+              WHERE id = ?
+            `).run(targetTable.id);
+          }
+
+          socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
+            tableId: targetTable.id,
+            tableNumber: targetTable.table_number,
+            status: 'available',
+            action: 'settle'
+          });
+        } else if (tNum) {
+          socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
+            tableNumber: tNum,
+            status: 'available',
+            action: 'settle'
+          });
+        }
+
+        if (typeof syncWaiterDataToCloud === 'function') {
+          syncWaiterDataToCloud(db).catch(() => {});
+        }
+
+        doc.ref.update({ status: 'settled_at_crm', processed_at: new Date().toISOString() }).catch(() => {});
+        console.log(`💰 [Firebase Realtime] Processed mobile settlement for ${tNum}: ${orderNumber}`);
+      } catch (settleErr) {
+        console.warn('[Firebase Realtime] Error processing mobile settlement:', settleErr.message);
+      }
+    }
+
+    // 4. Waiter KOT / BOT Order arrival from Waiter APK or Guest In-Room Dining
+    if (!isPrebill && !String(data.bill_no).startsWith('SETTLE-') && (data.department === 'waiter_kot_order' || data.is_guest_web || data.waiter_name === 'Guest In-Room Mobile')) {
+      try {
+        let orderData = {};
+        try { orderData = JSON.parse(data.items_summary || '{}'); } catch (_) {}
+        const items = Array.isArray(orderData.items) ? orderData.items : [];
+
+        if (items.length > 0) {
+          const isGuestMobile = orderData.source === 'guest_inroom_mobile' || 
+                                orderData.waiter_name === 'Guest In-Room Mobile' || 
+                                data.department === 'guest_inroom_order' ||
+                                orderData.is_guest_web;
+
+          if (isGuestMobile) {
+            const cleanRoomNum = String(orderData.room_number || data.room_number || 'Room')
+              .replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+
+            const existingGuestOrder = db.prepare('SELECT id FROM guest_inroom_orders WHERE cloud_inbox_id = ? OR order_number = ?').get(String(doc.id), data.bill_no);
+            if (!existingGuestOrder) {
+              let batchNumber = 1;
+              try {
+                const countRow = db.prepare('SELECT COUNT(*) as count FROM guest_inroom_orders WHERE room_numbers = ? OR room_numbers LIKE ?').get(cleanRoomNum, `%${cleanRoomNum}%`);
+                batchNumber = (countRow?.count || 0) + 1;
+              } catch (_) {}
+
+              const custName = orderData.customer_name || data.settled_by || `Room ${cleanRoomNum}`;
+              const grandTotal = Number(data.grand_total || 0);
+
+              db.prepare(`
+                INSERT INTO guest_inroom_orders (
+                  order_number, token, booking_id, room_numbers, guest_name, guest_phone,
+                  batch_number, items_json, notes, subtotal, tax, grand_total, status, kot_printed, cloud_inbox_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_kitchen', 0, ?)
+              `).run(
+                data.bill_no || `RS-${cleanRoomNum}-B${batchNumber}-${Date.now().toString().slice(-4)}`,
+                orderData.token || '',
+                orderData.bookingId || 0,
+                cleanRoomNum,
+                custName,
+                orderData.customer_phone || '',
+                batchNumber,
+                JSON.stringify(items),
+                orderData.notes || '',
+                Number(data.subtotal || 0),
+                Number(data.gst || 0),
+                grandTotal,
+                String(doc.id)
+              );
+              console.log(`🔥 [Firebase Realtime] 🛎️ Guest Food Order received for Room ${cleanRoomNum} (Batch #${batchNumber})!`);
+
+              // Broadcast WebSocket alert to Restaurant POS immediately!
+              socketServer.broadcast('GUEST_ORDERS_UPDATED', { roomNumber: cleanRoomNum });
+            }
+
+            // Acknowledge in Firestore
+            doc.ref.update({ status: 'received_at_crm', processed_at: new Date().toISOString() }).catch(() => {});
+          } else {
+            // Waiter KOT Table, Room Service, or Takeaway Parcel Order
+            const dept = (orderData.department || 'restaurant').toLowerCase();
+            const destType = (orderData.destination_type || 'table').toLowerCase();
+            const destLabel = String(orderData.destination_label || data.room_number || '').trim();
+            const waiterName = orderData.waiter_name || data.settled_by || 'Captain';
+            const notes = orderData.notes || '';
+            const custName = orderData.customer_name || '';
+            const custPhone = orderData.customer_phone || '';
+            const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
+
+            const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+            let targetTable = null;
+
+            if (destType === 'room' || destLabel.startsWith('RS-') || /Room\s*\d+/i.test(destLabel)) {
+              // 1. Room Service Order
+              const cleanRoomNum = String(orderData.room_number || destLabel || orderData.destination_id || '')
+                .replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
+              const rsTableNum = `RS-${cleanRoomNum}`;
+
+              targetTable = db.prepare(`
+                SELECT * FROM ${tableName} 
+                WHERE table_number = ? 
+                   OR table_number = ? 
+                   OR special_notes LIKE ?
+              `).get(rsTableNum, `RS-Room ${cleanRoomNum}`, `%Room ${cleanRoomNum}%`);
+
+              if (!targetTable) {
+                const roomRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(cleanRoomNum);
+                let guestName = custName || orderData.guest_name || '';
+                if (!guestName) {
+                  try {
+                    const bRow = db.prepare('SELECT g.name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = (SELECT current_booking_id FROM rooms WHERE room_number = ?)').get(cleanRoomNum);
+                    guestName = bRow?.name || `Room ${cleanRoomNum} Guest`;
+                  } catch (_) {
+                    guestName = `Room ${cleanRoomNum} Guest`;
+                  }
+                }
+                const insRes = db.prepare(`
+                  INSERT INTO ${tableName} (table_number, table_type, capacity, room_id, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
+                  VALUES (?, 'room_service', 2, ?, 'occupied', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
+                `).run(
+                  rsTableNum,
+                  roomRow?.id || orderData.destination_id || null,
+                  waiterName,
+                  `Room ${cleanRoomNum} (${guestName})`,
+                  guestName,
+                  custPhone
+                );
+                targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(insRes.lastInsertRowid);
+                console.log(`🛎️ [Firebase Realtime] Auto-created Room Service Table ${rsTableNum} in ${tableName} for Waiter ${waiterName}`);
+              }
+            } else if (destType === 'parcel' || destLabel.startsWith('P-') || destLabel.startsWith('BP-') || /Parcel/i.test(destLabel)) {
+              // 2. Takeaway Parcel Order
+              const cleanParcelNum = String(destLabel || orderData.destination_id || '')
+                .match(/\d+/)?.[0] || String(orderData.destination_id || Date.now().toString().slice(-3));
+              const parcelTableNum = dept === 'bar' ? `BP-${cleanParcelNum}` : `P-${cleanParcelNum}`;
+
+              targetTable = db.prepare(`
+                SELECT * FROM ${tableName} 
+                WHERE table_number = ? 
+                   OR (table_type = 'parcel' AND (table_number LIKE ? OR id = ?))
+              `).get(parcelTableNum, `%${cleanParcelNum}`, orderData.destination_id);
+
+              if (!targetTable) {
+                const insRes = db.prepare(`
+                  INSERT INTO ${tableName} (table_number, table_type, capacity, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
+                  VALUES (?, 'parcel', 1, 'in_process', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
+                `).run(
+                  parcelTableNum,
+                  waiterName,
+                  `Takeaway Parcel #${cleanParcelNum}`,
+                  custName || `Parcel #${cleanParcelNum}`,
+                  custPhone
+                );
+                targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(insRes.lastInsertRowid);
+                console.log(`📦 [Firebase Realtime] Auto-created Takeaway Parcel Table ${parcelTableNum} in ${tableName} for Waiter ${waiterName}`);
+              }
+            } else {
+              // 3. Dine-In Table Order (with canonical digit matching & auto-creation)
+              targetTable = resolveTargetTable(db, tableName, orderData.destination_id, destLabel, destType);
+            }
+
+            if (targetTable) {
+              let currentCart = [];
+              try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
+              const nowIso = new Date().toISOString();
+              for (const it of items) {
+                const existingIdx = currentCart.findIndex(c => String(c.id) === String(it.id));
+                if (existingIdx >= 0) {
+                  currentCart[existingIdx].qty = (Number(currentCart[existingIdx].qty) || 1) + (Number(it.qty || it.quantity) || 1);
+                } else {
+                  currentCart.push({ ...it, qty: Number(it.qty || it.quantity) || 1, added_at: nowIso });
+                }
+              }
+              const activeCountCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+              const kotCount = ((targetTable[activeCountCol]) || 0) + 1;
+              const assignedToken = targetTable.token_number || kotCount;
+              const nextStatus = targetTable.table_type === 'parcel' ? (targetTable.status === 'ready' ? 'ready' : 'in_process') : 'occupied';
+
+              db.prepare(`
+                UPDATE ${tableName}
+                SET active_cart_json = ?, printed_cart_json = ?, ${activeCountCol} = ?,
+                    status = ?, waiter_name = ?, special_notes = ?,
+                    customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
+                    customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END,
+                    order_started_at = COALESCE(order_started_at, datetime('now', 'localtime'))
+                WHERE id = ?
+              `).run(JSON.stringify(currentCart), JSON.stringify(currentCart), kotCount, nextStatus, waiterName, notes, custName, custName, custPhone, custPhone, targetTable.id);
+
+              // Auto-enqueue KOT / BOT print job (broadcasts via WebSocket in <10ms!)
+              if (typeof global.enqueuePrintJob === 'function') {
+                global.enqueuePrintJob(dept === 'bar' ? 'bot' : 'kot', {
+                  tableNumber: targetTable.table_number,
+                  tokenNumber: assignedToken,
+                  waiterName,
+                  notes,
+                  customerName: custName,
+                  kot: { kotNumber: kotCount, tokenNumber: assignedToken, items },
+                  items,
+                  department: dept,
+                  timestamp: nowIso
+                });
+              }
+
+              // Broadcast WebSocket table update immediately to CRM frontend
+              socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', { 
+                tableId: targetTable.id, 
+                tableNumber: targetTable.table_number,
+                status: nextStatus,
+                waiterName,
+                orderType: destType
+              });
+
+              // Sync updated package back to cloud so other waiters see table locked/occupied instantly
+              if (typeof syncWaiterDataToCloud === 'function') {
+                syncWaiterDataToCloud(db).catch(() => {});
+              }
+            }
+
+            // Acknowledge in Firestore
+            doc.ref.update({ status: 'printed', processed_at: new Date().toISOString() }).catch(() => {});
+            console.log(`🔥 [Firebase Realtime] Successfully processed & printed order ${data.bill_no || doc.id} on ${targetTable?.table_number || destLabel}!`);
+          }
+        }
+      } catch (kotProcErr) {
+        console.warn('[Firebase Realtime] Error processing KOT order:', kotProcErr.message);
+      }
+    }
+
+    if (typeof onNewPendingOrder === 'function') {
+      onNewPendingOrder({ id: doc.id, ...data });
+    }
+  } catch (err) {
+    console.warn(`[Firebase Realtime] Error in processCloudInboxDoc (${docId}):`, err.message);
+  } finally {
+    setTimeout(() => {
+      processingDocIds.delete(docId);
+    }, 4000);
+  }
+}
+
+/**
+ * 5-Second Safety-Net Poller for Cloud Orders
+ * Runs concurrently with Realtime WebSockets to ensure that even during network drops,
+ * router reconnects, or laptop sleep/wake cycles, any order pushed by a waiter anywhere
+ * in the world is picked up and processed within 5 seconds!
+ */
+let isPollingCloudOrders = false;
+async function pollPendingCloudOrders(db, onNewPendingOrder = null) {
+  if (!firestore || !db || isPollingCloudOrders) return;
+  isPollingCloudOrders = true;
+  try {
+    const snap = await withTimeout(
+      firestore.collection('room_charges_inbox')
+        .where('status', '==', 'pending')
+        .get(),
+      4000
+    );
+    if (snap && !snap.empty) {
+      for (const doc of snap.docs) {
+        const data = doc.data() || {};
+        if (data.status === 'pending') {
+          await processCloudInboxDoc(db, doc, data, onNewPendingOrder);
+        }
+      }
+    }
+  } catch (err) {
+    // Transient network blip - silent
+  } finally {
+    isPollingCloudOrders = false;
+  }
+}
+
 let realtimeUnsubscribe = null;
 let realtimeStaffUnsubscribe = null;
 let realtimeStoreBillsUnsubscribe = null;
@@ -1017,491 +1559,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
 
           // A) Pending Order, Cancellation, Pre-bill, or Settlement from Waiter Panel / Guest
           if ((change.type === 'added' || change.type === 'modified') && data.status === 'pending') {
-            const socketServer = require('./socketServer');
-
-            // 1. Waiter Cancellation from Mobile Waiter Panel (Void Table or Void Order)
-            if (data.department === 'waiter_kot_cancel') {
-              try {
-                let cancelInfo = {};
-                try { cancelInfo = JSON.parse(data.items_summary || '{}'); } catch (_) {}
-                const dept = (cancelInfo.department || 'restaurant').toLowerCase();
-                const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
-                const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
-                const ordTable = dept === 'bar' ? 'bar_orders' : 'restaurant_orders';
-                const action = cancelInfo.action || 'cancel_table';
-                const tId = cancelInfo.table_id || data.room_id;
-                const tNum = String(cancelInfo.table_number || data.room_number || '').trim();
-
-                if (action === 'cancel_order') {
-                  const orderId = cancelInfo.order_id || data.order_id;
-                  const ordNum = cancelInfo.order_number || data.bill_no;
-                  if (orderId || ordNum) {
-                    try {
-                      const ord = db.prepare(`SELECT * FROM ${ordTable} WHERE id = ? OR order_number = ?`).get(orderId, ordNum);
-                      if (ord) {
-                        db.prepare(`UPDATE ${ordTable} SET status = 'cancelled' WHERE id = ?`).run(ord.id);
-                        console.log(`🗑️ [Firebase Realtime] Cancelled ${ordTable} #${ord.order_number || ord.id}`);
-                        socketServer.broadcast('ORDERS_UPDATED', { orderId: ord.id, status: 'cancelled' });
-                      }
-                    } catch (_) {}
-                  }
-                }
-
-                // Look up target table with canonical normalization
-                let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
-
-                if (targetTable) {
-                  const isTemp = targetTable.table_type === 'parcel' ||
-                                 targetTable.table_type === 'room_service' ||
-                                 String(targetTable.table_number).startsWith('RS-') ||
-                                 String(targetTable.table_number).startsWith('P-') ||
-                                 String(targetTable.table_number).startsWith('BP-');
-
-                  if (isTemp) {
-                    db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(targetTable.id);
-                    console.log(`🗑️ [Firebase Realtime] Deleted temp ${targetTable.table_type} table ${targetTable.table_number} on waiter cancellation.`);
-                  } else {
-                    db.prepare(`
-                      UPDATE ${tableName}
-                      SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
-                          ${countCol} = 0, token_number = 0, order_started_at = NULL,
-                          waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
-                      WHERE id = ?
-                    `).run(targetTable.id);
-                    console.log(`🗑️ [Firebase Realtime] Reset table ${targetTable.table_number} to available on waiter cancellation.`);
-                  }
-
-                  // Cancel running uncompleted orders for this table
-                  try {
-                    db.prepare(`UPDATE ${ordTable} SET status = 'cancelled' WHERE (table_number = ? OR table_id = ?) AND status NOT IN ('completed', 'cancelled')`).run(targetTable.table_number, targetTable.id);
-                  } catch (_) {}
-
-                  socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
-                    tableId: targetTable.id,
-                    tableNumber: targetTable.table_number,
-                    status: 'available',
-                    action: 'cancel'
-                  });
-                } else if (tNum) {
-                  // Fallback by table_number
-                  if (tNum.startsWith('RS-') || tNum.startsWith('P-') || tNum.startsWith('BP-')) {
-                    db.prepare(`DELETE FROM ${tableName} WHERE table_number = ?`).run(tNum);
-                  } else {
-                    db.prepare(`
-                      UPDATE ${tableName}
-                      SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
-                          ${countCol} = 0, token_number = 0, order_started_at = NULL,
-                          waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
-                      WHERE table_number = ? OR table_number = ?
-                    `).run(tNum, tNum.replace(/^Table\s*/i, 'T'));
-                  }
-                  socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
-                    tableNumber: tNum,
-                    status: 'available',
-                    action: 'cancel'
-                  });
-                }
-
-                if (typeof syncWaiterDataToCloud === 'function') {
-                  syncWaiterDataToCloud(db).catch(() => {});
-                }
-
-                doc.ref.update({ status: 'cancelled_at_crm' }).catch(() => {});
-              } catch (cancelErr) {
-                console.warn('[Firebase Realtime] Error processing waiter cancellation:', cancelErr.message);
-              }
-            }
-
-            // 2. Pre-Bill Request from Waiter Panel
-            let parsedInfo = {};
-            try { parsedInfo = JSON.parse(data.items_summary || '{}'); } catch (_) {}
-            const isPrebill = parsedInfo.notes === 'PREBILL_REQUEST' || String(data.bill_no).startsWith('PREBILL-');
-            if (isPrebill) {
-              try {
-                const dept = (parsedInfo.department || 'restaurant').toLowerCase();
-                const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
-                const destLabel = String(parsedInfo.destination_label || data.room_number || '').trim();
-                const tId = parsedInfo.destination_id || data.room_id;
-
-                let targetTable = resolveTargetTable(db, tableName, tId, destLabel, 'table');
-
-                if (targetTable) {
-                  let currentCart = [];
-                  try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
-                  if (currentCart.length === 0) {
-                    try { currentCart = JSON.parse(targetTable.printed_cart_json || '[]'); } catch (_) {}
-                  }
-
-                  if (currentCart.length > 0) {
-                    db.prepare(`UPDATE ${tableName} SET status = 'billed' WHERE id = ?`).run(targetTable.id);
-                    const subtotal = currentCart.reduce((sum, it) => sum + ((Number(it.price) || 0) * (it.quantity || it.qty || 1)), 0);
-                    const restGstPct = dept === 'bar' ? 10 : 5;
-                    const tax = Math.round(subtotal * (restGstPct / 100));
-                    const grandTotal = subtotal + tax;
-
-                    if (typeof global.enqueuePrintJob === 'function') {
-                      global.enqueuePrintJob('prebill', {
-                        tableNumber: targetTable.table_number,
-                        tokenNumber: targetTable.token_number || 1,
-                        items: currentCart,
-                        subtotal,
-                        tax,
-                        grandTotal,
-                        department: dept,
-                        timestamp: new Date().toISOString()
-                      });
-                    }
-
-                    console.log(`🧾 [Firebase Realtime] Pre-bill generated for ${targetTable.table_number}`);
-                    socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
-                      tableId: targetTable.id,
-                      tableNumber: targetTable.table_number,
-                      status: 'billed',
-                      orderType: targetTable.table_type
-                    });
-
-                    if (typeof syncWaiterDataToCloud === 'function') {
-                      syncWaiterDataToCloud(db).catch(() => {});
-                    }
-                  }
-                }
-                doc.ref.update({ status: 'prebilled_at_crm' }).catch(() => {});
-              } catch (pbErr) {
-                console.warn('[Firebase Realtime] Error processing prebill request:', pbErr.message);
-              }
-            }
-
-            // 3. Mobile Settlement from Waiter Panel
-            if (String(data.bill_no).startsWith('SETTLE-')) {
-              try {
-                let settleData = {};
-                try { settleData = JSON.parse(data.items_summary || '{}'); } catch (_) {}
-                const dept = (data.department || settleData.department || 'restaurant').toLowerCase();
-                const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
-                const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
-                const ordTable = dept === 'bar' ? 'bar_orders' : 'restaurant_orders';
-                const tNum = String(settleData.table_number || data.room_number || '').trim();
-                const tId = settleData.destinationId || settleData.table_id || data.room_id;
-
-                let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
-
-                let items = Array.isArray(settleData.items) && settleData.items.length > 0 ? settleData.items : [];
-                if (items.length === 0 && targetTable) {
-                  try { items = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
-                  if (items.length === 0) {
-                    try { items = JSON.parse(targetTable.printed_cart_json || '[]'); } catch (_) {}
-                  }
-                }
-
-                const subtotal = Number(data.subtotal || settleData.subtotal || 0);
-                const gst = Number(data.gst || settleData.gst || 0);
-                const grandTotal = Number(data.grand_total || settleData.grand_total || 0);
-                const paymentMode = (settleData.payment_mode || settleData.paymentMode || 'cash').toLowerCase();
-                const waiterName = settleData.waiter_name || data.settled_by || 'Captain';
-                const custName = settleData.customer_name || (targetTable ? targetTable.customer_name : '') || `Table ${tNum}`;
-                const orderNumber = (dept === 'bar' ? 'BAR-' : 'RES-') + Date.now().toString().slice(-6);
-                const isPaid = (paymentMode === 'room_folio' || paymentMode === 'room') ? 0 : 1;
-
-                const insertRes = db.prepare(`
-                  INSERT INTO ${ordTable} (
-                    order_number, customer_name, order_type, table_number, table_id,
-                    waiter_name, items_json, subtotal, tax, total, payment_mode, is_paid, status, created_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', datetime('now', 'localtime'))
-                `).run(
-                  orderNumber,
-                  custName,
-                  targetTable ? (targetTable.table_type === 'parcel' ? 'parcel' : (targetTable.table_type === 'room_service' ? 'room' : 'table')) : 'table',
-                  tNum || (targetTable ? targetTable.table_number : 'Table'),
-                  targetTable ? targetTable.id : null,
-                  waiterName,
-                  JSON.stringify(items),
-                  subtotal,
-                  gst,
-                  grandTotal,
-                  paymentMode,
-                  isPaid
-                );
-
-                // Instantly enqueue bill thermal receipt on CRM PC printer
-                if (typeof global.enqueuePrintJob === 'function') {
-                  global.enqueuePrintJob('bill', {
-                    department: dept,
-                    tableNumber: tNum || (targetTable ? targetTable.table_number : 'Table'),
-                    order: {
-                      id: insertRes ? insertRes.lastInsertRowid : null,
-                      orderNumber,
-                      order_number: orderNumber,
-                      token_number: targetTable?.token_number || 1,
-                      table_number: tNum || (targetTable ? targetTable.table_number : 'Table'),
-                      customer_name: custName,
-                      customerName: custName,
-                      waiter_name: waiterName,
-                      items,
-                      subtotal,
-                      tax: gst,
-                      total: grandTotal,
-                      grand_total: grandTotal,
-                      payment_mode: paymentMode,
-                      paymentMode: paymentMode,
-                      is_paid: isPaid,
-                      settled_at: new Date().toISOString()
-                    }
-                  });
-                  console.log(`🖨️ [Firebase Realtime] Enqueued bill print job on CRM for ${tNum}: ${orderNumber}`);
-                }
-
-                if (targetTable) {
-                  const isTemp = targetTable.table_type === 'parcel' ||
-                                 targetTable.table_type === 'room_service' ||
-                                 String(targetTable.table_number).startsWith('RS-') ||
-                                 String(targetTable.table_number).startsWith('P-') ||
-                                 String(targetTable.table_number).startsWith('BP-');
-
-                  if (isTemp) {
-                    db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(targetTable.id);
-                  } else {
-                    db.prepare(`
-                      UPDATE ${tableName}
-                      SET status = 'available', active_cart_json = '[]', printed_cart_json = '[]',
-                          ${countCol} = 0, token_number = 0, order_started_at = NULL,
-                          waiter_name = '', special_notes = '', customer_name = '', customer_phone = ''
-                      WHERE id = ?
-                    `).run(targetTable.id);
-                  }
-
-                  socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
-                    tableId: targetTable.id,
-                    tableNumber: targetTable.table_number,
-                    status: 'available',
-                    action: 'settle'
-                  });
-                } else if (tNum) {
-                  socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', {
-                    tableNumber: tNum,
-                    status: 'available',
-                    action: 'settle'
-                  });
-                }
-
-                if (typeof syncWaiterDataToCloud === 'function') {
-                  syncWaiterDataToCloud(db).catch(() => {});
-                }
-
-                doc.ref.update({ status: 'settled_at_crm' }).catch(() => {});
-                console.log(`💰 [Firebase Realtime] Processed mobile settlement for ${tNum}: ${orderNumber}`);
-              } catch (settleErr) {
-                console.warn('[Firebase Realtime] Error processing mobile settlement:', settleErr.message);
-              }
-            }
-
-            // 4. Waiter KOT / BOT Order arrival from Waiter APK or Guest In-Room Dining
-            if (!isPrebill && !String(data.bill_no).startsWith('SETTLE-') && (data.department === 'waiter_kot_order' || data.is_guest_web || data.waiter_name === 'Guest In-Room Mobile')) {
-              try {
-                let orderData = {};
-                try { orderData = JSON.parse(data.items_summary || '{}'); } catch (_) {}
-                const items = Array.isArray(orderData.items) ? orderData.items : [];
-
-                if (items.length > 0) {
-                  const isGuestMobile = orderData.source === 'guest_inroom_mobile' || 
-                                        orderData.waiter_name === 'Guest In-Room Mobile' || 
-                                        data.department === 'guest_inroom_order' ||
-                                        orderData.is_guest_web;
-
-                  if (isGuestMobile) {
-                    const cleanRoomNum = String(orderData.room_number || data.room_number || 'Room')
-                      .replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
-
-                    const existingGuestOrder = db.prepare('SELECT id FROM guest_inroom_orders WHERE cloud_inbox_id = ? OR order_number = ?').get(String(doc.id), data.bill_no);
-                    if (!existingGuestOrder) {
-                      let batchNumber = 1;
-                      try {
-                        const countRow = db.prepare('SELECT COUNT(*) as count FROM guest_inroom_orders WHERE room_numbers = ? OR room_numbers LIKE ?').get(cleanRoomNum, `%${cleanRoomNum}%`);
-                        batchNumber = (countRow?.count || 0) + 1;
-                      } catch (_) {}
-
-                      const custName = orderData.customer_name || data.settled_by || `Room ${cleanRoomNum}`;
-                      const grandTotal = Number(data.grand_total || 0);
-
-                      db.prepare(`
-                        INSERT INTO guest_inroom_orders (
-                          order_number, token, booking_id, room_numbers, guest_name, guest_phone,
-                          batch_number, items_json, notes, subtotal, tax, grand_total, status, kot_printed, cloud_inbox_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_kitchen', 0, ?)
-                      `).run(
-                        data.bill_no || `RS-${cleanRoomNum}-B${batchNumber}-${Date.now().toString().slice(-4)}`,
-                        orderData.token || '',
-                        orderData.bookingId || 0,
-                        cleanRoomNum,
-                        custName,
-                        orderData.customer_phone || '',
-                        batchNumber,
-                        JSON.stringify(items),
-                        orderData.notes || '',
-                        Number(data.subtotal || 0),
-                        Number(data.gst || 0),
-                        grandTotal,
-                        String(doc.id)
-                      );
-                      console.log(`🔥 [Firebase Realtime] 🛎️ Guest Food Order received for Room ${cleanRoomNum} (Batch #${batchNumber})!`);
-
-                      // Broadcast WebSocket alert to Restaurant POS immediately!
-                      socketServer.broadcast('GUEST_ORDERS_UPDATED', { roomNumber: cleanRoomNum });
-                    }
-
-                    // Acknowledge in Firestore
-                    doc.ref.update({ status: 'received_at_crm' }).catch(() => {});
-                  } else {
-                    // Waiter KOT Table, Room Service, or Takeaway Parcel Order
-                    const dept = (orderData.department || 'restaurant').toLowerCase();
-                    const destType = (orderData.destination_type || 'table').toLowerCase();
-                    const destLabel = String(orderData.destination_label || data.room_number || '').trim();
-                    const waiterName = orderData.waiter_name || data.settled_by || 'Captain';
-                    const notes = orderData.notes || '';
-                    const custName = orderData.customer_name || '';
-                    const custPhone = orderData.customer_phone || '';
-                    const tableName = dept === 'bar' ? 'bar_tables' : 'restaurant_tables';
-
-                    const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
-                    let targetTable = null;
-
-                    if (destType === 'room' || destLabel.startsWith('RS-') || /Room\s*\d+/i.test(destLabel)) {
-                      // 1. Room Service Order
-                      const cleanRoomNum = String(orderData.room_number || destLabel || orderData.destination_id || '')
-                        .replace(/^RS-/i, '').replace(/^Room\s*/i, '').replace(/•.*$/, '').trim();
-                      const rsTableNum = `RS-${cleanRoomNum}`;
-
-                      targetTable = db.prepare(`
-                        SELECT * FROM ${tableName} 
-                        WHERE table_number = ? 
-                           OR table_number = ? 
-                           OR special_notes LIKE ?
-                      `).get(rsTableNum, `RS-Room ${cleanRoomNum}`, `%Room ${cleanRoomNum}%`);
-
-                      if (!targetTable) {
-                        const roomRow = db.prepare('SELECT id FROM rooms WHERE room_number = ?').get(cleanRoomNum);
-                        let guestName = custName || orderData.guest_name || '';
-                        if (!guestName) {
-                          try {
-                            const bRow = db.prepare('SELECT g.name FROM bookings b JOIN guests g ON b.guest_id = g.id WHERE b.id = (SELECT current_booking_id FROM rooms WHERE room_number = ?)').get(cleanRoomNum);
-                            guestName = bRow?.name || `Room ${cleanRoomNum} Guest`;
-                          } catch (_) {
-                            guestName = `Room ${cleanRoomNum} Guest`;
-                          }
-                        }
-                        const insRes = db.prepare(`
-                          INSERT INTO ${tableName} (table_number, table_type, capacity, room_id, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
-                          VALUES (?, 'room_service', 2, ?, 'occupied', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
-                        `).run(
-                          rsTableNum,
-                          roomRow?.id || orderData.destination_id || null,
-                          waiterName,
-                          `Room ${cleanRoomNum} (${guestName})`,
-                          guestName,
-                          custPhone
-                        );
-                        targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(insRes.lastInsertRowid);
-                        console.log(`🛎️ [Firebase Realtime] Auto-created Room Service Table ${rsTableNum} in ${tableName} for Waiter ${waiterName}`);
-                      }
-                    } else if (destType === 'parcel' || destLabel.startsWith('P-') || destLabel.startsWith('BP-') || /Parcel/i.test(destLabel)) {
-                      // 2. Takeaway Parcel Order
-                      const cleanParcelNum = String(destLabel || orderData.destination_id || '')
-                        .match(/\d+/)?.[0] || String(orderData.destination_id || Date.now().toString().slice(-3));
-                      const parcelTableNum = dept === 'bar' ? `BP-${cleanParcelNum}` : `P-${cleanParcelNum}`;
-
-                      targetTable = db.prepare(`
-                        SELECT * FROM ${tableName} 
-                        WHERE table_number = ? 
-                           OR (table_type = 'parcel' AND (table_number LIKE ? OR id = ?))
-                      `).get(parcelTableNum, `%${cleanParcelNum}`, orderData.destination_id);
-
-                      if (!targetTable) {
-                        const insRes = db.prepare(`
-                          INSERT INTO ${tableName} (table_number, table_type, capacity, status, waiter_name, special_notes, customer_name, customer_phone, active_cart_json, printed_cart_json, ${countCol}, order_started_at)
-                          VALUES (?, 'parcel', 1, 'in_process', ?, ?, ?, ?, '[]', '[]', 0, datetime('now', 'localtime'))
-                        `).run(
-                          parcelTableNum,
-                          waiterName,
-                          `Takeaway Parcel #${cleanParcelNum}`,
-                          custName || `Parcel #${cleanParcelNum}`,
-                          custPhone
-                        );
-                        targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(insRes.lastInsertRowid);
-                        console.log(`📦 [Firebase Realtime] Auto-created Takeaway Parcel Table ${parcelTableNum} in ${tableName} for Waiter ${waiterName}`);
-                      }
-                    } else {
-                      // 3. Dine-In Table Order (with canonical digit matching & auto-creation)
-                      targetTable = resolveTargetTable(db, tableName, orderData.destination_id, destLabel, destType);
-                      }
-
-                    if (targetTable) {
-                      let currentCart = [];
-                      try { currentCart = JSON.parse(targetTable.active_cart_json || '[]'); } catch (_) {}
-                      const nowIso = new Date().toISOString();
-                      for (const it of items) {
-                        const existingIdx = currentCart.findIndex(c => String(c.id) === String(it.id));
-                        if (existingIdx >= 0) {
-                          currentCart[existingIdx].qty = (Number(currentCart[existingIdx].qty) || 1) + (Number(it.qty || it.quantity) || 1);
-                        } else {
-                          currentCart.push({ ...it, qty: Number(it.qty || it.quantity) || 1, added_at: nowIso });
-                        }
-                      }
-                      const activeCountCol = dept === 'bar' ? 'bot_count' : 'kot_count';
-                      const kotCount = ((targetTable[activeCountCol]) || 0) + 1;
-                      const assignedToken = targetTable.token_number || kotCount;
-                      const nextStatus = targetTable.table_type === 'parcel' ? (targetTable.status === 'ready' ? 'ready' : 'in_process') : 'occupied';
-
-                      db.prepare(`
-                        UPDATE ${tableName}
-                        SET active_cart_json = ?, printed_cart_json = ?, ${activeCountCol} = ?,
-                            status = ?, waiter_name = ?, special_notes = ?,
-                            customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
-                            customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END,
-                            order_started_at = COALESCE(order_started_at, datetime('now', 'localtime'))
-                        WHERE id = ?
-                      `).run(JSON.stringify(currentCart), JSON.stringify(currentCart), kotCount, nextStatus, waiterName, notes, custName, custName, custPhone, custPhone, targetTable.id);
-
-                      // Auto-enqueue KOT / BOT print job (broadcasts via WebSocket in <10ms!)
-                      if (typeof global.enqueuePrintJob === 'function') {
-                        global.enqueuePrintJob(dept === 'bar' ? 'bot' : 'kot', {
-                          tableNumber: targetTable.table_number,
-                          tokenNumber: assignedToken,
-                          waiterName,
-                          notes,
-                          customerName: custName,
-                          kot: { kotNumber: kotCount, tokenNumber: assignedToken, items },
-                          items,
-                          department: dept,
-                          timestamp: nowIso
-                        });
-                      }
-
-                      // Broadcast WebSocket table update immediately to CRM frontend
-                      socketServer.broadcast(dept === 'bar' ? 'BAR_UPDATED' : 'TABLES_UPDATED', { 
-                        tableId: targetTable.id, 
-                        tableNumber: targetTable.table_number,
-                        status: nextStatus,
-                        waiterName,
-                        orderType: destType
-                      });
-
-                      // Sync updated package back to cloud so other waiters see table locked/occupied instantly
-                      if (typeof syncWaiterDataToCloud === 'function') {
-                        syncWaiterDataToCloud(db).catch(() => {});
-                      }
-                    }
-
-                    // Acknowledge in Firestore
-                    doc.ref.update({ status: 'printed' }).catch(() => {});
-                  }
-                }
-              } catch (kotProcErr) {
-                console.warn('[Firebase Realtime] Error processing KOT order:', kotProcErr.message);
-              }
-            }
-
-            if (typeof onNewPendingOrder === 'function') {
-              onNewPendingOrder({ id: doc.id, ...data });
-            }
+            processCloudInboxDoc(db, doc, data, onNewPendingOrder).catch(() => {});
           }
 
           // B) Deletion / Cancellation adopted into local SQLite
@@ -1576,10 +1634,22 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
         });
       }, err => {
         console.warn('[Firebase] Room charges listener error:', err.message);
+        try { if (realtimeUnsubscribe) realtimeUnsubscribe(); } catch (_) {}
+        realtimeUnsubscribe = null;
+        setTimeout(() => {
+          if (firestore && !realtimeUnsubscribe) {
+            console.log('🔄 [Firebase Realtime] Auto-reconnecting room charges listener after sleep/disconnect...');
+            setupRealtimeListeners(db, onNewPendingOrder);
+          }
+        }, 3000);
       });
       console.log('⚡ [Firebase Realtime] Connected! Listening for live pending orders & charge cancellations.');
     } catch (err) {
       console.warn('[Firebase] Could not setup room charges realtime listener:', err.message);
+      realtimeUnsubscribe = null;
+      setTimeout(() => {
+        if (firestore && !realtimeUnsubscribe) setupRealtimeListeners(db, onNewPendingOrder);
+      }, 5000);
     }
   }
 
@@ -1625,6 +1695,13 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
         });
       }, err => {
         console.warn('[Firebase] Staff credentials listener error:', err.message);
+        try { if (realtimeStaffUnsubscribe) realtimeStaffUnsubscribe(); } catch (_) {}
+        realtimeStaffUnsubscribe = null;
+        setTimeout(() => {
+          if (firestore && !realtimeStaffUnsubscribe) {
+            setupRealtimeListeners(db, onNewPendingOrder);
+          }
+        }, 5000);
       });
       console.log('⚡ [Firebase Realtime] Connected! Listening for live staff credential & password updates.');
     } catch (err) {
@@ -1673,6 +1750,13 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
         });
       }, err => {
         console.warn('[Firebase] Store bills listener error:', err.message);
+        try { if (realtimeStoreBillsUnsubscribe) realtimeStoreBillsUnsubscribe(); } catch (_) {}
+        realtimeStoreBillsUnsubscribe = null;
+        setTimeout(() => {
+          if (firestore && !realtimeStoreBillsUnsubscribe) {
+            setupRealtimeListeners(db, onNewPendingOrder);
+          }
+        }, 5000);
       });
       console.log('⚡ [Firebase Realtime] Connected! Listening for live Store Purchase Bills.');
     } catch (err) {
@@ -1749,6 +1833,13 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
         });
       }, err => {
         console.warn('[Firebase] Store vendor payments listener error:', err.message);
+        try { if (realtimeStorePaymentsUnsubscribe) realtimeStorePaymentsUnsubscribe(); } catch (_) {}
+        realtimeStorePaymentsUnsubscribe = null;
+        setTimeout(() => {
+          if (firestore && !realtimeStorePaymentsUnsubscribe) {
+            setupRealtimeListeners(db, onNewPendingOrder);
+          }
+        }, 5000);
       });
       console.log('⚡ [Firebase Realtime] Connected! Listening for live Admin Store Payments.');
     } catch (err) {
@@ -1864,5 +1955,6 @@ module.exports = {
   updateLiveState,
   setupRealtimeListeners,
   stopRealtimeListeners,
+  pollPendingCloudOrders,
   isConfigured: () => Boolean(firestore)
 };

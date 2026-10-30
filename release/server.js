@@ -16015,16 +16015,77 @@ app.post('/api/owner/notifications/read-all', (req, res) => {
 
 function mountStaticDist() {
   if (fs.existsSync(distDir)) {
+    // Smart Fallback for Bundled JS/CSS Chunks: Never return 404 for index-*.js or pdf-*.js
+    app.use('/assets', (req, res, next) => {
+      const requestedFile = path.basename(req.path);
+      const exactPath = path.join(distDir, 'assets', requestedFile);
+
+      // 1. If exact file exists, serve it immediately with proper Content-Type
+      if (fs.existsSync(exactPath)) {
+        if (requestedFile.endsWith('.js')) {
+          res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+        } else if (requestedFile.endsWith('.css')) {
+          res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+        }
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.sendFile(exactPath);
+      }
+
+      // 2. If exact file does not exist (e.g. hash mismatch due to client cache or update)
+      const assetsDir = path.join(distDir, 'assets');
+      if (fs.existsSync(assetsDir)) {
+        const files = fs.readdirSync(assetsDir);
+
+        // Fallback for index-*.js: serve active index-*.js bundle
+        if (requestedFile.startsWith('index-') && requestedFile.endsWith('.js')) {
+          const activeIndex = files.find(f => f.startsWith('index-') && f.endsWith('.js'));
+          if (activeIndex) {
+            console.warn(`[Asset Fallback] Requested ${requestedFile} not found, serving active bundle ${activeIndex}`);
+            res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+            return res.sendFile(path.join(assetsDir, activeIndex));
+          }
+        }
+
+        // Fallback for pdf-*.js: serve active pdf-*.js bundle
+        if (requestedFile.startsWith('pdf-') && requestedFile.endsWith('.js')) {
+          const activePdf = files.find(f => f.startsWith('pdf-') && f.endsWith('.js'));
+          if (activePdf) {
+            console.warn(`[Asset Fallback] Requested ${requestedFile} not found, serving active bundle ${activePdf}`);
+            res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+            return res.sendFile(path.join(assetsDir, activePdf));
+          }
+        }
+
+        // Fallback for index-*.css: serve active index-*.css bundle
+        if (requestedFile.startsWith('index-') && requestedFile.endsWith('.css')) {
+          const activeCss = files.find(f => f.startsWith('index-') && f.endsWith('.css'));
+          if (activeCss) {
+            res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+            return res.sendFile(path.join(assetsDir, activeCss));
+          }
+        }
+      }
+
+      next();
+    });
+
     app.use(express.static(distDir, {
-      setHeaders: (res) => {
-        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.set('Pragma', 'no-cache');
-        res.set('Expires', '0');
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.set('Pragma', 'no-cache');
+          res.set('Expires', '0');
+        }
       }
     }));
   }
+
   // Direct Screen Routes for Multi-Screen setups (serving React app)
-  app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses', '/accounting'], (req, res) => {
+  const clientRoutes = [
+    '/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses', '/accounting',
+    '/rooms', '/guests', '/analytics', '/inventory', '/dashboard', '/store'
+  ];
+  app.get(clientRoutes, (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
@@ -16092,7 +16153,7 @@ if (fs.existsSync(guestOrderDistDir)) {
   app.use('/order', express.static(guestOrderDistDir));
   app.use('/food-order', express.static(guestOrderDistDir));
   app.use('/order/assets', express.static(path.join(guestOrderDistDir, 'assets')));
-  app.use('/assets', express.static(path.join(guestOrderDistDir, 'assets')));
+  app.use('/food-order/assets', express.static(path.join(guestOrderDistDir, 'assets')));
   app.get(/^\/(order|food-order)\/.*$/, (req, res) => {
     res.sendFile(path.join(guestOrderDistDir, 'index.html'));
   });
@@ -16171,8 +16232,14 @@ async function startServer() {
     if (isCloudSyncAllowed('supabase') && typeof supabaseService.setupRealtimeListeners === 'function') {
       supabaseService.setupRealtimeListeners(db);
     }
-    if (isCloudSyncAllowed('firebase') && typeof firebaseService.setupRealtimeListeners === 'function') {
+    if (typeof firebaseService.setupRealtimeListeners === 'function' && firebaseService.isConfigured()) {
       firebaseService.setupRealtimeListeners(db);
+      console.log('🔥 [Firebase Realtime] Waiter Order & Cloud Listener started unconditionally.');
+    }
+
+    // Immediate check for any pending orders placed while server or laptop was asleep
+    if (typeof firebaseService.pollPendingCloudOrders === 'function') {
+      firebaseService.pollPendingCloudOrders(db).catch(() => {});
     }
 
     // 2. STAGGERED CALM HEARTBEAT BACKUP (Every 20 seconds):
@@ -16188,6 +16255,14 @@ async function startServer() {
         firebaseService.syncDailyAnalyticsToCloud(db).catch(() => {});
       }
     }, 20000);
+
+    // 3. ZERO-IP CLOUD ORDER SAFETY-NET POLLER (Every 5 seconds):
+    // Continuous self-healing poller ensuring zero dropped orders during Wi-Fi changes, sleep/wake, or socket disconnects
+    setInterval(() => {
+      if (typeof firebaseService.pollPendingCloudOrders === 'function') {
+        firebaseService.pollPendingCloudOrders(db).catch(() => {});
+      }
+    }, 5000);
 
     // Initial sync of live waiter menu, tables, and staff to Firebase Firestore and Supabase bridge
     if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {

@@ -84,6 +84,16 @@ if (fs.existsSync(releaseAssetsDir)) {
 // Copy new dist bundle assets
 copyDirSync(path.join(distDir, 'assets'), releaseAssetsDir);
 fs.copyFileSync(path.join(distDir, 'index.html'), path.join(releaseDir, 'dist', 'index.html'));
+
+// Ensure backward-compatible aliases for recent bundle hashes so cached clients never 404
+const activeIndexBundle = fs.readdirSync(path.join(distDir, 'assets')).find(f => f.startsWith('index-') && f.endsWith('.js'));
+if (activeIndexBundle) {
+  const legacyHashes = ['index-BnR7ft-L.js', 'index-DAnp6ely.js', 'index-OsYrBM8M.js', 'index-ZBi3tiHY.js'];
+  for (const legacy of legacyHashes) {
+    fs.copyFileSync(path.join(distDir, 'assets', activeIndexBundle), path.join(distDir, 'assets', legacy));
+    fs.copyFileSync(path.join(distDir, 'assets', activeIndexBundle), path.join(releaseAssetsDir, legacy));
+  }
+}
 console.log('✅ Dist bundle updated in release/dist.\n');
 
 // 4. Sync Server, Database, Services, Middleware
@@ -186,6 +196,13 @@ if (fs.existsSync(electronAppDir)) {
   }
   copyDirSync(path.join(distDir, 'assets'), electronAssetsDir);
   fs.copyFileSync(path.join(distDir, 'index.html'), path.join(electronAppDir, 'dist', 'index.html'));
+
+  if (activeIndexBundle && fs.existsSync(electronAssetsDir)) {
+    const legacyHashes = ['index-BnR7ft-L.js', 'index-DAnp6ely.js', 'index-OsYrBM8M.js', 'index-ZBi3tiHY.js'];
+    for (const legacy of legacyHashes) {
+      fs.copyFileSync(path.join(distDir, 'assets', activeIndexBundle), path.join(electronAssetsDir, legacy));
+    }
+  }
 
   fs.copyFileSync(path.join(rootDir, 'server.js'), path.join(electronAppDir, 'server.js'));
   fs.copyFileSync(path.join(rootDir, 'database.js'), path.join(electronAppDir, 'database.js'));

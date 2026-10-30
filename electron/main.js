@@ -269,7 +269,7 @@ async function startServerAndNavigate() {
   // In Client Mode: do NOT spawn a local SQLite server. Connect to host!
   if (isClient) {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.loadURL(targetUrl);
+      mainWindow.loadURL(targetUrl, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' });
     }
     setupMenu();
     return;
@@ -280,7 +280,7 @@ async function startServerAndNavigate() {
   if (await isPortActive(PORT)) {
     console.log(`[Electron] Backend server already active on port ${PORT}. Connecting immediately.`);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.loadURL(targetUrl);
+      mainWindow.loadURL(targetUrl, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' });
     }
     setupMenu();
     return;
@@ -319,7 +319,7 @@ async function startServerAndNavigate() {
     if (await isPortActive(PORT)) {
       console.log(`[Electron] Backend server is online (attempt ${attempt + 1}). Navigating to CRM...`);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(targetUrl);
+        mainWindow.loadURL(targetUrl, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' });
       }
       setupMenu();
       return;
@@ -328,7 +328,7 @@ async function startServerAndNavigate() {
 
   // Fallback: try navigating even if port test timed out
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.loadURL(targetUrl);
+    mainWindow.loadURL(targetUrl, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' });
   }
   setupMenu();
 }
@@ -355,6 +355,13 @@ function createMainWindow() {
 
   // Automatically maximize window to full desktop hotel workspace
   mainWindow.maximize();
+
+  // Clear HTTP/session cache on startup so new bundle versions are always loaded freshly on any machine
+  try {
+    mainWindow.webContents.session.clearCache();
+  } catch (e) {
+    console.warn('[Electron] Could not clear cache:', e.message);
+  }
 
   // Load instant local splash screen immediately (< 10ms from disk)
   const splashPath = path.join(__dirname, 'splash.html');
@@ -433,8 +440,26 @@ function setupMenu() {
     {
       label: 'View',
       submenu: [
-        { role: 'reload', label: 'Refresh Screen' },
-        { role: 'forceReload', label: 'Force Reload' },
+        {
+          label: 'Refresh Screen',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.reloadIgnoringCache();
+            }
+          }
+        },
+        {
+          label: 'Force Reload',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.session.clearCache().then(() => {
+                mainWindow.webContents.reloadIgnoringCache();
+              });
+            }
+          }
+        },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
