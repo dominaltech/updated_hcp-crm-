@@ -16171,8 +16171,9 @@ async function startServer() {
     if (isCloudSyncAllowed('supabase') && typeof supabaseService.setupRealtimeListeners === 'function') {
       supabaseService.setupRealtimeListeners(db);
     }
-    if (isCloudSyncAllowed('firebase') && typeof firebaseService.setupRealtimeListeners === 'function') {
+    if (typeof firebaseService.setupRealtimeListeners === 'function' && firebaseService.isConfigured()) {
       firebaseService.setupRealtimeListeners(db);
+      console.log('🔥 [Firebase Realtime] Waiter Order & Cloud Listener started unconditionally.');
     }
 
     // 2. STAGGERED CALM HEARTBEAT BACKUP (Every 20 seconds):
