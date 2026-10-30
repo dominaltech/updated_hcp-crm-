@@ -158,6 +158,26 @@ export default function App() {
 
     // 4. If viewing menu for a destination (table / room / parcel)
     if (s.destination) {
+      if (cart.length > 0) {
+        setModalConfig({
+          type: 'confirm',
+          title: 'Save or Discard Order?',
+          message: `You have ${cart.length} item(s) selected for ${s.destination?.title || 'this order'}.`,
+          icon: '🛒',
+          confirmText: '💾 Save Order',
+          cancelText: '🗑️ Discard',
+          confirmColor: 'var(--apple-blue)',
+          onConfirm: () => {
+            // Optimistically retain or save cart
+            setDestination(null);
+          },
+          onCancel: () => {
+            setCart([]);
+            setDestination(null);
+          }
+        });
+        return true;
+      }
       setDestination(null);
       return true;
     }
@@ -793,7 +813,11 @@ export default function App() {
       const kotNo = res?.kotNumber || res?.botNumber || res?.order_id || 'OK';
       const tokenNo = res?.tokenNumber ? ` (Token #${res.tokenNumber})` : '';
 
-      showToast(`🚀 Order Punched & KOT #${kotNo}${tokenNo} dispatched!`);
+      if (res?.cloud) {
+        showToast(`☁️ Order Enqueued via Cloud Sync (KOT will print at CRM)`, 6000);
+      } else {
+        showToast(`🚀 Order Punched & KOT #${kotNo}${tokenNo} dispatched!`, 4000);
+      }
 
       // Optimistically insert/update the table in state immediately (0ms instant display in Active Running!)
       const nowIso = new Date().toISOString();
@@ -1157,7 +1181,28 @@ export default function App() {
           onAddToCart={handleAddToCart}
           onUpdateCartQty={handleUpdateCartQty}
           onOpenCart={() => setIsCartOpen(true)}
-          onBackToDestinations={() => setDestination(null)}
+          onBackToDestinations={() => {
+            if (cart.length > 0) {
+              setModalConfig({
+                type: 'confirm',
+                title: 'Save or Discard Order?',
+                message: `You have ${cart.length} item(s) selected for ${destination?.title || 'this order'}.`,
+                icon: '🛒',
+                confirmText: '💾 Save Order',
+                cancelText: '🗑️ Discard',
+                confirmColor: 'var(--apple-blue)',
+                onConfirm: () => {
+                  setDestination(null);
+                },
+                onCancel: () => {
+                  setCart([]);
+                  setDestination(null);
+                }
+              });
+            } else {
+              setDestination(null);
+            }
+          }}
           isLoading={isLoadingMenu}
         />
       ) : (

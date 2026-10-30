@@ -1,1 +1,1 @@
-http://10.160.83.195:3000
+https://lender-lean-tables-patent.trycloudflare.com

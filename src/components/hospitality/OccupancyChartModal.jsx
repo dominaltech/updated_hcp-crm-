@@ -34,7 +34,8 @@ function formatCurrentDateTime(d = new Date()) {
 
 export default function OccupancyChartModal({ isOpen, onClose }) {
   const { showToast } = useApp();
-  const [chartMode, setChartMode] = useState('daily'); // 'daily' | 'weekly'
+  const [chartMode, setChartMode] = useState('daily');
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]); // 'daily' | 'weekly'
   const [chartData, setChartData] = useState([]);
   const [summary, setSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -47,10 +48,10 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
   const [matrixData, setMatrixData] = useState(null);
   const [isMatrixLoading, setIsMatrixLoading] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (dateParam = selectedDate) => {
     setIsLoading(true);
     try {
-      const res = await api.getOccupancyChart();
+      const res = await api.getOccupancyChart(dateParam);
       if (res && res.success) {
         setChartData(res.chart || []);
         setSummary(res.summary || null);
@@ -152,6 +153,98 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
   const occupiedRooms = useMemo(() => chartData.filter((r) => r.is_occupied).map((r) => r.room_number), [chartData]);
   const emptyRooms = useMemo(() => chartData.filter((r) => !r.is_occupied).map((r) => r.room_number), [chartData]);
 
+  const handlePrintCleanerHistory = async () => {
+    try {
+      showToast('Fetching cleaner history for ' + selectedDate + '...', 'info', 1500);
+      const res = await api.getCleanerHistory(selectedDate);
+      const logs = res?.logs || [];
+
+      const rowsHtml = logs.length > 0 ? logs.map((l, idx) => `
+        <tr>
+          <td style="padding: 6px 10px; border: 1px solid #000; text-align: center;">${idx + 1}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; font-weight: 800;">Room #${l.room_number}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000;">${l.room_type || '-'}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000; font-weight: 850; color: #0284c7;">${l.cleaner_name}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000;">${l.cleaned_at ? formatCurrentDateTime(new Date(l.cleaned_at)) : '-'}</td>
+          <td style="padding: 6px 10px; border: 1px solid #000;">${l.cleaning_notes || 'Cleaned & Ready'}</td>
+        </tr>
+      `).join('') : `
+        <tr>
+          <td colspan="6" style="padding: 16px; text-align: center; border: 1px solid #000; font-style: italic; color: #64748b;">
+            No housekeeping logs recorded for ${selectedDate}.
+          </td>
+        </tr>
+      `;
+
+      const printHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Cleaner Shift History - ${selectedDate}</title>
+          <style>
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { font-family: Arial, sans-serif; margin: 15px; color: #000; font-size: 11px; }
+            .header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+            .title { font-size: 16px; font-weight: 900; letter-spacing: 1px; }
+            .subtitle { font-size: 12px; font-weight: 800; margin-top: 3px; }
+            .meta { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; margin-top: 6px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th { border: 1.5px solid #000; background: #f1f5f9; padding: 7px 10px; font-weight: 850; text-align: left; }
+            .footer { margin-top: 24px; display: flex; justify-content: space-between; font-weight: 750; font-size: 11px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">HOTEL CITY PARK</div>
+            <div class="subtitle">HOUSEKEEPING &amp; CLEANER SHIFT HISTORY REPORT</div>
+            <div class="meta">
+              <span>REPORT DATE: <strong>${selectedDate}</strong></span>
+              <span>TOTAL ROOMS CLEANED: <strong>${logs.length}</strong></span>
+              <span>PRINTED ON: <strong>${new Date().toLocaleString('en-IN')}</strong></span>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 40px; text-align: center;">#</th>
+                <th style="width: 90px;">Room #</th>
+                <th style="width: 120px;">Room Type</th>
+                <th style="width: 160px;">Cleaner Name</th>
+                <th style="width: 170px;">Cleaned Date &amp; Time</th>
+                <th>Remarks / Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="footer">
+            <span>Housekeeping Supervisor: __________________</span>
+            <span>Front Office Manager: __________________</span>
+          </div>
+          <script>
+            window.onload = function() {
+              window.focus();
+              window.print();
+              setTimeout(function() { window.close(); }, 800);
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      const printWin = window.open('', '_blank', 'width=900,height=700');
+      if (printWin) {
+        printWin.document.open();
+        printWin.document.write(printHtml);
+        printWin.document.close();
+      }
+    } catch (err) {
+      showToast('Error downloading cleaner history: ' + err.message, 'error', 3000);
+    }
+  };
+
   // Print function matching the exact format from Image 2
   const handlePrint = (filterMode = viewFilter) => {
     let rowsToPrint = chartData;
@@ -168,7 +261,9 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
       .filter((r) => r.is_occupied && String(r.breakfast || '').trim().toLowerCase() === 'yes')
       .reduce((sum, r) => sum + (Number(r.pax) || 0), 0);
     const occupiedRoomNumbers = chartData.filter((r) => r.is_occupied).map((r) => r.room_number);
-    const emptyRoomNumbers = chartData.filter((r) => !r.is_occupied).map((r) => r.room_number);
+    const maintenanceRoomNumbers = chartData.filter((r) => !r.is_occupied && String(r.status || r.room_status).toLowerCase() === 'maintenance').map((r) => r.room_number);
+    const dirtyRoomNumbers = chartData.filter((r) => !r.is_occupied && (String(r.status || r.room_status).toLowerCase() === 'needs_cleaning' || String(r.status || r.room_status).toLowerCase() === 'dirty')).map((r) => r.room_number);
+    const emptyRoomNumbers = chartData.filter((r) => !r.is_occupied && String(r.status || r.room_status).toLowerCase() !== 'maintenance' && String(r.status || r.room_status).toLowerCase() !== 'needs_cleaning' && String(r.status || r.room_status).toLowerCase() !== 'dirty').map((r) => r.room_number);
 
     const rowsHtml = rowsToPrint
       .map((r) => {
@@ -193,17 +288,26 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
             </tr>
           `;
         } else {
+          const status = String(r.status || r.room_status || 'ready').toLowerCase();
+          let statusText = 'VACANT / READY';
+          let statusColor = '#475569';
+          let rowBg = '#ffffff';
+          if (status === 'maintenance') {
+            statusText = '🔴 UNDER MAINTENANCE';
+            statusColor = '#dc2626';
+            rowBg = '#fef2f2';
+          } else if (status === 'needs_cleaning' || status === 'dirty') {
+            statusText = '🟡 DIRTY (NEEDS CLEANING)';
+            statusColor = '#d97706';
+            rowBg = '#fffbeb';
+          }
           return `
-            <tr class="row-vacant">
-              <td class="col-room">${r.room_number}</td>
-              <td class="col-reg"></td>
-              <td class="col-guest"></td>
-              <td class="col-company"></td>
-              <td class="col-dis"></td>
-              <td class="col-city"></td>
-              <td class="col-breakfast"></td>
-              <td class="col-pax"></td>
-              <td class="col-dates"></td>
+            <tr class="row-vacant" style="background: ${rowBg};">
+              <td class="col-room" style="font-weight: 800;">${r.room_number}</td>
+              <td class="col-reg" style="color: #64748b; font-size: 8px;">${r.room_type || ''}</td>
+              <td class="col-guest" style="color: ${statusColor}; font-weight: 850;" colspan="7">
+                ${statusText}
+              </td>
             </tr>
           `;
         }
@@ -330,7 +434,9 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
             <div style="font-weight: 800; white-space: nowrap;">ROOM OCCUPANCY CHART</div>
             <div class="chart-room-status-list">
               <div><b>Occupied (${occupiedRoomNumbers.length}):</b> ${occupiedRoomNumbers.join(', ') || 'None'}</div>
-              <div><b>Empty (${emptyRoomNumbers.length}):</b> ${emptyRoomNumbers.join(', ') || 'None'}</div>
+              <div><b>Vacant / Ready (${emptyRoomNumbers.length}):</b> ${emptyRoomNumbers.join(', ') || 'None'}</div>
+              ${maintenanceRoomNumbers.length > 0 ? `<div><b>Maintenance (${maintenanceRoomNumbers.length}):</b> ${maintenanceRoomNumbers.join(', ')}</div>` : ''}
+              ${dirtyRoomNumbers.length > 0 ? `<div><b>Dirty / Cleaning (${dirtyRoomNumbers.length}):</b> ${dirtyRoomNumbers.join(', ')}</div>` : ''}
             </div>
             <div style="font-weight: 800; white-space: nowrap;">AS ON ${printTimeStr}</div>
           </div>
@@ -721,56 +827,86 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
 
           {/* Action buttons & View Mode Switcher */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Top Chart Mode Selector: Daily vs 7-Day Matrix */}
+            {/* Single-Day Date Selector (User requirement: Only print one day, today or select date) */}
             <div
               style={{
                 display: 'flex',
-                background: 'var(--bg-surface-secondary, #e2e8f0)',
-                padding: '3px',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'var(--bg-surface-secondary, #f1f5f9)',
+                padding: '4px 10px',
                 borderRadius: '10px',
-                border: '1px solid var(--border-subtle, #cbd5e1)',
-                gap: '3px'
+                border: '1px solid var(--border-medium, #cbd5e1)'
               }}
             >
-              <button
-                type="button"
-                id="btn-mode-daily"
-                onClick={() => setChartMode('daily')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '7px',
-                  border: 'none',
-                  fontSize: '0.76rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  background: chartMode === 'daily' ? 'var(--bg-surface, #ffffff)' : 'transparent',
-                  color: chartMode === 'daily' ? '#0284c7' : 'var(--text-secondary, #64748b)',
-                  boxShadow: chartMode === 'daily' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.15s ease'
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary, #475569)' }}>📅 Date:</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedDate(val);
+                  loadData(val);
                 }}
-              >
-                📋 Daily In-House
-              </button>
-              <button
-                type="button"
-                id="btn-mode-weekly"
-                onClick={() => setChartMode('weekly')}
                 style={{
-                  padding: '5px 12px',
-                  borderRadius: '7px',
-                  border: 'none',
-                  fontSize: '0.76rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  background: chartMode === 'weekly' ? 'var(--bg-surface, #ffffff)' : 'transparent',
-                  color: chartMode === 'weekly' ? '#059669' : 'var(--text-secondary, #64748b)',
-                  boxShadow: chartMode === 'weekly' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.15s ease'
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '0.80rem',
+                  fontWeight: 750,
+                  background: '#ffffff',
+                  outline: 'none',
+                  cursor: 'pointer'
                 }}
-              >
-                📅 7-Day Matrix
-              </button>
+              />
+              {selectedDate !== new Date().toISOString().split('T')[0] && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setSelectedDate(today);
+                    loadData(today);
+                  }}
+                  style={{
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '6px',
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Today
+                </button>
+              )}
             </div>
+
+            {/* Cleaner History Download Button */}
+            <button
+              type="button"
+              id="btn-cleaner-history"
+              onClick={handlePrintCleanerHistory}
+              title="Download/Print Cleaner Shift History for selected date"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                border: '1.5px solid #a855f7',
+                background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+                color: '#6b21a8',
+                fontWeight: 800,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(168, 85, 247, 0.15)'
+              }}
+            >
+              <span>🧹</span>
+              <span>Cleaner History</span>
+            </button>
 
             {chartMode === 'daily' ? (
               <>
@@ -1169,9 +1305,15 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
                         <span style={{ color: 'var(--text-primary, #0f172a)' }}>{occupiedRooms.join(', ') || 'None'}</span>
                       </div>
                       <div>
-                        <span style={{ fontWeight: 800, color: '#475569' }}>Empty ({emptyRooms.length}): </span>
+                        <span style={{ fontWeight: 800, color: '#475569' }}>Vacant ({emptyRooms.length}): </span>
                         <span style={{ color: 'var(--text-primary, #0f172a)' }}>{emptyRooms.join(', ') || 'None'}</span>
                       </div>
+                      {chartData.filter(r => !r.is_occupied && String(r.status || r.room_status).toLowerCase() === 'maintenance').length > 0 && (
+                        <div>
+                          <span style={{ fontWeight: 800, color: '#dc2626' }}>Maintenance ({chartData.filter(r => !r.is_occupied && String(r.status || r.room_status).toLowerCase() === 'maintenance').length}): </span>
+                          <span style={{ color: '#dc2626', fontWeight: 700 }}>{chartData.filter(r => !r.is_occupied && String(r.status || r.room_status).toLowerCase() === 'maintenance').map(r => r.room_number).join(', ')}</span>
+                        </div>
+                      )}
                     </div>
                     <div style={{ whiteSpace: 'nowrap' }}>AS ON {formatCurrentDateTime(new Date(generatedAt || Date.now()))}</div>
                   </div>
@@ -1267,28 +1409,49 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
                             </tr>
                           );
                         } else {
+                          const status = String(r.status || r.room_status || 'ready').toLowerCase();
+                          let statusBadge = (
+                            <span style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.74rem' }}>
+                              ⚪ Vacant / Ready
+                            </span>
+                          );
+                          let rowBg = isEven ? 'var(--bg-surface, #ffffff)' : 'var(--bg-surface-secondary, rgba(248, 250, 252, 0.4))';
+                          let rowOpacity = 0.65;
+                          if (status === 'maintenance') {
+                            statusBadge = (
+                              <span style={{ color: '#dc2626', fontWeight: 800, fontSize: '0.76rem', background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                                🔴 UNDER MAINTENANCE
+                              </span>
+                            );
+                            rowBg = '#fff1f2';
+                            rowOpacity = 1;
+                          } else if (status === 'needs_cleaning' || status === 'dirty') {
+                            statusBadge = (
+                              <span style={{ color: '#d97706', fontWeight: 800, fontSize: '0.76rem', background: '#fffbeb', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                                🟡 DIRTY (NEEDS CLEANING)
+                              </span>
+                            );
+                            rowBg = '#fffdf5';
+                            rowOpacity = 1;
+                          }
                           return (
                             <tr
                               key={r.room_number}
                               style={{
-                                background: isEven ? 'var(--bg-surface, #ffffff)' : 'var(--bg-surface-secondary, rgba(248, 250, 252, 0.4))',
+                                background: rowBg,
                                 borderBottom: '1px solid var(--border-subtle, #e2e8f0)',
-                                opacity: 0.65
+                                opacity: rowOpacity
                               }}
                             >
-                              <td style={{ padding: '6px', textAlign: 'center', fontWeight: 700, borderRight: '1px solid var(--border-subtle, #e2e8f0)', color: '#64748b' }}>
+                              <td style={{ padding: '6px', textAlign: 'center', fontWeight: 800, borderRight: '1px solid var(--border-subtle, #e2e8f0)', color: status === 'maintenance' ? '#dc2626' : '#64748b' }}>
                                 #{r.room_number}
                               </td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.74rem' }}>
-                                Ready / Available
+                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                {r.room_type || ''}
                               </td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}></td>
-                              <td style={{ padding: '6px' }}></td>
+                              <td colSpan="7" style={{ padding: '6px 12px', borderRight: '1px solid var(--border-subtle, #e2e8f0)' }}>
+                                {statusBadge}
+                              </td>
                             </tr>
                           );
                         }
@@ -1574,15 +1737,7 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
           }}
         >
           <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary, #64748b)' }}>
-            {chartMode === 'weekly' ? (
-              <>
-                💡 <strong>Weekly Print Tip:</strong> Click &quot;Print 7-Day Matrix&quot; to print on A4 Landscape with full color badges & daily stats.
-              </>
-            ) : (
-              <>
-                💡 <strong>Print Tip:</strong> Click &quot;Print Chart&quot; to print directly to A4 paper in the exact hotel format.
-              </>
-            )}
+            💡 <strong>Print Tip:</strong> Prints official hotel occupancy chart for <strong>{selectedDate}</strong> on A4 portrait sheet.
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
@@ -1601,51 +1756,47 @@ export default function OccupancyChartModal({ isOpen, onClose }) {
             >
               Close
             </button>
-            {chartMode === 'daily' ? (
-              <button
-                type="button"
-                onClick={() => handlePrint(viewFilter)}
-                style={{
-                  padding: '6px 18px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
-                }}
-              >
-                <span>🖨️</span>
-                <span>Print Occupancy Chart</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handlePrintWeeklyMatrix}
-                style={{
-                  padding: '6px 18px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)'
-                }}
-              >
-                <span>🖨️</span>
-                <span>Print 7-Day Matrix</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handlePrintCleanerHistory}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '8px',
+                border: '1.5px solid #a855f7',
+                background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+                color: '#6b21a8',
+                fontWeight: 800,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>🧹</span>
+              <span>Cleaner History</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePrint(viewFilter)}
+              style={{
+                padding: '6px 18px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+              }}
+            >
+              <span>🖨️</span>
+              <span>Print Occupancy Chart ({selectedDate})</span>
+            </button>
           </div>
         </div>
       </div>

@@ -37,6 +37,7 @@ export default function CheckinSplitReceiptsModal({
       label = 'Cheque';
     }
 
+    const isPrebook = Boolean(r.is_prebooked || r.is_prebooking || r.badge === 'PRE-BOOKING ADVANCE');
     return {
       receipt_no: r.receipt_no || (modeKey === 'upi' ? 'UPI01' : modeKey === 'card' ? 'POS01' : modeKey === 'cheque' ? 'CHQ01' : 'CR01'),
       voucher_number: voucherNumber,
@@ -53,7 +54,12 @@ export default function CheckinSplitReceiptsModal({
       cheque_no: r.cheque_no || null,
       bank_name: r.bank_name || null,
       room_numbers: roomNumber,
-      particulars: r.particulars || `Room #${roomNumber} - Check-In Advance Payment (${label})`,
+      particulars: isPrebook
+        ? (r.particulars || `Room #${roomNumber} - Advance Pre-Booking Payment (${label})`)
+        : (r.particulars || `Room #${roomNumber} - Check-In Payment (${label})`),
+      stageLabel: isPrebook ? 'Paid For Pre-Booking' : 'Paid For CheckIn',
+      is_prebooking: isPrebook,
+      is_prebooked: isPrebook,
       cashier_name: cashierName,
       is_split: true
     };

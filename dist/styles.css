@@ -640,7 +640,7 @@ body.dark-theme .app-container:has(#view-hospitality.active),
 .app-container.folio-active-container {
   height: auto !important;
   max-height: none !important;
-  min-height: calc(100dvh - 68px) !important;
+  min-height: 100dvh !important;
   overflow-y: visible !important;
   overflow-x: clip !important;
   display: block !important;
@@ -3764,12 +3764,25 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .owner-rooms-table th {
-  background: var(--bg-surface-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-surface-secondary, #f8fafc);
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 0.76rem;
   letter-spacing: 0.04em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+#table-accounting-analysis th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: #1e293b !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
 .owner-rooms-table tr:hover {
@@ -4439,8 +4452,8 @@ body.dark-theme .doc-action-card {
 
 .folio-page-header {
   position: sticky !important;
-  top: 68px !important;
-  z-index: 95 !important;
+  top: 0 !important;
+  z-index: 100 !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4448,13 +4461,11 @@ body.dark-theme .doc-action-card {
   margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 10px 14px !important;
-  background: var(--bg-glass, rgba(255, 255, 255, 0.85)) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border-bottom: 1px solid var(--border-light, rgba(0, 0, 0, 0.08)) !important;
+  padding: 10px 18px !important;
+  background: #ffffff !important;
+  border-bottom: 1.5px solid var(--border-light, rgba(0, 0, 0, 0.08)) !important;
   border-radius: 0 0 14px 14px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
   transition: border-color var(--transition-fast);
 }
 
@@ -4529,10 +4540,8 @@ html.dark-theme #add-room-expense-modal {
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: var(--bg-dark-glass, rgba(18, 20, 26, 0.88)) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #0f172a !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 
@@ -7511,16 +7520,7 @@ body.table-pos-mode .table-session-header {
 /* ==========================================================================
    ROOM FOLIO & BILLING BREAKDOWN STYLES
    ========================================================================== */
-.folio-page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 0 !important;
-  margin-bottom: 16px !important;
-  padding: 4px 0 8px 0 !important;
-  flex-wrap: nowrap !important;
-  gap: 12px;
-}
+/* Folio page header styling is unified and authoritative above */
 
 .btn-back-rooms {
   display: inline-flex;
@@ -9538,12 +9538,15 @@ body.table-pos-mode .table-session-header {
    HOSPITALITY STAY HISTORY TOOLBAR & DATA TABLE
    ========================================================================== */
 .history-toolbar-card {
+  position: sticky;
+  top: 0;
+  z-index: 25;
   background: #ffffff;
   border-radius: 14px;
   border: 1.5px solid #e2e8f0;
   padding: 14px 18px;
   margin-bottom: 18px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -9693,6 +9696,9 @@ body.table-pos-mode .table-session-header {
 }
 
 .history-data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
   background: #f8fafc;
   padding: 12px 16px;
   font-size: 0.74rem;
@@ -9700,7 +9706,8 @@ body.table-pos-mode .table-session-header {
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border-bottom: 1.5px solid #e2e8f0;
+  border-bottom: 2px solid #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
 }
 
 .history-data-table td {
@@ -14067,8 +14074,8 @@ body.dark-theme .stay-metric-pill {
    ========================================================================== */
 .folio-page-header {
   position: sticky !important;
-  top: 68px !important;
-  z-index: 95 !important;
+  top: 0 !important;
+  z-index: 100 !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -14076,22 +14083,18 @@ body.dark-theme .stay-metric-pill {
   margin-bottom: 16px !important;
   gap: 12px;
   flex-wrap: nowrap !important;
-  padding: 10px 14px !important;
-  background: var(--bg-glass, rgba(255, 255, 255, 0.85)) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border-bottom: 1px solid var(--border-light, #e2e8f0) !important;
+  padding: 10px 18px !important;
+  background: #ffffff !important;
+  border-bottom: 1.5px solid var(--border-light, #e2e8f0) !important;
   border-radius: 0 0 14px 14px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06) !important;
 }
 
 [data-theme="dark"] .folio-page-header,
 body.dark-theme .folio-page-header,
 html.dark-theme .folio-page-header {
-  background: var(--bg-dark-glass, rgba(18, 20, 26, 0.88)) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: #0f172a !important;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 

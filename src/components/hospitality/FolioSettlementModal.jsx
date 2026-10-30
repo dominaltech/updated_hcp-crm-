@@ -125,40 +125,81 @@ export default function FolioSettlementModal({
 
   const effectiveAdvancePaid = Number(folioData?.advancePaid || 0);
 
-  // For OTA Prepaid stays:
-  // - Room Tariff is 100% covered by OTA voucher
-  // - If no extend, no restaurant, no bar bill, and no extra mattress: balanceDue is strictly 0
-  // - If F&B bill exists (or extension/extras): balanceDue is ONLY that unpaid amount!
-  const extraExpensesVal = Number(folioData?.expensesTotal || folioData?.extraExpensesTotal || 0);
-  const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal + extraExpensesVal) - effectiveAdvancePaid);
-  const balanceDue = isOtaPrepaid
-    ? Math.round(otaPrepaidBalanceDue)
-    : (folioData ? Math.round(Math.max(0, folioData.balanceDue !== undefined ? folioData.balanceDue : (folioData.stayCalcNow?.balanceDue ?? 0))) : 0);
+  const hasOverstayed = Boolean(
+    folioData?.isDeclaredCheckoutPassed ??
+    folioData?.hasOverstayed ??
+    folioData?.summary?.isDeclaredCheckoutPassed ??
+    folioData?.summary?.hasOverstayed ??
+    ((folioData?.stayCalcNow?.chargedDays || folioData?.summary?.stayCalcNow?.chargedDays || 1) >
+      (folioData?.stayCalcDeclared?.expectedNights || folioData?.expectedNights || 1)) ||
+    ((folioData?.stayCalcNow?.extensionCharge || folioData?.summary?.stayCalcNow?.extensionCharge || 0) > 0)
+  );
 
-  const summaryRefund = Number(folioData?.summary?.refundAmount || folioData?.refundAmount || 0);
-  const stayCalcRefundDue = Number(folioData?.stayCalcNow?.refundDue || 0);
-  const rawBalDue = Number(folioData?.balanceDue !== undefined ? folioData.balanceDue : (folioData?.stayCalcNow?.balanceDue ?? 0));
-  const isRefund = !isOtaPrepaid && (stayCalcRefundDue > 0.5 || rawBalDue < -0.5 || summaryRefund > 0.5);
-  const refundAmount = isRefund ? Math.round(stayCalcRefundDue > 0.5 ? stayCalcRefundDue : (summaryRefund > 0.5 ? summaryRefund : Math.abs(rawBalDue))) : 0;
+  const activeStayCalc = hasOverstayed
+    ? (folioData?.stayCalcNow || folioData?.summary?.stayCalcNow || folioData?.summary)
+    : (folioData?.stayCalcDeclared || folioData?.summary?.stayCalcDeclared || folioData?.summary);
 
   const effectiveRoomTariff = isOtaPrepaid
     ? 0
     : Number(
-        folioData?.roomGrossTariff ||
+        activeStayCalc?.roomSubtotalPreTax ||
+        activeStayCalc?.baseRoomTariff ||
         folioData?.roomTaxable ||
         folioData?.stayTaxable ||
+        folioData?.roomGrossTariff ||
         (folioData?.grossTariff && effectiveFnbTotal > 0 ? Math.max(0, Number(folioData?.grossTariff || 0) - effectiveFnbTotal) : folioData?.grossTariff) ||
         0
       );
   const effectiveStayTax = isOtaPrepaid
     ? 0
     : Number(
+        activeStayCalc?.roomGst ||
+        activeStayCalc?.baseRoomTariffGst ||
         folioData?.stayTax ||
         folioData?.totalGst ||
         folioData?.taxAmount ||
         folioData?.summary?.taxAmount ||
-        Math.max(0, (folioData?.roomCharge || 0) - effectiveRoomTariff)
+        Math.max(0, (activeStayCalc?.roomCharge || folioData?.roomCharge || 0) - effectiveRoomTariff)
       );
+
+  // For OTA Prepaid stays:
+  // - Room Tariff is 100% covered by OTA voucher
+  // - If no extend, no restaurant, no bar bill, and no extra mattress: balanceDue is strictly 0
+  // - If F&B bill exists (or extension/extras): balanceDue is ONLY that unpaid amount!
+  const extraExpensesVal = Number(folioData?.expensesTotal || folioData?.extraExpensesTotal || 0);
+  const otaPrepaidBalanceDue = Math.max(0, (hotelExtrasChargeVal + extensionChargeVal + fnbPendingTotal + extraExpensesVal) - effectiveAdvancePaid);
+
+  const computedRoomNet = effectiveRoomTariff + effectiveStayTax;
+  const computedStayBal = (computedRoomNet + effectiveFnbTotal + extraExpensesVal) - effectiveAdvancePaid;
+
+  const summaryRefund = Number(folioData?.summary?.refundAmount || folioData?.refundAmount || 0);
+  const stayCalcRefundDue = Number(activeStayCalc?.refundDue || folioData?.stayCalcNow?.refundDue || 0);
+  const rawBalDue = Number(
+    activeStayCalc?.balanceDue !== undefined
+      ? activeStayCalc.balanceDue
+      : (folioData?.balanceDue !== undefined ? folioData.balanceDue : computedStayBal)
+  );
+
+  const dynamicRefundDue = !isOtaPrepaid && (
+    stayCalcRefundDue > 0.5
+      ? Math.round(stayCalcRefundDue)
+      : (summaryRefund > 0.5
+          ? Math.round(summaryRefund)
+          : (computedStayBal < -0.5 ? Math.round(Math.abs(computedStayBal)) : (rawBalDue < -0.5 ? Math.round(Math.abs(rawBalDue)) : 0)))
+  );
+  const isRefund = !isOtaPrepaid && (dynamicRefundDue > 0.5);
+  const refundAmount = isRefund ? dynamicRefundDue : 0;
+
+  const dynamicBalanceDue = isOtaPrepaid
+    ? Math.round(otaPrepaidBalanceDue)
+    : (isRefund
+        ? 0
+        : (activeStayCalc?.balanceDue !== undefined && activeStayCalc.balanceDue > 0
+            ? Math.round(activeStayCalc.balanceDue)
+            : (folioData?.balanceDue !== undefined && folioData.balanceDue > 0
+                ? Math.round(folioData.balanceDue)
+                : Math.max(0, Math.round(computedStayBal)))));
+  const balanceDue = dynamicBalanceDue;
 
   useEffect(() => {
     // Only reset/initialize form fields when modal transitions from closed to open,
@@ -330,14 +371,16 @@ export default function FolioSettlementModal({
       const settleAmt = isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled);
       const refundAmt = isRefund ? refundAmount : 0;
       const finalRecalcRoom = isEarlyCheckout
-        ? (folioData.stayCalcNow?.roomCharge ?? folioData.recalculatedRoomCharge ?? folioData.summary?.recalculatedRoomCharge ?? folioData.roomCharge)
-        : (folioData.roomCharge || folioData.summary?.roomCharge || folioData.total_room_charge);
+        ? (activeStayCalc?.roomCharge ?? folioData.stayCalcNow?.roomCharge ?? folioData.recalculatedRoomCharge ?? folioData.summary?.recalculatedRoomCharge ?? folioData.roomCharge)
+        : (hasOverstayed
+            ? (activeStayCalc?.roomCharge ?? folioData.stayCalcNow?.roomCharge ?? folioData.roomCharge)
+            : (folioData.roomCharge || folioData.summary?.roomCharge || folioData.total_room_charge));
       const cleanReason = refundReason.trim() || (isEarlyCheckout ? `Early checkout refund: Stayed ${stayDurationStr || `${earlyStayDays}d ${earlyStayHours}h`}` : 'Early checkout excess refund');
 
       const payload = {
         bookingId: folioData.bookingId,
         booking_id: folioData.bookingId,
-        recalculated_room_charge: isEarlyCheckout ? finalRecalcRoom : undefined,
+        recalculated_room_charge: (isEarlyCheckout || hasOverstayed) ? finalRecalcRoom : undefined,
         isEarlyCheckout,
         is_early_checkout: isEarlyCheckout,
         isRefund,
@@ -537,7 +580,28 @@ export default function FolioSettlementModal({
                 room_numbers: roomNums,
                 particulars: `Room #${roomNums} - Checkout Bill Settlement (Cheque)`,
                 cashier_name: cashierName,
+                stageLabel: 'Paid while checkout',
                 is_split: true
+              });
+            }
+
+            // If no checkout payment was needed because advance covered the full stay:
+            if (checkoutReceipts.length === 0 && (effectiveAdvancePaid > 0 || folioData.advancePaid > 0)) {
+              const advAmt = Number(effectiveAdvancePaid || folioData.advancePaid || 0);
+              const advMode = folioData.paymentMode || folioData.payment_mode || room.payment_mode || 'Cash';
+              checkoutReceipts.push({
+                voucher_number: baseVoucher,
+                receipt_no: res.finalReceiptNo || res.receipt_no || folioData.receiptNumber || 'CR01',
+                receipt_date: new Date(),
+                guest_name: guestName,
+                amount: advAmt,
+                base_amount: advAmt,
+                payment_mode: advMode,
+                mode: String(advMode).toLowerCase(),
+                room_numbers: roomNums,
+                particulars: `Room #${roomNums} - Stay Bill Paid in Advance`,
+                cashier_name: cashierName,
+                stageLabel: 'Paid For CheckIn'
               });
             }
 
@@ -554,59 +618,86 @@ export default function FolioSettlementModal({
               });
             }
 
-            // User requirement: directly print the official Tax Invoice on checkout (and auto-save PDF in device)
+            // User requirement: First print checkout final bill (tax invoice), then print receipt of paid amount
+            const settlementData = {
+              settleAmt: isRefund ? 0 : totalSettled,
+              refundAmt: isRefund ? refundAmt : 0,
+              settled_at: new Date(),
+              cardSurcharge: isRefund ? 0 : cardSurcharge,
+              upiTax: isRefund ? 0 : upiTax,
+              splitCash: isRefund ? 0 : splitCash,
+              splitOnline: isRefund ? 0 : splitOnline,
+              splitCard: isRefund ? 0 : splitCard,
+              splitCheque: isRefund ? 0 : splitCheque,
+              onlineUtr: isRefund ? '' : onlineUtr,
+              chequeNo: isRefund ? '' : chequeNo,
+              chequeBank: isRefund ? '' : chequeBank,
+              receiptNumbers: res.receipt_numbers || res.receiptNumbers,
+              receipt_no: res.finalReceiptNo || res.final_receipt_no,
+              checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
+              company_name: checkoutCompanyName.trim() || undefined,
+              companyName: checkoutCompanyName.trim() || undefined,
+              gst_number: checkoutGstNumber.trim().toUpperCase() || undefined,
+              gstNumber: checkoutGstNumber.trim().toUpperCase() || undefined,
+              company_address: checkoutCompanyAddress.trim() || undefined,
+              companyAddress: checkoutCompanyAddress.trim() || undefined,
+              tax_type: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+              taxType: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
+              is_igst: checkoutTaxMode === 'IGST' ? 1 : 0,
+              isIgst: checkoutTaxMode === 'IGST'
+            };
+
+            // Helper to trigger payment receipt print right after Tax Invoice print dialog closes
+            let receiptPrintTriggered = false;
+            const triggerPaidReceiptPrint = () => {
+              if (receiptPrintTriggered) return;
+              receiptPrintTriggered = true;
+              if (checkoutReceipts.length > 0 && !isRefund) {
+                setTimeout(() => {
+                  try {
+                    printCashReceipt(checkoutReceipts);
+                  } catch (rcptErr) {
+                    console.warn('Error printing checkout payment receipt:', rcptErr);
+                  }
+                }, 700);
+              }
+            };
+
+            // Step 1: Print Final Bill A4 (Tax Invoice), then trigger receipt of paid amount
             try {
-              const settlementData = {
-                settleAmt: isRefund ? 0 : (isCompanyPayingLater ? 0 : totalSettled),
-                refundAmt: isRefund ? refundAmount : 0,
-                settled_at: new Date(),
-                cardSurcharge,
-                upiTax,
-                splitCash,
-                splitOnline,
-                splitCard,
-                splitCheque,
-                onlineUtr,
-                chequeNo,
-                chequeBank,
-                receiptNumbers: res.receipt_numbers || res.receiptNumbers,
-                receipt_no: res.finalReceiptNo || res.final_receipt_no,
-                checked_out_by: currentUser ? (currentUser.full_name || currentUser.username) : 'Cashier_1',
-                company_name: checkoutCompanyName.trim() || undefined,
-                companyName: checkoutCompanyName.trim() || undefined,
-                gst_number: checkoutGstNumber.trim().toUpperCase() || undefined,
-                gstNumber: checkoutGstNumber.trim().toUpperCase() || undefined,
-                company_address: checkoutCompanyAddress.trim() || undefined,
-                companyAddress: checkoutCompanyAddress.trim() || undefined,
-                tax_type: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
-                taxType: checkoutTaxMode === 'IGST' ? 'IGST' : 'CGST_SGST',
-                is_igst: checkoutTaxMode === 'IGST' ? 1 : 0,
-                isIgst: checkoutTaxMode === 'IGST'
-              };
-              printFinalBillA4(room, folioData, settlementData);
+              printFinalBillA4(room, folioData, settlementData, {
+                onAfterPrint: triggerPaidReceiptPrint
+              });
             } catch (invErr) {
               console.warn('Direct print tax invoice on checkout failed:', invErr);
+              triggerPaidReceiptPrint();
             }
-          }
 
-          if (isRefund && refundAmt > 0) {
-            const debNo = folioData.voucherNumber || folioData.voucher_number || room.voucher_number || room.checkin_voucher_no || res.data?.refundVoucherNo || res.refundVoucherNo || `DEB-${Date.now().toString().slice(-4)}`;
-            printPettyCashVoucher({
-              voucher_no: debNo,
-              voucher_number: debNo,
-              checkin_voucher_no: folioData.voucherNumber || room.voucher_number,
-              created_at: new Date(),
-              expense_date: new Date(),
-              guest_name: folioData.guestName,
-              paid_to: folioData.guestName,
-              amount: refundAmt,
-              payment_mode: returnType,
-              category: 'refund',
-              debit_account: 'Guest Refund A/c',
-              description: cleanReason,
-              room_number: room.room_number,
-              cashier_name: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
-            });
+            // Step 2: If refund, then print refund voucher with 900ms gap
+            if (isRefund && refundAmt > 0) {
+              const rrNo = res.refund_voucher_no || res.refundVoucherNo || res.rr_number || 'RR-01';
+              const refBill = res.ref_bill_no || res.checkin_voucher_no || folioData.voucherNumber || room.voucher_number;
+              setTimeout(() => {
+                printPettyCashVoucher({
+                  voucher_no: rrNo,
+                  voucher_number: rrNo,
+                  rr_number: rrNo,
+                  ref_bill_no: refBill,
+                  checkin_voucher_no: refBill,
+                  created_at: new Date(),
+                  expense_date: new Date(),
+                  guest_name: folioData.guestName,
+                  paid_to: folioData.guestName,
+                  amount: refundAmt,
+                  payment_mode: returnType,
+                  category: 'refund',
+                  debit_account: 'Guest Refund A/c',
+                  description: cleanReason,
+                  room_number: room.room_number,
+                  cashier_name: currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk'
+                });
+              }, 900);
+            }
           }
         } catch (printErr) {
           console.warn('Print error during checkout settlement:', printErr);

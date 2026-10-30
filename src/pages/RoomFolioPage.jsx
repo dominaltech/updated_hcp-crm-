@@ -368,29 +368,54 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
       const foodTotal = Number(summary.foodTotal ?? 0);
       const barTotal = Number(summary.barTotal ?? 0);
       const expensesTotal = Number(summary.expensesTotal ?? raw.expensesTotal ?? 0);
+
+      const dExpected = r.approx_checkout_time ? new Date(r.approx_checkout_time) : null;
+      const isPastDeclaredTime = Boolean(dExpected && !isNaN(dExpected.getTime()) && Date.now() > dExpected.getTime());
+      const hasOverstayed = Boolean(
+        summary.isDeclaredCheckoutPassed ??
+        summary.hasOverstayed ??
+        (isPastDeclaredTime ||
+          ((summary.stayCalcNow?.chargedDays || 1) > (summary.stayCalcDeclared?.expectedNights || summary.expectedNights || 1)) ||
+          ((summary.stayCalcNow?.extensionCharge || 0) > 0))
+      );
+
+      // User rule: till declared time pass => Checkout @ Declared Time; if passed => Checkout Right Now (due according to slabs, entire day)
+      const activeStayCalc = hasOverstayed
+        ? (summary.stayCalcNow || summary)
+        : (summary.stayCalcDeclared || summary);
+
       const roomCharge = isBookingOta
         ? Number(summary.roomCharge ?? (r.total_room_charge || 0))
-        : Number(summary.stayCalcNow?.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
+        : Number(activeStayCalc.roomCharge ?? summary.roomCharge ?? (r.total_room_charge || 0));
       const discountAmount = isBookingOta
         ? 0
-        : Number(summary.stayCalcNow?.discountAmount ?? summary.discountAmount ?? (r.discount_amount || 0));
+        : Number(activeStayCalc.discountAmount ?? summary.discountAmount ?? (r.discount_amount || 0));
       const discountPct = isBookingOta
         ? 0
-        : Number(summary.stayCalcNow?.discountPct ?? summary.discountPct ?? (r.discount_pct || 0));
+        : Number(activeStayCalc.discountPct ?? summary.discountPct ?? (r.discount_pct || 0));
       const roomGrossTariff = isBookingOta
         ? Number(summary.roomGrossTariff ?? summary.grossTariff ?? (roomCharge + discountAmount))
-        : Number(summary.stayCalcNow?.grossTariff ?? summary.roomGrossTariff ?? summary.roomTaxable ?? (roomCharge + discountAmount));
+        : Number(activeStayCalc.grossTariff ?? activeStayCalc.roomGrossTariff ?? summary.roomGrossTariff ?? (roomCharge + discountAmount));
       const roomTaxable = isBookingOta
         ? Number(summary.roomTaxable ?? summary.stayTaxable ?? Math.round((roomCharge * 0.95) * 100) / 100)
-        : Number(summary.stayCalcNow?.roomSubtotalPreTax ?? summary.roomTaxable ?? summary.stayTaxable ?? roomCharge);
+        : Number(activeStayCalc.roomSubtotalPreTax ?? activeStayCalc.baseRoomTariff ?? summary.roomTaxable ?? roomCharge);
       const stayTaxable = roomTaxable;
       const stayTax = isBookingOta
         ? Number(summary.stayTax ?? Math.max(0, Number((roomCharge - roomTaxable).toFixed(2))))
-        : Number(summary.stayCalcNow?.roomGst ?? summary.stayTax ?? summary.taxAmount ?? Math.max(0, roomCharge - roomTaxable));
+        : Number(activeStayCalc.roomGst ?? activeStayCalc.baseRoomTariffGst ?? summary.stayTax ?? Math.max(0, roomCharge - roomTaxable));
       const grossTariff = roomGrossTariff;
-      const netTotalCharge = Number(summary.stayCalcNow?.grandTotal ?? summary.netTotalCharge ?? (summary.grandTotal ?? (roomCharge + foodTotal + barTotal + expensesTotal)));
+      const netTotalCharge = Number(
+        activeStayCalc.grandTotal ??
+        summary.grandTotal ??
+        summary.netTotalCharge ??
+        (roomCharge + foodTotal + barTotal + expensesTotal)
+      );
       const advancePaid = Number(summary.advancePaid ?? (summary.initialPaid ?? (r.initial_paid || r.total_paid || 0)));
-      const balanceDue = Number(summary.stayCalcNow?.balanceDue ?? summary.balanceDue ?? (netTotalCharge - advancePaid));
+      const balanceDue = Number(
+        activeStayCalc.balanceDue ??
+        summary.balanceDue ??
+        Math.max(0, netTotalCharge - advancePaid)
+      );
       const visitors = Array.isArray(raw.visitors) ? raw.visitors : [];
       const payments = Array.isArray(raw.payments) ? raw.payments : [];
       const visitorsCount = Number(summary.visitorsCount ?? visitors.length);
@@ -503,6 +528,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         extension_logs: Array.isArray(r.extension_logs) ? r.extension_logs : (r.extension_logs_json ? JSON.parse(r.extension_logs_json) : (Array.isArray(raw.extension_logs) ? raw.extension_logs : [])),
         stayCalcNow: summary.stayCalcNow || null,
         stayCalcDeclared: summary.stayCalcDeclared || null,
+        hasOverstayed: Boolean(hasOverstayed),
+        isDeclaredCheckoutPassed: Boolean(hasOverstayed),
         diningLink: raw.diningLink || res?.diningLink || null,
         isCheckedOut: Boolean(res?.is_checked_out || raw?.is_checked_out || r.booking_status === 'checked_out' || (r.status && r.status !== 'occupied'))
       };
@@ -601,6 +628,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     const list = [];
     if (Array.isArray(folioData.payments) && folioData.payments.length > 0) {
       folioData.payments.forEach(p => {
+        if (p.payment_type === 'refund' || String(p.receipt_no).startsWith('RR-')) {
+          return; // Handled in dedicated folioRefundPayments below
+        }
         const sCash = parseFloat(p.split_cash) || 0;
         const sOnline = parseFloat(p.split_online) || 0;
         const sCard = parseFloat(p.split_card) || 0;
@@ -774,6 +804,32 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
     folioData?.roomCharge,
     folioData?.checkedInBy
   ]);
+
+  // Dedicated refund payments list for this stay (displays below checkin/advance receipts)
+  const folioRefundPayments = useMemo(() => {
+    if (!folioData) return [];
+    const list = [];
+    if (Array.isArray(folioData.payments)) {
+      folioData.payments.forEach(p => {
+        if (p.payment_type === 'refund' || String(p.receipt_no).startsWith('RR-')) {
+          list.push(p);
+        }
+      });
+    }
+    const rRefund = parseFloat(folioData.room?.refund_amount || folioData.refundAmount || 0);
+    if (list.length === 0 && rRefund > 0) {
+      list.push({
+        id: 'checkout-refund',
+        receipt_no: folioData.room?.refund_voucher_no || folioData.refund_voucher_no || 'RR-01',
+        amount: rRefund,
+        payment_mode: folioData.room?.refund_mode || folioData.refund_mode || 'Cash',
+        payment_type: 'refund',
+        created_at: folioData.room?.actual_checkout_time || new Date(),
+        cashier_name: folioData.room?.checked_out_by || 'Front Desk'
+      });
+    }
+    return list;
+  }, [folioData]);
 
   const handleOpenExtendPaymentModal = () => {
     if (!extendDate) {
@@ -1453,7 +1509,14 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const hotelExtrasChargeVal = Number(folioData.extraBedCharge || 0) + Number(folioData.extra_rooms_charge || 0) + Number(folioData.extra_breakfast_charge || 0) + otaEarlyFeeVal;
   const globalStayNet = isOtaPrepaid
     ? (globalAdvancePaid > 0 ? Math.max(hotelExtrasChargeVal, globalAdvancePaid) : hotelExtrasChargeVal)
-    : Number(folioData.stayCalcDeclared?.roomCharge ?? folioData.originalRoomCharge ?? folioData.roomCharge ?? folioData.stayCalcNow?.roomCharge ?? 0);
+    : Number(
+        folioData.stayCalcNow?.roomCharge ??
+        folioData.stayCalcNow?.grandTotal ??
+        folioData.stayCalcDeclared?.roomCharge ??
+        folioData.roomCharge ??
+        folioData.originalRoomCharge ??
+        0
+      );
   const globalRawStayBalance = isOtaPrepaid
     ? (hotelExtrasChargeVal - globalAdvancePaid)
     : (globalStayNet - globalAdvancePaid);
@@ -1833,18 +1896,21 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
   return (
     <section className="panel-view active" id="view-room-folio" style={{ marginTop: 0, paddingTop: 0 }}>
-      {/* Top Action Toolbar with Universal Back Button & Sticky Glassmorphism */}
+      {/* Top Action Toolbar with Universal Back Button */}
       <div
         className="folio-page-header"
         style={{
           position: 'sticky',
-          top: '68px',
-          zIndex: 95,
+          top: 0,
+          zIndex: 100,
           marginTop: 0,
-          marginBottom: '10px',
+          marginBottom: '16px',
           marginLeft: '-18px',
           marginRight: '-18px',
-          padding: '6px 18px',
+          padding: '10px 18px',
+          background: 'var(--bg-card, #ffffff)',
+          borderBottom: '1.5px solid var(--border-light, #e2e8f0)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
           boxSizing: 'border-box'
         }}
       >
@@ -2046,7 +2112,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
 
       {/* In-Room Food Ordering Link & Reshare Bar */}
       <div className="dining-link-bar" style={{
-        margin: '0 0 16px 0',
+        margin: '12px 0 16px 0',
         padding: '12px 18px',
         background: diningLinkData?.hasActiveLink 
           ? 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)' 
@@ -2730,7 +2796,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 <div>
                   <div style={{ fontSize: '0.66rem', color: '#334155', fontWeight: 750, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Total Bill</div>
                   <div style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0f172a' }}>
-                    {formatCurrency(Number(folioData.summary?.grandTotal ?? folioData.summary?.netTotalCharge ?? ((folioData.roomCharge || 0) + Number(folioData.summary?.foodTotal || 0) + Number(folioData.summary?.barTotal || 0) + Number(folioData.summary?.expensesTotal || 0))))}
+                    {formatCurrency(folioData.grandTotal ?? folioData.netTotalCharge ?? folioData.summary?.grandTotal ?? ((folioData.roomCharge || 0) + Number(folioData.summary?.foodTotal || 0) + Number(folioData.summary?.barTotal || 0) + Number(folioData.summary?.expensesTotal || 0)))}
                   </div>
                 </div>
                 <div>
@@ -2741,8 +2807,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 </div>
                 <div>
                   <div style={{ fontSize: '0.66rem', color: '#dc2626', fontWeight: 750, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Balance Due</div>
-                  <div style={{ fontSize: '0.94rem', fontWeight: 900, color: Number(folioData.summary?.balanceDue ?? folioData.balanceDue ?? 0) <= 0 ? '#16a34a' : '#dc2626' }}>
-                    {Number(folioData.summary?.balanceDue ?? folioData.balanceDue ?? 0) <= 0 ? '₹0 (PAID)' : formatCurrency(folioData.summary?.balanceDue ?? folioData.balanceDue ?? 0)}
+                  <div style={{ fontSize: '0.94rem', fontWeight: 900, color: Number(folioData.balanceDue ?? folioData.summary?.balanceDue ?? 0) <= 0 ? '#16a34a' : '#dc2626' }}>
+                    {Number(folioData.balanceDue ?? folioData.summary?.balanceDue ?? 0) <= 0 ? '₹0 (PAID)' : formatCurrency(folioData.balanceDue ?? folioData.summary?.balanceDue ?? 0)}
                   </div>
                 </div>
               </div>
@@ -3035,6 +3101,95 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   );
                 })}
 
+                {/* Refund Receipts (Displayed below all advance receipts) */}
+                {folioRefundPayments.map((refP, refIdx) => {
+                  const refNo = refP.receipt_no || refP.voucher_no || folioData.room?.refund_voucher_no || folioData.refund_voucher_no || 'RR-01';
+                  const refAmount = Math.abs(Number(refP.amount || folioData.room?.refund_amount || folioData.refundAmount || 0));
+                  const refMode = (refP.payment_mode || folioData.room?.refund_mode || 'Cash').toUpperCase();
+                  const refDate = refP.realized_at || refP.created_at || folioData.room?.actual_checkout_time || new Date();
+                  const refBill = folioData.voucherNumber || folioData.room?.voucher_number || '';
+
+                  return (
+                    <div
+                      key={refP.id || `ref-${refIdx}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '14px 18px',
+                        background: '#fff1f2',
+                        borderRadius: '12px',
+                        border: '1.5px solid #fecaca',
+                        boxShadow: '0 2px 8px rgba(220, 38, 38, 0.05)',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 900, color: '#991b1b', fontSize: '1rem', letterSpacing: '0.2px' }}>
+                            Refund Receipt: {refNo}
+                          </span>
+                          {refBill && (
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', background: '#ffffff', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px' }}>
+                              Ref. Bill No: {refBill}
+                            </span>
+                          )}
+                          <span style={{ fontSize: '0.72rem', fontWeight: 900, background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', padding: '2px 8px', borderRadius: '6px' }}>
+                            REFUNDED
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.80rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>📅 {formatDateTime(refDate)}</span>
+                          <span>•</span>
+                          <span>💳 Mode: <strong style={{ color: '#0f172a' }}>{refMode}</strong></span>
+                          {refP.utr_number ? <span>• UTR: <strong style={{ color: '#0369a1' }}>{refP.utr_number}</strong></span> : ''}
+                          <span>•</span>
+                          <span>👤 By: <strong>{refP.cashier_name || 'Front Desk'}</strong></span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.70rem', color: '#991b1b', fontWeight: 750, textTransform: 'uppercase' }}>Amount Refunded</div>
+                          <strong style={{ fontSize: '1.25rem', color: '#dc2626', fontWeight: 950 }}>
+                            - {formatCurrency(refAmount)}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          id={`btn-print-refund-${refNo}`}
+                          onClick={() => {
+                            printPettyCashVoucher({
+                              voucher_no: refNo,
+                              voucher_number: refNo,
+                              rr_number: refNo,
+                              ref_bill_no: refBill,
+                              checkin_voucher_no: refBill,
+                              created_at: refDate,
+                              expense_date: refDate,
+                              guest_name: folioData.guestName,
+                              paid_to: folioData.guestName,
+                              amount: refAmount,
+                              payment_mode: refMode.toLowerCase(),
+                              category: 'refund',
+                              debit_account: 'Guest Refund A/c',
+                              description: `Early checkout refund: Stayed Room ${folioData.roomNumber}`,
+                              room_number: folioData.roomNumber,
+                              cashier_name: refP.cashier_name || (currentUser ? (currentUser.full_name || currentUser.username) : 'Front Desk')
+                            });
+                          }}
+                          style={{ fontSize: '0.78rem', padding: '6px 14px', fontWeight: 800, color: '#dc2626', borderColor: '#fca5a5', background: '#ffffff', display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
+                          title="Print Official Refund Voucher (RR)"
+                        >
+                          <span>🖨️</span> Print Refund Receipt
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {/* Total Collections Summary Footer Bar */}
                 <div
                   style={{
@@ -3215,6 +3370,37 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           const decRawBal = decFolioTotal - advancePaidVal;
           const decDue = Math.max(0, decRawBal);
           const decRefund = decRawBal < 0 ? Math.abs(decRawBal) : 0;
+
+          // Now Stay & Tariff Parameters (available component-wide for 'If Checkout Right Now')
+          const nowDays = Number(folioData.stayCalcNow?.chargedDays || folioData.chargedDays || 1);
+          const nowBaseTariff = Number(folioData.stayCalcNow?.baseRoomTariff ?? (nowDays * dailyBaseRate));
+          const nowExtraMattressCost = Number(folioData.stayCalcNow?.extraMattressCost ?? (nowDays * extraBedDaily));
+          const nowBreakfastCost = Number(folioData.stayCalcNow?.breakfastCost ?? (hasBreakfast ? (nowDays * breakfastPax * breakfastDailyRate) : 0));
+          const nowExtensionCharge = Number(folioData.stayCalcNow?.extensionCharge ?? folioData.earlyExtensionCharge ?? 0);
+          const nowPreTaxGross = Number(folioData.stayCalcNow?.baseRoomTariff !== undefined
+            ? (nowBaseTariff + nowExtraMattressCost + nowBreakfastCost + nowExtensionCharge)
+            : (nowBaseTariff + nowExtraMattressCost + nowBreakfastCost + nowExtensionCharge));
+
+          const nowDiscountAmount = Number(
+            folioData.stayCalcNow?.discountAmount ??
+            (folioData.discountPct > 0
+              ? Math.round((nowPreTaxGross * folioData.discountPct) / 100)
+              : (folioData.discountAmount || 0))
+          );
+          const nowPreTaxRoom = Number(folioData.stayCalcNow?.roomSubtotalPreTax ?? (nowPreTaxGross - nowDiscountAmount));
+          const nowTotalRoomGst = Number(folioData.stayCalcNow?.roomGst ?? Math.round((nowPreTaxRoom * effectiveGstPct) / 100));
+          const nowCalculatedRoomCharge = nowPreTaxRoom + nowTotalRoomGst;
+          const nowRoomCharge = Number(folioData.stayCalcNow?.roomCharge ?? (folioData.isEarlyCheckout ? (folioData.recalculatedRoomCharge || nowCalculatedRoomCharge) : (folioData.stayCalcNow ? nowCalculatedRoomCharge : stayNetTotal)));
+
+          const nowUnroundedTotal = isOtaPrepaidStay
+            ? (hotelExtrasCharge + fnbPendingTotal + expensesTotal)
+            : (nowRoomCharge + fnbPendingTotal + expensesTotal);
+          const nowRoundedTotal = Math.round(nowUnroundedTotal);
+          const nowRoundOff = Math.round((nowRoundedTotal - nowUnroundedTotal) * 100) / 100;
+          const nowFolioTotal = nowRoundedTotal;
+          const nowRawBal = nowFolioTotal - advancePaidVal;
+          const nowDue = Math.max(0, nowRawBal);
+          const nowRefund = nowRawBal < 0 ? Math.abs(nowRawBal) : 0;
 
           return (
             <React.Fragment>
@@ -5025,22 +5211,23 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                 ) : (
                   <>
                     {(() => {
-                      const tileDiscountAmount = Number(folioData.stayCalcDeclared?.discountAmount ?? folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
-                      const decTariffVal = isOtaPrepaidStay
+                      const tileDiscountAmount = Number(folioData.stayCalcNow?.discountAmount ?? folioData.discountAmount ?? 0);
+                      // User requirement: Bottom 5 financial summary tiles strictly reflect 'If Checkout Right Now'
+                      const nowTariffVal = isOtaPrepaidStay
                         ? stayNetTotal
                         : (fnbPendingTotal > 0 || fnbPaidTotal > 0
-                            ? decRoomCharge
-                            : (decPreTaxGross || folioData.grossTariff || stayNetTotal));
-                      const decTotalAmountVal = decRoundedTotal;
-                      const decBalanceVal = decRefund > 0 ? decRefund : decDue;
-                      const tileRoundOff = typeof decRoundOff !== 'undefined' ? decRoundOff : Math.round((decRoundedTotal - decUnroundedTotal) * 100) / 100;
+                            ? nowRoomCharge
+                            : (typeof nowPreTaxGross !== 'undefined' ? nowPreTaxGross : (folioData?.stayCalcNow?.baseRoomTariff || folioData?.grossTariff || stayNetTotal)));
+                      const nowTotalAmountVal = nowRoundedTotal;
+                      const nowBalanceVal = nowRefund > 0 ? nowRefund : nowDue;
+                      const tileRoundOff = typeof nowRoundOff !== 'undefined' ? nowRoundOff : Math.round((nowRoundedTotal - nowUnroundedTotal) * 100) / 100;
 
                       return (
                         <>
                           <div className="financial-tile">
                             <span className="tile-label">{fnbPendingTotal > 0 ? 'Room Stay Bill' : (fnbPaidTotal > 0 ? 'Room Stay Bill' : 'Tariff Subtotal')}</span>
                             <strong className="tile-val">
-                              {formatCurrency(decTariffVal)}
+                              {formatCurrency(nowTariffVal)}
                             </strong>
                             <small>
                               {isOtaPrepaidStay
@@ -5049,7 +5236,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                                     ? 'OTA Package + Extras'
                                     : (fnbPendingTotal > 0 || fnbPaidTotal > 0
                                         ? `Incl. 5% GST${tileDiscountAmount > 0 ? ` (Disc -${formatCurrency(tileDiscountAmount)})` : ''}`
-                                        : `Stay Tariff (${decDays} Day${decDays > 1 ? 's' : ''})`))}
+                                        : `Stay Tariff (${nowDays || 1} Day${(nowDays || 1) > 1 ? 's' : ''})`))}
                             </small>
                           </div>
                           <div className="financial-tile">
@@ -5062,7 +5249,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           <div className="financial-tile">
                             <span className="tile-label">Total Amount</span>
                             <strong className="tile-val">
-                              {formatCurrency(decTotalAmountVal)}
+                              {formatCurrency(nowTotalAmountVal)}
                             </strong>
                             <small>
                               {isOtaPrepaidStay
@@ -5070,8 +5257,8 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                                     ? `Stay Covered (OTA) + F&B (${formatCurrency(fnbPendingTotal)})`
                                     : `Stay Covered (OTA Voucher: ${formatCurrency(entireBookingVal)})`)
                                 : (fnbPendingTotal > 0
-                                    ? `Stay (${formatCurrency(decRoomCharge)}) + F&B (${formatCurrency(fnbPendingTotal)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`
-                                    : (isOtaPayAtHotel ? 'Payable at Desk' : `Stay (${formatCurrency(decRoomCharge)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`))}
+                                    ? `Stay (${formatCurrency(nowRoomCharge)}) + F&B (${formatCurrency(fnbPendingTotal)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`
+                                    : (isOtaPayAtHotel ? 'Payable at Desk' : `Stay (${formatCurrency(nowRoomCharge)})${expensesTotal > 0 ? ` + Extras (${formatCurrency(expensesTotal)})` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`))}
                             </small>
                           </div>
                           <div className="financial-tile">
@@ -5085,22 +5272,22 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           </div>
                           <div
                             className="financial-tile"
-                            style={decRefund > 0 ? { background: 'rgba(34, 197, 94, 0.08)', border: '1.5px solid #86efac' } : { border: decDue > 0 ? '1.5px solid #fca5a5' : undefined }}
+                            style={nowRefund > 0 ? { background: 'rgba(34, 197, 94, 0.08)', border: '1.5px solid #86efac' } : { border: nowDue > 0 ? '1.5px solid #fca5a5' : undefined }}
                           >
-                            <span className="tile-label" style={{ color: decRefund > 0 ? '#166534' : undefined }}>
-                              {decRefund > 0 ? 'Refund Due' : 'Remaining Due'}
+                            <span className="tile-label" style={{ color: nowRefund > 0 ? '#166534' : undefined }}>
+                              {nowRefund > 0 ? 'Refund Due' : 'Remaining Due'}
                             </span>
-                            <strong className="tile-val" style={{ color: decRefund > 0 ? '#15803d' : (decDue <= 0 ? '#15803d' : '#b91c1c') }}>
-                              {formatCurrency(decBalanceVal)}
+                            <strong className="tile-val" style={{ color: nowRefund > 0 ? '#15803d' : (nowDue <= 0 ? '#15803d' : '#b91c1c') }}>
+                              {formatCurrency(nowBalanceVal)}
                             </strong>
-                            <small style={{ color: decRefund > 0 ? '#15803d' : undefined }}>
-                              {decRefund > 0
+                            <small style={{ color: nowRefund > 0 ? '#15803d' : undefined }}>
+                              {nowRefund > 0
                                 ? `Refund to guest (${formatCurrency(fnbPendingTotal)} F&B covered by advance)`
-                                : (decDue <= 0
+                                : (nowDue <= 0
                                     ? 'Fully Settled (₹0 Due)'
                                     : (fnbPendingTotal > 0 || expensesTotal > 0
-                                        ? `${formatCurrency(Math.max(0, decRoomCharge - advancePaidVal))} Stay${fnbPendingTotal > 0 ? ` + ${formatCurrency(fnbPendingTotal)} F&B` : ''}${expensesTotal > 0 ? ` + ${formatCurrency(expensesTotal)} Extras` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`
-                                        : 'Due at declared checkout'))}
+                                        ? `${formatCurrency(Math.max(0, nowRoomCharge - advancePaidVal))} Stay${fnbPendingTotal > 0 ? ` + ${formatCurrency(fnbPendingTotal)} F&B` : ''}${expensesTotal > 0 ? ` + ${formatCurrency(expensesTotal)} Extras` : ''}${tileRoundOff !== 0 ? ` ${tileRoundOff > 0 ? `+ R.Off (${formatCurrency(tileRoundOff)})` : `- R.Off (${formatCurrency(Math.abs(tileRoundOff))})`}` : ''}`
+                                        : 'Due if checkout right now'))}
                             </small>
                           </div>
                         </>
@@ -5197,6 +5384,10 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
         folioData={folioData ? {
           ...folioData,
           balanceDue: folioDueAmount,
+          hasOverstayed: Boolean(folioData.hasOverstayed),
+          isDeclaredCheckoutPassed: Boolean(folioData.isDeclaredCheckoutPassed),
+          stayCalcNow: folioData.stayCalcNow || folioData.summary?.stayCalcNow,
+          stayCalcDeclared: folioData.stayCalcDeclared || folioData.summary?.stayCalcDeclared,
           isOtaPrepaid,
           foodTotal: globalPendingFoodTotal,
           barTotal: globalPendingBarTotal,
@@ -5873,6 +6064,9 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                           <th style={{ padding: '8px 12px', textAlign: 'center', width: '55px' }}>Qty</th>
                           <th style={{ padding: '8px 12px', textAlign: 'right', width: '80px' }}>Rate</th>
                           <th style={{ padding: '8px 12px', textAlign: 'right', width: '90px' }}>Total</th>
+                          {(currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.can_access_manager) && (
+                            <th style={{ padding: '8px 8px', textAlign: 'center', width: '42px', color: '#dc2626' }}>Del</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -5890,6 +6084,60 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                                 <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>{q}</td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b' }}>{formatCurrency(p)}</td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{formatCurrency(q * p)}</td>
+                                {(currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.can_access_manager) && (
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const dishName = it.name || it.item_name || 'Dish';
+                                        if (!window.confirm(`Delete "${dishName}" from order #${selectedFnbOrder.order_number || selectedFnbOrder.id}? This will recalculate the bill in both Restaurant and Hospitality.`)) {
+                                          return;
+                                        }
+                                        try {
+                                          let res;
+                                          if (selectedFnbOrder.department === 'bar') {
+                                            res = await api.deleteBarOrderItem(selectedFnbOrder.id, idx);
+                                          } else {
+                                            res = await api.deleteRestaurantOrderItem(selectedFnbOrder.id, idx);
+                                          }
+                                          if (res && res.success) {
+                                            showToast(`Dish "${dishName}" removed. Bill recalculated.`, 'green');
+                                            if (res.orderDeleted) {
+                                              setSelectedFnbOrder(null);
+                                            } else if (res.updatedOrder) {
+                                              setSelectedFnbOrder(prev => ({
+                                                ...prev,
+                                                ...res.updatedOrder,
+                                                items_json: JSON.stringify(res.updatedOrder.items),
+                                                items: res.updatedOrder.items
+                                              }));
+                                            }
+                                            folioMemoryCache.delete(roomId);
+                                            await loadFolio(true);
+                                          } else {
+                                            showToast(res?.error || 'Failed to remove dish', 'red');
+                                          }
+                                        } catch (err) {
+                                          showToast('Error removing dish: ' + err.message, 'red');
+                                        }
+                                      }}
+                                      style={{
+                                        background: '#fee2e2',
+                                        color: '#dc2626',
+                                        border: '1px solid #fca5a5',
+                                        borderRadius: '6px',
+                                        padding: '2px 6px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer'
+                                      }}
+                                      title="Delete this dish (Admin)"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </td>
+                                )}
                               </tr>
                             );
                           })
@@ -6248,10 +6496,57 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
                   background: '#f8fafc',
                   borderTop: '1px solid #e2e8f0',
                   display: 'flex',
-                  justifyContent: isPaid ? 'space-between' : 'flex-end',
-                  alignItems: 'center'
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px'
                 }}
               >
+                {/* Admin Delete Entire Bill Action */}
+                {(currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.can_access_manager) && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ordNum = selectedFnbOrder.order_number || selectedFnbOrder.id;
+                      if (!window.confirm(`Are you sure you want to permanently DELETE entire bill #${ordNum} (₹${selectedFnbOrder.total})? This will update both Hospitality Room Folio and Restaurant POS calculations.`)) {
+                        return;
+                      }
+                      try {
+                        let res;
+                        if (selectedFnbOrder.department === 'bar') {
+                          res = await api.deleteBarOrder(selectedFnbOrder.id);
+                        } else {
+                          res = await api.deleteRestaurantOrder(selectedFnbOrder.id);
+                        }
+                        if (res && res.success) {
+                          showToast(`Bill #${ordNum} deleted successfully.`, 'green');
+                          setSelectedFnbOrder(null);
+                          folioMemoryCache.delete(roomId);
+                          await loadFolio(true);
+                        } else {
+                          showToast(res?.error || 'Failed to delete bill', 'red');
+                        }
+                      } catch (err) {
+                        showToast('Error deleting bill: ' + err.message, 'red');
+                      }
+                    }}
+                    style={{
+                      background: '#fee2e2',
+                      color: '#b91c1c',
+                      border: '1.5px solid #fca5a5',
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      fontWeight: 800,
+                      fontSize: '0.80rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    <span>🗑️</span> Delete Entire Bill (Admin)
+                  </button>
+                )}
                 {isPaid && (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button

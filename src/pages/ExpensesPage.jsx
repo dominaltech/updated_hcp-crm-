@@ -791,6 +791,8 @@ export default function ExpensesPage({ onPrintVoucher }) {
         <div
           style={{
             overflowX: 'auto',
+            overflowY: 'auto',
+            maxHeight: 'calc(100vh - 240px)',
             background: '#ffffff',
             borderRadius: '14px',
             border: '1.5px solid #e2e8f0',
@@ -941,6 +943,8 @@ export default function ExpensesPage({ onPrintVoucher }) {
         <div
           style={{
             overflowX: 'auto',
+            overflowY: 'auto',
+            maxHeight: 'calc(100vh - 240px)',
             background: '#ffffff',
             borderRadius: '14px',
             border: '1.5px solid #e2e8f0',

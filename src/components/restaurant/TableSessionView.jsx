@@ -21,11 +21,23 @@ export default function TableSessionView({
   const isRoomService = table.table_type === 'room_service' || String(table.table_number || '').startsWith('RS-');
   const isParcel = table.table_type === 'parcel' || table.is_parcel || table.is_takeaway;
 
+  // Header Title & Icon
+  let titleIcon = '🍽️';
+  let titleText = table.name || `Table ${table.table_number}`;
+  if (isRoomService) {
+    titleIcon = '🛎️';
+    titleText = `Room Service • Room #${String(table.table_number || '').replace(/^RS-/i, '')}`;
+  } else if (isParcel) {
+    titleIcon = '📦';
+    titleText = `Takeaway • ${String(table.table_number || '').replace(/^P-/i, 'Parcel #')}`;
+  }
+
   const [cart, setCart] = useState(() => (table && table.cart ? [...table.cart] : []));
   const initialCartRef = useRef(table && table.cart ? [...table.cart] : []);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [waiterName, setWaiterName] = useState(table.waiter_name || '');
+  const [showUnsavedGuardModal, setShowUnsavedGuardModal] = useState(false);
   
   // Pre-select chargeToRoomId if room service
   const initialRoomId = useMemo(() => {
@@ -265,40 +277,51 @@ export default function TableSessionView({
     }
   };
 
-  // Back click handler: Auto-saves order in background and returns without blocking popup
-  const handleBackClick = async () => {
+  // User requirement: When selected items exist in order & back button pressed, ask via popup: Save or Discard
+  const handleBackClick = () => {
     if (cart.length > 0) {
-      try {
-        const payload = {
-          cart,
-          waiterName,
-          chargeToRoomId: chargeToRoomId || null,
-          subtotal,
-          gst,
-          grandTotal
-        };
-        if (department === 'bar') {
-          await api.saveBarCart(table.id, payload);
-        } else {
-          await api.saveRestaurantCart(table.id, payload);
-        }
-        showToast(`Order for ${titleText} saved.`, 'info', 1800);
-      } catch (e) {
-        console.warn('Auto-saving cart on back:', e);
-      }
+      setShowUnsavedGuardModal(true);
     } else {
-      if (isRoomService || isParcel) {
-        try {
-          if (department === 'bar') {
-            await api.cancelBarTable(table.id);
-          } else {
-            await api.cancelRestaurantTable(table.id);
-          }
-        } catch (e) {
-          console.warn('Error auto-cleaning empty session:', e);
+      handleDiscardAndExit();
+    }
+  };
+
+  const handleSaveAndExit = async () => {
+    try {
+      const payload = {
+        cart,
+        waiterName,
+        chargeToRoomId: chargeToRoomId || null,
+        subtotal,
+        gst,
+        grandTotal
+      };
+      if (department === 'bar') {
+        await api.saveBarCart(table.id, payload);
+      } else {
+        await api.saveRestaurantCart(table.id, payload);
+      }
+      showToast(`Order for ${titleText} saved.`, 'info', 1800);
+    } catch (e) {
+      console.warn('Saving cart on back:', e);
+    }
+    setShowUnsavedGuardModal(false);
+    onBack();
+  };
+
+  const handleDiscardAndExit = async () => {
+    if (isRoomService || isParcel) {
+      try {
+        if (department === 'bar') {
+          await api.cancelBarTable(table.id);
+        } else {
+          await api.cancelRestaurantTable(table.id);
         }
+      } catch (e) {
+        console.warn('Error cancelling empty/discarded session:', e);
       }
     }
+    setShowUnsavedGuardModal(false);
     onBack();
   };
 
@@ -327,16 +350,7 @@ export default function TableSessionView({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [cart, waiterName, chargeToRoomId, subtotal, gst, grandTotal]);
 
-  // Header Title & Icon
-  let titleIcon = '🍽️';
-  let titleText = table.name || `Table ${table.table_number}`;
-  if (isRoomService) {
-    titleIcon = '🛎️';
-    titleText = `Room Service • Room #${String(table.table_number || '').replace(/^RS-/i, '')}`;
-  } else if (isParcel) {
-    titleIcon = '📦';
-    titleText = `Takeaway • ${String(table.table_number || '').replace(/^P-/i, 'Parcel #')}`;
-  }
+  // Header Title & Icon (hoisted above)
 
   return (
     <div id="rest-table-session-view" style={{ display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', minHeight: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
@@ -1100,6 +1114,96 @@ export default function TableSessionView({
           </div>
         </div>
       </div>
-    </div>
+    
+      {/* Unsaved Order Guard Modal (Save or Discard popup) */}
+      {showUnsavedGuardModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={() => setShowUnsavedGuardModal(false)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              maxWidth: '420px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)',
+              textAlign: 'center'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🛒</div>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
+              Save or Discard Order?
+            </h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '0.86rem', color: '#64748b', lineHeight: 1.5 }}>
+              You have selected <strong>{cart.length} item(s)</strong> in this order for <strong>{titleText}</strong>. What would you like to do?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleSaveAndExit}
+                style={{
+                  padding: '11px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  color: '#ffffff',
+                  fontWeight: 850,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.3)'
+                }}
+              >
+                💾 Save Order
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardAndExit}
+                style={{
+                  padding: '11px 18px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #fca5a5',
+                  background: '#fee2e2',
+                  color: '#b91c1c',
+                  fontWeight: 850,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer'
+                }}
+              >
+                🗑️ Discard
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUnsavedGuardModal(false)}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#64748b',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Keep Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+  </div>
   );
 }

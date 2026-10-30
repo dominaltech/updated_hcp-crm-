@@ -327,108 +327,96 @@ export default function Step7Payment({
         )}
 
         {/* Check-In Advance Payment Policy Status Banner */}
-        {isMinAdvanceEnforced && (
+        {/* Big Prominent 3-Column Financial Header: Total Payable | Minimum Amount | Due Amount */}
+        {!isPrepaidZeroExtras && (
           <div
-            id="checkin-advance-policy-banner"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '12px',
-              padding: '10px 16px',
-              borderRadius: '10px',
-              marginBottom: '14px',
-              background: isAdvanceSufficient ? 'rgba(34, 197, 94, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-              border: `1.5px solid ${isAdvanceSufficient ? 'rgba(34, 197, 94, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
-              color: isAdvanceSufficient ? '#16a34a' : '#d97706',
-              fontSize: '0.84rem',
-              fontWeight: 750
+              marginBottom: '18px'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.1rem' }}>{isAdvanceSufficient ? '✓' : '⚠️'}</span>
-              <span>
-                <strong>Check-In Advance Policy ({minAdvancePct}%):</strong> Minimum required advance payment at check-in is{' '}
-                <strong>₹{minRequiredAdvance.toLocaleString('en-IN')}</strong> of total ₹{totalDue.toLocaleString('en-IN')}.
-              </span>
+            {/* Card 1: Total Payable */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                border: '2px solid #7dd3fc',
+                borderRadius: '14px',
+                padding: '14px 18px',
+                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)'
+              }}
+            >
+              <div style={{ fontSize: '0.76rem', fontWeight: 850, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                💳 Total Payable
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 950, color: '#0284c7', marginTop: '4px', lineHeight: 1.1 }}>
+                {formatCurrency(totalDue)}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', fontWeight: 600 }}>
+                Total stay &amp; services tariff
+              </div>
             </div>
-            <div style={{ whiteSpace: 'nowrap' }}>
-              {isAdvanceSufficient ? (
-                <span style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#16a34a', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
-                  ✓ Policy Satisfied
-                </span>
-              ) : (
-                <span style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#dc2626', padding: '3px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800 }}>
-                  Needs ₹{(minRequiredAdvance - totalPaid).toLocaleString('en-IN')} more
-                </span>
-              )}
+
+            {/* Card 2: Minimum Required Advance */}
+            <div
+              style={{
+                background: isAdvanceSufficient
+                  ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
+                  : 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                border: `2px solid ${isAdvanceSufficient ? '#86efac' : '#fcd34d'}`,
+                borderRadius: '14px',
+                padding: '14px 18px',
+                boxShadow: '0 2px 8px rgba(217, 119, 6, 0.08)'
+              }}
+            >
+              <div style={{ fontSize: '0.76rem', fontWeight: 850, color: isAdvanceSufficient ? '#15803d' : '#b45309', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                🛡️ Minimum Advance ({minAdvancePct}%)
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 950, color: isAdvanceSufficient ? '#16a34a' : '#d97706', marginTop: '4px', lineHeight: 1.1 }}>
+                {formatCurrency(minRequiredAdvance)}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: isAdvanceSufficient ? '#15803d' : '#dc2626', marginTop: '4px', fontWeight: 700 }}>
+                {isAdvanceSufficient
+                  ? '✓ Minimum policy satisfied'
+                  : `Needs ₹${(minRequiredAdvance - totalPaid).toLocaleString('en-IN')} more`}
+              </div>
+            </div>
+
+            {/* Card 3: Due Amount */}
+            <div
+              style={{
+                background: balanceDue === 0
+                  ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
+                  : 'linear-gradient(135deg, #fff1f2 0%, #fee2e2 100%)',
+                border: `2px solid ${balanceDue === 0 ? '#86efac' : '#fca5a5'}`,
+                borderRadius: '14px',
+                padding: '14px 18px',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.08)'
+              }}
+            >
+              <div style={{ fontSize: '0.76rem', fontWeight: 850, color: balanceDue === 0 ? '#15803d' : '#991b1b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                ⚖️ Due Amount
+              </div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 950, color: balanceDue === 0 ? '#16a34a' : '#dc2626', marginTop: '4px', lineHeight: 1.1 }}>
+                {formatCurrency(balanceDue)}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: balanceDue === 0 ? '#15803d' : '#64748b', marginTop: '4px', fontWeight: 700 }}>
+                {balanceDue === 0
+                  ? '✓ 100% Fully Settled'
+                  : (totalPaid > 0 ? `Paid: ${formatCurrency(totalPaid)} | Bal: ${formatCurrency(balanceDue)}` : 'Remaining at checkout')}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Quick Fill & Mode Selector Header (Hidden when prepaid and 0 extras) */}
+        {/* Payment Method Header (Pills removed per user requirement) */}
         {!isPrepaidZeroExtras && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Payment Method:
+            <span style={{ fontSize: '0.84rem', fontWeight: 850, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Select Payment Method:
             </span>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {isMinAdvanceEnforced && minAdvancePct < 100 && minRequiredAdvance > 0 && (
-                <>
-                  <button
-                    type="button"
-                    className="btn-quick-fill"
-                    onClick={() => {
-                      updateDraft({ splitCash: minRequiredAdvance, splitOnline: 0, splitCard: 0, splitCheque: 0 });
-                      setSelectedMethod('splitCash');
-                    }}
-                    title={`Pay minimum required advance (${minAdvancePct}%) in Cash`}
-                  >
-                    {minAdvancePct}% Min (Cash)
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-quick-fill"
-                    onClick={() => {
-                      updateDraft({ splitCash: 0, splitOnline: minRequiredAdvance, splitCard: 0, splitCheque: 0 });
-                      setSelectedMethod('splitOnline');
-                    }}
-                    title={`Pay minimum required advance (${minAdvancePct}%) via UPI`}
-                  >
-                    {minAdvancePct}% Min (UPI)
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                className="btn-quick-fill"
-                onClick={() => {
-                  updateDraft({ splitCash: netDueToday, splitOnline: 0, splitCard: 0, splitCheque: 0 });
-                  setSelectedMethod('splitCash');
-                }}
-              >
-                100% Cash
-              </button>
-              <button
-                type="button"
-                className="btn-quick-fill"
-                onClick={() => {
-                  updateDraft({ splitCash: 0, splitOnline: netDueToday, splitCard: 0, splitCheque: 0 });
-                  setSelectedMethod('splitOnline');
-                }}
-              >
-                100% UPI
-              </button>
-              <button
-                type="button"
-                className="btn-quick-fill"
-                onClick={() => {
-                  updateDraft({ splitCash: 0, splitOnline: 0, splitCard: netDueToday, splitCheque: 0 });
-                  setSelectedMethod('splitCard');
-                }}
-              >
-                100% Card
-              </button>
               {totalPaid > 0 && (
                 <button
                   type="button"
@@ -436,9 +424,9 @@ export default function Step7Payment({
                   onClick={() => {
                     updateDraft({ splitCash: 0, splitOnline: 0, splitCard: 0, splitCheque: 0, onlineUtr: '' });
                   }}
-                  style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                  style={{ color: '#dc2626', borderColor: '#fca5a5', fontWeight: 800, padding: '4px 12px', borderRadius: '8px' }}
                 >
-                  Clear
+                  ✕ Clear All Amounts
                 </button>
               )}
             </div>

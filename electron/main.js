@@ -7,7 +7,6 @@ const fs = require('fs');
 // Performance & GPU acceleration switches for instantaneous startup
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('ignore-certificate-errors');
 
 let mainWindow = null;
 let serverProcess = null;

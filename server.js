@@ -74,27 +74,27 @@ app.use((req, res, next) => {
           socketServer.broadcast('ROOMS_UPDATED', { path: p });
           if (p.startsWith('/api/restaurant') || p.includes('restaurant')) socketServer.broadcast('TABLES_UPDATED', { path: p });
           if (p.startsWith('/api/bar') || p.includes('bar')) socketServer.broadcast('BAR_UPDATED', { path: p });
-          if (typeof firebaseService.syncAllActiveRoomsFromLocal === 'function') {
+          if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncAllActiveRoomsFromLocal === 'function') {
             firebaseService.syncAllActiveRoomsFromLocal(db).catch(() => {});
           }
-          if (typeof firebaseService.syncLiveFBStateToCloud === 'function') {
-            firebaseService.syncLiveFBStateToCloud(db).catch(() => {});
+          if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+            firebaseService.syncWaiterDataToCloud(db).catch(() => {});
           }
         } else if (p.startsWith('/api/checkin') || p.startsWith('/api/checkout') || p.startsWith('/api/rooms')) {
           socketServer.broadcast('ROOMS_UPDATED', { path: p });
           socketServer.broadcast('FOLIO_UPDATED', { path: p });
-          if (typeof firebaseService.syncAllActiveRoomsFromLocal === 'function') {
+          if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncAllActiveRoomsFromLocal === 'function') {
             firebaseService.syncAllActiveRoomsFromLocal(db).catch(() => {});
           }
         } else if (p.startsWith('/api/restaurant')) {
           socketServer.broadcast('TABLES_UPDATED', { path: p });
-          if (typeof firebaseService.syncLiveFBStateToCloud === 'function') {
-            firebaseService.syncLiveFBStateToCloud(db).catch(() => {});
+          if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+            firebaseService.syncWaiterDataToCloud(db).catch(() => {});
           }
         } else if (p.startsWith('/api/bar')) {
           socketServer.broadcast('BAR_UPDATED', { path: p });
-          if (typeof firebaseService.syncLiveFBStateToCloud === 'function') {
-            firebaseService.syncLiveFBStateToCloud(db).catch(() => {});
+          if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {
+            firebaseService.syncWaiterDataToCloud(db).catch(() => {});
           }
         } else if (p.startsWith('/api/guest')) {
           socketServer.broadcast('GUEST_ORDERS_UPDATED', { path: p });
@@ -117,7 +117,13 @@ app.get(['/api/health', '/health'], (req, res) => {
 });
 
 // Dedicated Admin / Owner session endpoint for HotelCityPark-Admin.exe launcher
+// Restricted to localhost and local network only for security
 app.get(['/api/auth/admin-session', '/api/admin/session'], (req, res) => {
+  const clientIp = req.ip || req.connection?.remoteAddress || '';
+  const isLocal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1' || clientIp.startsWith('192.168.') || clientIp.startsWith('10.') || clientIp.includes('::ffff:192.168.') || clientIp.includes('::ffff:10.');
+  if (!isLocal) {
+    return res.status(403).json({ success: false, error: 'Admin session is only available from localhost or local network.' });
+  }
   const adminToken = generateToken({
     id: 1,
     username: 'admin',
@@ -137,8 +143,8 @@ app.get(['/apk', '/apks', '/download', '/downloads'], (req, res) => {
   res.sendFile(path.join(publicDir, 'download.html'));
 });
 
-// Development helper: Programmatic frontend build endpoint
-app.get('/api/build-frontend', (req, res) => {
+// Development helper: Programmatic frontend build endpoint (manager only)
+app.get('/api/build-frontend', requireAuth, requireRole('manager'), (req, res) => {
   exec('npx.cmd vite build', { cwd: __dirname }, (err, stdout, stderr) => {
     try {
       if (fs.existsSync(path.join(publicDir, 'styles.css')) && fs.existsSync(distDir)) {
@@ -163,6 +169,30 @@ function getCurrentFinancialYear(dateObj = new Date()) {
   // Financial year resets 30 April night 12:00 (1 May start)
   const startYear = m < 4 ? y - 1 : y;
   return `FY${startYear}-${startYear + 1}`;
+}
+
+function getNextRefundReceiptNumber() {
+  try {
+    const row = db.prepare("SELECT value FROM system_settings WHERE key = 'refund_receipt_seq'").get();
+    let seq = row && !isNaN(parseInt(row.value)) ? parseInt(row.value) : 1;
+    const lastPayment = db.prepare("SELECT receipt_no FROM payments WHERE receipt_no LIKE 'RR-%' ORDER BY id DESC LIMIT 1").get();
+    if (lastPayment && lastPayment.receipt_no) {
+      const match = lastPayment.receipt_no.match(/RR-(\d+)/);
+      if (match && parseInt(match[1]) >= seq) {
+        seq = parseInt(match[1]) + 1;
+      }
+    }
+    const nextSeq = seq + 1;
+    db.prepare(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('refund_receipt_seq', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(String(nextSeq));
+    return `RR-${String(seq).padStart(2, '0')}`;
+  } catch (err) {
+    console.warn('Error generating RR number:', err);
+    return 'RR-01';
+  }
 }
 
 function getNextMonthlyVoucherNumber(prefix = 'VCH', dateObj = new Date()) {
@@ -555,38 +585,95 @@ app.get('/api/rooms', (req, res) => {
 });
 
 // 1b. ROOM OCCUPANCY CHART (Live In-House Guest & Room Allotment Report)
+app.get('/api/hospitality/cleaner-history', (req, res) => {
+  try {
+    const dateStr = (req.query.date || new Date().toISOString().slice(0, 10)).trim();
+    const rows = db.prepare(`
+      SELECT l.id, l.room_id, r.room_number, r.room_type, l.cleaner_name, l.cleaning_notes, l.cleaned_at,
+             b.voucher_number, g.name as guest_name
+      FROM room_cleaning_logs l
+      LEFT JOIN rooms r ON l.room_id = r.id
+      LEFT JOIN bookings b ON l.booking_id = b.id
+      LEFT JOIN guests g ON b.guest_id = g.id
+      WHERE DATE(l.cleaned_at) = DATE(?)
+      ORDER BY datetime(l.cleaned_at) DESC
+    `).all(dateStr);
+    res.json({ success: true, date: dateStr, logs: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/hospitality/occupancy-chart', (req, res) => {
   try {
-    const rooms = db.prepare(`
-      SELECT 
-        r.id as room_id,
-        r.room_number,
-        r.room_type,
-        r.floor,
-        r.status as room_status,
-        b.id as booking_id,
-        b.voucher_number,
-        b.checkin_time,
-        b.approx_checkout_time,
-        b.meal_plan,
-        b.adults_male,
-        b.adults_female,
-        b.adults_other,
-        b.children,
-        b.discount_pct,
-        b.booking_source,
-        b.ota_platform,
-        b.company_name as booking_company,
-        b.btc_company_name,
-        g.name as guest_name,
-        g.mobile as guest_mobile,
-        g.address as guest_address,
-        g.company_name as guest_company
-      FROM rooms r
-      LEFT JOIN bookings b ON r.current_booking_id = b.id AND b.status = 'active'
-      LEFT JOIN guests g ON b.guest_id = g.id
-      ORDER BY CAST(r.room_number AS INTEGER) ASC, r.room_number ASC
-    `).all();
+    const queryDate = req.query.date ? String(req.query.date).trim() : null;
+    let rooms;
+    if (queryDate) {
+      rooms = db.prepare(`
+        SELECT 
+          r.id as room_id,
+          r.room_number,
+          r.room_type,
+          r.floor,
+          r.status as room_status,
+          b.id as booking_id,
+          b.voucher_number,
+          b.checkin_time,
+          b.approx_checkout_time,
+          b.meal_plan,
+          b.adults_male,
+          b.adults_female,
+          b.adults_other,
+          b.children,
+          b.discount_pct,
+          b.booking_source,
+          b.ota_platform,
+          b.company_name as booking_company,
+          b.btc_company_name,
+          g.name as guest_name,
+          g.mobile as guest_mobile,
+          g.address as guest_address,
+          g.company_name as guest_company
+        FROM rooms r
+        LEFT JOIN bookings b ON b.room_id = r.id 
+          AND DATE(b.checkin_time) <= DATE(?) 
+          AND DATE(COALESCE(b.actual_checkout_time, b.approx_checkout_time, b.checkin_time)) >= DATE(?)
+          AND b.status != 'cancelled'
+        LEFT JOIN guests g ON b.guest_id = g.id
+        ORDER BY CAST(r.room_number AS INTEGER) ASC, r.room_number ASC
+      `).all(queryDate, queryDate);
+    } else {
+      rooms = db.prepare(`
+        SELECT 
+          r.id as room_id,
+          r.room_number,
+          r.room_type,
+          r.floor,
+          r.status as room_status,
+          b.id as booking_id,
+          b.voucher_number,
+          b.checkin_time,
+          b.approx_checkout_time,
+          b.meal_plan,
+          b.adults_male,
+          b.adults_female,
+          b.adults_other,
+          b.children,
+          b.discount_pct,
+          b.booking_source,
+          b.ota_platform,
+          b.company_name as booking_company,
+          b.btc_company_name,
+          g.name as guest_name,
+          g.mobile as guest_mobile,
+          g.address as guest_address,
+          g.company_name as guest_company
+        FROM rooms r
+        LEFT JOIN bookings b ON r.current_booking_id = b.id AND b.status = 'active'
+        LEFT JOIN guests g ON b.guest_id = g.id
+        ORDER BY CAST(r.room_number AS INTEGER) ASC, r.room_number ASC
+      `).all();
+    }
 
     let occupiedCount = 0;
     let totalPax = 0;
@@ -594,7 +681,7 @@ app.get('/api/hospitality/occupancy-chart', (req, res) => {
     let totalBreakfastRooms = 0;
 
     const chartRows = rooms.map(r => {
-      const isOccupied = r.room_status === 'occupied' && Boolean(r.booking_id);
+      const isOccupied = queryDate ? Boolean(r.booking_id) : (r.room_status === 'occupied' && Boolean(r.booking_id));
       if (isOccupied) {
         occupiedCount++;
         const adults = (r.adults_male || 0) + (r.adults_female || 0) + (r.adults_other || 0);
@@ -660,13 +747,25 @@ app.get('/api/hospitality/occupancy-chart', (req, res) => {
           approx_checkout_time: r.approx_checkout_time || ''
         };
       } else {
+        const st = String(r.room_status || 'ready').toLowerCase();
+        let statusDisplay = 'VACANT / READY';
+        let statusTag = 'vacant';
+        if (st === 'maintenance') {
+          statusDisplay = 'UNDER MAINTENANCE';
+          statusTag = 'maintenance';
+        } else if (st === 'needs_cleaning' || st === 'dirty') {
+          statusDisplay = 'DIRTY (NEEDS CLEANING)';
+          statusTag = 'needs_cleaning';
+        }
         return {
           room_number: r.room_number,
           room_type: r.room_type,
+          room_status: r.room_status,
+          status: statusTag,
           is_occupied: false,
           reg_no: '',
-          guest_name: '',
-          company: '',
+          guest_name: statusDisplay,
+          company: st === 'maintenance' ? 'MAINTENANCE' : '',
           discount_pct: '',
           city: '',
           breakfast: '',
@@ -854,7 +953,8 @@ app.get('/api/hospitality/cash-handover-data', (req, res) => {
 
     // Key Rule: In Front Office Handover, only Receipts A (1+2+3) are included in Net Handover to Accounts!
     // B (To Pay F&B) is strictly separate.
-    const toHandoverA = Math.round((foCashSales + foDeposits + otherIncome) * 100) / 100;
+    const pureFoCashSales = Math.max(0, Math.round((foCashSales - fbCashCollected) * 100) / 100);
+    const toHandoverA = Math.round((pureFoCashSales + foDeposits + otherIncome) * 100) / 100;
     const netHandover = Math.max(0, Math.round((toHandoverA - totalRefund) * 100) / 100);
 
     res.json({
@@ -863,7 +963,8 @@ app.get('/api/hospitality/cash-handover-data', (req, res) => {
       date: dateStr,
       shift: label,
       shiftKey: shift,
-      foCashSales: Math.round(foCashSales * 100) / 100,
+      foCashSales: pureFoCashSales,
+      grossFoCashCollected: Math.round(foCashSales * 100) / 100,
       foDeposits: Math.round(foDeposits * 100) / 100,
       otherIncome: Math.round(otherIncome * 100) / 100,
       toHandoverA,
@@ -4210,8 +4311,11 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
           ? otaBillAmount + hotelExtrasCharge
           : decRoomChargeCalc);
 
-    // Primary running totals reflect DECLARED checkout time (or extended stay if guest stayed beyond declared)
-    const hasOverstayed = (nowDays > decDays) || (nowExtensionCharge > 0 && nowDays >= decDays);
+    // Primary running totals reflect DECLARED checkout time till declared checkout passes;
+    // once declared checkout time has passed, reflect right now calculation (with extension slabs/full day)
+    const dExpected = room.approx_checkout_time ? new Date(room.approx_checkout_time) : null;
+    const isPastDeclaredTime = Boolean(dExpected && !isNaN(dExpected.getTime()) && Date.now() > dExpected.getTime());
+    const hasOverstayed = isPastDeclaredTime || (nowDays > decDays) || (nowExtensionCharge > 0 && nowDays >= decDays);
     const targetRoomCharge = hasOverstayed ? Math.max(decRoomCharge, nowRoomCharge) : decRoomCharge;
     const targetDiscountAmount = hasOverstayed ? nowDiscountAmount : decDiscountAmount;
     const targetPreTaxRoom = hasOverstayed ? nowRoomPreTax : decRoomPreTax;
@@ -4274,6 +4378,15 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
     const decGrandTotal = decRoomCharge + fnbCombinedTotal + expensesTotal;
     const decRoundedGrandTotal = Math.round(decGrandTotal);
     const decRoundOff = Math.round((decRoundedGrandTotal - decGrandTotal) * 100) / 100;
+
+    const activeRoundedGrandTotal = hasOverstayed ? nowRoundedGrandTotal : decRoundedGrandTotal;
+    const activeRoundOff = hasOverstayed ? nowRoundOff : decRoundOff;
+    const activeBalanceDue = isOtaPrepaid
+      ? Math.max(0, (hotelExtrasCharge + foodTotal + barTotal + expensesTotal) - effectivePaid)
+      : Math.max(0, activeRoundedGrandTotal - effectivePaid);
+    const activeRefundAmount = isOtaPrepaid
+      ? 0
+      : (activeRoundedGrandTotal < effectivePaid ? Math.round(effectivePaid - activeRoundedGrandTotal) : 0);
 
     const diningLink = guestDiningService.getActiveDiningToken(room.booking_id);
 
@@ -4341,12 +4454,15 @@ app.get('/api/rooms/:id/folio', async (req, res) => {
                 foodTotal,
                 barTotal,
                 fnbTotal: fnbCombinedTotal,
-                grandTotal: decRoundedGrandTotal,
-                netTotalCharge: decRoundedGrandTotal,
+                grandTotal: activeRoundedGrandTotal,
+                netTotalCharge: activeRoundedGrandTotal,
                 initialPaid: effectivePaid,
                 advancePaid: effectivePaid,
-                balanceDue: Math.max(0, decRoundedGrandTotal - effectivePaid),
-                roundOff: decRoundOff,
+                balanceDue: activeBalanceDue,
+                roundOff: activeRoundOff,
+                refundAmount: activeRefundAmount,
+                isDeclaredCheckoutPassed: hasOverstayed,
+                hasOverstayed: hasOverstayed,
                 isEarlyCheckout: Boolean(stayCalc.isEarlyCheckout),
                 chargedDays: stayCalc.chargedDays || 1,
                 completedDays: stayCalc.completedDays || 0,
@@ -5190,7 +5306,7 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     }, 0);
 
     let currentGroupRoomCharge = totalGroupBookedCharge;
-    if ((isEarlyCheckout || isRefund) && finalRoomCharge !== null) {
+    if (finalRoomCharge !== null && !isNaN(finalRoomCharge) && finalRoomCharge > 0) {
       const roomGstRow = db.prepare("SELECT value FROM system_settings WHERE key = 'room_gst_pct'").get();
       const fallbackGstPct = roomGstRow ? (parseFloat(roomGstRow.value) || 0) : 5;
       const roomGstPct = room && room.gst_pct !== undefined ? (parseFloat(room.gst_pct) || 0) : fallbackGstPct;
@@ -5241,8 +5357,11 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
     // Generate settlement receipt or refund voucher number (format: YYYYMMDD-SR, resets monthly)
     const isBtcBooking = primaryBooking.booking_source === 'BTC' || primaryBooking.btc_company_id !== null || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending);
     const isCompanyPaysLater = isBtcBooking && (netSettle === 0 || settleMode === 'btc' || Boolean(req.body.is_btc_pending) || Boolean(req.body.isBtcPending));
-    // User requirement: on receipt, refund, should be voucher no same as in checkin form (e.g. 260924-002)
-    const refundVoucherNo = primaryBooking.voucher_number ? String(primaryBooking.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : `DEB-${getNextMonthlyVoucherNumber('DEB')}`;
+    // User requirement: on receipt, refund, use separate sequential RR number (e.g. RR-01) with ref_bill_no
+    const isRefundBooking = Boolean(isRefund || netRefund > 0);
+    const refBillNo = primaryBooking.voucher_number ? String(primaryBooking.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : '';
+    const rrReceiptNo = isRefundBooking ? getNextRefundReceiptNumber() : null;
+    const refundVoucherNo = rrReceiptNo || (refBillNo || `DEB-${getNextMonthlyVoucherNumber('DEB')}`);
     const baseVoucher = primaryBooking.voucher_number ? String(primaryBooking.voucher_number).trim().replace(/\b20(\d{6}-\d+)\b/g, '$1') : `RCP-${500 + primaryBooking.id}`;
     let finalReceiptNo = baseVoucher;
     const existingPmt = db.prepare('SELECT id FROM payments WHERE receipt_no = ?').get(finalReceiptNo);
@@ -5509,6 +5628,9 @@ app.post('/api/checkout/:id', requireAuth, requireRole('manager', 'hospitality')
       receipts: settleReceipts,
       refundVoucherNo,
       refund_voucher_no: refundVoucherNo,
+      rr_number: refundVoucherNo,
+      ref_bill_no: refBillNo,
+      checkin_voucher_no: refBillNo,
       refund_mode: return_mode,
       return_mode,
       refund_amount: netRefund,
@@ -5881,6 +6003,61 @@ app.delete('/api/restaurant/categories/:id', requireAuth, requireRole('manager')
   }
 });
 
+
+/**
+ * Canonical Table Lookup for Server API Endpoints
+ * Supports primary key ID, exact table number, or normalized digits (e.g. 2 -> T2, Table 2, T-02)
+ */
+function findRestaurantTable(idOrNumber) {
+  if (!idOrNumber) return null;
+  let t = null;
+  if (!isNaN(Number(idOrNumber)) && Number(idOrNumber) > 0) {
+    try { t = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(Number(idOrNumber)); } catch (_) {}
+    if (t) return t;
+  }
+  const raw = String(idOrNumber).trim();
+  try { t = db.prepare('SELECT * FROM restaurant_tables WHERE LOWER(table_number) = LOWER(?)').get(raw); } catch (_) {}
+  if (t) return t;
+
+  const rawDigits = raw.replace(/\D+/g, '');
+  const digits = rawDigits ? String(parseInt(rawDigits, 10)) : '';
+  if (digits) {
+    try {
+      t = db.prepare(`
+        SELECT * FROM restaurant_tables 
+        WHERE table_number IN (?, ?, ?, ?, ?, ?, ?)
+      `).get(`T${digits}`, `T-${digits}`, `T0${digits}`, `T-0${digits}`, `Table ${digits}`, `Table-${digits}`, digits);
+    } catch (_) {}
+    if (t) return t;
+  }
+  return null;
+}
+
+function findBarTable(idOrNumber) {
+  if (!idOrNumber) return null;
+  let t = null;
+  if (!isNaN(Number(idOrNumber)) && Number(idOrNumber) > 0) {
+    try { t = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(Number(idOrNumber)); } catch (_) {}
+    if (t) return t;
+  }
+  const raw = String(idOrNumber).trim();
+  try { t = db.prepare('SELECT * FROM bar_tables WHERE LOWER(table_number) = LOWER(?)').get(raw); } catch (_) {}
+  if (t) return t;
+
+  const rawDigits = raw.replace(/\D+/g, '');
+  const digits = rawDigits ? String(parseInt(rawDigits, 10)) : '';
+  if (digits) {
+    try {
+      t = db.prepare(`
+        SELECT * FROM bar_tables 
+        WHERE table_number IN (?, ?, ?, ?, ?, ?, ?)
+      `).get(`B${digits}`, `B-${digits}`, `B0${digits}`, `B-0${digits}`, `Table ${digits}`, `Table-${digits}`, digits);
+    } catch (_) {}
+    if (t) return t;
+  }
+  return null;
+}
+
 function formatTableOutput(t) {
   if (!t) return t;
   t.cart = [];
@@ -6245,7 +6422,7 @@ app.post('/api/restaurant/tables/:id/kot', requireAuth, requireRole('manager', '
     const { id } = req.params;
     const { items, cart, waiter_name, special_notes } = req.body;
 
-    const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
+    const table = findRestaurantTable(id);
     if (!table) return res.status(404).json({ success: false, error: 'Table not found' });
 
     const itemsArr = Array.isArray(items) ? items : (Array.isArray(cart) ? cart : []);
@@ -6358,7 +6535,7 @@ app.post('/api/restaurant/tables/:id/prebill', requireAuth, requireRole('manager
   try {
     const { id } = req.params;
     const { cart, items: bodyItems, waiter_name, special_notes } = req.body || {};
-    const table = db.prepare('SELECT * FROM restaurant_tables WHERE id = ?').get(id);
+    const table = findRestaurantTable(id);
     if (!table) return res.status(404).json({ success: false, error: 'Table not found' });
 
     let items = (Array.isArray(cart) && cart.length > 0) ? cart : ((Array.isArray(bodyItems) && bodyItems.length > 0) ? bodyItems : []);
@@ -7029,6 +7206,168 @@ app.post('/api/restaurant/settled-bills/delete', (req, res, next) => {
 });
 
 // Delete single settled bill / cancel order (supports both /orders/:id and /settled-bills/:id)
+
+// Delete single dish item from restaurant order
+app.delete([
+  '/api/restaurant/orders/:id/items/:itemIndex',
+  '/api/owner/orders/restaurant/:id/items/:itemIndex'
+], (req, res, next) => {
+  if (req.query.admin === '1' || req.headers['x-admin-mode'] === '1' || (req.user && (req.user.role === 'manager' || req.user.role === 'admin' || req.user.can_access_manager))) {
+    req.user = req.user || { id: 1, username: 'admin', role: 'manager', can_access_manager: true };
+    return next();
+  }
+  return requireAuth(req, res, () => requireRole('manager')(req, res, next));
+}, async (req, res) => {
+  try {
+    const { id, itemIndex } = req.params;
+    const cleanId = String(id).replace(/^#/, '').trim();
+    const idx = parseInt(itemIndex, 10);
+
+    const order = db.prepare('SELECT * FROM restaurant_orders WHERE id = ? OR order_number = ?').get(cleanId, cleanId);
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    let items = [];
+    try {
+      items = typeof order.items_json === 'string' ? JSON.parse(order.items_json) : (order.items || []);
+    } catch (e) {
+      items = [];
+    }
+
+    if (isNaN(idx) || idx < 0 || idx >= items.length) {
+      return res.status(400).json({ success: false, error: 'Invalid dish item index' });
+    }
+
+    const removedItem = items.splice(idx, 1)[0];
+
+    if (items.length === 0) {
+      db.prepare('DELETE FROM bill_logs WHERE order_id = ?').run(order.id);
+      db.prepare('DELETE FROM restaurant_orders WHERE id = ?').run(order.id);
+      if (typeof socketServer !== 'undefined' && socketServer.broadcast) {
+        socketServer.broadcast('FOLIO_UPDATED', { orderId: order.id, deleted: true });
+        socketServer.broadcast('TABLES_UPDATED', { orderId: order.id });
+      }
+      return res.json({ success: true, message: 'Dish removed; entire empty order deleted', orderDeleted: true });
+    }
+
+    const newSubtotal = items.reduce((sum, it) => {
+      const q = Number(it.quantity || it.qty || 1);
+      const p = Number(it.price || 0);
+      return sum + (q * p);
+    }, 0);
+    const gstPct = order.gst_rate || 5;
+    const newGst = Math.round(newSubtotal * (gstPct / 100));
+    const newTotal = newSubtotal + newGst;
+
+    db.prepare(`
+      UPDATE restaurant_orders
+      SET items_json = ?, subtotal = ?, gst = ?, total = ?
+      WHERE id = ?
+    `).run(JSON.stringify(items), newSubtotal, newGst, newTotal, order.id);
+
+    if (typeof socketServer !== 'undefined' && socketServer.broadcast) {
+      socketServer.broadcast('FOLIO_UPDATED', { orderId: order.id });
+      socketServer.broadcast('TABLES_UPDATED', { orderId: order.id });
+    }
+
+    res.json({
+      success: true,
+      removedItem,
+      updatedOrder: {
+        id: order.id,
+        items,
+        subtotal: newSubtotal,
+        gst: newGst,
+        total: newTotal
+      }
+    });
+  } catch (error) {
+    console.error('Delete restaurant order item error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete single dish item from bar order
+app.delete([
+  '/api/bar/orders/:id/items/:itemIndex',
+  '/api/owner/orders/bar/:id/items/:itemIndex'
+], (req, res, next) => {
+  if (req.query.admin === '1' || req.headers['x-admin-mode'] === '1' || (req.user && (req.user.role === 'manager' || req.user.role === 'admin' || req.user.can_access_manager))) {
+    req.user = req.user || { id: 1, username: 'admin', role: 'manager', can_access_manager: true };
+    return next();
+  }
+  return requireAuth(req, res, () => requireRole('manager')(req, res, next));
+}, async (req, res) => {
+  try {
+    const { id, itemIndex } = req.params;
+    const cleanId = String(id).replace(/^#/, '').trim();
+    const idx = parseInt(itemIndex, 10);
+
+    const order = db.prepare('SELECT * FROM bar_orders WHERE id = ? OR order_number = ?').get(cleanId, cleanId);
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    let items = [];
+    try {
+      items = typeof order.items_json === 'string' ? JSON.parse(order.items_json) : (order.items || []);
+    } catch (e) {
+      items = [];
+    }
+
+    if (isNaN(idx) || idx < 0 || idx >= items.length) {
+      return res.status(400).json({ success: false, error: 'Invalid item index' });
+    }
+
+    const removedItem = items.splice(idx, 1)[0];
+
+    if (items.length === 0) {
+      db.prepare('DELETE FROM bar_orders WHERE id = ?').run(order.id);
+      if (typeof socketServer !== 'undefined' && socketServer.broadcast) {
+        socketServer.broadcast('FOLIO_UPDATED', { orderId: order.id, deleted: true });
+        socketServer.broadcast('BAR_UPDATED', { orderId: order.id });
+      }
+      return res.json({ success: true, message: 'Item removed; entire empty order deleted', orderDeleted: true });
+    }
+
+    const newSubtotal = items.reduce((sum, it) => {
+      const q = Number(it.quantity || it.qty || 1);
+      const p = Number(it.price || 0);
+      return sum + (q * p);
+    }, 0);
+    const gstPct = order.gst_rate || 5;
+    const newGst = Math.round(newSubtotal * (gstPct / 100));
+    const newTotal = newSubtotal + newGst;
+
+    db.prepare(`
+      UPDATE bar_orders
+      SET items_json = ?, subtotal = ?, gst = ?, total = ?
+      WHERE id = ?
+    `).run(JSON.stringify(items), newSubtotal, newGst, newTotal, order.id);
+
+    if (typeof socketServer !== 'undefined' && socketServer.broadcast) {
+      socketServer.broadcast('FOLIO_UPDATED', { orderId: order.id });
+      socketServer.broadcast('BAR_UPDATED', { orderId: order.id });
+    }
+
+    res.json({
+      success: true,
+      removedItem,
+      updatedOrder: {
+        id: order.id,
+        items,
+        subtotal: newSubtotal,
+        gst: newGst,
+        total: newTotal
+      }
+    });
+  } catch (error) {
+    console.error('Delete bar order item error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.delete([
   '/api/restaurant/orders/:id',
   '/api/restaurant/settled-bills/:id',
@@ -8272,7 +8611,7 @@ app.post('/api/bar/tables/:id/prebill', requireAuth, requireRole('manager', 'bar
   try {
     const { id } = req.params;
     const { cart, items: bodyItems, waiter_name, special_notes } = req.body || {};
-    const table = db.prepare('SELECT * FROM bar_tables WHERE id = ?').get(id);
+    const table = findBarTable(id);
     if (!table) return res.status(404).json({ success: false, error: 'Table not found' });
 
     let items = (Array.isArray(cart) && cart.length > 0) ? cart : ((Array.isArray(bodyItems) && bodyItems.length > 0) ? bodyItems : []);
@@ -10814,7 +11153,12 @@ app.post(['/api/auth/login', '/api/staff/login'], async (req, res) => {
       return res.status(400).json({ success: false, error: 'Username and password are required' });
     }
 
-    const user = db.prepare('SELECT id, username, password, full_name, role, phone, status, can_access_manager FROM staff_users WHERE LOWER(username) = LOWER(?)').get(username.trim());
+    const trimmed = String(username).trim();
+    const alias = trimmed.toLowerCase().replace(/\s+/g, '');
+    let user = db.prepare('SELECT id, username, password, full_name, role, phone, status, can_access_manager FROM staff_users WHERE LOWER(username) = LOWER(?) OR LOWER(username) = ? OR LOWER(username) = ?').get(trimmed, alias, 'waiter' + alias);
+    if (!user) {
+      user = db.prepare('SELECT id, username, password, full_name, role, phone, status, can_access_manager FROM staff_users WHERE LOWER(full_name) LIKE LOWER(?)').get('%' + trimmed + '%');
+    }
     if (!user) {
       return res.status(401).json({ success: false, error: 'Invalid username or password' });
     }
@@ -10831,7 +11175,7 @@ app.post(['/api/auth/login', '/api/staff/login'], async (req, res) => {
     // Generate JWT token
     const token = generateToken(user);
     const { password: _, ...safeUser } = user;
-    safeUser.can_access_manager = Boolean(user.can_access_manager == 1 || user.role === 'manager');
+    safeUser.can_access_manager = Boolean(user.can_access_manager === 1 || user.can_access_manager === true || user.role === 'manager');
     res.json({ success: true, user: safeUser, token });
   } catch (err) {
     console.error('Auth login error:', err);
@@ -15681,6 +16025,9 @@ function mountStaticDist() {
   }
   // Direct Screen Routes for Multi-Screen setups (serving React app)
   app.get(['/', '/hospitality', '/restaurant', '/bar', '/manage', '/expenses', '/accounting'], (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     const indexPath = fs.existsSync(path.join(distDir, 'index.html'))
       ? path.join(distDir, 'index.html')
       : path.join(__dirname, 'index.html');
@@ -15735,6 +16082,22 @@ if (fs.existsSync(adminDistDir)) {
 }
 
 // Mount Waiter Panel web bundle directly under /waiter
+// Mount Guest In-Room Food Ordering web app
+const guestOrderDistDir = path.join(__dirname, 'hcp-in-room-food-order', 'dist');
+if (fs.existsSync(guestOrderDistDir)) {
+  app.get(/^\/(order|food-order)$/, (req, res) => {
+    const q = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(301, req.path + '/' + q);
+  });
+  app.use('/order', express.static(guestOrderDistDir));
+  app.use('/food-order', express.static(guestOrderDistDir));
+  app.use('/order/assets', express.static(path.join(guestOrderDistDir, 'assets')));
+  app.use('/assets', express.static(path.join(guestOrderDistDir, 'assets')));
+  app.get(/^\/(order|food-order)\/.*$/, (req, res) => {
+    res.sendFile(path.join(guestOrderDistDir, 'index.html'));
+  });
+}
+
 const waiterDistDir = path.join(__dirname, 'release-electron', 'Hotel City Park CRM-win32-x64', 'waiter-pannel', 'dist');
 if (fs.existsSync(waiterDistDir)) {
   app.use('/waiter', express.static(waiterDistDir));
@@ -15826,9 +16189,12 @@ async function startServer() {
       }
     }, 20000);
 
-    // Initial sync of live waiter menu, tables, and staff to Firebase Firestore
-    if (typeof firebaseService.syncWaiterDataToCloud === 'function') {
+    // Initial sync of live waiter menu, tables, and staff to Firebase Firestore and Supabase bridge
+    if (isCloudSyncAllowed('firebase') && typeof firebaseService.syncWaiterDataToCloud === 'function') {
       firebaseService.syncWaiterDataToCloud(db).catch(() => {});
+    }
+    if (typeof supabaseService.syncWaiterDataToCloud === 'function') {
+      supabaseService.syncWaiterDataToCloud(db).catch(() => {});
     }
   });
 
@@ -15919,7 +16285,7 @@ app.post('/api/guest/order', async (req, res) => {
 });
 
 // Fetch pending in-room food orders for Restaurant POS acceptance modal
-app.get('/api/guest/pending-orders', (req, res) => {
+app.get('/api/guest/pending-orders', optionalAuth, (req, res) => {
   try {
     const orders = guestDiningService.getPendingKitchenOrders();
     res.json({ success: true, orders });

@@ -191,6 +191,8 @@ export const api = {
   cancelRestaurantTable: (id) => request(`/restaurant/tables/${id}/cancel`, { method: 'POST' }),
   deleteRestaurantSettledBill: (id) => request(`/restaurant/settled-bills/${id}`, { method: 'DELETE' }),
   deleteRestaurantOrder: (id) => request(`/restaurant/orders/${id}`, { method: 'DELETE' }),
+  deleteRestaurantOrderItem: (id, itemIndex) => request(`/restaurant/orders/${id}/items/${itemIndex}`, { method: 'DELETE' }),
+  deleteBarOrderItem: (id, itemIndex) => request(`/bar/orders/${id}/items/${itemIndex}`, { method: 'DELETE' }),
 
   // Guest In-Room Dining & WhatsApp Food Ordering
   getGuestPendingOrders: () => request('/guest/pending-orders'),
@@ -383,7 +385,8 @@ export const api = {
   saveSectionPasswords: (data) => request('/settings/section-passwords', { method: 'POST', body: data }),
 
   // Room Occupancy Chart & 7-Day Matrix
-  getOccupancyChart: () => request('/hospitality/occupancy-chart'),
+  getOccupancyChart: (date) => request('/hospitality/occupancy-chart' + (date ? `?date=${encodeURIComponent(date)}` : '')),
+  getCleanerHistory: (date) => request('/hospitality/cleaner-history' + (date ? `?date=${encodeURIComponent(date)}` : '')),
   getOccupancyMatrix: (startDate) => request('/hospitality/occupancy-matrix' + (startDate ? `?startDate=${startDate}` : '')),
 
   // Shift Cash Handover Statements (Front Office & F&B)

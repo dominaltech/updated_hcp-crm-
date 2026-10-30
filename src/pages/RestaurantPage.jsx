@@ -225,13 +225,11 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
       loadMenuAndCategories();
     });
 
-    // 2. Quiet fallback interval
+    // 2. Continuous real-time background sync (Never freezes when table is open!)
     const interval = setInterval(() => {
-      if (!activeSessionTable) {
-        loadTables(true);
-      }
+      loadTables(true);
       checkPendingGuestOrders();
-    }, 20000);
+    }, 8000);
 
     return () => {
       unsubTables();
@@ -240,7 +238,7 @@ export default function RestaurantPage({ onPrintKOTSlip, onPrintBillSlip }) {
       clearInterval(interval);
       stopContinuousOrderAlert();
     };
-  }, [loadTables, loadMenuAndCategories, checkPendingGuestOrders, activeSessionTable]);
+  }, [loadTables, loadMenuAndCategories, checkPendingGuestOrders]);
 
   // Separate Dine-In, Room Service, and Parcels
   const dineinTables = tables.filter(

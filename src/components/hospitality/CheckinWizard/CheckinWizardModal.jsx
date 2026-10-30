@@ -265,7 +265,7 @@ export default function CheckinWizardModal({
   const basePrice = (!isOta && totalGuests === 0)
     ? 0
     : combinedRoomsTariff;
-  const discountPct = Math.min(Number(draft.discountPct) || 0, room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25);
+  const discountPct = Math.max(0, Math.min(100, Number(draft.discountPct) || 0));
   const extraBeds = draft.roomExtraBeds !== undefined && Object.keys(draft.roomExtraBeds).length > 0
     ? allSelectedRooms.reduce((sum, r) => {
         return sum + (Number(draft.roomExtraBeds?.[r.id]) || 0);
@@ -478,6 +478,20 @@ export default function CheckinWizardModal({
       if (!isOta && (!draft.checkoutTime || !draft.checkoutTime.trim())) {
         showToast('Expected Checkout Time is mandatory. Please select checkout time.', 'red');
         return false;
+      }
+      if (draft.checkoutDate && draft.checkoutTime) {
+        const checkinIso = draft.checkinTime || new Date().toISOString();
+        const inMs = new Date(checkinIso).getTime();
+        const outMs = new Date(`${draft.checkoutDate}T${draft.checkoutTime.slice(0, 5)}`).getTime();
+        const nowMs = Date.now();
+        if (outMs < nowMs) {
+          showToast('Expected checkout cannot be earlier than current time.', 'red');
+          return false;
+        }
+        if (outMs < inMs + (9 * 60 * 60 * 1000)) {
+          showToast('Expected checkout must be at least 9 hours after check-in.', 'red');
+          return false;
+        }
       }
       return true;
     }
@@ -1051,13 +1065,15 @@ export default function CheckinWizardModal({
 
         if (prebookedAmount > 0 && !activeReceipts.some(r => r.is_prebooked || r.isPrebooked)) {
           activeReceipts.unshift({
-            receipt_no: draft.prebookedReceiptNo || 'CR01',
+            receipt_no: draft.prebookedReceiptNo || 'ADV-PRE',
             mode: draft.prebookedPaymentMode || 'cash',
             label: `Advance Pre-Booking (${draft.prebookedPaymentMode?.toUpperCase() || 'CASH'})`,
             amount: prebookedAmount,
             base_amount: prebookedAmount,
             receipt_date: draft.prebookedDate || draft.checkinTime,
             is_prebooked: true,
+            is_prebooking: true,
+            stageLabel: 'Paid For Pre-Booking',
             badge: 'PRE-BOOKING ADVANCE',
             particulars: `Advance Pre-Booking (#${draft.prebookedBookingNumber || draft.advanceBookingId || ''})`
           });

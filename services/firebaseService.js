@@ -53,6 +53,20 @@ try {
 }
 
 const seenPaymentDocIds = new Set();
+const seenStoreBillDocIds = new Set();
+
+// Periodically prune seen-ID sets to prevent unbounded memory growth
+const MAX_SEEN_IDS = 5000;
+function pruneSeenIds(idSet) {
+  if (idSet.size > MAX_SEEN_IDS) {
+    const excess = idSet.size - Math.floor(MAX_SEEN_IDS / 2);
+    let count = 0;
+    for (const v of idSet) {
+      if (count++ >= excess) break;
+      idSet.delete(v);
+    }
+  }
+}
 
 // Timeout helper to ensure non-blocking operation
 const REQUEST_TIMEOUT_MS = 6000;
@@ -61,6 +75,106 @@ function withTimeout(thenable, ms = REQUEST_TIMEOUT_MS) {
     thenable,
     new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), ms))
   ]);
+}
+
+
+/**
+ * Robust Canonical Table Resolver
+ * Matches by Primary Key ID, exact table_number, or canonical digits (e.g. 2 -> T2, Table 2, T-02, 2)
+ * Auto-creates missing dine-in tables if needed so that incoming orders are NEVER dropped.
+ */
+function resolveTargetTable(db, tableName, destId, destLabel, destType = 'table') {
+  if (!db || !tableName) return null;
+  let table = null;
+
+  // 1. Exact numeric primary key ID match
+  if (destId !== undefined && destId !== null && !isNaN(Number(destId)) && Number(destId) > 0) {
+    try { table = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(Number(destId)); } catch (_) {}
+    if (table) return table;
+  }
+
+  const rawLabel = String(destLabel || destId || '').trim();
+  if (!rawLabel) return null;
+
+  // 2. Exact table_number match (case-insensitive)
+  try {
+    table = db.prepare(`SELECT * FROM ${tableName} WHERE LOWER(table_number) = LOWER(?)`).get(rawLabel);
+  } catch (_) {}
+  if (table) return table;
+
+  // 3. Digit-based canonical match across prefixes (e.g. 2 -> T2, Table 2, T-02, T-2, 2)
+  const isBar = tableName.includes('bar');
+  const prefix = isBar ? 'B' : 'T';
+  const rawDigits = rawLabel.replace(/\D+/g, '');
+  const digits = rawDigits ? String(parseInt(rawDigits, 10)) : '';
+
+  if (digits) {
+    try {
+      table = db.prepare(`
+        SELECT * FROM ${tableName}
+        WHERE table_number IN (?, ?, ?, ?, ?, ?, ?)
+      `).get(
+        `${prefix}${digits}`,
+        `${prefix}-${digits}`,
+        `${prefix}0${digits}`,
+        `${prefix}-0${digits}`,
+        `Table ${digits}`,
+        `Table-${digits}`,
+        digits
+      );
+    } catch (_) {}
+    if (table) return table;
+  }
+
+  // 4. Room Service variations: "RS-309", "Room 309", "309"
+  if (destType === 'room' || /^(RS|Room)/i.test(rawLabel)) {
+    const roomDigits = rawLabel.replace(/\D+/g, '');
+    if (roomDigits) {
+      try {
+        table = db.prepare(`
+          SELECT * FROM ${tableName}
+          WHERE table_type = 'room_service'
+            AND (table_number = ? OR table_number LIKE ? OR room_id = ?)
+        `).get(`RS-${roomDigits}`, `%${roomDigits}%`, Number(roomDigits));
+      } catch (_) {}
+      if (table) return table;
+    }
+  }
+
+  // 5. Parcel variations: "P-1", "Parcel 1", "BP-1"
+  if (destType === 'parcel' || /^(P-|BP-|Parcel)/i.test(rawLabel)) {
+    const parcelDigits = rawLabel.replace(/\D+/g, '');
+    if (parcelDigits) {
+      const pPrefix = isBar ? 'BP' : 'P';
+      try {
+        table = db.prepare(`
+          SELECT * FROM ${tableName}
+          WHERE table_type = 'parcel'
+            AND (table_number = ? OR table_number LIKE ?)
+        `).get(`${pPrefix}-${parcelDigits}`, `%${parcelDigits}%`);
+      } catch (_) {}
+      if (table) return table;
+    }
+  }
+
+  // 6. Dine-In fallback: If it's a dine-in table and still doesn't exist, auto-create it so NO ORDER IS EVER LOST!
+  if (digits && (destType === 'table' || !destType)) {
+    const assignedTableNum = `${prefix}${digits}`;
+    try {
+      const countCol = isBar ? 'bot_count' : 'kot_count';
+      const ins = db.prepare(`
+        INSERT INTO ${tableName} (table_number, table_type, capacity, status, active_cart_json, printed_cart_json, ${countCol}, token_number)
+        VALUES (?, 'dine_in', 4, 'available', '[]', '[]', 0, 0)
+      `).run(assignedTableNum);
+      table = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(ins.lastInsertRowid);
+      console.log(`✨ [Firebase Realtime] Auto-created missing dine-in table ${assignedTableNum} in ${tableName} to prevent order drop.`);
+      return table;
+    } catch (createErr) {
+      console.warn(`[Firebase Realtime] Failed to auto-create table ${assignedTableNum}:`, createErr.message);
+    }
+  }
+
+  return null;
 }
 
 function cleanRoomNumber(val) {
@@ -479,7 +593,7 @@ async function syncDailyAnalyticsToCloud(analytics) {
 // ==========================================
 function toIstIso(val) {
   if (!val) return new Date().toISOString();
-  const s = String(val).trim().replace(' ', 'T');
+  const s = String(val).trim().replace(/\s+/g, 'T').replace(/T+/g, 'T');
   if (s.includes('+') || s.endsWith('Z') || /-\d{2}:\d{2}$/.test(s)) {
     return s;
   }
@@ -528,7 +642,10 @@ async function syncAllActiveRoomsFromLocal(db) {
       WHERE r.status = 'occupied' AND b.status = 'active'
     `).all();
 
-    const batch = firestore.batch();
+    // Firestore batches limited to 500 ops; split into chunks
+    const MAX_BATCH_OPS = 450; // Leave margin below 500
+    let batchOps = 0;
+    let batch = firestore.batch();
 
     for (const room of activeRooms) {
       const roomNum = cleanRoomNumber(room.room_number);
@@ -648,13 +765,10 @@ async function syncAllActiveRoomsFromLocal(db) {
       const decPreTaxGross = decBaseTariff + decExtraMattressCost + decBreakfastCost + extensionCharge;
 
       const discountPct = Number(room.discount_pct || 0);
+      // Flat discount_amount is a one-time amount (not per-day)
       let decDiscountAmount = discountPct > 0
         ? Math.round((decPreTaxGross * discountPct) / 100)
         : Number(room.discount_amount || 0);
-
-      if (targetStayDays > 1 && discountPct === 0 && Number(room.discount_amount || 0) > 0) {
-        decDiscountAmount = Math.round(Number(room.discount_amount || 0) * targetStayDays);
-      }
 
       const decPreTaxRoom = decPreTaxGross - decDiscountAmount;
       const roomGst = Math.round(decPreTaxRoom * 0.05);
@@ -687,15 +801,26 @@ async function syncAllActiveRoomsFromLocal(db) {
           chargedDays: targetStayDays,
           expectedNights: targetStayDays
         },
-        stayCalcNow: {
-          roomCharge: (liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05),
-          grandTotal: (liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal + extraTotal,
-          paid: paidTotal,
-          balanceDue: Math.max(0, ((liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal + extraTotal) - paidTotal),
-          refundDue: Math.max(0, paidTotal - ((liveStayDays * dailyBase) + Math.round((liveStayDays * dailyBase) * 0.05) + foodTotal + barTotal + extraTotal)),
-          stayDurationStr: `${liveStayDays} day${liveStayDays > 1 ? 's' : ''}`,
-          chargedDays: liveStayDays
-        },
+        stayCalcNow: (() => {
+          const liveBaseTariff = liveStayDays * dailyBase;
+          const liveBfCost = liveStayDays * bfDaily;
+          const liveMattressCost = liveStayDays * extraMattressDaily;
+          const livePreTaxGross = liveBaseTariff + liveBfCost + liveMattressCost + extensionCharge;
+          const liveDiscountAmt = discountPct > 0 ? Math.round((livePreTaxGross * discountPct) / 100) : Number(room.discount_amount || 0);
+          const livePreTaxRoom = livePreTaxGross - liveDiscountAmt;
+          const liveRoomGst = Math.round(livePreTaxRoom * 0.05);
+          const liveRoomCharge = livePreTaxRoom + liveRoomGst;
+          const liveGrandTotal = liveRoomCharge + foodTotal + barTotal + extraTotal;
+          return {
+            roomCharge: liveRoomCharge,
+            grandTotal: liveGrandTotal,
+            paid: paidTotal,
+            balanceDue: Math.max(0, liveGrandTotal - paidTotal),
+            refundDue: Math.max(0, paidTotal - liveGrandTotal),
+            stayDurationStr: `${liveStayDays} day${liveStayDays > 1 ? 's' : ''}`,
+            chargedDays: liveStayDays
+          };
+        })(),
         voucherNumber: room.voucher_number || `BK-${roomNum}`,
         guestName: room.guest_name,
         mobile: room.guest_mobile,
@@ -741,9 +866,18 @@ async function syncAllActiveRoomsFromLocal(db) {
         created_at: room.checkin_time || new Date().toISOString(),
         updated_at: new Date().toISOString()
       }, { merge: true });
+
+      batchOps += 2; // occupancy + folio doc
+      if (batchOps >= MAX_BATCH_OPS) {
+        await withTimeout(batch.commit());
+        batch = firestore.batch();
+        batchOps = 0;
+      }
     }
 
-    await withTimeout(batch.commit());
+    if (batchOps > 0) {
+      await withTimeout(batch.commit());
+    }
     console.log(`🔥 [Firebase] Synced ${activeRooms.length} active room(s) with folios to Firestore.`);
   } catch (err) {
     console.warn('[Firebase] syncAllActiveRoomsFromLocal error:', err.message);
@@ -757,7 +891,7 @@ async function syncStaffUsersToCloud(db) {
   if (!firestore || !db) return;
   try {
     const staffList = db.prepare(`
-      SELECT id, username, password, plain_password, full_name, role, phone, status, can_access_manager, updated_at
+      SELECT id, username, full_name, role, phone, status, can_access_manager, updated_at
       FROM staff_users
     `).all();
 
@@ -772,9 +906,8 @@ async function syncStaffUsersToCloud(db) {
         full_name: s.full_name || '',
         role: s.role || 'hospitality',
         phone: s.phone || '',
-        plain_password: s.plain_password || '',
         status: s.status || 'active',
-        can_access_manager: Boolean(s.can_access_manager == 1 || s.role === 'manager'),
+        can_access_manager: Boolean(s.can_access_manager === 1 || s.can_access_manager === true || s.role === 'manager'),
         updated_at: s.updated_at || new Date().toISOString()
       }, { merge: true });
     }
@@ -914,20 +1047,8 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                   }
                 }
 
-                // Look up target table
-                let targetTable = null;
-                if (tId) {
-                  try { targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(tId); } catch (_) {}
-                }
-                if (!targetTable && tNum) {
-                  try {
-                    targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ? OR table_number = ? OR table_number = ?`).get(
-                      tNum,
-                      tNum.replace(/^Table\s*/i, 'T'),
-                      tNum.replace(/^Table\s*/i, '')
-                    );
-                  } catch (_) {}
-                }
+                // Look up target table with canonical normalization
+                let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
 
                 if (targetTable) {
                   const isTemp = targetTable.table_type === 'parcel' ||
@@ -1002,19 +1123,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                 const destLabel = String(parsedInfo.destination_label || data.room_number || '').trim();
                 const tId = parsedInfo.destination_id || data.room_id;
 
-                let targetTable = null;
-                if (tId) {
-                  try { targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(tId); } catch (_) {}
-                }
-                if (!targetTable && destLabel) {
-                  try {
-                    targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ? OR table_number = ? OR table_number = ?`).get(
-                      destLabel,
-                      destLabel.replace(/^Table\s*/i, 'T'),
-                      destLabel.replace(/^Table\s*/i, '')
-                    );
-                  } catch (_) {}
-                }
+                let targetTable = resolveTargetTable(db, tableName, tId, destLabel, 'table');
 
                 if (targetTable) {
                   let currentCart = [];
@@ -1074,19 +1183,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                 const tNum = String(settleData.table_number || data.room_number || '').trim();
                 const tId = settleData.destinationId || settleData.table_id || data.room_id;
 
-                let targetTable = null;
-                if (tId) {
-                  try { targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(tId); } catch (_) {}
-                }
-                if (!targetTable && tNum) {
-                  try {
-                    targetTable = db.prepare(`SELECT * FROM ${tableName} WHERE table_number = ? OR table_number = ? OR table_number = ?`).get(
-                      tNum,
-                      tNum.replace(/^Table\s*/i, 'T'),
-                      tNum.replace(/^Table\s*/i, '')
-                    );
-                  } catch (_) {}
-                }
+                let targetTable = resolveTargetTable(db, tableName, tId, tNum, 'table');
 
                 let items = Array.isArray(settleData.items) && settleData.items.length > 0 ? settleData.items : [];
                 if (items.length === 0 && targetTable) {
@@ -1332,20 +1429,9 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                         console.log(`📦 [Firebase Realtime] Auto-created Takeaway Parcel Table ${parcelTableNum} in ${tableName} for Waiter ${waiterName}`);
                       }
                     } else {
-                      // 3. Dine-In Table Order
-                      targetTable = db.prepare(`
-                        SELECT * FROM ${tableName} 
-                        WHERE id = ? 
-                           OR table_number = ? 
-                           OR table_number = ? 
-                           OR table_number = ?
-                      `).get(
-                        orderData.destination_id, 
-                        destLabel, 
-                        destLabel.replace(/^Table\s*/i, 'T'), 
-                        destLabel.replace(/^Table\s*/i, '')
-                      );
-                    }
+                      // 3. Dine-In Table Order (with canonical digit matching & auto-creation)
+                      targetTable = resolveTargetTable(db, tableName, orderData.destination_id, destLabel, destType);
+                      }
 
                     if (targetTable) {
                       let currentCart = [];
@@ -1359,14 +1445,14 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
                           currentCart.push({ ...it, qty: Number(it.qty || it.quantity) || 1, added_at: nowIso });
                         }
                       }
-                      const countCol = dept === 'bar' ? 'bot_count' : 'kot_count';
-                      const kotCount = ((targetTable[countCol]) || 0) + 1;
+                      const activeCountCol = dept === 'bar' ? 'bot_count' : 'kot_count';
+                      const kotCount = ((targetTable[activeCountCol]) || 0) + 1;
                       const assignedToken = targetTable.token_number || kotCount;
                       const nextStatus = targetTable.table_type === 'parcel' ? (targetTable.status === 'ready' ? 'ready' : 'in_process') : 'occupied';
 
                       db.prepare(`
                         UPDATE ${tableName}
-                        SET active_cart_json = ?, printed_cart_json = ?, ${countCol} = ?,
+                        SET active_cart_json = ?, printed_cart_json = ?, ${activeCountCol} = ?,
                             status = ?, waiter_name = ?, special_notes = ?,
                             customer_name = CASE WHEN ? <> '' THEN ? ELSE customer_name END,
                             customer_phone = CASE WHEN ? <> '' THEN ? ELSE customer_phone END,
@@ -1422,15 +1508,36 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
           if (change.type === 'removed' || data.status === 'deleted' || data.status === 'cancelled' || data.is_deleted === true) {
             try {
               let affected = 0;
+              const dept = String(data.department || data.dept || '').toLowerCase();
+              const isBar = dept.includes('bar');
+              const isRest = dept.includes('restaurant') || dept.includes('rest');
               if (data.bill_no) {
-                const r1 = db.prepare('DELETE FROM restaurant_orders WHERE order_number = ?').run(data.bill_no);
-                const r2 = db.prepare('DELETE FROM bar_orders WHERE order_number = ?').run(data.bill_no);
-                affected += (r1.changes + r2.changes);
+                // Delete from the correct department table; fallback to both only if department is unknown
+                if (isBar) {
+                  const r = db.prepare('DELETE FROM bar_orders WHERE order_number = ?').run(data.bill_no);
+                  affected += r.changes;
+                } else if (isRest || !dept) {
+                  const r = db.prepare('DELETE FROM restaurant_orders WHERE order_number = ?').run(data.bill_no);
+                  affected += r.changes;
+                  if (!isRest && r.changes === 0) {
+                    // Unknown dept and not found in restaurant — try bar as fallback
+                    const r2 = db.prepare('DELETE FROM bar_orders WHERE order_number = ?').run(data.bill_no);
+                    affected += r2.changes;
+                  }
+                }
               }
               if (data.id && !isNaN(Number(data.id))) {
-                const r3 = db.prepare('DELETE FROM restaurant_orders WHERE id = ?').run(data.id);
-                const r4 = db.prepare('DELETE FROM bar_orders WHERE id = ?').run(data.id);
-                affected += (r3.changes + r4.changes);
+                if (isBar) {
+                  const r = db.prepare('DELETE FROM bar_orders WHERE id = ?').run(data.id);
+                  affected += r.changes;
+                } else if (isRest || !dept) {
+                  const r = db.prepare('DELETE FROM restaurant_orders WHERE id = ?').run(data.id);
+                  affected += r.changes;
+                  if (!isRest && r.changes === 0) {
+                    const r2 = db.prepare('DELETE FROM bar_orders WHERE id = ?').run(data.id);
+                    affected += r2.changes;
+                  }
+                }
               }
               const expId = data.expense_id || (String(doc.id).startsWith('EXP-') ? String(doc.id).replace(/^EXP-/, '') : null);
               if (expId) {
@@ -1529,7 +1636,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
   if (!realtimeStoreBillsUnsubscribe) {
     try {
       const qStore = firestore.collection('store_bills');
-      const seenStoreBillDocIds = new Set();
+      // seenStoreBillDocIds is at module level to survive reconnections
       realtimeStoreBillsUnsubscribe = qStore.onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
           if (change.type === 'added') {
@@ -1584,6 +1691,7 @@ function setupRealtimeListeners(db, onNewPendingOrder = null) {
             const docId = String(change.doc.id || '');
             if (seenPaymentDocIds.has(docId)) return;
             seenPaymentDocIds.add(docId);
+            pruneSeenIds(seenPaymentDocIds);
 
             const data = change.doc.data() || {};
             const createdAtMs = (data.created_at || data.paid_at) ? new Date(data.created_at || data.paid_at).getTime() : 0;
@@ -1707,6 +1815,27 @@ function stopRealtimeListeners() {
     try { realtimeStoreBillsUnsubscribe(); } catch (_) {}
     realtimeStoreBillsUnsubscribe = null;
   }
+  if (realtimeStorePaymentsUnsubscribe) {
+    try { realtimeStorePaymentsUnsubscribe(); } catch (_) {}
+    realtimeStorePaymentsUnsubscribe = null;
+  }
+}
+
+/**
+ * Write a device token to the Firestore 'owner_devices' collection.
+ * Used by notificationService to register FCM push tokens.
+ */
+async function pushOwnerDevice(deviceData) {
+  if (!firestore || !deviceData || !deviceData.id) return;
+  try {
+    const docId = String(deviceData.id);
+    await withTimeout(firestore.collection('owner_devices').doc(docId).set({
+      ...deviceData,
+      updated_at: new Date().toISOString()
+    }, { merge: true }));
+  } catch (err) {
+    console.warn('[Firebase] pushOwnerDevice error:', err.message);
+  }
 }
 
 module.exports = {
@@ -1714,6 +1843,7 @@ module.exports = {
   removeActiveOccupancy,
   fetchActiveOccupancies,
   pushRoomCharge,
+  pushOwnerDevice,
   deleteCloudRoomCharge,
   syncCheckoutToCloud,
   syncApprovalRequestToCloud,

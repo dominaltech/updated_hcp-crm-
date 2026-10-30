@@ -1007,17 +1007,19 @@ export function buildMoneyReceiptHTML(receipt) {
 
   // Row 1: "Paid for Pre-Booking" / "paid while checking" / "paid while Living" / "paid while checkout"
   const checkStr = (cleanParticulars + ' ' + (receipt.payment_stage || '') + ' ' + (receipt.purpose || '') + ' ' + (receipt.notes || '') + ' ' + (receipt.stageLabel || '')).toLowerCase();
-  let stageLabel = 'Paid For checking';
-  if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
+  let stageLabel = receipt.stageLabel || 'Paid For CheckIn';
+  if (receipt.stageLabel) {
+    stageLabel = receipt.stageLabel;
+  } else if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
     stageLabel = 'Paid while checkout';
-  } else if (checkStr.includes('pre-booking') || checkStr.includes('prebooking') || checkStr.includes('adv-') || receipt.is_prebooking || receipt.prebooking || (checkStr.includes('advance') && !checkStr.includes('checkin') && !checkStr.includes('check-in') && !checkStr.includes('checking'))) {
-    stageLabel = 'Paid for Pre-Booking';
+  } else if (checkStr.includes('pre-booking') || checkStr.includes('prebooking') || checkStr.includes('adv-') || receipt.is_prebooking || receipt.is_prebooked || receipt.prebooking || (checkStr.includes('advance') && !checkStr.includes('checkin') && !checkStr.includes('check-in') && !checkStr.includes('checking'))) {
+    stageLabel = 'Paid For Pre-Booking';
   } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('checking')) {
-    stageLabel = 'Paid For checking';
+    stageLabel = 'Paid For CheckIn';
   } else if (checkStr.includes('living') || checkStr.includes('mid-stay') || checkStr.includes('running') || checkStr.includes('stay') || checkStr.includes('fnb') || checkStr.includes('order') || checkStr.includes('restaurant') || checkStr.includes('bar')) {
     stageLabel = 'Paid while Living';
   } else {
-    stageLabel = 'Paid For checking';
+    stageLabel = 'Paid For CheckIn';
   }
 
   const rawRoom = receipt.room_numbers || receipt.roomNumber || receipt.room_number || '';
@@ -1380,28 +1382,40 @@ export function printPettyCashVoucher(voucher) {
 
   const isRefund = voucher.category === 'refund' || (voucher.title && String(voucher.title).toLowerCase().includes('refund')) || (voucher.description && String(voucher.description).toLowerCase().includes('refund'));
   
-  // Format voucher number: on refund, should be voucher no same as in checkin form (e.g. 260924-002)
-  let voucherNo = voucher.voucher_number || voucher.voucherNumber || voucher.checkin_voucher_no || voucher.booking_voucher_no || voucher.voucher_no || voucher.voucherNo || '';
-  if (isRefund && voucherNo) {
-    voucherNo = cleanVoucherNumber(voucherNo).replace(/^(PCV-?|DEB-?|REF-?)/i, '');
-  } else if (!voucherNo) {
-    voucherNo = voucher.id ? `PCV-${voucher.id}` : 'PCV-1';
-  } else if (typeof voucherNo === 'string' && voucherNo.startsWith('PCV-')) {
-    // Already in PCV-X format
-  } else if (/^\d{8}-\d+$/.test(String(voucherNo).trim())) {
-    const parts = String(voucherNo).trim().split('-');
-    const seq = parts[1] ? parseInt(parts[1], 10) : (voucher.id || 1);
-    voucherNo = `PCV-${seq}`;
-  } else if (/^\d+$/.test(String(voucherNo).trim())) {
-    voucherNo = `PCV-${parseInt(voucherNo, 10)}`;
-  } else if (/^PCV?-?(\d+)$/i.test(String(voucherNo).trim())) {
-    const match = String(voucherNo).trim().match(/^PCV?-?(\d+)$/i);
-    voucherNo = `PCV-${parseInt(match[1], 10)}`;
-  } else if (/^REF-?(\d+)$/i.test(String(voucherNo).trim())) {
-    const match = String(voucherNo).trim().match(/^REF-?(\d+)$/i);
-    voucherNo = isRefund ? voucherNo : `PCV-${parseInt(match[1], 10)}`;
-  } else {
-    voucherNo = isRefund ? cleanVoucherNumber(voucherNo) : `PCV-${voucherNo}`;
+  // Format voucher number: on refund, use official sequential RR number (e.g. RR-01) with ref_bill_no
+  let rawVoucher = voucher.voucher_number || voucher.voucherNumber || voucher.voucher_no || voucher.voucherNo || voucher.receipt_no || voucher.receiptNo || voucher.checkin_voucher_no || '';
+  let rrNumber = voucher.rr_number || voucher.rr_no || voucher.refund_voucher_no || voucher.refundVoucherNo || '';
+  if (!rrNumber && isRefund && String(rawVoucher).startsWith('RR-')) {
+    rrNumber = rawVoucher;
+  }
+  if (!rrNumber && isRefund) {
+    rrNumber = 'RR-01';
+  }
+
+  // Ref. Bill No: original stay voucher or invoice number (e.g. 261029-673)
+  let refBillNo = voucher.ref_bill_no || voucher.refBillNo || voucher.checkin_voucher_no || voucher.checkinVoucherNo || voucher.bill_no || voucher.billNo || '';
+  if (!refBillNo && isRefund && rawVoucher && !String(rawVoucher).startsWith('RR-')) {
+    refBillNo = rawVoucher;
+  }
+
+  let voucherNo = isRefund ? rrNumber : rawVoucher;
+  if (!isRefund) {
+    if (!voucherNo) {
+      voucherNo = voucher.id ? `PCV-${voucher.id}` : 'PCV-1';
+    } else if (typeof voucherNo === 'string' && voucherNo.startsWith('PCV-')) {
+      // Already in PCV-X format
+    } else if (/^\d{8}-\d+$/.test(String(voucherNo).trim())) {
+      const parts = String(voucherNo).trim().split('-');
+      const seq = parts[1] ? parseInt(parts[1], 10) : (voucher.id || 1);
+      voucherNo = `PCV-${seq}`;
+    } else if (/^\d+$/.test(String(voucherNo).trim())) {
+      voucherNo = `PCV-${parseInt(voucherNo, 10)}`;
+    } else if (/^PCV?-?(\d+)$/i.test(String(voucherNo).trim())) {
+      const match = String(voucherNo).trim().match(/^PCV?-?(\d+)$/i);
+      voucherNo = `PCV-${parseInt(match[1], 10)}`;
+    } else {
+      voucherNo = `PCV-${voucherNo}`;
+    }
   }
 
   const debitAc = voucher.debit_account || voucher.debitAccount || (isRefund ? 'Guest Refund' : (voucher.category || 'Petty Cash'));
@@ -1441,12 +1455,17 @@ export function printPettyCashVoucher(voucher) {
           </div>
         </div>
 
-        <!-- Right: Cash Voucher No. & Date with Highlights -->
+        <!-- Right: Cash Voucher / RR No. & Date with Highlights -->
         <div class="voucher-title-col">
           <div class="voucher-heading-badge">
-            ${isRefund ? 'Refund Voucher No.' : 'Cash Voucher No.'} <span class="voucher-no-highlight">${escapeHtml(voucherNo)}</span>
+            ${isRefund ? `RR No. <span class="voucher-no-highlight">${escapeHtml(rrNumber)}</span>` : `Cash Voucher No. <span class="voucher-no-highlight">${escapeHtml(voucherNo)}</span>`}
           </div>
-          <div class="voucher-date-text">
+          ${isRefund && refBillNo ? `
+            <div style="font-size: 8pt; font-weight: 850; color: #1e293b; margin-top: 3px; letter-spacing: 0.2px;">
+              Ref. Bill No : <span style="font-family: monospace; font-weight: 900; font-size: 8.5pt;">${escapeHtml(refBillNo)}</span>
+            </div>
+          ` : ''}
+          <div class="voucher-date-text" style="margin-top: 3px;">
             Date: <span class="voucher-date-highlight">${formattedDate}</span>
             <span class="voucher-copy-tag">${copyLabel}</span>
           </div>
@@ -5393,12 +5412,15 @@ export function buildFinalBillA4HTML(room = {}, calc = {}, settlement = {}) {
 /**
  * Full A4 Final Invoice Bill Print
  */
-export function printFinalBillA4(room, calc, settlement) {
+export function printFinalBillA4(room, calc, settlement, options = {}) {
   if (!room) return;
 
   const sheet = document.getElementById('print-registration-sheet');
   if (!sheet) {
     console.warn('print-registration-sheet element not found in DOM');
+    if (typeof options?.onAfterPrint === 'function') {
+      try { options.onAfterPrint(); } catch (_) {}
+    }
     return;
   }
 
@@ -5418,13 +5440,23 @@ export function printFinalBillA4(room, calc, settlement) {
   sheet.classList.add('print-active');
   document.body.classList.add('print-sheet-active');
 
+  let cleanedUp = false;
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     sheet.classList.remove('print-active');
     sheet.style.display = 'none';
     document.body.classList.remove('print-sheet-active');
     document.title = prevTitle;
     window.removeEventListener('afterprint', cleanup);
     exitThemeIsolation();
+    if (typeof options?.onAfterPrint === 'function') {
+      try {
+        options.onAfterPrint();
+      } catch (cbErr) {
+        console.warn('onAfterPrint error in printFinalBillA4:', cbErr);
+      }
+    }
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
@@ -5445,7 +5477,7 @@ export function printFinalBillA4(room, calc, settlement) {
     requestAnimationFrame(() => {
       setTimeout(() => {
         window.print();
-        setTimeout(cleanup, 3000);
+        setTimeout(cleanup, 2500);
       }, 60);
     });
   });

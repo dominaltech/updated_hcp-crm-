@@ -422,35 +422,37 @@ export default function TableSettleModal({ isOpen, session, onClose, onSettleSuc
             </div>
 
             <div style={{ display: 'inline-flex', gap: '8px', background: 'var(--bg-surface-secondary, #f1f5f9)', padding: '4px', borderRadius: '12px' }}>
-              {/* Option 1: Walk-in / Outside diner (Default) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsStayingGuest(false);
-                  setRoomBillStatus('paid');
-                  setSelectedRoomId('');
-                  setRoomServiceFor(null);
-                  if (totalAllocated === 0) setSplitCash(grandTotal);
-                }}
-                style={{
-                  padding: '9px 20px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  fontWeight: !isStayingGuest ? 900 : 700,
-                  fontSize: '0.90rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: !isStayingGuest ? 'var(--bg-surface, #ffffff)' : 'transparent',
-                  color: !isStayingGuest ? 'var(--text-primary, #0f172a)' : 'var(--text-secondary, #64748b)',
-                  boxShadow: !isStayingGuest ? '0 2px 8px rgba(0, 0, 0, 0.10)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <span>🍽️</span>
-                <span>Walk-in Diner (Non-Staying)</span>
-              </button>
+              {/* Option 1: Walk-in / Outside diner (Hidden for Room Service per hotel policy) */}
+              {!isRS && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsStayingGuest(false);
+                    setRoomBillStatus('paid');
+                    setSelectedRoomId('');
+                    setRoomServiceFor(null);
+                    if (totalAllocated === 0) setSplitCash(grandTotal);
+                  }}
+                  style={{
+                    padding: '9px 20px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    fontWeight: !isStayingGuest ? 900 : 700,
+                    fontSize: '0.90rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: !isStayingGuest ? 'var(--bg-surface, #ffffff)' : 'transparent',
+                    color: !isStayingGuest ? 'var(--text-primary, #0f172a)' : 'var(--text-secondary, #64748b)',
+                    boxShadow: !isStayingGuest ? '0 2px 8px rgba(0, 0, 0, 0.10)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span>🍽️</span>
+                  <span>Walk-in Diner (Non-Staying)</span>
+                </button>
+              )}
 
               {/* Option 2: Staying Hotel Guest */}
               <button

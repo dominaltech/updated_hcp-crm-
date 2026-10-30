@@ -3285,7 +3285,7 @@ export default function ManagePage({ onPrintClosingReport }) {
 
           {/* Audit Table with the 13 Columns */}
           <div style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-            <div style={{ overflowX: 'auto', width: '100%' }}>
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', width: '100%' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }} id="table-accounting-analysis">
                 <thead>
                   <tr style={{ background: '#1e293b', color: '#ffffff', textAlign: 'left' }}>

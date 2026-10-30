@@ -156,6 +156,7 @@ db.exec(`
     address TEXT,
     dob TEXT,
     doc_type TEXT NOT NULL, -- Aadhar Card, Driving License, Passport
+    aadhar_number TEXT DEFAULT NULL, -- Aadhaar / ID document number
     doc_front TEXT, -- base64 image (compressed < 50KB)
     doc_back TEXT, -- base64 image (compressed < 50KB)
     guest_photo TEXT, -- base64 image (compressed < 50KB)

@@ -1,10 +1,10 @@
 {
-  "url": "http://10.160.83.195:3000",
-  "adminUrl": "http://10.160.83.195:3000/admin/",
-  "crmUrl": "http://10.160.83.195:3000/hospitality",
-  "restaurantUrl": "http://10.160.83.195:3000/restaurant",
-  "barUrl": "http://10.160.83.195:3000/bar",
-  "storeUrl": "http://10.160.83.195:3000/storeman",
-  "downloadUrl": "http://10.160.83.195:3000/download.html",
-  "updatedAt": "2026-10-26T17:45:00.000Z"
+  "url": "https://lender-lean-tables-patent.trycloudflare.com",
+  "adminUrl": "https://lender-lean-tables-patent.trycloudflare.com/admin/",
+  "crmUrl": "https://lender-lean-tables-patent.trycloudflare.com/hospitality",
+  "restaurantUrl": "https://lender-lean-tables-patent.trycloudflare.com/restaurant",
+  "barUrl": "https://lender-lean-tables-patent.trycloudflare.com/bar",
+  "storeUrl": "https://lender-lean-tables-patent.trycloudflare.com/storeman",
+  "downloadUrl": "https://lender-lean-tables-patent.trycloudflare.com/download.html",
+  "updatedAt": "2026-10-29T07:10:07.991Z"
 }

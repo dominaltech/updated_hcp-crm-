@@ -16,7 +16,9 @@
     "start:all": "node scripts/start_all.js",
     "dev:all": "node scripts/start_all.js",
     "release:update": "node scripts/update_release.js",
-    "apks:sync": "node scripts/sync_apks.js"
+    "apks:sync": "node scripts/sync_apks.js",
+    "firebase:wipe": "node wipe_firebase.js",
+    "firebase:list": "node scripts/firestore_cli.js list"
   },
   "keywords": [],
   "author": "",

@@ -35,7 +35,7 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
   try {
     const hosp = useHospitality();
     if (hosp?.activeSubTab) hospSubTab = hosp.activeSubTab;
-  } catch (e) {}
+  } catch (e) { }
 
   const isPosPanel = activePanel === 'restaurant' || activePanel === 'bar';
   const isHospitalityGrid = activePanel === 'hospitality' && !hasActiveFolio && hospSubTab === 'rooms';
@@ -44,24 +44,24 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
 
   return (
     <>
-      <Header />
+      {!isFolioActive && <Header />}
       <main
         className={`app-container ${isPosPanel ? 'pos-container' : ''} ${isHospitalityGrid ? 'hospitality-container' : ''} ${isFolioActive ? 'folio-active-container' : ''}`}
         style={
           isPosPanel
             ? {
-                padding: '6px 14px',
-                maxWidth: '100%',
-                height: 'calc(100dvh - 66px)',
-                maxHeight: 'calc(100dvh - 66px)',
-                minHeight: 0,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                boxSizing: 'border-box'
-              }
+              padding: '6px 14px',
+              maxWidth: '100%',
+              height: 'calc(100dvh - 66px)',
+              maxHeight: 'calc(100dvh - 66px)',
+              minHeight: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxSizing: 'border-box'
+            }
             : isHospitalityGrid
-            ? {
+              ? {
                 padding: '2px 18px 2px',
                 maxWidth: '100%',
                 height: 'calc(100dvh - 68px)',
@@ -86,7 +86,7 @@ export default function MainLayout({ children, hasActiveFolio = false }) {
             ? {
                 padding: '0 18px 60px',
                 maxWidth: '100%',
-                minHeight: 'calc(100dvh - 68px)',
+                minHeight: '100dvh',
                 overflow: 'visible',
                 boxSizing: 'border-box'
               }

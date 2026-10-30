@@ -411,10 +411,16 @@ export default function ThemedDatePicker({
             value={typedDateText !== null ? typedDateText : (displayFormattedDate || '')}
             onClick={(e) => {
               e.stopPropagation();
+              if (!disabled) {
+                setIsOpen(true);
+              }
             }}
             onFocus={(e) => {
               setTypedDateText(displayFormattedDate || '');
               e.target.select();
+              if (!disabled) {
+                setIsOpen(true);
+              }
             }}
             onChange={handleDateInputChange}
             onBlur={() => {

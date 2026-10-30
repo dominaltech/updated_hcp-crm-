@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const db = require('../database');
 
 /**
@@ -57,13 +59,15 @@ function savePushToken(token, platform = 'android') {
   try {
     const firebaseService = require('./firebaseService');
     const docId = cleanToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
-    firebaseService.pushRoomCharge('owner_devices', {
-      id: docId,
-      fcm_token: cleanToken,
-      device_name: platform || 'Owner Android',
-      platform: platform || 'android',
-      updated_at: new Date().toISOString()
-    }).catch(() => {});
+    if (typeof firebaseService.pushOwnerDevice === 'function') {
+      firebaseService.pushOwnerDevice({
+        id: docId,
+        fcm_token: cleanToken,
+        device_name: platform || 'Owner Android',
+        platform: platform || 'android',
+        updated_at: new Date().toISOString()
+      }).catch(() => {});
+    }
   } catch (e) {}
 
   return true;

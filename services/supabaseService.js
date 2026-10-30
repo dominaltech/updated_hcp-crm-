@@ -12,11 +12,20 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase decommissioned: all cloud operations redirect to Firebase Firestore
-const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
+// Resilient dual-cloud sync (Supabase bridge + Firebase Firestore)
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hlwmsllmqfdxfmqulrat.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhsd21zbGxtcWZkeGZtcXVscmF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3Mzc4MzgsImV4cCI6MjEwNTMxMzgzOH0.r7Nb8rEJTrZvprpf4G023nMY0suq2OqVGetG0I8esjk';
 
 let supabase = null;
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false }
+    });
+  } catch (e) {
+    console.warn('[Supabase Init Notice]:', e.message);
+  }
+}
 
 // Resilient Offline Protection & Circuit Breaker
 const REQUEST_TIMEOUT_MS = 8000; // 8 seconds max for any cloud call

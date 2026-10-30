@@ -234,7 +234,7 @@ export default function Step6Stay({
             if (isMounted) {
               setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null });
             }
-          }, 1200);
+          }, 600);
         } else if (res && res.status === 'REJECTED') {
           clearInterval(interval);
           setDiscountPermissionModal(prev => ({ ...prev, status: 'rejected' }));
@@ -3506,7 +3506,7 @@ export default function Step6Stay({
 
               {/* Discount Chips */}
               <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                {[0, 5, 10, 15, 20, 25].map((pct) => {
+                {[0, 5, 10, 15, 20, 25, 30, 35, 40].map((pct) => {
                   const policyLimit = room.max_discount_pct !== undefined && room.max_discount_pct !== null && room.max_discount_pct !== '' ? Number(room.max_discount_pct) : 25;
                   const maxAllowed = Math.max(policyLimit, Number(approvedDiscountPct) || 0);
                   const isCapped = pct > maxAllowed;
@@ -5806,6 +5806,13 @@ export default function Step6Stay({
                   <p style={{ margin: 0, fontSize: '0.84rem', color: '#15803d', fontWeight: 700 }}>
                     Admin approved {discountPermissionModal.requestedPct}% discount for this check-in!
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setDiscountPermissionModal({ isOpen: false, requestedPct: null, status: 'idle', approvalId: null })}
+                    style={{ marginTop: '14px', padding: '10px 22px', borderRadius: '8px', border: 'none', background: '#16a34a', color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: '0.90rem', boxShadow: '0 2px 8px rgba(22, 163, 74, 0.35)' }}
+                  >
+                    Applied! Continue Check-In →
+                  </button>
                 </div>
               )}
 
