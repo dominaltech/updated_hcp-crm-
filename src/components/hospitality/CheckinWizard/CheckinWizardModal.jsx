@@ -12,6 +12,7 @@ import Step6Stay from './Step6Stay';
 import Step7Payment from './Step7Payment';
 import ImageLightbox from '../../common/ImageLightbox';
 import ErrorBoundary from '../../common/ErrorBoundary';
+import CFormModal from '../CFormModal';
 import { printGuestRegistrationA4, autoSaveGuestRegistrationPDF, cleanVoucherNumber } from '../../../services/printService';
 import { getLocalIsoDateTime, timeToMinutes, getMinCheckoutDate } from '../../../utils/formatters';
 
@@ -34,6 +35,7 @@ export default function CheckinWizardModal({
   const [maxReachedStep, setMaxReachedStep] = useState(1);
   const [lightboxImage, setLightboxImage] = useState(null);
   const [lightboxTitle, setLightboxTitle] = useState('Document Preview');
+  const [showCFormModal, setShowCFormModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const modalBodyRef = useRef(null);
 
@@ -691,6 +693,12 @@ export default function CheckinWizardModal({
         expiryDate: draft.expiryDate,
         expiry_date: draft.expiryDate,
         address: draft.address,
+        nationality: draft.nationality || '',
+        guest_nationality: draft.nationality || '',
+        c_form_data: draft.cFormData || null,
+        cFormData: draft.cFormData || null,
+        passport_place_of_issue: draft.passportPlaceOfIssue || '',
+        passport_date_of_issue: draft.passportDateOfIssue || '',
         docType: draft.docType,
         doc_type: draft.docType,
         docFront: draft.docFront,
@@ -1156,15 +1164,42 @@ export default function CheckinWizardModal({
                 </h3>
               </div>
             </div>
-            <button
-              type="button"
-              className="universal-close-btn modal-close-btn"
-              onClick={onClose}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {((draft?.docType || '').toLowerCase().includes('passport') ||
+                (draft?.nationality && !['indian', 'india'].includes(draft.nationality.trim().toLowerCase())) ||
+                draft?.cFormData) && (
+                <button
+                  type="button"
+                  onClick={() => setShowCFormModal(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    background: '#fef3c7',
+                    color: '#92400e',
+                    border: '1.5px solid #fcd34d',
+                    fontWeight: 850,
+                    fontSize: '0.80rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(245, 158, 11, 0.2)'
+                  }}
+                  title="Police Form 'C' for Foreign Guest (Scanned Passport info auto-filled)"
+                >
+                  <span>🛂</span> Form 'C'
+                </button>
+              )}
+              <button
+                type="button"
+                className="universal-close-btn modal-close-btn"
+                onClick={onClose}
               title="Close Check-In Wizard"
               style={{ width: '30px', height: '30px', minWidth: '30px', minHeight: '30px', fontSize: '1.25rem' }}
-            >
-              &times;
-            </button>
+              >
+                &times;
+              </button>
+            </div>
           </div>
 
           {/* Step Indicators: Compact bar to maximize vertical space and eliminate scrolling */}
@@ -1422,6 +1457,35 @@ export default function CheckinWizardModal({
           </div>
         </div>
       </div>
+
+      {showCFormModal && (
+        <CFormModal
+          isOpen={showCFormModal}
+          onClose={() => setShowCFormModal(false)}
+          initialData={{
+            guestName: draft.name || draft.guestName,
+            nationality: draft.nationality || 'Foreigner',
+            passportNo: draft.idNumber || draft.aadharNumber,
+            passportPlaceOfIssue: draft.passportPlaceOfIssue || '',
+            passportDateOfIssue: draft.passportDateOfIssue || '',
+            passportValidTill: draft.expiryDate || '',
+            checkinTime: draft.checkinTime,
+            mobile: draft.mobile,
+            stayNights: draft.stayNights,
+            cFormData: draft.cFormData
+          }}
+          onSave={(savedCData) => {
+            updateDraft({
+              cFormData: savedCData,
+              nationality: savedCData.nationality,
+              passportPlaceOfIssue: savedCData.passportPlaceOfIssue,
+              passportDateOfIssue: savedCData.passportDateOfIssue,
+              expiryDate: savedCData.passportValidTill || draft.expiryDate
+            });
+            setShowCFormModal(false);
+          }}
+        />
+      )}
 
       <ImageLightbox
         isOpen={Boolean(lightboxImage)}

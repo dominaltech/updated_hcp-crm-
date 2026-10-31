@@ -6,7 +6,7 @@ import { numberToWordsINR } from '../../utils/numberToWords';
 
 export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [shift, setShift] = useState('all');
+  const [shift, setShift] = useState('7am-7pm');
   const [staffName, setStaffName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [handoverData, setHandoverData] = useState(null);
@@ -110,19 +110,25 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
           </div>
           <button
             type="button"
-            className="btn-secondary"
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: 'none',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.25)',
+              background: 'rgba(255,255,255,0.18)',
               color: '#fff',
-              padding: '6px 12px',
-              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
-              fontWeight: 700
+              fontSize: '1rem',
+              fontWeight: 800,
+              transition: 'all 0.15s ease'
             }}
+            title="Close"
           >
-            ✕ Close
+            ✕
           </button>
         </div>
 
@@ -140,10 +146,12 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
         >
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#92400e' }}>Date:</span>
-            <ThemedDatePicker
+            <input
+              type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{ width: '145px', height: '34px', fontSize: '0.82rem' }}
+              className="form-input form-input-sm"
+              style={{ width: '150px', height: '34px', fontSize: '0.82rem', fontWeight: 700 }}
             />
           </div>
 
@@ -155,23 +163,12 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
               className="form-input form-input-sm"
               style={{ height: '34px', fontSize: '0.82rem', fontWeight: 650, borderRadius: '8px', width: '220px' }}
             >
-              <option value="all">Full Day / All Shifts</option>
-              <option value="morning">Shift 1 / Morning (07:00 AM - 03:00 PM)</option>
-              <option value="evening">Shift 2 / Evening (03:00 PM - 11:00 PM)</option>
-              <option value="night">Shift 3 / Night (11:00 PM - 07:00 AM)</option>
+              <option value="7am-7pm">7:00 AM - 7:00 PM</option>
+              <option value="7pm-7am">7:00 PM - 7:00 AM</option>
+              <option value="7am-3pm">7:00 AM - 3:00 PM</option>
+              <option value="3pm-11pm">3:00 PM - 11:00 PM</option>
+              <option value="11pm-7am">11:00 PM - 7:00 AM</option>
             </select>
-          </div>
-
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#92400e' }}>Paying Cashier:</span>
-            <input
-              type="text"
-              className="form-input form-input-sm"
-              value={staffName}
-              onChange={(e) => setStaffName(e.target.value)}
-              placeholder="F&B Staff Name"
-              style={{ width: '150px', height: '34px', fontSize: '0.82rem', fontWeight: 700 }}
-            />
           </div>
 
           <button
@@ -211,7 +208,7 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                 <div style={{ padding: '12px 16px', borderBottom: '1.5px solid #0f172a', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase' }}>
-                      HOTEL CITYPAARK
+                      HOTEL CITY PAARK
                     </h4>
                     <p style={{ margin: 0, fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
                       119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001.
@@ -220,7 +217,7 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                   <div style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.35 }}>
                     <div>SHIFT: <span style={{ color: '#d97706' }}>{handoverData.shift}</span></div>
                     <div>DATE: <span>{new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></div>
-                    <div>STAFF: <span style={{ textTransform: 'uppercase', color: '#b45309' }}>{staffName}</span></div>
+                    <div style={{ whiteSpace: 'nowrap' }}>STAFF: <span style={{ textTransform: 'uppercase', color: '#b45309', fontWeight: 900 }}>{staffName}</span></div>
                   </div>
                 </div>
 
@@ -242,7 +239,7 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                       </td>
                       <td style={{ padding: '6px 12px', borderRight: '1.5px solid #0f172a' }}></td>
                       <td style={{ padding: '6px 12px', fontWeight: 800, borderRight: '1px solid #cbd5e1' }}>
-                        Total (CR) Receipts Rs.
+                        Total Cash Receipts Rs.
                       </td>
                       <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 850, color: '#0f172a' }}>
                         ₹ {toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -250,7 +247,7 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                     </tr>
                     <tr>
                       <td style={{ padding: '5px 12px', paddingLeft: '24px', borderRight: '1px solid #cbd5e1' }}>
-                        1. F&B Cash Sales
+                        1) F&B Cash Sales
                       </td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', borderRight: '1.5px solid #0f172a', fontWeight: 700 }}>
                         ₹ {fnbCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -264,7 +261,7 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                     </tr>
                     <tr>
                       <td style={{ padding: '5px 12px', paddingLeft: '24px', borderRight: '1px solid #cbd5e1' }}>
-                        2. F&B Deposits
+                        2) F&B Deposits
                       </td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', borderRight: '1.5px solid #0f172a', fontWeight: 700 }}>
                         ₹ {fnbDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -314,12 +311,19 @@ export default function FnBCashHandoverModal({ isOpen, onClose, currentUser }) {
                     Total in Words : {amountWords}
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', fontSize: '0.78rem', fontWeight: 750, color: '#475569' }}>
-                    <div>
-                      Signature of Paying Cashier: <strong style={{ color: '#0f172a' }}>[{staffName}]</strong> _____________________
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', fontSize: '0.78rem', fontWeight: 750, color: '#475569' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        Signature of Paying Cashier: <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>[{staffName}]</strong> _____________________
+                      </div>
+                      <div>
+                        Sign of Receiving Cashier: _____________________
+                      </div>
                     </div>
-                    <div>
-                      Signature of Receiving Cashier: _____________________
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <div>
+                        Sign of Accountant: _____________________
+                      </div>
                     </div>
                   </div>
                 </div>

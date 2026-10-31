@@ -704,22 +704,42 @@ export default function Step4Details({ draft, updateDraft, onReanalyzeAI, onPrev
           <div className="checkin-form-grid-2" style={{ gap: '8px 12px' }}>
             {isPassport && (
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
-                  Alternate Mobile (Optional)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
+                    Nationality
+                  </label>
+                  {draft.nationality && !['indian', 'india'].includes(draft.nationality.trim().toLowerCase()) && (
+                    <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '6px' }}>
+                      🛂 Foreign Guest (Form 'C')
+                    </span>
+                  )}
+                </div>
                 <input
-                  type="tel"
+                  type="text"
                   className="form-input"
-                  placeholder="Optional 2nd Mobile"
-                  maxLength={10}
-                  value={draft.altMobile || ''}
-                  onKeyDown={(e) => blockNonNumericKeys(e, 10)}
-                  onChange={(e) => updateDraft({ altMobile: sanitizePhoneInput(e.target.value, 10) })}
-                  style={{ height: '36px', fontWeight: 600 }}
+                  placeholder="e.g. AMERICAN, BRITISH, FRENCH, INDIAN"
+                  value={draft.nationality || ''}
+                  onChange={(e) => updateDraft({ nationality: e.target.value.toUpperCase() })}
+                  style={{ height: '36px', fontWeight: 750 }}
                 />
               </div>
             )}
-            <div className="form-group" style={{ margin: 0, gridColumn: isPassport ? 'auto' : '1 / -1' }}>
+            {isPassport && (
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                  Passport Place of Issue
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Washington, London, New Delhi"
+                  value={draft.passportPlaceOfIssue || ''}
+                  onChange={(e) => updateDraft({ passportPlaceOfIssue: e.target.value })}
+                  style={{ height: '36px', fontWeight: 650 }}
+                />
+              </div>
+            )}
+            <div className="form-group" style={{ margin: 0, gridColumn: isPassport ? '1 / -1' : '1 / -1' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                 <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', margin: 0 }}>
                   ID Verification Type *

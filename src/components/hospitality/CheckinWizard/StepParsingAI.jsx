@@ -118,6 +118,15 @@ export default function StepParsingAI({ draft, updateDraft, onComplete }) {
         updates.expiryDate = '';
       }
 
+      if (ext.nationality && ext.nationality.trim()) {
+        updates.nationality = ext.nationality.trim().toUpperCase();
+      } else if (ext.country && ext.country.trim()) {
+        updates.nationality = ext.country.trim().toUpperCase();
+      }
+      if (ext.passportPlaceOfIssue && ext.passportPlaceOfIssue.trim()) {
+        updates.passportPlaceOfIssue = ext.passportPlaceOfIssue.trim();
+      }
+
       if (Object.keys(updates).length > 0) {
         updateDraft(updates);
       }

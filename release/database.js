@@ -336,6 +336,10 @@ try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_mode TEXT;"); } catch (
 try { db.exec("ALTER TABLE bookings ADD COLUMN prebooked_date TEXT;"); } catch (e) {}
 
 try { db.exec("ALTER TABLE guests ADD COLUMN email TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE guests ADD COLUMN nationality TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE guests ADD COLUMN c_form_data TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN nationality TEXT;"); } catch (e) {}
+try { db.exec("ALTER TABLE bookings ADD COLUMN c_form_data TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN shortcode TEXT;"); } catch (e) {}
 try { db.exec("ALTER TABLE menu_items ADD COLUMN is_veg INTEGER DEFAULT 1;"); } catch (e) {}
 try {

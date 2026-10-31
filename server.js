@@ -802,16 +802,20 @@ app.get('/api/hospitality/occupancy-chart', (req, res) => {
 // 1c. CASH HANDOVER STATEMENTS (Front Office & F&B Cash Handover)
 function getCashHandoverShiftRange(dateStr, shift) {
   const d = dateStr || new Date().toISOString().slice(0, 10);
-  const s = String(shift || 'all').toLowerCase();
-  if (s === 'morning') {
-    return { start: `${d} 07:00:00`, end: `${d} 14:59:59`, label: 'Shift 1 / Morning' };
-  } else if (s === 'evening') {
-    return { start: `${d} 15:00:00`, end: `${d} 22:59:59`, label: 'Shift 2 / Evening' };
-  } else if (s === 'night') {
-    const nextDate = new Date(new Date(d).getTime() + 86400000).toISOString().slice(0, 10);
-    return { start: `${d} 23:00:00`, end: `${nextDate} 06:59:59`, label: 'Shift 3 / Night' };
+  const s = String(shift || '7am-7pm').toLowerCase().replace(/\s+/g, '');
+  const nextDate = new Date(new Date(d).getTime() + 86400000).toISOString().slice(0, 10);
+
+  if (s === '7pm-7am') {
+    return { start: `${d} 19:00:00`, end: `${nextDate} 06:59:59`, label: '7:00 PM - 7:00 AM' };
+  } else if (s === '7am-3pm' || s === 'morning') {
+    return { start: `${d} 07:00:00`, end: `${d} 14:59:59`, label: '7:00 AM - 3:00 PM' };
+  } else if (s === '3pm-11pm' || s === 'evening') {
+    return { start: `${d} 15:00:00`, end: `${d} 22:59:59`, label: '3:00 PM - 11:00 PM' };
+  } else if (s === '11pm-7am' || s === 'night') {
+    return { start: `${d} 23:00:00`, end: `${nextDate} 06:59:59`, label: '11:00 PM - 7:00 AM' };
   }
-  return { start: `${d} 00:00:00`, end: `${d} 23:59:59`, label: 'Full Day / All Shifts' };
+  // Default: 7am-7pm
+  return { start: `${d} 07:00:00`, end: `${d} 18:59:59`, label: '7:00 AM - 7:00 PM' };
 }
 
 app.get('/api/hospitality/cash-handover-data', (req, res) => {
@@ -951,11 +955,43 @@ app.get('/api/hospitality/cash-handover-data', (req, res) => {
       totalRefund += (parseFloat(amt) || 0);
     });
 
-    // Key Rule: In Front Office Handover, only Receipts A (1+2+3) are included in Net Handover to Accounts!
+    // 5b. Expenses Breakdown during this Shift (Operational & Owner Expenses in Cash)
+    const expenseRows = db.prepare(`
+      SELECT id, voucher_no, category, purpose_category, purpose_child, owner_name, paid_to, amount, payment_mode, purpose_details, cashier_name, created_at
+      FROM expenses
+      WHERE (category != 'refund' OR category IS NULL)
+        AND (LOWER(payment_mode) = 'cash' OR payment_mode IS NULL OR payment_mode = '')
+        AND datetime(created_at) >= datetime(?) AND datetime(created_at) <= datetime(?)
+      ORDER BY datetime(created_at) ASC
+    `).all(start, end);
+
+    let totalExpenses = 0;
+    const categoryTotals = {};
+    const categoryDetails = [];
+
+    expenseRows.forEach(exp => {
+      const amt = parseFloat(exp.amount) || 0;
+      totalExpenses += amt;
+      const catName = exp.category || exp.purpose_category || 'Other';
+      const isOwner = catName.toLowerCase().includes('owner') || (exp.owner_name && exp.owner_name.trim() !== '');
+      const displayCat = isOwner ? `Owner Expenses (${exp.owner_name || 'Owner'})` : catName;
+      categoryTotals[displayCat] = (categoryTotals[displayCat] || 0) + amt;
+      categoryDetails.push({
+        ...exp,
+        displayCategory: displayCat
+      });
+    });
+
+    const expensesByCategory = Object.entries(categoryTotals).map(([cat, amt]) => ({
+      category: cat,
+      amount: Math.round(amt * 100) / 100
+    }));
+
+    // Key Rule: In Front Office Handover, Receipts A (1+2+3) minus Total Refund minus Expenses = Net Handover to Accounts!
     // B (To Pay F&B) is strictly separate.
     const pureFoCashSales = Math.max(0, Math.round((foCashSales - fbCashCollected) * 100) / 100);
     const toHandoverA = Math.round((pureFoCashSales + foDeposits + otherIncome) * 100) / 100;
-    const netHandover = Math.max(0, Math.round((toHandoverA - totalRefund) * 100) / 100);
+    const netHandover = Math.max(0, Math.round((toHandoverA - totalRefund - totalExpenses) * 100) / 100);
 
     res.json({
       success: true,
@@ -971,12 +1007,15 @@ app.get('/api/hospitality/cash-handover-data', (req, res) => {
       fbCashCollected: Math.round(fbCashCollected * 100) / 100,
       totalReceiptsCR: toHandoverA,
       totalRefund: Math.round(totalRefund * 100) / 100,
+      totalExpenses: Math.round(totalExpenses * 100) / 100,
+      expensesByCategory,
       netHandover,
       breakdowns: {
         foCashSalesRows,
         depositRows,
         extraRows,
         refundRows,
+        expenseRows: categoryDetails,
         fnbCollectionDetails
       },
       generatedAt: new Date().toISOString()
@@ -2736,6 +2775,19 @@ app.post('/api/checkin', requireAuth, requireRole('manager', 'hospitality'), (re
       const bId = result.lastInsertRowid;
       bookingIds.push(bId);
 
+      if (idx === 0) {
+        try {
+          const cFormJson = b.c_form_data ? (typeof b.c_form_data === 'object' ? JSON.stringify(b.c_form_data) : b.c_form_data) : null;
+          const natVal = (b.nationality || b.guest_nationality || '').trim();
+          if (cFormJson || natVal) {
+            db.prepare('UPDATE bookings SET c_form_data = ?, nationality = COALESCE(?, nationality) WHERE id = ?').run(cFormJson, natVal || null, bId);
+            db.prepare('UPDATE guests SET c_form_data = ?, nationality = COALESCE(?, nationality) WHERE id = ?').run(cFormJson, natVal || null, guestId);
+          }
+        } catch (cfErr) {
+          console.warn('Form C save err in checkin:', cfErr);
+        }
+      }
+
       // If pre-booking was adopted, mark advance booking completed and link to new check-in booking
       if (idx === 0 && advBookingId) {
         try {
@@ -3145,6 +3197,30 @@ app.get(['/api/bookings/:id', '/api/hospitality/history/:id'], (req, res) => {
 });
 
 // 8b. EXTEND CHECKOUT TIME & LOG AUDIT TRAIL (Updates all linked group rooms, charges extended amount & records split payments)
+app.post('/api/bookings/:id/c-form', requireAuth, (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { c_form_data, guest_nationality } = req.body || {};
+    const cFormJson = typeof c_form_data === 'object' ? JSON.stringify(c_form_data) : (c_form_data || null);
+    const nat = (guest_nationality || '').trim();
+
+    try {
+      db.prepare('UPDATE bookings SET c_form_data = ?, nationality = COALESCE(?, nationality) WHERE id = ?').run(cFormJson, nat || null, bookingId);
+      const bk = db.prepare('SELECT guest_id FROM bookings WHERE id = ?').get(bookingId);
+      if (bk && bk.guest_id) {
+        db.prepare('UPDATE guests SET c_form_data = ?, nationality = COALESCE(?, nationality) WHERE id = ?').run(cFormJson, nat || null, bk.guest_id);
+      }
+    } catch (dbErr) {
+      console.warn('Database error saving C form:', dbErr);
+    }
+
+    res.json({ success: true, message: "Form 'C' details saved" });
+  } catch (err) {
+    console.error('Error in /api/bookings/:id/c-form:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/bookings/:id/extend-checkout', requireAuth, requireRole('manager', 'hospitality'), (req, res) => {
   try {
     const { id } = req.params;

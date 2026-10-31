@@ -7,6 +7,7 @@ import ThemedDatePicker from '../components/common/ThemedDatePicker';
 import ImageLightbox from '../components/common/ImageLightbox';
 import FolioSettlementModal from '../components/hospitality/FolioSettlementModal';
 import DocumentActionModal from '../components/hospitality/DocumentActionModal';
+import CFormModal from '../components/hospitality/CFormModal';
 import CheckinSplitReceiptsModal from '../components/hospitality/CheckinSplitReceiptsModal';
 import { printCashReceipt, downloadReceiptPDF, printGuestRegistrationA4, downloadGuestRegistrationPDF, printGuestPaymentSummary, printFinalBillA4, printGuestActivitiesSummary } from '../services/printService';
 import { socketClient } from '../services/socketClient';
@@ -229,6 +230,7 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
   const [lightboxTitle, setLightboxTitle] = useState('Preview');
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [docActionModal, setDocActionModal] = useState({ isOpen: false, type: 'info', data: null });
+  const [showCFormFolioModal, setShowCFormFolioModal] = useState(false);
   const [selectedFnbOrder, setSelectedFnbOrder] = useState(null);
   const [fnbPayMode, setFnbPayMode] = useState('cash');
   const [fnbUtr, setFnbUtr] = useState('');
@@ -2001,6 +2003,31 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
           >
             📋 Check-In Form
           </button>
+
+          {/* C-FORM POLICE REGISTRATION FOR FOREIGN / PASSPORT GUESTS */}
+          {Boolean(
+            (folioData?.docType || '').toLowerCase().includes('passport') ||
+            (folioData?.doc_type || '').toLowerCase().includes('passport') ||
+            (folioData?.nationality && !['indian', 'india'].includes(String(folioData.nationality).trim().toLowerCase())) ||
+            (folioData?.guest_nationality && !['indian', 'india'].includes(String(folioData.guest_nationality).trim().toLowerCase())) ||
+            folioData?.c_form_data ||
+            folioData?.cFormData
+          ) && (
+            <button
+              type="button"
+              className="filter-chip btn-folio-action-chip"
+              onClick={() => setShowCFormFolioModal(true)}
+              style={{
+                background: '#fef3c7',
+                color: '#92400e',
+                border: '1px solid #fcd34d',
+                fontWeight: 800
+              }}
+              title="Official Form 'C' for Foreign Guest (Police Registration Form)"
+            >
+              🛂 Form 'C'
+            </button>
+          )}
 
           <button
             type="button"
@@ -8028,6 +8055,46 @@ export default function RoomFolioPage({ roomId, onBack, onReprintRegForm, onOpen
             </form>
           </div>
         </div>
+      )}
+
+      {showCFormFolioModal && (
+        <CFormModal
+          isOpen={showCFormFolioModal}
+          onClose={() => setShowCFormFolioModal(false)}
+          initialData={{
+            guestName: folioData?.guestName || folioData?.guest_name,
+            nationality: folioData?.nationality || folioData?.guest_nationality || '',
+            passportNo: folioData?.passportNo || folioData?.aadharNumber || folioData?.idNumber,
+            passportPlaceOfIssue: folioData?.passportPlaceOfIssue || folioData?.passport_place_of_issue || '',
+            passportDateOfIssue: folioData?.passportDateOfIssue || folioData?.passport_date_of_issue || '',
+            passportValidTill: folioData?.expiryDate || folioData?.passportValidTill || '',
+            checkinTime: folioData?.checkinTime || folioData?.checkin_time,
+            mobile: folioData?.mobile || folioData?.guest_mobile,
+            stayNights: folioData?.stayNights || folioData?.chargedDays || 1,
+            addressInSolapur: 'Hotel City Paark, 119 Murarji Peth, Solapur - 413001',
+            cFormData: folioData?.c_form_data || folioData?.cFormData || null
+          }}
+          onSave={async (savedCData) => {
+            try {
+              setFolioData(prev => ({
+                ...prev,
+                c_form_data: savedCData,
+                cFormData: savedCData,
+                nationality: savedCData.nationality || prev?.nationality
+              }));
+              if (folioData?.bookingId) {
+                await api.updateCFormData(folioData.bookingId, {
+                  c_form_data: savedCData,
+                  guest_nationality: savedCData.nationality
+                });
+              }
+              showToast("✓ Form 'C' details saved successfully!", 'green', 3000);
+            } catch (e) {
+              console.warn("Could not save Form 'C' data:", e);
+            }
+            setShowCFormFolioModal(false);
+          }}
+        />
       )}
 
       <DocumentActionModal

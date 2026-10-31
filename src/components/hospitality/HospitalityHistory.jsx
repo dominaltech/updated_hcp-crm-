@@ -3173,6 +3173,32 @@ export default function HospitalityHistory({ onViewDetail, onChangePaymentStatus
                       >
                         {isDetailBtcPending ? '📄 Check-In Form (BTC Details)' : '📋 Check-In Form'}
                       </button>
+                      {Boolean(
+                        (detailBooking?.doc_type || detailBooking?.docType || '').toLowerCase().includes('passport') ||
+                        (detailBooking?.nationality && !['indian', 'india'].includes(String(detailBooking.nationality).trim().toLowerCase())) ||
+                        (detailBooking?.guest_nationality && !['indian', 'india'].includes(String(detailBooking.guest_nationality).trim().toLowerCase())) ||
+                        detailBooking?.c_form_data ||
+                        detailBooking?.cFormData
+                      ) && (
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => {
+                            setDocActionModal({ isOpen: true, type: 'cform', data: detailBooking });
+                          }}
+                          style={{
+                            fontWeight: 800,
+                            padding: '8px 14px',
+                            fontSize: '0.85rem',
+                            background: '#fef3c7',
+                            color: '#92400e',
+                            borderColor: '#fcd34d'
+                          }}
+                          title="Official Form 'C' for Foreign Guest (Police Registration Form)"
+                        >
+                          🛂 Form 'C'
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="filter-chip"

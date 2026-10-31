@@ -76,7 +76,7 @@ export default function Step7Payment({
   const selectPaymentMethod = (field, inputRef) => {
     if (field === 'splitCheque' && !isBtc) return;
     setSelectedMethod(field);
-    if (inputRef && inputRef.current) {
+    if (inputRef && inputRef.current && document.activeElement !== inputRef.current) {
       inputRef.current.focus();
     }
   };
@@ -480,7 +480,7 @@ export default function Step7Payment({
                 max={netDueToday}
                 value={splitCash || ''}
                 placeholder="0"
-                onFocus={() => selectPaymentMethod('splitCash', cashInputRef)}
+                onFocus={() => setSelectedMethod('splitCash')}
                 onChange={(e) => handleAmountChange('splitCash', e.target.value)}
               />
             </div>
@@ -522,7 +522,7 @@ export default function Step7Payment({
                 max={netDueToday}
                 value={splitOnline || ''}
                 placeholder="0"
-                onFocus={() => selectPaymentMethod('splitOnline', onlineInputRef)}
+                onFocus={() => setSelectedMethod('splitOnline')}
                 onChange={(e) => handleAmountChange('splitOnline', e.target.value)}
               />
             </div>
@@ -574,7 +574,7 @@ export default function Step7Payment({
                 max={netDueToday}
                 value={splitCard || ''}
                 placeholder="0"
-                onFocus={() => selectPaymentMethod('splitCard', cardInputRef)}
+                onFocus={() => setSelectedMethod('splitCard')}
                 onChange={(e) => handleAmountChange('splitCard', e.target.value)}
               />
             </div>
@@ -615,7 +615,7 @@ export default function Step7Payment({
                   max={totalDue}
                   value={splitCheque || ''}
                   placeholder="0"
-                  onFocus={() => selectPaymentMethod('splitCheque', chequeInputRef)}
+                  onFocus={() => setSelectedMethod('splitCheque')}
                   onChange={(e) => handleAmountChange('splitCheque', e.target.value)}
                 />
               </div>

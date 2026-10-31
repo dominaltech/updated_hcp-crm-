@@ -1484,9 +1484,9 @@ body.modal-open {
 #checkin-modal-overlay .modal-body {
   flex: 1;
   padding: 10px 92px 14px !important;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: stable;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable both-edges !important;
   background: var(--bg-app);
   display: flex;
   flex-direction: column;

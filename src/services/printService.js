@@ -1012,8 +1012,21 @@ export function buildMoneyReceiptHTML(receipt) {
     stageLabel = receipt.stageLabel;
   } else if (checkStr.includes('checkout') || checkStr.includes('final') || checkStr.includes('settlement')) {
     stageLabel = 'Paid while checkout';
-  } else if (checkStr.includes('pre-booking') || checkStr.includes('prebooking') || checkStr.includes('adv-') || receipt.is_prebooking || receipt.is_prebooked || receipt.prebooking || (checkStr.includes('advance') && !checkStr.includes('checkin') && !checkStr.includes('check-in') && !checkStr.includes('checking'))) {
-    stageLabel = 'Paid For Pre-Booking';
+  } else if (
+    receipt.is_prebooking === true ||
+    receipt.is_prebooked === true ||
+    receipt.prebooking === true ||
+    receipt.is_advance_booking === true ||
+    receipt.payment_stage === 'advance_booking' ||
+    receipt.payment_type === 'advance_booking' ||
+    receipt.purpose === 'advance_booking' ||
+    checkStr.includes('pre-booking') ||
+    checkStr.includes('prebooking') ||
+    checkStr.includes('advance booking') ||
+    checkStr.includes('advance-booking') ||
+    checkStr.includes('adv-booking')
+  ) {
+    stageLabel = 'Paid For Advance-Booking';
   } else if (checkStr.includes('check-in') || checkStr.includes('checkin') || checkStr.includes('checking')) {
     stageLabel = 'Paid For CheckIn';
   } else if (checkStr.includes('living') || checkStr.includes('mid-stay') || checkStr.includes('running') || checkStr.includes('stay') || checkStr.includes('fnb') || checkStr.includes('order') || checkStr.includes('restaurant') || checkStr.includes('bar')) {
@@ -1208,7 +1221,7 @@ export function buildMoneyReceiptHTML(receipt) {
           <table class="receipt-mini-table" style="font-size: 12pt; color: #000000 !important; background: #ffffff !important;">
             <thead>
               <tr style="color: #000000 !important; background: #f1f5f9 !important;">
-                <th style="width: 62%; font-weight: 950; font-size: 12.5pt; padding: 6px 10px; color: #000000 !important;">Bill No</th>
+                <th style="width: 62%; font-weight: 950; font-size: 12.5pt; padding: 6px 10px; color: #000000 !important;">Description</th>
                 <th style="width: 38%; font-weight: 950; font-size: 12.5pt; text-align: right; padding: 6px 10px; color: #000000 !important;">Amount</th>
               </tr>
             </thead>
@@ -1604,8 +1617,11 @@ export async function downloadReceiptPDF(receipt, options = {}) {
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-receipt-pdf-sandbox';
   sandbox.style.position = 'fixed';
-  sandbox.style.left = '-99999px';
+  sandbox.style.left = '0';
   sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
   sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
@@ -3120,8 +3136,11 @@ export async function downloadGuestRegistrationPDF(data, options = { includePhot
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-pdf-sandbox';
   sandbox.style.position = 'fixed';
-  sandbox.style.left = '-99999px';
+  sandbox.style.left = '0';
   sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
   sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
@@ -3587,8 +3606,11 @@ export async function downloadGuestPaymentSummaryPDF(data, options = {}) {
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-pdf-sandbox';
   sandbox.style.position = 'fixed';
-  sandbox.style.left = '-99999px';
+  sandbox.style.left = '0';
   sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
   sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
@@ -3996,8 +4018,11 @@ export async function downloadGuestActivitiesSummaryPDF(data, options = {}) {
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-pdf-sandbox';
   sandbox.style.position = 'fixed';
-  sandbox.style.left = '-99999px';
+  sandbox.style.left = '0';
   sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
   sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
@@ -5496,8 +5521,11 @@ export async function downloadFinalBillPDF(room, calc, settlement, options = {})
   const sandbox = document.createElement('div');
   sandbox.id = 'temp-pdf-sandbox';
   sandbox.style.position = 'fixed';
-  sandbox.style.left = '-99999px';
+  sandbox.style.left = '0';
   sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
   sandbox.style.width = '755px';
   sandbox.style.overflow = 'hidden';
 
@@ -6904,19 +6932,40 @@ export function printFrontOfficeCashHandover(data = {}, options = {}) {
 
   const totalReceiptsCR = Number(data.totalReceiptsCR || toHandoverA);
   const totalRefund = Number(data.totalRefund || 0);
-  const netHandover = Number(data.netHandover || Math.max(0, totalReceiptsCR - totalRefund));
+  const totalExpenses = Number(data.totalExpenses || 0);
+  const netHandover = Number(data.netHandover || Math.max(0, totalReceiptsCR - totalRefund - totalExpenses));
   const amountWords = numberToWordsINR(netHandover);
 
-  const renderCopyBlock = (copyTitle) => `
-    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 133mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid;">
+  const renderCopyBlock = (copyTitle) => {
+    let expensesHtml = '';
+    if (data.expensesByCategory && data.expensesByCategory.length > 0) {
+      data.expensesByCategory.forEach(exp => {
+        expensesHtml += `
+          <tr>
+            <td style="padding: 2px 6px; font-weight: 750; border-right: 1px solid #000; color: #b91c1c;">Expenses (${escapeHtml(exp.category)})</td>
+            <td style="padding: 2px 6px; text-align: right; font-weight: 800; color: #b91c1c;">${Number(exp.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
+        `;
+      });
+    } else if (totalExpenses > 0) {
+      expensesHtml = `
+        <tr>
+          <td style="padding: 2px 6px; font-weight: 750; border-right: 1px solid #000; color: #b91c1c;">Expenses</td>
+          <td style="padding: 2px 6px; text-align: right; font-weight: 800; color: #b91c1c;">${totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        </tr>
+      `;
+    }
+
+    return `
+    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 135mm; max-height: 135mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid; overflow: hidden;">
       <!-- Header -->
       <div>
         <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #000; padding-bottom: 2mm;">
           <!-- Left Logo & Hotel Info -->
           <div style="display: flex; align-items: center; gap: 8px;">
-            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain;" />
+            <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 38px; width: auto; object-fit: contain;" />
             <div style="line-height: 1.2;">
-              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITYPAARK</div>
+              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITY PAARK</div>
               <div style="font-size: 6.8pt; font-weight: 700; color: #222;">119, MURARJI PETH, CHAR HUTATMA CHOWK,</div>
               <div style="font-size: 6.8pt; font-weight: 700; color: #222;">SOLAPUR-413 001.</div>
             </div>
@@ -6925,7 +6974,7 @@ export function printFrontOfficeCashHandover(data = {}, options = {}) {
           <div style="font-size: 8pt; font-weight: 700; line-height: 1.35; text-align: right;">
             <div><span>DAY :</span> <span style="font-weight: 850;">${escapeHtml(dayName)}</span> &nbsp;&nbsp; <span>SHIFT :</span> <span style="font-weight: 850;">${escapeHtml(shiftLabel)}</span></div>
             <div><span>DATE :</span> <span style="font-weight: 850;">${escapeHtml(dateStr)}</span> &nbsp;&nbsp; <span>TIME :</span> <span style="font-weight: 850;">${escapeHtml(timeStr)}</span></div>
-            <div><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
+            <div style="white-space: nowrap;"><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
           </div>
         </div>
 
@@ -6948,25 +6997,32 @@ export function printFrontOfficeCashHandover(data = {}, options = {}) {
             <tr>
               <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">A. Front Office</td>
               <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
-              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total (CR) Receipts Rs.</td>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total Cash Receipts Rs.</td>
               <td style="padding: 2.5px 6px; text-align: right; font-weight: 850;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1. F. O. Cash Sales</td>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1) F. O. Cash Sales</td>
               <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${foCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td style="padding: 2px 6px; font-weight: 800; border-right: 1px solid #000;">Total Refund Rs.</td>
               <td style="padding: 2px 6px; text-align: right; font-weight: 850;">${totalRefund.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2. F. O. Deposits</td>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2) F. O. Deposits-Advance Booking</td>
               <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${foDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
-              <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              ${expensesHtml ? expensesHtml : `
+                <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
+                <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              `}
             </tr>
             <tr>
-              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">3. Other Income</td>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">3) Other Income</td>
               <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${otherIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              <td style="padding: 2px 6px; border-right: 1px solid #000;" colspan="2"></td>
+              ${expensesHtml ? `
+                <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
+                <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              ` : `
+                <td style="padding: 2px 6px; border-right: 1px solid #000;" colspan="2"></td>
+              `}
             </tr>
             <tr style="border-top: 1px solid #000; border-bottom: 1px solid #000; background: #f8fafc;">
               <td style="padding: 2.5px 6px; font-weight: 900; border-right: 1px solid #000;">To Handover Rs.</td>
@@ -6990,35 +7046,50 @@ export function printFrontOfficeCashHandover(data = {}, options = {}) {
       <!-- Footer: Total in Words and Signatures -->
       <div style="margin-top: 1.5mm;">
         <!-- Total Rs in words -->
-        <div style="border: 1px solid #000; padding: 3px 6px; margin-bottom: 2.5mm; background: #fff;">
+        <div style="border: 1px solid #000; padding: 2.5px 6px; margin-bottom: 2mm; background: #fff;">
           <div style="font-size: 8.5pt; font-weight: 900;">
             Total Rs. : <span style="font-size: 9.5pt;">₹ ${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
-          <div style="font-size: 7.8pt; font-weight: 700; color: #111; margin-top: 1px;">
+          <div style="font-size: 7.6pt; font-weight: 700; color: #111; margin-top: 1px;">
             Total in Words : <span style="font-weight: 800; font-style: italic;">${escapeHtml(amountWords)}</span>
           </div>
         </div>
 
-        <!-- Signatures Row -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 1mm; font-size: 8pt; font-weight: 750;">
-          <div style="display: flex; align-items: flex-end; gap: 4px;">
-            <span>Signature of Paying Cashier :</span>
-            <span style="font-weight: 900; text-transform: uppercase;">[${escapeHtml(staffName)}]</span>
-            <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+        <!-- 4 Signatures Section with Comfortable Gap -->
+        <div style="margin-top: 3.5mm; font-size: 7.8pt; font-weight: 750; display: flex; flex-direction: column; gap: 3.5mm;">
+          <!-- Row 1: Paying Cashier & Receiving Cashier -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Signature of Paying Cashier :</span>
+              <span style="font-weight: 900; text-transform: uppercase; white-space: nowrap;">[${escapeHtml(staffName)}]</span>
+              <span style="display: inline-block; width: 110px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Signature of Receiving Cashier :</span>
+              <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
           </div>
-          <div style="display: flex; align-items: flex-end; gap: 4px;">
-            <span>Signature of Receiving Cashier :</span>
-            <span style="display: inline-block; width: 160px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          <!-- Row 2: Sign of F&B Cashier & Sign of Accountant -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Sign of F&B Cashier :</span>
+              <span style="display: inline-block; width: 130px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Sign of Accountant :</span>
+              <span style="display: inline-block; width: 155px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
           </div>
         </div>
       </div>
     </div>
   `;
+  };
 
   sheet.innerHTML = `
-    <div style="width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+    <div style="width: 100%; height: 282mm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; margin: 0 auto; page-break-after: avoid;">
       ${renderCopyBlock('FRONT COPY')}
-      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 3.5mm 0; text-align: center; position: relative;">
+      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 2mm 0; text-align: center; position: relative;">
         <span style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: #ffffff; padding: 0 10px; font-size: 7.5pt; font-weight: 800; color: #444; letter-spacing: 0.5px;">
           ✂ CUT HERE (FRONT COPY / ACCOUNTS COPY) ✂
         </span>
@@ -7075,15 +7146,15 @@ export function printFnBCashHandover(data = {}, options = {}) {
   const amountWords = numberToWordsINR(netHandover);
 
   const renderCopyBlock = (copyTitle) => `
-    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 133mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid;">
+    <div style="box-sizing: border-box; padding: 4.5mm 6mm; border: 1.5px solid #000; height: 135mm; max-height: 135mm; display: flex; flex-direction: column; justify-content: space-between; font-family: Arial, sans-serif; background: #fff; color: #000; page-break-inside: avoid; overflow: hidden;">
       <!-- Header -->
       <div>
         <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #000; padding-bottom: 2mm;">
           <!-- Left Logo & Hotel Info -->
           <div style="display: flex; align-items: center; gap: 8px;">
-            <img src="/hcp-logo-with-name.png" alt="Hotel CityPaark" style="height: 38px; width: auto; object-fit: contain;" />
+            <img src="/hcp-logo-with-name.png" alt="Hotel City Paark" style="height: 38px; width: auto; object-fit: contain;" />
             <div style="line-height: 1.2;">
-              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITYPAARK</div>
+              <div style="font-size: 11pt; font-weight: 900; letter-spacing: 0.5px;">HOTEL CITY PAARK</div>
               <div style="font-size: 6.8pt; font-weight: 700; color: #222;">119, MURARJI PETH, CHAR HUTATMA CHOWK,</div>
               <div style="font-size: 6.8pt; font-weight: 700; color: #222;">SOLAPUR-413 001.</div>
             </div>
@@ -7092,7 +7163,7 @@ export function printFnBCashHandover(data = {}, options = {}) {
           <div style="font-size: 8pt; font-weight: 700; line-height: 1.35; text-align: right;">
             <div><span>DAY :</span> <span style="font-weight: 850;">${escapeHtml(dayName)}</span> &nbsp;&nbsp; <span>SHIFT :</span> <span style="font-weight: 850;">${escapeHtml(shiftLabel)}</span></div>
             <div><span>DATE :</span> <span style="font-weight: 850;">${escapeHtml(dateStr)}</span> &nbsp;&nbsp; <span>TIME :</span> <span style="font-weight: 850;">${escapeHtml(timeStr)}</span></div>
-            <div><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
+            <div style="white-space: nowrap;"><span>STAFF NAME :</span> <span style="font-weight: 900; text-transform: uppercase;">${escapeHtml(staffName)}</span></div>
           </div>
         </div>
 
@@ -7115,17 +7186,17 @@ export function printFnBCashHandover(data = {}, options = {}) {
             <tr>
               <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">A. F&B</td>
               <td style="padding: 2.5px 6px; border-right: 1.5px solid #000;"></td>
-              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total (CR) Receipts Rs.</td>
+              <td style="padding: 2.5px 6px; font-weight: 800; border-right: 1px solid #000;">Total Cash Receipts Rs.</td>
               <td style="padding: 2.5px 6px; text-align: right; font-weight: 850;">${toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1. F&B Cash Sales</td>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">1) F&B Cash Sales</td>
               <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${fnbCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td style="padding: 2px 6px; font-weight: 800; border-right: 1px solid #000;">Total Refund Rs.</td>
               <td style="padding: 2px 6px; text-align: right; font-weight: 850;">${totalRefund.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2. F&B Deposits</td>
+              <td style="padding: 2px 6px; padding-left: 14px; border-right: 1px solid #000;">2) F&B Deposits</td>
               <td style="padding: 2px 6px; text-align: right; border-right: 1.5px solid #000; font-weight: 750;">${fnbDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td style="padding: 2px 6px; font-weight: 900; border-top: 1px solid #000; border-right: 1px solid #000; background: #fafafa;">Net Handover to A/c.'s Rs.</td>
               <td style="padding: 2px 6px; text-align: right; font-weight: 950; border-top: 1px solid #000; background: #fafafa;">${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -7152,25 +7223,33 @@ export function printFnBCashHandover(data = {}, options = {}) {
       <!-- Footer: Total in Words and Signatures -->
       <div style="margin-top: 1.5mm;">
         <!-- Total Rs in words -->
-        <div style="border: 1px solid #000; padding: 3px 6px; margin-bottom: 2.5mm; background: #fff;">
+        <div style="border: 1px solid #000; padding: 2.5px 6px; margin-bottom: 2mm; background: #fff;">
           <div style="font-size: 8.5pt; font-weight: 900;">
             Total Rs. : <span style="font-size: 9.5pt;">₹ ${netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
-          <div style="font-size: 7.8pt; font-weight: 700; color: #111; margin-top: 1px;">
+          <div style="font-size: 7.6pt; font-weight: 700; color: #111; margin-top: 1px;">
             Total in Words : <span style="font-weight: 800; font-style: italic;">${escapeHtml(amountWords)}</span>
           </div>
         </div>
 
-        <!-- Signatures Row -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 1mm; font-size: 8pt; font-weight: 750;">
-          <div style="display: flex; align-items: flex-end; gap: 4px;">
-            <span>Signature of Paying Cashier :</span>
-            <span style="font-weight: 900; text-transform: uppercase;">[${escapeHtml(staffName)}]</span>
-            <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+        <!-- Signatures Row: Comfortable margin & Receiving Cashier -->
+        <div style="margin-top: 3.5mm; font-size: 7.8pt; font-weight: 750; display: flex; flex-direction: column; gap: 3.5mm;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Signature of Paying Cashier :</span>
+              <span style="font-weight: 900; text-transform: uppercase; white-space: nowrap;">[${escapeHtml(staffName)}]</span>
+              <span style="display: inline-block; width: 110px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Sign of Receiving Cashier :</span>
+              <span style="display: inline-block; width: 140px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
           </div>
-          <div style="display: flex; align-items: flex-end; gap: 4px;">
-            <span>Signature of Receiving Cashier :</span>
-            <span style="display: inline-block; width: 160px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+          <div style="display: flex; justify-content: flex-end; align-items: flex-end;">
+            <div style="display: flex; align-items: flex-end; gap: 4px; white-space: nowrap;">
+              <span>Sign of Accountant :</span>
+              <span style="display: inline-block; width: 160px; border-bottom: 1.2px solid #000; margin-left: 4px;"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -7178,9 +7257,9 @@ export function printFnBCashHandover(data = {}, options = {}) {
   `;
 
   sheet.innerHTML = `
-    <div style="width: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+    <div style="width: 100%; height: 282mm; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; margin: 0 auto; page-break-after: avoid;">
       ${renderCopyBlock('FRONT COPY')}
-      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 3.5mm 0; text-align: center; position: relative;">
+      <div style="width: 100%; border-top: 1.5px dashed #444; margin: 2mm 0; text-align: center; position: relative;">
         <span style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: #ffffff; padding: 0 10px; font-size: 7.5pt; font-weight: 800; color: #444; letter-spacing: 0.5px;">
           ✂ CUT HERE (F&B COPY / ACCOUNTS COPY) ✂
         </span>
@@ -7208,5 +7287,342 @@ export function printFnBCashHandover(data = {}, options = {}) {
       setTimeout(cleanup, 2500);
     }, 40);
   });
+}
+
+/**
+ * ============================================================================
+ * OFFICIAL POLICE 'C' FORM FOR FOREIGN GUESTS (Registration of Foreigners Rules)
+ * ============================================================================
+ */
+export function buildCFormHTML(data = {}) {
+  const foreignerName = (data.foreignerName || data.name || data.guest_name || '').toUpperCase();
+  const addressInSolapur = data.addressInSolapur || data.address || 'Hotel City Paark, 119 Murarji Peth, Solapur - 413001';
+  const nationality = (data.nationality || '').toUpperCase();
+
+  // Passport Particulars
+  const passportNo = data.passportNo || data.passport_number || data.id_number || '';
+  const passportPlaceOfIssue = data.passportPlaceOfIssue || data.passport_place_of_issue || '';
+  const passportDateOfIssue = data.passportDateOfIssue || data.passport_date_of_issue || '';
+  const passportValidTill = data.passportValidTill || data.passport_valid_till || data.expiry_date || '';
+
+  // Visa Particulars
+  const visaNo = data.visaNo || data.visa_number || '';
+  const visaPlaceOfIssue = data.visaPlaceOfIssue || data.visa_place_of_issue || '';
+  const visaDateOfIssue = data.visaDateOfIssue || data.visa_date_of_issue || '';
+  const visaValidTill = data.visaValidTill || data.visa_valid_till || '';
+  const visaType = data.visaType || data.visa_type || 'Tourist';
+
+  // Stay & Arrival Info
+  const arrivalDateIndia = data.arrivalDateIndia || data.arrival_date_india || '';
+  const arrivalPlaceIndia = data.arrivalPlaceIndia || data.arrival_place_india || '';
+  const purposeOfVisit = data.purposeOfVisit || data.purpose_of_visit || 'Tourism / Visit';
+  const contactPersonName = data.contactPersonName || data.contact_person_name || 'Front Desk Manager';
+  const contactPersonTel = data.contactPersonTel || data.contact_person_tel || '0217-2729712 / 9146200000';
+  const proposedDuration = data.proposedDuration || data.duration_of_stay || '3 Days';
+  const arrivalDateTimeHotel = data.arrivalDateTimeHotel || data.checkin_time || new Date().toLocaleString('en-IN');
+  const rpNo = data.rpNo || data.rp_number || 'N/A';
+  const rpDateOfIssue = data.rpDateOfIssue || 'N/A';
+  const rpValidTill = data.rpValidTill || 'N/A';
+  const rpIssuingAuth = data.rpIssuingAuth || 'N/A';
+  const isPoliceInformed = data.isPoliceInformed !== false;
+  const policeStationName = data.policeStationName || 'Murarji Peth Police Station, Solapur';
+  const foreignerPhone = data.foreignerPhone || data.mobile || data.phone || '';
+  const landlordPhone = data.landlordPhone || '0217-2729712 / 9890012345';
+
+  return `
+    <div style="box-sizing: border-box; width: 100%; max-width: 200mm; margin: 0 auto; padding: 6mm 10mm; font-family: 'Times New Roman', Times, serif; color: #000; background: #fff; line-height: 1.4; font-size: 10pt;">
+      <!-- Title -->
+      <div style="text-align: center; margin-bottom: 3mm;">
+        <h2 style="margin: 0; font-size: 17pt; font-weight: 900; letter-spacing: 1px; text-decoration: underline;">
+          ‘ C ’ FORM
+        </h2>
+        <div style="font-size: 8.5pt; font-weight: 700; margin-top: 2px; color: #111;">
+          (Rule 14 (6) of the Registration of Foreigners Rules – 1992 &amp; Foreigners Order (Report of Police) 1971 &amp; Section 14 of Foreigners Act 1946)
+        </div>
+      </div>
+
+      <!-- Point 1 -->
+      <div style="margin-top: 3.5mm;">
+        <strong>1. House Owner’s Full Name, Address &amp; Police Station</strong>
+        <div style="border-bottom: 1px dotted #000; padding: 2px 0 1px 4px; min-height: 18px; font-weight: 700;">
+          Hotel City Paark, 119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001. Police Station: Murarji Peth Police Station, Solapur
+        </div>
+      </div>
+
+      <!-- Point 2 -->
+      <div style="margin-top: 3mm;">
+        <strong>2. Foreigner’s Name (in Capital) &amp; Address in Solapur</strong>
+        <div style="border-bottom: 1px dotted #000; padding: 2px 0 1px 4px; min-height: 18px; font-weight: 800; text-transform: uppercase;">
+          ${escapeHtml(foreignerName)} &mdash; ${escapeHtml(addressInSolapur)}
+        </div>
+      </div>
+
+      <!-- Point 3 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end;">
+        <strong style="white-space: nowrap;">3. Nationality &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 800; text-transform: uppercase;">
+          ${escapeHtml(nationality)}
+        </div>
+      </div>
+
+      <!-- Point 4: Passport & Visa Particulars Side-by-Side Grid -->
+      <div style="margin-top: 3.5mm; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Left Column: Passport Particulars -->
+        <div>
+          <div style="font-weight: 850; font-size: 11pt; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
+            4. Passport Particulars
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>1. Number</span>
+            <strong style="font-family: monospace; font-size: 10pt;">${escapeHtml(passportNo)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>2. Place of Issue</span>
+            <strong>${escapeHtml(passportPlaceOfIssue)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>3. Date of Issue</span>
+            <strong>${escapeHtml(passportDateOfIssue)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>4. Valid Till</span>
+            <strong>${escapeHtml(passportValidTill)}</strong>
+          </div>
+        </div>
+
+        <!-- Right Column: Visa Particulars -->
+        <div>
+          <div style="font-weight: 850; font-size: 11pt; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
+            Visa Particulars
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>1. Number</span>
+            <strong style="font-family: monospace; font-size: 10pt;">${escapeHtml(visaNo)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>2. Place of Issue</span>
+            <strong>${escapeHtml(visaPlaceOfIssue)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>3. Date of Issue</span>
+            <strong>${escapeHtml(visaDateOfIssue)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>4. Valid Till</span>
+            <strong>${escapeHtml(visaValidTill)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #000; padding: 2px 0;">
+            <span>5. Type of Visa</span>
+            <strong>${escapeHtml(visaType)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Point 5 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end;">
+        <strong style="white-space: nowrap;">5. Date &amp; Place of Arrival in India &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(arrivalDateIndia)} ${arrivalPlaceIndia ? `&mdash; Place: ${escapeHtml(arrivalPlaceIndia)}` : ''}
+        </div>
+      </div>
+
+      <!-- Point 6 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end;">
+        <strong style="white-space: nowrap;">6. Purpose of Visit &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(purposeOfVisit)}
+        </div>
+      </div>
+
+      <!-- Point 7 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end; gap: 8px;">
+        <strong style="white-space: nowrap;">7. Contact person – Name &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(contactPersonName)}
+        </div>
+        <strong style="white-space: nowrap;">Tel No. &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; width: 160px; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(contactPersonTel)}
+        </div>
+      </div>
+
+      <!-- Point 8 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end;">
+        <strong style="white-space: nowrap;">8. Proposed Duration of Stay in Solapur &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(proposedDuration)}
+        </div>
+      </div>
+
+      <!-- Point 9 -->
+      <div style="margin-top: 3mm; display: flex; align-items: flex-end;">
+        <strong style="white-space: nowrap;">9. Date &amp; time of Arrival in your House / Hotel &nbsp;</strong>
+        <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+          ${escapeHtml(arrivalDateTimeHotel)}
+        </div>
+      </div>
+
+      <!-- Point 10 -->
+      <div style="margin-top: 3mm;">
+        <div style="display: flex; align-items: flex-end;">
+          <strong style="white-space: nowrap;">10. Certificate of Registration Permit (if any)- R. P. No. &nbsp;</strong>
+          <div style="border-bottom: 1px dotted #000; flex: 1; padding: 2px 0 1px 4px; font-weight: 700;">
+            ${escapeHtml(rpNo)}
+          </div>
+        </div>
+        <div style="display: flex; align-items: flex-end; gap: 12px; margin-top: 2px;">
+          <span style="white-space: nowrap;">Date of Issue :</span>
+          <div style="border-bottom: 1px dotted #000; flex: 1; padding: 1px 0 1px 4px; font-weight: 700;">${escapeHtml(rpDateOfIssue)}</div>
+          <span style="white-space: nowrap;">Valid Till :</span>
+          <div style="border-bottom: 1px dotted #000; flex: 1; padding: 1px 0 1px 4px; font-weight: 700;">${escapeHtml(rpValidTill)}</div>
+        </div>
+        <div style="display: flex; align-items: flex-end; margin-top: 2px;">
+          <span style="white-space: nowrap;">Issuing Authority : &nbsp;</span>
+          <div style="border-bottom: 1px dotted #000; flex: 1; padding: 1px 0 1px 4px; font-weight: 700;">${escapeHtml(rpIssuingAuth)}</div>
+        </div>
+      </div>
+
+      <!-- Point 11 -->
+      <div style="margin-top: 3.5mm;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <strong>11. Whether Information is given to Police Station about tenant</strong>
+          <div style="display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 10.5pt;">
+            <span>[ ${isPoliceInformed ? '✓' : ' '} ] Yes</span>
+            <span>[ ${!isPoliceInformed ? '✓' : ' '} ] No</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: flex-end; margin-top: 2px;">
+          <span style="white-space: nowrap;">If Yes, Police Station Name : &nbsp;</span>
+          <div style="border-bottom: 1px dotted #000; flex: 1; padding: 1px 0 1px 4px; font-weight: 700;">
+            ${escapeHtml(policeStationName)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Documents Required Box -->
+      <div style="margin-top: 4.5mm; border: 1px solid #000; padding: 3px 6px; font-size: 8.8pt;">
+        <div style="font-weight: 850; text-decoration: underline;">Documents required</div>
+        <div>1 &nbsp; Copy of Passport, Visa page &amp; Residential Permit</div>
+        <div>2 &nbsp; Address Proof (Electricity Bill / Telephone Bill / Ration Card / Index II / Leave &amp; License Agreement)</div>
+      </div>
+
+      <!-- Note -->
+      <div style="margin-top: 3mm; font-size: 8.8pt; font-weight: 850;">
+        Note :- ‘ C ’ Form must be submitted by House Owner / Hotel Owner within 24 hours after arrival of foreigner.
+      </div>
+
+      <!-- Signatures Row: 3 columns -->
+      <div style="margin-top: 8mm; display: flex; justify-content: space-between; align-items: flex-end; text-align: center; font-size: 9.5pt;">
+        <div>
+          <div style="width: 150px; border-top: 1.2px solid #000; padding-top: 3px; font-weight: 850;">
+            Signature of Foreigner
+          </div>
+          <div style="font-size: 8.5pt; text-align: left; margin-top: 2px;">
+            Mobile No. :- <strong>${escapeHtml(foreignerPhone)}</strong>
+          </div>
+        </div>
+        <div>
+          <div style="width: 110px; height: 50px; border: 1.5px dashed #444; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 8pt; font-weight: 800; color: #444; margin: 0 auto 3px;">
+            Hotel Seal<br/>(For Hotels Only)
+          </div>
+        </div>
+        <div>
+          <div style="width: 150px; border-top: 1.2px solid #000; padding-top: 3px; font-weight: 850;">
+            Signature of Landlord
+          </div>
+          <div style="font-size: 8.5pt; text-align: left; margin-top: 2px;">
+            Ph. / Mobile No. :- <strong>${escapeHtml(landlordPhone)}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function printCForm(data = {}) {
+  const sheet = document.getElementById('print-cash-handover-sheet') || document.getElementById('print-petty-cash-sheet');
+  if (!sheet) {
+    console.warn('print-cash-handover-sheet element not found in DOM');
+    return;
+  }
+
+  const exitThemeIsolation = enterPrintThemeIsolation();
+  sheet.innerHTML = buildCFormHTML(data);
+  sheet.style.display = 'block';
+  sheet.classList.add('print-active');
+  document.body.classList.add('print-sheet-active');
+
+  const cleanup = () => {
+    sheet.classList.remove('print-active');
+    sheet.style.display = 'none';
+    document.body.classList.remove('print-sheet-active');
+    window.removeEventListener('afterprint', cleanup);
+    exitThemeIsolation();
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 2500);
+    }, 40);
+  });
+}
+
+export async function downloadCFormPDF(data = {}, options = {}) {
+  if (!data) return false;
+  const guestName = (data.foreignerName || data.name || data.guest_name || 'Foreign_Guest').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = options?.filename || `Form_C_${guestName}.pdf`;
+  const htmlContent = buildCFormHTML(data);
+
+  const sandbox = document.createElement('div');
+  sandbox.id = 'temp-pdf-sandbox';
+  sandbox.style.position = 'fixed';
+  sandbox.style.left = '0';
+  sandbox.style.top = '0';
+  sandbox.style.zIndex = '-9999';
+  sandbox.style.opacity = '1';
+  sandbox.style.pointerEvents = 'none';
+  sandbox.style.width = '755px';
+  sandbox.style.overflow = 'hidden';
+
+  const targetEl = document.createElement('div');
+  targetEl.style.position = 'relative';
+  targetEl.style.width = '755px';
+  targetEl.style.background = '#ffffff';
+  targetEl.style.color = '#000000';
+  targetEl.style.boxSizing = 'border-box';
+  targetEl.innerHTML = htmlContent;
+
+  sandbox.appendChild(targetEl);
+  document.body.appendChild(sandbox);
+
+  const opt = {
+    margin: [6, 6, 6, 6],
+    filename: filename,
+    image: { type: 'jpeg', quality: 1.0 },
+    html2canvas: { scale: 2.5, useCORS: true, logging: false, scrollY: 0, windowWidth: 755 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+
+  const h2p = (typeof html2pdf === 'function') ? html2pdf : (html2pdf?.default || window.html2pdf);
+
+  try {
+    if (typeof h2p === 'function') {
+      await h2p().set(opt).from(targetEl).save();
+      return true;
+    } else {
+      printCForm(data);
+      return false;
+    }
+  } catch (err) {
+    console.warn('downloadCFormPDF error:', err);
+    printCForm(data);
+    return false;
+  } finally {
+    if (document.body.contains(sandbox)) {
+      document.body.removeChild(sandbox);
+    }
+  }
 }
 

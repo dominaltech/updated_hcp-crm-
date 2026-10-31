@@ -9,7 +9,9 @@ import {
   downloadGuestActivitiesSummaryPDF,
   printFinalBillA4,
   downloadFinalBillPDF,
-  formatTaxInvoiceNumber
+  formatTaxInvoiceNumber,
+  printCForm,
+  downloadCFormPDF
 } from '../../services/printService';
 
 export default function DocumentActionModal({
@@ -58,6 +60,8 @@ export default function DocumentActionModal({
         return '📄 Payment Summary';
       case 'activities':
         return '📑 Activities Summary';
+      case 'cform':
+        return "🛂 Form 'C'";
       case 'info':
       default:
         return '💾 Info';
@@ -122,6 +126,8 @@ export default function DocumentActionModal({
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         ok = await downloadFinalBillPDF(room, calc, settlement);
+      } else if (type === 'cform') {
+        ok = await downloadCFormPDF(data);
       } else {
         ok = await downloadGuestRegistrationPDF(data, { includePhotos: true });
       }
@@ -153,6 +159,8 @@ export default function DocumentActionModal({
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         printFinalBillA4(room, calc, settlement);
+      } else if (type === 'cform') {
+        printCForm(data);
       } else {
         printGuestRegistrationA4(data, { includePhotos: true });
       }
@@ -177,6 +185,8 @@ export default function DocumentActionModal({
       } else if (type === 'invoice') {
         const { room, calc, settlement } = getInvoiceParams(data);
         ok = await downloadFinalBillPDF(room, calc, settlement);
+      } else if (type === 'cform') {
+        ok = await downloadCFormPDF(data);
       } else {
         ok = await downloadGuestRegistrationPDF(data, { includePhotos: true });
       }
@@ -194,6 +204,8 @@ export default function DocumentActionModal({
         } else if (type === 'invoice') {
           const { room, calc, settlement } = getInvoiceParams(data);
           printFinalBillA4(room, calc, settlement);
+        } else if (type === 'cform') {
+          printCForm(data);
         } else {
           printGuestRegistrationA4(data, { includePhotos: true });
         }

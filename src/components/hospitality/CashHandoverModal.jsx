@@ -6,7 +6,7 @@ import { numberToWordsINR } from '../../utils/numberToWords';
 
 export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [shift, setShift] = useState('all');
+  const [shift, setShift] = useState('7am-7pm');
   const [staffName, setStaffName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [handoverData, setHandoverData] = useState(null);
@@ -53,7 +53,9 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
   const fbCashCollected = Number(handoverData?.fbCashCollected || 0);
   const totalReceiptsCR = Number(handoverData?.totalReceiptsCR || toHandoverA);
   const totalRefund = Number(handoverData?.totalRefund || 0);
-  const netHandover = Number(handoverData?.netHandover || Math.max(0, totalReceiptsCR - totalRefund));
+  const totalExpenses = Number(handoverData?.totalExpenses || 0);
+  const expensesByCategory = handoverData?.expensesByCategory || [];
+  const netHandover = Number(handoverData?.netHandover !== undefined ? handoverData.netHandover : Math.max(0, totalReceiptsCR - totalRefund - totalExpenses));
   const amountWords = numberToWordsINR(netHandover);
 
   const handlePrint = () => {
@@ -111,19 +113,25 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
           </div>
           <button
             type="button"
-            className="btn-secondary"
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.12)',
               color: '#fff',
-              padding: '6px 12px',
-              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               cursor: 'pointer',
-              fontWeight: 700
+              fontSize: '1rem',
+              fontWeight: 800,
+              transition: 'all 0.15s ease'
             }}
+            title="Close"
           >
-            ✕ Close
+            ✕
           </button>
         </div>
 
@@ -141,10 +149,12 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
         >
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Date:</span>
-            <ThemedDatePicker
+            <input
+              type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{ width: '145px', height: '34px', fontSize: '0.82rem' }}
+              className="form-input form-input-sm"
+              style={{ width: '150px', height: '34px', fontSize: '0.82rem', fontWeight: 700 }}
             />
           </div>
 
@@ -156,23 +166,12 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
               className="form-input form-input-sm"
               style={{ height: '34px', fontSize: '0.82rem', fontWeight: 650, borderRadius: '8px', width: '220px' }}
             >
-              <option value="all">Full Day / All Shifts</option>
-              <option value="morning">Shift 1 / Morning (07:00 AM - 03:00 PM)</option>
-              <option value="evening">Shift 2 / Evening (03:00 PM - 11:00 PM)</option>
-              <option value="night">Shift 3 / Night (11:00 PM - 07:00 AM)</option>
+              <option value="7am-7pm">7:00 AM - 7:00 PM</option>
+              <option value="7pm-7am">7:00 PM - 7:00 AM</option>
+              <option value="7am-3pm">7:00 AM - 3:00 PM</option>
+              <option value="3pm-11pm">3:00 PM - 11:00 PM</option>
+              <option value="11pm-7am">11:00 PM - 7:00 AM</option>
             </select>
-          </div>
-
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>Paying Cashier:</span>
-            <input
-              type="text"
-              className="form-input form-input-sm"
-              value={staffName}
-              onChange={(e) => setStaffName(e.target.value)}
-              placeholder="Cashier Staff Name"
-              style={{ width: '150px', height: '34px', fontSize: '0.82rem', fontWeight: 700 }}
-            />
           </div>
 
           <button
@@ -212,7 +211,7 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                 <div style={{ padding: '12px 16px', borderBottom: '1.5px solid #0f172a', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase' }}>
-                      HOTEL CITYPAARK
+                      HOTEL CITY PAARK
                     </h4>
                     <p style={{ margin: 0, fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
                       119, Murarji Peth, Char Hutatma Chowk, Solapur - 413 001.
@@ -221,7 +220,7 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                   <div style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.35 }}>
                     <div>SHIFT: <span style={{ color: '#0284c7' }}>{handoverData.shift}</span></div>
                     <div>DATE: <span>{new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></div>
-                    <div>STAFF: <span style={{ textTransform: 'uppercase', color: '#059669' }}>{staffName}</span></div>
+                    <div style={{ whiteSpace: 'nowrap' }}>STAFF: <span style={{ textTransform: 'uppercase', color: '#059669', fontWeight: 900 }}>{staffName}</span></div>
                   </div>
                 </div>
 
@@ -243,7 +242,7 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                       </td>
                       <td style={{ padding: '6px 12px', borderRight: '1.5px solid #0f172a' }}></td>
                       <td style={{ padding: '6px 12px', fontWeight: 800, borderRight: '1px solid #cbd5e1' }}>
-                        Total (CR) Receipts Rs.
+                        Total Cash Receipts Rs.
                       </td>
                       <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 850, color: '#0f172a' }}>
                         ₹ {toHandoverA.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -251,7 +250,7 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                     </tr>
                     <tr>
                       <td style={{ padding: '5px 12px', paddingLeft: '24px', borderRight: '1px solid #cbd5e1' }}>
-                        1. F. O. Cash Sales
+                        1) F. O. Cash Sales
                       </td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', borderRight: '1.5px solid #0f172a', fontWeight: 700 }}>
                         ₹ {foCashSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -265,26 +264,59 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                     </tr>
                     <tr>
                       <td style={{ padding: '5px 12px', paddingLeft: '24px', borderRight: '1px solid #cbd5e1' }}>
-                        2. F. O. Deposits
+                        2) F. O. Deposits-Advance Booking
                       </td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', borderRight: '1.5px solid #0f172a', fontWeight: 700 }}>
                         ₹ {foDeposits.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td style={{ padding: '6px 12px', fontWeight: 900, borderTop: '1.5px solid #0f172a', borderRight: '1px solid #cbd5e1', background: '#f0fdf4', color: '#166534' }}>
-                        Net Handover to A/c.'s Rs.
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 950, borderTop: '1.5px solid #0f172a', background: '#f0fdf4', color: '#166534', fontSize: '0.95rem' }}>
-                        ₹ {netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
+                      {expensesByCategory.length > 0 ? (
+                        <>
+                          <td style={{ padding: '5px 12px', fontWeight: 800, borderRight: '1px solid #cbd5e1', color: '#b91c1c' }}>
+                            Expenses ({expensesByCategory[0].category})
+                          </td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 800, color: '#b91c1c' }}>
+                            ₹ {Number(expensesByCategory[0].amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </>
+                      ) : totalExpenses > 0 ? (
+                        <>
+                          <td style={{ padding: '5px 12px', fontWeight: 800, borderRight: '1px solid #cbd5e1', color: '#b91c1c' }}>
+                            Expenses
+                          </td>
+                          <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: 800, color: '#b91c1c' }}>
+                            ₹ {totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ padding: '6px 12px', fontWeight: 900, borderTop: '1.5px solid #0f172a', borderRight: '1px solid #cbd5e1', background: '#f0fdf4', color: '#166534' }}>
+                            Net Handover to A/c.'s Rs.
+                          </td>
+                          <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 950, borderTop: '1.5px solid #0f172a', background: '#f0fdf4', color: '#166534', fontSize: '0.95rem' }}>
+                            ₹ {netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </>
+                      )}
                     </tr>
                     <tr>
                       <td style={{ padding: '5px 12px', paddingLeft: '24px', borderRight: '1px solid #cbd5e1' }}>
-                        3. Other Income
+                        3) Other Income
                       </td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', borderRight: '1.5px solid #0f172a', fontWeight: 700 }}>
                         ₹ {otherIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td style={{ padding: '5px 12px', borderRight: '1px solid #cbd5e1' }} colSpan={2}></td>
+                      {(expensesByCategory.length > 0 || totalExpenses > 0) ? (
+                        <>
+                          <td style={{ padding: '6px 12px', fontWeight: 900, borderTop: '1.5px solid #0f172a', borderRight: '1px solid #cbd5e1', background: '#f0fdf4', color: '#166534' }}>
+                            Net Handover to A/c.'s Rs.
+                          </td>
+                          <td style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 950, borderTop: '1.5px solid #0f172a', background: '#f0fdf4', color: '#166534', fontSize: '0.95rem' }}>
+                            ₹ {netHandover.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </>
+                      ) : (
+                        <td style={{ padding: '5px 12px', borderRight: '1px solid #cbd5e1' }} colSpan={2}></td>
+                      )}
                     </tr>
                     <tr style={{ borderTop: '1.5px solid #cbd5e1', borderBottom: '1.5px solid #cbd5e1', background: '#f8fafc' }}>
                       <td style={{ padding: '6px 12px', fontWeight: 900, borderRight: '1px solid #cbd5e1', color: '#0f172a' }}>
@@ -324,12 +356,23 @@ export default function CashHandoverModal({ isOpen, onClose, currentUser }) {
                     Total in Words : {amountWords}
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '10px', borderTop: '1px dashed #cbd5e1', fontSize: '0.78rem', fontWeight: 750, color: '#475569' }}>
-                    <div>
-                      Signature of Paying Cashier: <strong style={{ color: '#0f172a' }}>[{staffName}]</strong> _____________________
+                  {/* 4 Signatures Section in Modal Preview */}
+                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.78rem', fontWeight: 750, color: '#475569' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        Signature of Paying Cashier: <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>[{staffName}]</strong> _____________________
+                      </div>
+                      <div>
+                        Signature of Receiving Cashier: _____________________
+                      </div>
                     </div>
-                    <div>
-                      Signature of Receiving Cashier: _____________________
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        Sign of F&B Cashier: _____________________
+                      </div>
+                      <div>
+                        Sign of Accountant: _____________________
+                      </div>
                     </div>
                   </div>
                 </div>
